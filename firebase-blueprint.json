@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "StaffUser": {
+      "title": "Staff User",
+      "description": "Enterprise staff user record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "full_name": { "type": "string", "maxLength": 128 },
+        "role_id": { "type": "string", "maxLength": 64 },
+        "is_active": { "type": "boolean" },
+        "last_login_at": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "email", "full_name", "role_id", "is_active"]
+    },
+    "Role": {
+      "title": "Role",
+      "description": "Staff role definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 256 },
+        "is_system": { "type": "boolean" }
+      },
+      "required": ["id", "name"]
+    },
+    "RolePermission": {
+      "title": "Role Permission",
+      "description": "Granular permission entry for a role",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "role_id": { "type": "string", "maxLength": 64 },
+        "module": { "type": "string", "maxLength": 64 },
+        "can_view": { "type": "boolean" },
+        "can_create": { "type": "boolean" },
+        "can_edit": { "type": "boolean" },
+        "can_delete": { "type": "boolean" },
+        "can_approve": { "type": "boolean" }
+      },
+      "required": ["id", "role_id", "module"]
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "Immutable audit record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "staff_user_id": { "type": "string", "maxLength": 128 },
+        "staff_user_name": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 32 },
+        "table_name": { "type": "string", "maxLength": 64 },
+        "record_id": { "type": "string", "maxLength": 128 },
+        "ip_address": { "type": "string", "maxLength": 64 },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "action", "table_name"]
+    },
+    "WebhookEvent": {
+      "title": "Webhook Event",
+      "description": "Inbound webhook payload record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "source": { "type": "string", "maxLength": 64 },
+        "event_type": { "type": "string", "maxLength": 64 },
+        "idempotency_key": { "type": "string", "maxLength": 128 },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "source", "event_type"]
+    }
+  },
+  "firestore": {
+    "/staff_users/{userId}": {
+      "schema": { "$ref": "#/entities/StaffUser" },
+      "description": "Staff users collection"
+    },
+    "/roles/{roleId}": {
+      "schema": { "$ref": "#/entities/Role" },
+      "description": "Staff roles collection"
+    },
+    "/role_permissions/{permissionId}": {
+      "schema": { "$ref": "#/entities/RolePermission" },
+      "description": "Permissions matrix entries"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable system audit trails"
+    },
+    "/webhook_events/{eventId}": {
+      "schema": { "$ref": "#/entities/WebhookEvent" },
+      "description": "Inbound webhook integration events"
+    }
+  }
+}
