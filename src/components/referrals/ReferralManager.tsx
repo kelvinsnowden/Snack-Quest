@@ -7,17 +7,19 @@ import {
   Search,
   ShieldAlert,
   CheckCircle2,
-  DollarSign
+  DollarSign,
+  Megaphone
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AdminWithdrawalsQueue } from './AdminWithdrawalsQueue';
+import { AdminCampaignCenter } from '../marketing/AdminCampaignCenter';
 
 export const ReferralManager: React.FC = () => {
   const { checkPermission, currentUser } = useApp();
   const canView = checkPermission('referrals', 'view');
   const canApprove = checkPermission('referrals', 'approve');
 
-  const [activeTab, setActiveTab] = useState<'withdrawals' | 'queue' | 'leaderboard'>('withdrawals');
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'withdrawals' | 'queue' | 'leaderboard'>('campaigns');
   const [referrals, setReferrals] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +125,17 @@ export const ReferralManager: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="flex border-b border-[#27272A] gap-6">
         <button
+          onClick={() => setActiveTab('campaigns')}
+          className={`pb-3 text-sm font-medium transition-colors border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'campaigns'
+              ? 'border-amber-500 text-amber-400 font-bold'
+              : 'border-transparent text-[#A1A1AA] hover:text-white'
+          }`}
+        >
+          <Megaphone className="w-4 h-4 text-amber-400" />
+          <span>Creator Campaign Center</span>
+        </button>
+        <button
           onClick={() => setActiveTab('withdrawals')}
           className={`pb-3 text-sm font-medium transition-colors border-b-2 cursor-pointer flex items-center gap-1.5 ${
             activeTab === 'withdrawals'
@@ -154,6 +167,8 @@ export const ReferralManager: React.FC = () => {
           Advocate Leaderboard Top Rankings
         </button>
       </div>
+
+      {activeTab === 'campaigns' && <AdminCampaignCenter />}
 
       {activeTab === 'withdrawals' && <AdminWithdrawalsQueue />}
 

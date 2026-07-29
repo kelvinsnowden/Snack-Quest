@@ -13,9 +13,9 @@ export default function RewardHistoryView({ customerId }: RewardHistoryViewProps
   useEffect(() => {
     setLoading(true);
     fetch(`/api/v1/customers/${customerId}`)
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        if (data.wallet_transactions && Array.isArray(data.wallet_transactions)) {
+        if (data && data.wallet_transactions && Array.isArray(data.wallet_transactions)) {
           setHistoryItems(data.wallet_transactions);
         }
         setLoading(false);

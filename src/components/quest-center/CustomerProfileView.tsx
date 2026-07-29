@@ -16,10 +16,10 @@ export default function CustomerProfileView({ customer, onProfileUpdated }: Cust
 
   // Preferences
   const [favouriteCategories, setFavouriteCategories] = useState<string[]>(
-    customer?.favourite_categories || ['Chips & Savory', 'Biscuits & Chocolate']
+    customer?.favourite_categories || []
   );
   const [dietaryPreferences, setDietaryPreferences] = useState<string[]>(
-    customer?.dietary_preferences || ['Halal Friendly']
+    customer?.dietary_preferences || []
   );
 
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -158,10 +158,17 @@ export default function CustomerProfileView({ customer, onProfileUpdated }: Cust
 
         {/* Snack & Dietary Preferences */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-          <h3 className="font-bold text-white text-base flex items-center gap-2">
-            <Heart className="w-4 h-4 text-amber-400" />
-            <span>Snack Taste Profile</span>
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-white text-base flex items-center gap-2">
+              <Heart className="w-4 h-4 text-amber-400" />
+              <span>Snack Taste Profile</span>
+            </h3>
+            {favouriteCategories.length === 0 && dietaryPreferences.length === 0 && (
+              <span className="text-xs text-amber-400/90 font-medium bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                We're still learning your preferences
+              </span>
+            )}
+          </div>
 
           <div>
             <label className="text-xs font-semibold text-slate-400 block mb-2">Favorite Snack Categories</label>

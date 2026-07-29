@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Snack, SnackBatch, PackagingItem, Supplier, PurchaseOrder } from '../../types/database';
 import { Boxes, Package, AlertTriangle, Plus, CheckCircle, RefreshCw, Truck, Tag, Layers, Sparkles } from 'lucide-react';
 import { ProductCatalogManager } from './ProductCatalogManager';
+import { safeFetchJson } from '../../lib/safeFetch';
 
 export const InventoryManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'snacks' | 'batches' | 'packaging' | 'recipes' | 'suppliers' | 'po'>('catalog');
@@ -29,20 +30,20 @@ export const InventoryManager: React.FC = () => {
     setLoading(true);
     try {
       const [resSnacks, resBatches, resPack, resRec, resSup, resPO] = await Promise.all([
-        fetch('/api/v1/inventory/snacks').then((r) => r.json()),
-        fetch('/api/v1/inventory/batches').then((r) => r.json()),
-        fetch('/api/v1/inventory/packaging').then((r) => r.json()),
-        fetch('/api/v1/inventory/recipes').then((r) => r.json()),
-        fetch('/api/v1/inventory/suppliers').then((r) => r.json()),
-        fetch('/api/v1/inventory/purchase-orders').then((r) => r.json())
+        safeFetchJson('/api/v1/inventory/snacks'),
+        safeFetchJson('/api/v1/inventory/batches'),
+        safeFetchJson('/api/v1/inventory/packaging'),
+        safeFetchJson('/api/v1/inventory/recipes'),
+        safeFetchJson('/api/v1/inventory/suppliers'),
+        safeFetchJson('/api/v1/inventory/purchase-orders')
       ]);
 
-      setSnacks(resSnacks.data || []);
-      setBatches(resBatches.data || []);
-      setPackaging(resPack.data || []);
-      setRecipes(resRec.data || []);
-      setSuppliers(resSup.data || []);
-      setPos(resPO.data || []);
+      setSnacks(resSnacks?.data || []);
+      setBatches(resBatches?.data || []);
+      setPackaging(resPack?.data || []);
+      setRecipes(resRec?.data || []);
+      setSuppliers(resSup?.data || []);
+      setPos(resPO?.data || []);
     } catch (e) {
       console.error('Error fetching inventory data', e);
     } finally {

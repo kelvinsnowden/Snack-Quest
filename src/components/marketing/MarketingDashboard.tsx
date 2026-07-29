@@ -24,7 +24,8 @@ import {
   BarChart3,
   Smartphone,
   MessageSquare,
-  DollarSign
+  DollarSign,
+  Megaphone
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -37,6 +38,7 @@ import {
 import { LandingPageManager } from './LandingPageManager';
 import { HeatmapVisualizer } from './HeatmapVisualizer';
 import { SessionJourneyExplorer } from './SessionJourneyExplorer';
+import { AdminCampaignCenter } from './AdminCampaignCenter';
 
 export const MarketingDashboard: React.FC = () => {
   const { checkPermission, currentUser, addToast } = useApp();
@@ -44,8 +46,8 @@ export const MarketingDashboard: React.FC = () => {
   const canEdit = checkPermission('marketing', 'edit');
 
   const [activeTab, setActiveTab] = useState<
-    'roas' | 'landing_pages' | 'heatmaps' | 'journey_explorer' | 'platforms' | 'funnel' | 'ops' | 'audiences' | 'testing'
-  >('landing_pages');
+    'roas' | 'landing_pages' | 'heatmaps' | 'journey_explorer' | 'platforms' | 'funnel' | 'ops' | 'audiences' | 'testing' | 'creator_campaigns' | 'audit'
+  >('creator_campaigns');
 
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -172,9 +174,9 @@ export const MarketingDashboard: React.FC = () => {
   // Summary Metrics
   const totalRevenue = campaigns.reduce((s, c) => s + (c.revenue || 0), 0);
   const totalAdCost = campaigns.reduce((s, c) => s + (c.ad_cost || 0), 0);
-  const overallRoas = totalAdCost > 0 ? (totalRevenue / totalAdCost).toFixed(2) : '3.85';
+  const overallRoas = totalAdCost > 0 ? (totalRevenue / totalAdCost).toFixed(2) : '0.00';
   const totalOrders = campaigns.reduce((s, c) => s + (c.orders || 0), 0);
-  const overallCac = totalOrders > 0 ? Math.round(totalAdCost / totalOrders) : 480;
+  const overallCac = totalOrders > 0 ? Math.round(totalAdCost / totalOrders) : 0;
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto font-sans">
@@ -209,6 +211,18 @@ export const MarketingDashboard: React.FC = () => {
 
       {/* Navigation Sub-Tabs */}
       <div className="flex overflow-x-auto border-b border-slate-800 gap-2 pb-1 scrollbar-none">
+        <button
+          onClick={() => setActiveTab('creator_campaigns')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            activeTab === 'creator_campaigns'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <Megaphone className="w-4 h-4" />
+          <span>Creator Campaign Center</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('landing_pages')}
           className={`px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-1.5 ${
@@ -329,6 +343,9 @@ export const MarketingDashboard: React.FC = () => {
           <span>Audit Report</span>
         </button>
       </div>
+
+      {/* Creator Campaign Management Center */}
+      {activeTab === 'creator_campaigns' && <AdminCampaignCenter />}
 
       {/* Phase 8: Landing Page SDK Registry View */}
       {activeTab === 'landing_pages' && <LandingPageManager />}

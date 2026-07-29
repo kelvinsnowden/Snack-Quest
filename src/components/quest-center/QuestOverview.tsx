@@ -81,7 +81,7 @@ export default function QuestOverview({ overviewData, onNavigate }: QuestOvervie
 
   return (
     <div className="space-y-6">
-      {/* 1. Header & Daily Streak Bar (Duolingo Style) */}
+      {/* 1. Header & Campaign Status Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -97,38 +97,103 @@ export default function QuestOverview({ overviewData, onNavigate }: QuestOvervie
           </h2>
         </div>
 
-        {/* Daily Streak Card */}
-        <div className="bg-gradient-to-r from-orange-500/20 to-amber-500/10 border border-orange-500/30 rounded-2xl p-3 flex items-center gap-3 shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/40 text-orange-400 flex items-center justify-center text-xl shrink-0 animate-bounce">
-            🔥
+        {/* Creator Referral & Campaign Summary */}
+        <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center gap-3 shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center text-xl shrink-0">
+            <Trophy className="w-5 h-5 text-amber-400" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-white text-sm">5 Day Streak!</span>
-              <span className="text-[10px] font-extrabold bg-orange-500 text-slate-950 px-1.5 py-0.2 rounded">
-                +50 KES Bonus
+              <span className="font-extrabold text-white text-sm">Active Campaigns</span>
+              <span className="text-[10px] font-extrabold bg-emerald-500 text-slate-950 px-1.5 py-0.5 rounded uppercase">
+                Verified
               </span>
             </div>
-            {/* Week dots */}
-            <div className="flex items-center gap-1 mt-1">
-              {daysOfWeek.map((d, i) => (
-                <span
-                  key={i}
-                  className={`w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center ${
-                    d.today
-                      ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-400/50'
-                      : d.active
-                      ? 'bg-orange-500 text-slate-950'
-                      : 'bg-slate-800 text-slate-500'
-                  }`}
-                >
-                  {d.day}
-                </span>
-              ))}
-            </div>
+            <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+              Code: <span className="text-amber-300 font-extrabold font-mono">{refCode}</span>
+            </p>
           </div>
         </div>
       </div>
+
+      {/* Active Order Timeline Card */}
+      {overviewData?.active_order && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                Active Order Status
+              </span>
+            </div>
+            <span className="text-xs font-bold text-slate-400 font-mono">
+              {overviewData.active_order.order_number}
+            </span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-extrabold text-white">
+                {overviewData.active_order.package_name}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Destination: <span className="text-amber-300 font-bold">{overviewData.active_order.pickup_station}</span> • Est. Delivery: <span className="text-white font-bold">{overviewData.active_order.estimated_delivery}</span>
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-mono text-slate-400">Tracking #</span>
+              <p className="text-xs font-extrabold text-amber-400 font-mono">{overviewData.active_order.tracking_number}</p>
+            </div>
+          </div>
+
+          {/* Timeline Steps */}
+          <div className="pt-2">
+            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+              {overviewData.active_order.timeline_stages?.map((stage: any, idx: number) => {
+                const isCurrent = stage.current;
+                const isCompleted = stage.completed;
+                return (
+                  <div key={stage.key} className="flex flex-col items-center text-center">
+                    <div
+                      className={`w-9 h-9 rounded-2xl flex items-center justify-center text-sm font-bold transition-all ${
+                        isCurrent
+                          ? 'bg-amber-500 text-slate-950 ring-4 ring-amber-500/30 scale-110 shadow-lg shadow-amber-500/30 font-black animate-pulse'
+                          : isCompleted
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                          : 'bg-slate-950 border border-slate-800 text-slate-600'
+                      }`}
+                    >
+                      {stage.icon}
+                    </div>
+                    <span
+                      className={`text-[10px] font-extrabold mt-2 leading-tight hidden sm:block ${
+                        isCurrent
+                          ? 'text-amber-300'
+                          : isCompleted
+                          ? 'text-slate-300'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      {stage.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Mobile Single Active Stage Highlight Callout */}
+            <div className="sm:hidden mt-3 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-300">
+                Current Status:
+              </span>
+              <span className="text-xs font-black text-white flex items-center gap-1">
+                {overviewData.active_order.timeline_stages?.[overviewData.active_order.current_stage_index]?.icon}{' '}
+                {overviewData.active_order.timeline_stages?.[overviewData.active_order.current_stage_index]?.label}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2. Apple Wallet / Fintech Style Pass & Single Best Next Action Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -192,7 +257,7 @@ export default function QuestOverview({ overviewData, onNavigate }: QuestOvervie
             <div className="flex items-center justify-between mb-3">
               <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider flex items-center gap-1">
                 <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                <span>Today's Top Quest</span>
+                <span>Featured Campaign</span>
               </span>
               <span className="font-extrabold text-emerald-400 text-sm">+300 KES</span>
             </div>

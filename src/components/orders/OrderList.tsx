@@ -168,8 +168,8 @@ export const OrderList: React.FC = () => {
                     </tr>
                   ) : orders.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-zinc-500">
-                        No orders found matching search filters.
+                      <td colSpan={8} className="px-4 py-8 text-center text-zinc-400">
+                        No orders have been placed.
                       </td>
                     </tr>
                   ) : (

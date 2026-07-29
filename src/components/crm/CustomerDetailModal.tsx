@@ -83,21 +83,24 @@ export const CustomerDetailModal: React.FC<Props> = ({ customerId, onClose, onUp
     setLoading(true);
     try {
       const res = await fetch(`/api/v1/crm/customers/${customerId}`);
-      const json = await res.json();
-      if (res.ok) {
-        setData(json);
-        setOverrideStatus(json.customer.status === 'blacklisted' ? 'active' : 'blacklisted');
-        setFavCategories((json.customer.favourite_categories || []).join(', '));
-        setFavCountries((json.customer.favourite_countries_of_origin || []).join(', '));
-        setDietary((json.customer.dietary_preferences || []).join(', '));
-        setLanguage(json.customer.preferred_language || 'en');
-        if (json.privacy_consent) {
-          setPrivacyState({
-            marketing_whatsapp: json.privacy_consent.marketing_whatsapp,
-            marketing_email: json.privacy_consent.marketing_email,
-            marketing_sms: json.privacy_consent.marketing_sms,
-            data_analytics: json.privacy_consent.data_analytics
-          });
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const json = await res.json();
+        if (json && json.customer) {
+          setData(json);
+          setOverrideStatus(json.customer.status === 'blacklisted' ? 'active' : 'blacklisted');
+          setFavCategories((json.customer.favourite_categories || []).join(', '));
+          setFavCountries((json.customer.favourite_countries_of_origin || []).join(', '));
+          setDietary((json.customer.dietary_preferences || []).join(', '));
+          setLanguage(json.customer.preferred_language || 'en');
+          if (json.privacy_consent) {
+            setPrivacyState({
+              marketing_whatsapp: !!json.privacy_consent.marketing_whatsapp,
+              marketing_email: !!json.privacy_consent.marketing_email,
+              marketing_sms: !!json.privacy_consent.marketing_sms,
+              data_analytics: !!json.privacy_consent.data_analytics
+            });
+          }
         }
       }
     } catch (e) {
@@ -356,19 +359,19 @@ export const CustomerDetailModal: React.FC<Props> = ({ customerId, onClose, onUp
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Customer Intelligence Platform</span>
-                {data?.customer.privacy_anonymized && (
+                {data?.customer?.privacy_anonymized && (
                   <span className="px-2 py-0.5 rounded bg-red-900/50 text-red-300 border border-red-700 text-[10px] font-mono">PII ANONYMIZED</span>
                 )}
               </div>
               <h3 className="text-xl font-bold text-white mt-0.5 flex items-center gap-2">
-                {data?.customer.full_name || 'Loading Customer...'}
-                {data?.customer.health_status && (
+                {data?.customer?.full_name || 'Loading Customer...'}
+                {data?.customer?.health_status && (
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
                     data.customer.health_status === 'healthy' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
                     data.customer.health_status === 'attention_needed' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
                     'bg-red-500/10 text-red-400 border border-red-500/20'
                   }`}>
-                    Score: {data.customer.health_score}/100
+                    Score: {data.customer.health_score || 0}/100
                   </span>
                 )}
               </h3>
@@ -449,7 +452,7 @@ export const CustomerDetailModal: React.FC<Props> = ({ customerId, onClose, onUp
             </button>
           </div>
 
-          {loading || !data ? (
+          {loading || !data || !data.customer ? (
             <div className="py-16 text-center text-zinc-500 text-xs flex flex-col items-center gap-2">
               <RefreshCw className="w-5 h-5 animate-spin text-zinc-400" />
               Loading complete 360 customer profile...
@@ -464,19 +467,19 @@ export const CustomerDetailModal: React.FC<Props> = ({ customerId, onClose, onUp
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center gap-2 text-zinc-300">
                         <Phone className="w-3.5 h-3.5 text-zinc-500" />
-                        <span className="font-mono font-medium">{data.customer.phone}</span>
+                        <span className="font-mono font-medium">{data?.customer?.phone || 'N/A'}</span>
                       </div>
                       <div className="flex items-center gap-2 text-zinc-300">
                         <Mail className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>{data.customer.email || 'No email provided'}</span>
+                        <span>{data?.customer?.email || 'No email provided'}</span>
                       </div>
                       <div className="flex items-center gap-2 text-zinc-300">
                         <MapPin className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>{data.customer.delivery_address || 'No address'}, {data.customer.town}, {data.customer.county}</span>
+                        <span>{data?.customer?.delivery_address || 'No address'}, {data?.customer?.town || ''}, {data?.customer?.county || ''}</span>
                       </div>
                       <div className="flex items-center gap-2 text-zinc-300">
                         <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>Joined: {new Date(data.customer.registration_date).toLocaleDateString()}</span>
+                        <span>Joined: {data?.customer?.registration_date ? new Date(data.customer.registration_date).toLocaleDateString() : 'N/A'}</span>
                       </div>
                     </div>
 
@@ -484,17 +487,17 @@ export const CustomerDetailModal: React.FC<Props> = ({ customerId, onClose, onUp
                       <div>
                         <span className="text-[10px] text-zinc-500 block">Computed Status:</span>
                         <span className="inline-block mt-1 font-mono uppercase font-bold text-xs px-2.5 py-0.5 rounded bg-zinc-800 text-white border border-zinc-700">
-                          {data.customer.status}
+                          {data?.customer?.status || 'Active'}
                         </span>
                       </div>
                       <div>
                         <span className="text-[10px] text-zinc-500 block">Quest Wallet Balance:</span>
-                        <span className="font-mono font-bold text-emerald-400 text-sm">{formatKes(data.customer.quest_wallet_balance)}</span>
+                        <span className="font-mono font-bold text-emerald-400 text-sm">{formatKes(data?.customer?.quest_wallet_balance || 0)}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-zinc-500 block">Preferred Station / Method:</span>
                         <span className="text-xs text-zinc-300 font-medium">
-                          {data.preferred_pickup_station ? `${data.preferred_pickup_station.station_name} (${data.preferred_pickup_station.town})` : 'Jumia Pickup Station'}
+                          {data?.preferred_pickup_station ? `${data.preferred_pickup_station.station_name} (${data.preferred_pickup_station.town})` : 'Jumia Pickup Station'}
                         </span>
                       </div>
                     </div>
@@ -504,19 +507,19 @@ export const CustomerDetailModal: React.FC<Props> = ({ customerId, onClose, onUp
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800">
                       <span className="text-[10px] text-zinc-500 uppercase font-mono block">Lifetime Revenue</span>
-                      <span className="text-lg font-bold font-mono text-emerald-400 mt-0.5 block">{formatKes(data.customer.lifetime_revenue)}</span>
+                      <span className="text-lg font-bold font-mono text-emerald-400 mt-0.5 block">{formatKes(data?.customer?.lifetime_revenue || 0)}</span>
                     </div>
                     <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800">
                       <span className="text-[10px] text-zinc-500 uppercase font-mono block">Net Profit</span>
-                      <span className="text-lg font-bold font-mono text-blue-400 mt-0.5 block">{formatKes(data.customer.lifetime_profit)}</span>
+                      <span className="text-lg font-bold font-mono text-blue-400 mt-0.5 block">{formatKes(data?.customer?.lifetime_profit || 0)}</span>
                     </div>
                     <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800">
                       <span className="text-[10px] text-zinc-500 uppercase font-mono block">Lifetime Orders</span>
-                      <span className="text-lg font-bold font-mono text-white mt-0.5 block">{data.customer.lifetime_orders}</span>
+                      <span className="text-lg font-bold font-mono text-white mt-0.5 block">{data?.customer?.lifetime_orders || 0}</span>
                     </div>
                     <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800">
                       <span className="text-[10px] text-zinc-500 uppercase font-mono block">Referrals Made</span>
-                      <span className="text-lg font-bold font-mono text-amber-400 mt-0.5 block">{data.referrals_made.length}</span>
+                      <span className="text-lg font-bold font-mono text-amber-400 mt-0.5 block">{data?.referrals_made?.length || 0}</span>
                     </div>
                   </div>
 

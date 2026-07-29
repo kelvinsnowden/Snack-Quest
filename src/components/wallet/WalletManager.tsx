@@ -11,6 +11,7 @@ import {
   Coins
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { safeFetchJson } from '../../lib/safeFetch';
 
 export const WalletManager: React.FC = () => {
   const { checkPermission, currentUser } = useApp();
@@ -35,9 +36,8 @@ export const WalletManager: React.FC = () => {
       const url = selectedCustomerId !== 'all'
         ? `/api/v1/wallet/transactions?customer_id=${selectedCustomerId}`
         : '/api/v1/wallet/transactions';
-      const res = await fetch(url);
-      const data = await res.json();
-      setTransactions(data.data || []);
+      const data = await safeFetchJson<any>(url);
+      setTransactions(data?.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -45,9 +45,8 @@ export const WalletManager: React.FC = () => {
 
   const fetchCustomers = async () => {
     try {
-      const res = await fetch('/api/v1/crm/customers');
-      const data = await res.json();
-      setCustomers(data.data || []);
+      const data = await safeFetchJson<any>('/api/v1/crm/customers');
+      setCustomers(data?.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -86,7 +85,7 @@ export const WalletManager: React.FC = () => {
         setAdjustNote('');
         await Promise.all([fetchTransactions(), fetchCustomers()]);
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({ error: 'Failed to adjust wallet balance' }));
         alert(err.error || 'Failed to adjust wallet balance');
       }
     } catch (e) {
@@ -104,11 +103,11 @@ export const WalletManager: React.FC = () => {
     );
   }
 
-  const selectedCustomerObj = customers.find((c) => c.id === selectedCustomerId);
+  const selectedCustomerObj = customers.find((c) => c?.id === selectedCustomerId);
 
   // Totals calculation
-  const totalBalanceKes = customers.reduce((sum, c) => sum + (c.quest_wallet_balance || 0), 0) / 100;
-  const totalLifetimeEarnedKes = customers.reduce((sum, c) => sum + (c.lifetime_credits_earned || 0), 0) / 100;
+  const totalBalanceKes = customers.reduce((sum, c) => sum + (c?.quest_wallet_balance || 0), 0) / 100;
+  const totalLifetimeEarnedKes = customers.reduce((sum, c) => sum + (c?.lifetime_credits_earned || 0), 0) / 100;
 
   const filteredTransactions = transactions.filter((tx) => {
     const matchesSearch =
@@ -203,8 +202,8 @@ export const WalletManager: React.FC = () => {
           >
             <option value="all">All Customers Ledger</option>
             {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.full_name} ({c.phone}) - Bal: {((c.quest_wallet_balance || 0) / 100).toLocaleString()} KES
+              <option key={c?.id} value={c?.id}>
+                {c?.full_name} ({c?.phone}) - Bal: {((c?.quest_wallet_balance || 0) / 100).toLocaleString()} KES
               </option>
             ))}
           </select>
@@ -321,8 +320,8 @@ export const WalletManager: React.FC = () => {
                 >
                   <option value="">-- Select Customer --</option>
                   {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.full_name} ({c.phone}) - Current: {((c.quest_wallet_balance || 0) / 100).toLocaleString()} KES
+                    <option key={c?.id} value={c?.id}>
+                      {c?.full_name} ({c?.phone}) - Current: {((c?.quest_wallet_balance || 0) / 100).toLocaleString()} KES
                     </option>
                   ))}
                 </select>

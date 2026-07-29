@@ -102,9 +102,9 @@ export default function QuestCenterContainer() {
   // Load available customer personas for switching
   useEffect(() => {
     fetch('/api/v1/customers')
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        if (data.data && Array.isArray(data.data)) {
+        if (data && data.data && Array.isArray(data.data)) {
           setCustomersList(data.data);
         }
       })
@@ -115,16 +115,17 @@ export default function QuestCenterContainer() {
   const fetchOverview = () => {
     setLoading(true);
     fetch(`/api/v1/customer/portal/overview?customer_id=${selectedCustomerId}`)
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        setOverviewData(data);
-        setLoading(false);
-        // Cache data for offline viewing
-        try {
-          localStorage.setItem(`quest_overview_${selectedCustomerId}`, JSON.stringify(data));
-        } catch (e) {
-          console.error('Failed to cache overview', e);
+        if (data) {
+          setOverviewData(data);
+          try {
+            localStorage.setItem(`quest_overview_${selectedCustomerId}`, JSON.stringify(data));
+          } catch (e) {
+            console.error('Failed to cache overview', e);
+          }
         }
+        setLoading(false);
       })
       .catch((err) => {
         console.error('Failed to load customer portal overview, loading cache', err);
@@ -183,7 +184,7 @@ export default function QuestCenterContainer() {
     { id: 'overview' as QuestTab, label: 'Creator Dashboard', icon: Sparkles },
     { id: 'creator_auth' as QuestTab, label: 'Creator Portal & Onboarding', icon: Sparkles, badge: 'New' },
     { id: 'affiliate_wallet' as QuestTab, label: 'Affiliate Cash Wallet', icon: DollarSign, highlight: true },
-    { id: 'quests' as QuestTab, label: 'Quests', icon: Trophy, badge: 'Daily' },
+    { id: 'quests' as QuestTab, label: 'Quests', icon: Trophy, badge: 'Active' },
     { id: 'rewards' as QuestTab, label: 'Quest Discounts', icon: Wallet },
     { id: 'profile' as QuestTab, label: 'My Profile', icon: User }
   ];
@@ -371,6 +372,9 @@ export default function QuestCenterContainer() {
         pushEnabled={pushEnabled}
         onTogglePush={handleTogglePush}
         isOffline={isOffline}
+        selectedCustomerId={selectedCustomerId}
+        setSelectedCustomerId={setSelectedCustomerId}
+        customersList={customersList}
       />
 
       {/* QR Code Scanner & Share Modal */}

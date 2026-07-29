@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Sparkles, CheckCircle2, XCircle, ShieldCheck, HelpCircle, ArrowRight, Zap, RefreshCw, Cpu, Layers } from 'lucide-react';
+import { safeFetchJson } from '../../lib/safeFetch';
 
 export const ProductCatalogManager: React.FC = () => {
   const [packages, setPackages] = useState<any[]>([]);
@@ -17,11 +18,11 @@ export const ProductCatalogManager: React.FC = () => {
     setLoading(true);
     try {
       const [resPkg, resComp] = await Promise.all([
-        fetch('/api/v1/packages').then((r) => r.json()),
-        fetch('/api/v1/packages/comparison').then((r) => r.json())
+        safeFetchJson('/api/v1/packages'),
+        safeFetchJson('/api/v1/packages/comparison')
       ]);
-      setPackages(resPkg.data || []);
-      setComparisonMatrix(resComp.matrix || []);
+      setPackages(resPkg?.data || []);
+      setComparisonMatrix(resComp?.matrix || []);
     } catch (e) {
       console.error('Error loading catalog data', e);
     } finally {

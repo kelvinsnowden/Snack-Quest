@@ -34,9 +34,9 @@ export default function RedeemCreditsView({ customerId, wallet, onRedeemed }: Re
   // Load packages
   useEffect(() => {
     fetch('/api/v1/packages')
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        if (data.data && Array.isArray(data.data)) {
+        if (data && data.data && Array.isArray(data.data)) {
           setPackages(data.data);
           if (data.data.length > 0) setSelectedPackageId(data.data[0].id);
         }

@@ -81,22 +81,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchCurrentUser = useCallback(async () => {
     try {
       const res = await fetch('/api/v1/auth/me');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setCurrentUser(data.user);
         setCurrentRole(data.role);
         setPermissions(data.permissions || []);
         setIsAuthenticated(true);
+      } else {
+        setCurrentUser(null);
+        setCurrentRole(null);
+        setPermissions([]);
+        setIsAuthenticated(false);
       }
     } catch (e) {
       console.error('Failed to fetch auth state', e);
+      setIsAuthenticated(false);
     }
   }, []);
 
   const refreshSystemStats = useCallback(async () => {
     try {
       const res = await fetch('/api/v1/integrations/stats');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setIntegrationStats(data);
       }
@@ -117,7 +125,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-      if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
         setCurrentUser(data.user);
         setCurrentRole(data.role);
@@ -126,8 +135,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addToast({ type: 'success', title: 'Welcome back', message: `Logged in as ${data.user.full_name}` });
         return true;
       } else {
-        const err = await res.json();
-        addToast({ type: 'error', title: 'Login Failed', message: err.error || 'User not found' });
+        let errorMsg = 'User not found';
+        if (contentType && contentType.includes('application/json')) {
+          const err = await res.json().catch(() => null);
+          if (err?.error) errorMsg = err.error;
+        }
+        addToast({ type: 'error', title: 'Login Failed', message: errorMsg });
         return false;
       }
     } catch (e) {

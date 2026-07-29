@@ -23,9 +23,9 @@ export default function MySubmissions({ customerId, onResubmit }: MySubmissionsP
   const fetchSubmissions = () => {
     setLoading(true);
     fetch(`/api/v1/customer/portal/submissions?customer_id=${customerId}`)
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        if (data.data && Array.isArray(data.data)) {
+        if (data && data.data && Array.isArray(data.data)) {
           setSubmissions(data.data);
         }
         setLoading(false);

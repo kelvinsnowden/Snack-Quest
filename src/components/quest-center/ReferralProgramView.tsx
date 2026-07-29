@@ -45,9 +45,9 @@ export default function ReferralProgramView({ customerId, referralData }: Referr
   useEffect(() => {
     setLoadingFriends(true);
     fetch(`/api/v1/referrals?referrer_customer_id=${customerId}`)
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        if (data.data && Array.isArray(data.data)) {
+        if (data && data.data && Array.isArray(data.data)) {
           setFriendsList(data.data);
         }
         setLoadingFriends(false);

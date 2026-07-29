@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Plus, Trash2, AlertTriangle, CheckCircle, RefreshCw, TrendingUp, PieChart, Layers } from 'lucide-react';
+import { safeFetchJson } from '../../lib/safeFetch';
 
 export const AccountingManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pnl' | 'expenses' | 'fee_recon'>('pnl');
@@ -17,14 +18,14 @@ export const AccountingManager: React.FC = () => {
     setLoading(true);
     try {
       const [resOverview, resExp, resFee] = await Promise.all([
-        fetch('/api/v1/accounting/overview').then((r) => r.json()),
-        fetch('/api/v1/accounting/expenses').then((r) => r.json()),
-        fetch('/api/v1/accounting/fee-reconciliation').then((r) => r.json())
+        safeFetchJson('/api/v1/accounting/overview'),
+        safeFetchJson('/api/v1/accounting/expenses'),
+        safeFetchJson('/api/v1/accounting/fee-reconciliation')
       ]);
 
       setOverview(resOverview);
-      setExpenses(resExp.data || []);
-      setFeeRecon(resFee.data || []);
+      setExpenses(resExp?.data || []);
+      setFeeRecon(resFee?.data || []);
     } catch (e) {
       console.error(e);
     } finally {

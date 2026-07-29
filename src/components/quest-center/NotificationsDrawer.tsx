@@ -16,9 +16,9 @@ export default function NotificationsDrawer({ isOpen, onClose, customerId, onRea
     if (!isOpen) return;
     setLoading(true);
     fetch(`/api/v1/customer/portal/notifications?customer_id=${customerId}`)
-      .then((res) => res.json())
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : null))
       .then((data) => {
-        if (data.data && Array.isArray(data.data)) {
+        if (data && data.data && Array.isArray(data.data)) {
           setNotifications(data.data);
         }
         setLoading(false);
@@ -66,8 +66,11 @@ export default function NotificationsDrawer({ isOpen, onClose, customerId, onRea
           {loading ? (
             <div className="py-12 text-center text-xs text-slate-400">Loading notifications...</div>
           ) : notifications.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400 bg-slate-950 rounded-2xl p-6 border border-slate-800">
-              No notifications yet. Completed quests and referral updates will appear here!
+            <div className="py-10 text-center text-xs text-slate-300 bg-slate-950 rounded-2xl p-6 border border-slate-800 space-y-2">
+              <p className="font-bold text-white text-sm">No notifications yet</p>
+              <p className="text-slate-400 text-xs leading-relaxed">
+                We'll notify you when your order ships, your quest is reviewed, your payout is approved, or your referral converts.
+              </p>
             </div>
           ) : (
             notifications.map((n) => {

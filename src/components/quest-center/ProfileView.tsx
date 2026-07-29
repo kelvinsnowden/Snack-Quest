@@ -8,7 +8,8 @@ import {
   Bell,
   Sparkles,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  MapPin
 } from 'lucide-react';
 
 import CustomerProfileView from './CustomerProfileView';
@@ -51,8 +52,13 @@ export default function ProfileView({
                   {overviewData?.gamification?.level || 'Explorer'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {customer?.email || 'customer@snackquest.co.ke'} • 📍 {customer?.county || 'Nairobi'}, Kenya
+              <p className="text-xs text-zinc-400 mt-0.5 flex items-center gap-1">
+                <span>{customer?.email || 'customer@snackquest.co.ke'}</span>
+                <span>•</span>
+                <span className="flex items-center gap-0.5">
+                  <MapPin className="w-3 h-3 text-amber-400" />
+                  {customer?.county || 'Nairobi'}, Kenya
+                </span>
               </p>
             </div>
           </div>

@@ -6,29 +6,46 @@ import {
   LogOut,
   ShieldAlert,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  Menu
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NotificationBell } from './NotificationBell';
 
-export const TopBar: React.FC = () => {
+interface TopBarProps {
+  onOpenMobileSidebar?: () => void;
+  hideOnMobile?: boolean;
+}
+
+export const TopBar: React.FC<TopBarProps> = ({ onOpenMobileSidebar, hideOnMobile }) => {
   const { setCommandPaletteOpen, currentUser, currentRole, logout } = useApp();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
-    <header className="h-14 border-b border-[#27272A] bg-[#09090B] sticky top-0 z-30 px-6 sm:px-8 flex items-center justify-between transition-colors">
+    <header className={`h-14 border-b border-[#27272A] bg-[#09090B] sticky top-0 z-30 px-3 sm:px-6 lg:px-8 flex items-center justify-between transition-colors ${
+      hideOnMobile ? 'hidden lg:flex' : 'flex'
+    }`}>
+      {/* Mobile Hamburger to open Admin OS Sidebar */}
+      <button
+        onClick={onOpenMobileSidebar}
+        className="lg:hidden p-2 rounded-lg bg-[#18181B] border border-[#27272A] text-[#A1A1AA] hover:text-white shrink-0 mr-2"
+        title="Open Admin OS Menu"
+      >
+        <Menu className="w-4 h-4" />
+      </button>
+
       {/* Global Search trigger */}
-      <div className="flex items-center gap-4 w-1/2 max-w-md">
+      <div className="flex items-center gap-4 w-full sm:w-1/2 max-w-md">
         <div className="relative w-full">
           <button
             onClick={() => setCommandPaletteOpen(true)}
-            className="w-full bg-[#18181B] border border-[#27272A] py-1.5 pl-3 pr-3 rounded-md text-sm text-[#A1A1AA] hover:text-white flex justify-between items-center cursor-pointer transition-colors"
+            className="w-full bg-[#18181B] border border-[#27272A] py-1.5 pl-3 pr-3 rounded-md text-xs sm:text-sm text-[#A1A1AA] hover:text-white flex justify-between items-center cursor-pointer transition-colors"
           >
-            <div className="flex items-center gap-2.5">
-              <Search className="h-4 w-4 text-[#71717A]" />
-              <span className="text-xs font-normal text-[#A1A1AA]">Search customers, orders, logs, or features...</span>
+            <div className="flex items-center gap-2 truncate">
+              <Search className="h-4 w-4 text-[#71717A] shrink-0" />
+              <span className="text-xs font-normal text-[#A1A1AA] truncate">Search platform...</span>
             </div>
-            <kbd className="text-[10px] bg-[#27272A] px-1.5 py-0.5 rounded border border-[#3F3F46] text-[#A1A1AA] font-mono">
+            <kbd className="hidden sm:inline-block text-[10px] bg-[#27272A] px-1.5 py-0.5 rounded border border-[#3F3F46] text-[#A1A1AA] font-mono shrink-0 ml-1">
               ⌘ K
             </kbd>
           </button>
