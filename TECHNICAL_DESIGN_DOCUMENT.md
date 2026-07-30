@@ -163,7 +163,7 @@ what sits between them.*
 flowchart TB
     Browser -->|HTTPS| DNS[DNS: *.snackquests.shop]
     DNS --> Vercel[Vercel Edge Network]
-    Vercel --> MW[Next.js Middleware<br/>hostname routing + session cookie check]
+    Vercel --> MW[Next.js Proxy<br/>hostname routing + session cookie check]
     MW -->|rewrite by host| RG1["Route Group: (marketing)"]
     MW -->|rewrite by host| RG2["Route Group: (creators)"]
     MW -->|rewrite by host| RG3["Route Group: (quest)"]
@@ -185,14 +185,14 @@ flowchart TB
 
 **Request flow, authenticated page load:**
 1. Browser requests `creators.snackquests.shop/dashboard`.
-2. Vercel Edge routes to the Next.js deployment; `middleware.ts` runs
+2. Vercel Edge routes to the Next.js deployment; `proxy.ts` runs
    first, inspects the `Host` header, and rewrites the request internally
    to `/​(creators)/dashboard` — invisible to the user, no redirect.
-3. The same middleware invocation reads the Firebase session cookie (see
+3. The same proxy invocation reads the Firebase session cookie (see
    §6), verifies it (cheap — signature check, no network call), and
    attaches the resolved `uid`/`role` to the request via headers for the
    downstream Server Component to read.
-4. If no valid session and the route requires one, middleware redirects to
+4. If no valid session and the route requires one, the proxy redirects to
    the portal's sign-in route before any React rendering happens — this is
    the enforcement point that doesn't exist today.
 5. The Server Component for `/dashboard` calls a Domain Service (§4) —
@@ -426,7 +426,7 @@ them.
   (`StatCard`, `FormField`, `PillTabs`, `Modal`, `StatusBadge`,
   `EmptyState`, `ErrorState`, `DataTable`) — these are framework-agnostic
   React and port directly (§14).
-- **Protected routes:** all of them. Middleware redirects unauthenticated
+- **Protected routes:** all of them. The proxy redirects unauthenticated
   visitors to `/sign-in`.
 - **Data ownership:** owns `creatorProfiles/{uid}`, writes
   `campaignSubmissions` (own only, via `CampaignService`), reads
@@ -580,7 +580,7 @@ frameworks) is:
 3. That cookie is set `httpOnly`, `secure`, `sameSite=lax`, **domain
    `.snackquests.shop`** — the leading dot is what makes it visible to
    every subdomain (`creators.`, `quest.`, `admin.`, `www.`/apex).
-4. `middleware.ts` verifies this cookie on every request using the Admin
+4. `proxy.ts` verifies this cookie on every request using the Admin
    SDK's `verifySessionCookie` (cheap, no per-request Firestore read —
    it's a signature/expiry check against Firebase's public keys) and
    attaches `uid`/decoded claims for Server Components to consume.
@@ -673,7 +673,7 @@ holds.
 1. **Client (UI):** hide/disable actions the user's role doesn't permit.
    *Convenience only — never trust this layer alone,* which is precisely
    the current system's mistake.
-2. **Middleware:** the first real gate. Verifies the session cookie,
+2. **Proxy:** the first real gate. Verifies the session cookie,
    checks the route group's required role before any Server Component
    runs, redirects to sign-in or a `/unauthorized` page otherwise.
 3. **Server (Services, called from Route Handlers / Server Actions):**
@@ -1082,6 +1082,11 @@ Functions' cold-start latency where it isn't needed.
 
 ## 12. Routing Strategy
 
+> **Naming note:** Next.js 16 renamed Middleware to Proxy (`middleware.ts`
+> → `proxy.ts`, `middleware()` → `proxy()`); functionality is unchanged.
+> This document uses "Proxy" throughout to match the scaffolded project's
+> actual Next.js 16 dependency.
+
 **App Router, route groups per portal**, not per-path prefixes — the
 groups (`(marketing)`, `(creators)`, `(quest)`, `(admin)`) exist purely to
 organize layouts and don't appear in the URL. Hostname, not path, decides
@@ -1095,7 +1100,7 @@ app/
   (admin)/layout.tsx        → admin.snackquests.shop/*
 ```
 
-**Middleware** (`middleware.ts`) does the hostname → route-group mapping
+**Proxy** (`proxy.ts`) does the hostname → route-group mapping
 via `NextResponse.rewrite()`, e.g. a request to
 `creators.snackquests.shop/dashboard` is rewritten internally to
 `/creators-portal/dashboard` where `app/creators-portal/` is the actual
@@ -1116,10 +1121,10 @@ requirement (like a modal-over-page pattern needing independent loading
 states) that justifies the added complexity — noting it as available if a
 future feature (e.g. a slide-over detail panel with its own URL) needs it.
 
-**Hostname/subdomain routing:** handled entirely in middleware as
+**Hostname/subdomain routing:** handled entirely in the proxy as
 described above; local development uses the existing `?portal=` query
 param override pattern (already implemented in `domainResolver.ts`) as a
-*Next.js middleware* check instead of a client-side one — same developer
+*Next.js proxy* check instead of a client-side one — same developer
 ergonomics, moved to the correct layer.
 
 **404 handling:** a `not-found.tsx` per route group, styled consistently
@@ -1128,7 +1133,7 @@ site's 404).
 
 **Unauthorized handling:** a dedicated `/unauthorized` route (or, more
 precisely, one per portal — `(creators)/unauthorized/page.tsx`, etc.) that
-middleware redirects to when a session exists but lacks the required
+the proxy redirects to when a session exists but lacks the required
 role, distinct from the sign-in redirect used when no session exists at
 all — these are different states with different correct actions ("log in"
 vs "you're logged in but this isn't for you").
@@ -1188,7 +1193,7 @@ snack-quest/
 │   ├── flags/                       # feature flag evaluation — §20
 │   └── format.ts, attributionTracker.ts, affiliateService.ts   # ported as-is
 ├── types/                           # shared TS types, mirrors Firestore schema (§8)
-├── middleware.ts
+├── proxy.ts
 ├── firestore.rules
 ├── firestore.indexes.json
 ├── storage.rules
@@ -1411,7 +1416,7 @@ Security Rules, §9, are what actually gate access, not secrecy of this
 config).
 
 **Private** — never sent to the browser, only ever read inside Route
-Handlers, Server Actions, Cloud Functions, or `middleware.ts`'s server
+Handlers, Server Actions, Cloud Functions, or `proxy.ts`'s server
 execution context: the Firebase **Admin SDK** service account
 credentials, M-Pesa Daraja consumer key/secret and passkey, SendGrid API
 key, WhatsApp API credentials, any other service account or
@@ -1685,7 +1690,7 @@ depends on that pattern existing, not on it being retrofitted later.
   `services/`/`repositories/` folders and their conventions (§4, §13) —
   with nothing user-facing changed yet.
 - **Files affected:** new `app/`, `services/`, `repositories/`, `events/`,
-  `lib/firebase/`, `middleware.ts`, `firestore.rules`,
+  `lib/firebase/`, `proxy.ts`, `firestore.rules`,
   `firestore.indexes.json`; ported `components/ui/*`, `types/`,
   `lib/{format,attributionTracker,affiliateService}.ts`.
 - **Migration steps:** provision real Firebase project(s) (staging +
@@ -1734,7 +1739,7 @@ depends on that pattern existing, not on it being retrofitted later.
   the withdrawal flow to the new unified `withdrawals` collection via
   `WithdrawalService` (directly resolving `CREATOR_PORTAL_TECH_DEBT.md`
   §1); wire the `WithdrawalApproved`/`CampaignSubmissionReviewed` events
-  (§11) to real notification dispatch; stand up `middleware.ts` for this
+  (§11) to real notification dispatch; stand up `proxy.ts` for this
   one hostname first, behind the `creator-v2` feature flag (§20).
 - **Validation checklist:** a new creator can sign up, verify email,
   complete onboarding, browse campaigns, submit a deliverable, get
@@ -2040,8 +2045,9 @@ Repository architecture (§4), is not a trend choice here; it's the
 direct, managed answer to exactly the gaps this session's audit found:
 Firestore replaces an in-memory object with a durable, concurrent-safe,
 rules-enforced store; Firebase Auth replaces three broken auth schemes
-with one verified, credential-checked one; Vercel Edge Middleware
-replaces client-side hostname sniffing with a real enforcement point; and
+with one verified, credential-checked one; Next.js Proxy running at
+Vercel's edge replaces client-side hostname sniffing with a real
+enforcement point; and
 the Service/Repository layer replaces handler-body-as-business-logic with
 one named, testable place per business capability.
 

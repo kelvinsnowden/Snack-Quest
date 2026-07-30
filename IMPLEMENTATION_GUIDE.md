@@ -79,7 +79,7 @@ change. **Blocked on:** nothing — start immediately.
 4. Create, in this order (each depends on the previous existing):
    - `lib/firebase/admin.ts` — Admin SDK init, reads
      `FIREBASE_ADMIN_*` env vars, **never** imported outside
-     `services/`, `repositories/`, `app/api/`, `middleware.ts` (TDD §17
+     `services/`, `repositories/`, `app/api/`, `proxy.ts` (TDD §17
      rule — treat this as a lint-enforced boundary, not just convention;
      see step 8 below).
    - `lib/firebase/client.ts` — client SDK init, `NEXT_PUBLIC_FIREBASE_*`
@@ -191,7 +191,7 @@ flow specifically; everything else in this phase can start in parallel.
 3. **Auth plumbing:**
    - `app/api/auth/session/route.ts` — `POST` (ID token → session cookie
      via `createSessionCookie`), `DELETE` (clear + `revokeRefreshTokens`).
-   - `middleware.ts` — hostname rewrite for `creators.snackquests.shop`
+   - `proxy.ts` — hostname rewrite for `creators.snackquests.shop`
      only in this phase (other hostnames pass through unmodified);
      `verifySessionCookie` check; redirect to `/sign-in` if missing,
      `/unauthorized` if present but wrong role.
@@ -310,7 +310,7 @@ portal. **Blocked on:** nothing; can run in parallel with Phase 1.
 4. Port `components/marketing/*` from the current
    `src/components/marketing/*` (public-facing pieces only — the admin
    campaign/marketing tools belong to Phase 5, not this phase).
-5. Extend `middleware.ts`'s hostname map to include the apex domain
+5. Extend `proxy.ts`'s hostname map to include the apex domain
    `snackquests.shop` → `(marketing)`.
 6. Feature flag: `new-checkout`.
 
@@ -359,7 +359,7 @@ screen; the permission-matrix work below can proceed either way.
 5. `app/admin-portal/layout.tsx` (Sidebar/TopBar shell, ported from
    `src/components/layout/Sidebar.tsx` / `TopBar.tsx`), then one
    `page.tsx` per screen as its Service/Repository pair lands.
-6. Extend `middleware.ts`: `admin.snackquests.shop` → `(admin)`, with a
+6. Extend `proxy.ts`: `admin.snackquests.shop` → `(admin)`, with a
    **stricter** check than other portals — role must be
    `admin`/`super_admin`, not just "any session."
 7. Feature flag: `new-auth`, scoped **per staff account** (not global) to
@@ -423,7 +423,7 @@ if the decision differs.
    currently-duplicated empty-state/status-pill patterns onto
    `components/ui/*` while porting, per TDD §14 — don't port the
    duplication along with the component).
-6. Extend `middleware.ts`: `quest.snackquests.shop` → `(quest)`.
+6. Extend `proxy.ts`: `quest.snackquests.shop` → `(quest)`.
 7. Feature flag: `wallet-engine-v2`.
 
 ### Validation checklist
