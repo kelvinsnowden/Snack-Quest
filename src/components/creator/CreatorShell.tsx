@@ -3,9 +3,10 @@ import { Sparkles, Menu, LogOut } from 'lucide-react';
 import { PillTabs } from '../common/PillTabs';
 import { Drawer } from '../common/Modal';
 import { CREATOR_NAV_ITEMS, MOBILE_PRIMARY_SECTIONS, CreatorSection } from './nav';
-import { CreatorDashboardPayload } from './creatorApi';
+import { CreatorAccount, Campaign, CampaignSubmission, WithdrawalRecord } from './creatorApi';
 import { DashboardView } from './views/DashboardView';
 import { CampaignsView } from './views/CampaignsView';
+import { ContentView } from './views/ContentView';
 import { AnalyticsView } from './views/AnalyticsView';
 import { ReferralsView } from './views/ReferralsView';
 import { EarningsView } from './views/EarningsView';
@@ -13,26 +14,24 @@ import { PaymentsView } from './views/PaymentsView';
 import { AchievementsView } from './views/AchievementsView';
 import { ProfileView } from './views/ProfileView';
 import { SupportView } from './views/SupportView';
+import { ResourcesView } from './views/ResourcesView';
 import { ComingSoonView } from './views/ComingSoonView';
 
 interface CreatorShellProps {
-  payload: CreatorDashboardPayload | null;
+  creator: CreatorAccount;
+  campaigns: Campaign[];
+  submissions: CampaignSubmission[];
+  withdrawals: WithdrawalRecord[];
   loading: boolean;
   error: string | null;
   onRetry: () => void;
   onSignOut: () => void;
+  onCreatorUpdated: (creator: CreatorAccount) => void;
   onOpenWithdraw: () => void;
+  onOpenSubmit: (campaign: Campaign) => void;
 }
 
 const COMING_SOON_COPY: Partial<Record<CreatorSection, { title: string; description: string }>> = {
-  content: {
-    title: 'Content library is coming soon',
-    description: 'A hub for approved content, brand assets, and captions is on the roadmap.'
-  },
-  resources: {
-    title: 'Resources are coming soon',
-    description: 'Guides, brand kits, and creator best-practices will live here.'
-  },
   notifications: {
     title: 'Notifications are coming soon',
     description: "We're building a creator-specific notification feed — for now, updates arrive by WhatsApp and email."
@@ -43,7 +42,19 @@ const COMING_SOON_COPY: Partial<Record<CreatorSection, { title: string; descript
   }
 };
 
-export const CreatorShell: React.FC<CreatorShellProps> = ({ payload, loading, error, onRetry, onSignOut, onOpenWithdraw }) => {
+export const CreatorShell: React.FC<CreatorShellProps> = ({
+  creator,
+  campaigns,
+  submissions,
+  withdrawals,
+  loading,
+  error,
+  onRetry,
+  onSignOut,
+  onCreatorUpdated,
+  onOpenWithdraw,
+  onOpenSubmit
+}) => {
   const [activeSection, setActiveSection] = useState<CreatorSection>('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -55,26 +66,43 @@ export const CreatorShell: React.FC<CreatorShellProps> = ({ payload, loading, er
   const mobileItems = CREATOR_NAV_ITEMS.filter((item) => MOBILE_PRIMARY_SECTIONS.includes(item.id));
   const overflowItems = CREATOR_NAV_ITEMS.filter((item) => !MOBILE_PRIMARY_SECTIONS.includes(item.id));
 
-  const commonProps = { payload, loading, error, onRetry };
-
   const renderSection = () => {
     switch (activeSection) {
       case 'dashboard':
-        return <DashboardView {...commonProps} onNavigate={handleNavigate} onOpenWithdraw={onOpenWithdraw} />;
+        return (
+          <DashboardView
+            creator={creator}
+            submissions={submissions}
+            withdrawals={withdrawals}
+            loading={loading}
+            error={error}
+            onRetry={onRetry}
+            onNavigate={handleNavigate}
+            onOpenWithdraw={onOpenWithdraw}
+          />
+        );
       case 'campaigns':
-        return <CampaignsView {...commonProps} />;
+        return (
+          <CampaignsView campaigns={campaigns} loading={loading} error={error} onRetry={onRetry} onSubmitDeliverable={onOpenSubmit} />
+        );
+      case 'content':
+        return <ContentView submissions={submissions} loading={loading} error={error} onRetry={onRetry} />;
       case 'analytics':
-        return <AnalyticsView {...commonProps} />;
+        return <AnalyticsView creator={creator} />;
       case 'referrals':
-        return <ReferralsView {...commonProps} />;
+        return <ReferralsView creator={creator} />;
       case 'earnings':
-        return <EarningsView {...commonProps} onOpenWithdraw={onOpenWithdraw} />;
+        return <EarningsView creator={creator} onOpenWithdraw={onOpenWithdraw} />;
       case 'payments':
-        return <PaymentsView {...commonProps} onOpenWithdraw={onOpenWithdraw} />;
+        return (
+          <PaymentsView creator={creator} withdrawals={withdrawals} loading={loading} error={error} onRetry={onRetry} onOpenWithdraw={onOpenWithdraw} />
+        );
       case 'achievements':
-        return <AchievementsView {...commonProps} />;
+        return <AchievementsView creator={creator} />;
+      case 'resources':
+        return <ResourcesView />;
       case 'profile':
-        return <ProfileView {...commonProps} onSignOut={onSignOut} />;
+        return <ProfileView creator={creator} onSignOut={onSignOut} onCreatorUpdated={onCreatorUpdated} />;
       case 'support':
         return <SupportView />;
       default: {
@@ -96,11 +124,9 @@ export const CreatorShell: React.FC<CreatorShellProps> = ({ payload, loading, er
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            {payload && (
-              <span className="text-creator-caption font-semibold text-creator-ink-muted truncate max-w-[12rem]">
-                {payload.creator.full_name}
-              </span>
-            )}
+            <span className="text-creator-caption font-semibold text-creator-ink-muted truncate max-w-[12rem]">
+              {creator.display_name}
+            </span>
             <button
               type="button"
               onClick={onSignOut}

@@ -1,32 +1,21 @@
 import React from 'react';
 import { Copy, Share2, Users, MousePointerClick } from 'lucide-react';
 import { StatCard } from '../../common/StatCard';
-import { ErrorState } from '../../common/ErrorState';
 import { useApp } from '../../../context/AppContext';
-import { CreatorDashboardPayload } from '../creatorApi';
+import { CreatorAccount } from '../creatorApi';
 import { formatCompactNumber } from '../format';
 
 interface ReferralsViewProps {
-  payload: CreatorDashboardPayload | null;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
+  creator: CreatorAccount;
 }
 
-export const ReferralsView: React.FC<ReferralsViewProps> = ({ payload, loading, error, onRetry }) => {
+export const ReferralsView: React.FC<ReferralsViewProps> = ({ creator }) => {
   const { addToast } = useApp();
-
-  if (loading) {
-    return <div className="h-64 bg-creator-surface border border-creator-border rounded-creator-card animate-pulse" aria-hidden="true" />;
-  }
-  if (error) return <ErrorState title="Couldn't load referrals" message={error} onRetry={onRetry} />;
-  if (!payload) return null;
-
-  const { referral_link, analytics, creator } = payload;
+  const referralLink = `https://snackquests.shop/?ref=${creator.referral_code}`;
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(referral_link);
+      await navigator.clipboard.writeText(referralLink);
       addToast({ type: 'success', title: 'Link copied', message: 'Your referral link is on your clipboard.' });
     } catch {
       addToast({ type: 'error', title: 'Copy failed', message: 'Select and copy the link manually.' });
@@ -34,7 +23,7 @@ export const ReferralsView: React.FC<ReferralsViewProps> = ({ payload, loading, 
   };
 
   const handleShare = () => {
-    const text = encodeURIComponent(`Snack Quest is dropping seriously good mystery snack boxes — join with my link: ${referral_link}`);
+    const text = encodeURIComponent(`Snack Quest is dropping seriously good mystery snack boxes — join with my link: ${referralLink}`);
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
@@ -45,7 +34,7 @@ export const ReferralsView: React.FC<ReferralsViewProps> = ({ payload, loading, 
       <section className="bg-creator-surface border border-creator-border rounded-creator-card-lg p-6 sm:p-8">
         <p className="text-creator-caption font-semibold uppercase tracking-wide text-creator-ink-faint">Your code</p>
         <p className="text-creator-page-title font-bold text-creator-ink mt-1 tracking-tight">{creator.referral_code}</p>
-        <p className="text-creator-caption text-creator-ink-muted mt-3 truncate">{referral_link}</p>
+        <p className="text-creator-caption text-creator-ink-muted mt-3 truncate">{referralLink}</p>
 
         <div className="flex flex-wrap items-center gap-2.5 mt-6">
           <button
@@ -68,8 +57,8 @@ export const ReferralsView: React.FC<ReferralsViewProps> = ({ payload, loading, 
       </section>
 
       <div className="grid grid-cols-2 gap-4 max-w-md">
-        <StatCard label="Link clicks" value={formatCompactNumber(analytics.total_clicks)} icon={MousePointerClick} />
-        <StatCard label="Conversions" value={analytics.conversions} icon={Users} />
+        <StatCard label="Link clicks" value={formatCompactNumber(creator.total_clicks)} icon={MousePointerClick} />
+        <StatCard label="Conversions" value={creator.total_conversions} icon={Users} />
       </div>
     </div>
   );

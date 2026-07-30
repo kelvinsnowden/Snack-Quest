@@ -25,7 +25,7 @@ import AvailableQuests from './AvailableQuests';
 import RewardsView from './RewardsView';
 import ProfileView from './ProfileView';
 import NotificationsDrawer from './NotificationsDrawer';
-import { CreatorPortalAuth } from '../auth/CreatorPortalAuth';
+import BecomeCreatorPromo from './BecomeCreatorPromo';
 
 // PWA Mobile Components
 import MobileHeader from './MobileHeader';
@@ -277,14 +277,7 @@ export default function QuestCenterContainer() {
               />
             )}
 
-            {activeTab === 'creator_auth' && (
-              <CreatorPortalAuth
-                onComplete={() => {
-                  fetchOverview();
-                  setActiveTab('overview');
-                }}
-              />
-            )}
+            {activeTab === 'creator_auth' && <BecomeCreatorPromo />}
 
             {activeTab === 'affiliate_wallet' && (
               <CreatorAffiliateWallet

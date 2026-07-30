@@ -1,36 +1,17 @@
 import React from 'react';
 import { TrendingUp, Wallet, Clock, Sparkles } from 'lucide-react';
 import { StatCard } from '../../common/StatCard';
-import { ErrorState } from '../../common/ErrorState';
-import { CreatorDashboardPayload } from '../creatorApi';
+import { CreatorAccount } from '../creatorApi';
 import { formatKes } from '../format';
 import { calculateCreatorTier } from '../../../services/affiliateService';
 
 interface EarningsViewProps {
-  payload: CreatorDashboardPayload | null;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
+  creator: CreatorAccount;
   onOpenWithdraw: () => void;
 }
 
-function EarningsSkeleton() {
-  return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden="true">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <StatCard key={i} label="" value="" loading />
-      ))}
-    </div>
-  );
-}
-
-export const EarningsView: React.FC<EarningsViewProps> = ({ payload, loading, error, onRetry, onOpenWithdraw }) => {
-  if (loading) return <EarningsSkeleton />;
-  if (error) return <ErrorState title="Couldn't load earnings" message={error} onRetry={onRetry} />;
-  if (!payload) return null;
-
-  const { wallet, analytics } = payload;
-  const tierInfo = calculateCreatorTier(wallet.total_earnings_kes, analytics.conversions);
+export const EarningsView: React.FC<EarningsViewProps> = ({ creator, onOpenWithdraw }) => {
+  const tierInfo = calculateCreatorTier(creator.lifetime_earnings, creator.total_conversions);
 
   return (
     <div className="space-y-8">
@@ -39,7 +20,7 @@ export const EarningsView: React.FC<EarningsViewProps> = ({ payload, loading, er
         <button
           type="button"
           onClick={onOpenWithdraw}
-          disabled={wallet.available_balance_kes <= 0}
+          disabled={creator.available_cash <= 0}
           className="px-4 py-2.5 rounded-creator-control bg-creator-brand hover:bg-creator-brand-strong text-creator-brand-ink font-bold text-creator-caption transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Withdraw
@@ -47,9 +28,9 @@ export const EarningsView: React.FC<EarningsViewProps> = ({ payload, loading, er
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard label="Lifetime earnings" value={formatKes(wallet.total_earnings_kes)} icon={TrendingUp} emphasis />
-        <StatCard label="Available balance" value={formatKes(wallet.available_balance_kes)} icon={Wallet} />
-        <StatCard label="Pending payouts" value={formatKes(wallet.pending_payouts_kes)} icon={Clock} />
+        <StatCard label="Lifetime earnings" value={formatKes(creator.lifetime_earnings)} icon={TrendingUp} emphasis />
+        <StatCard label="Available cash" value={formatKes(creator.available_cash)} icon={Wallet} />
+        <StatCard label="Pending earnings" value={formatKes(creator.pending_earnings)} icon={Clock} />
       </div>
 
       <section className="bg-creator-surface border border-creator-border rounded-creator-card-lg p-6">

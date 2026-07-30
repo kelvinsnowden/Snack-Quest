@@ -2,60 +2,95 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CreatorAuthGate } from '../creator/CreatorAuthGate';
 import { CreatorShell } from '../creator/CreatorShell';
 import { WithdrawModal } from '../creator/WithdrawModal';
-import { CreatorDashboardPayload, clearStoredCreatorId, fetchCreatorDashboard, loadStoredCreatorId } from '../creator/creatorApi';
+import { SubmitDeliverableModal } from '../creator/SubmitDeliverableModal';
+import {
+  CreatorAccount,
+  Campaign,
+  CampaignSubmission,
+  WithdrawalRecord,
+  clearStoredCreator,
+  loadStoredCreator,
+  storeCreator,
+  fetchCampaigns,
+  fetchCampaignSubmissions,
+  fetchWithdrawalHistory
+} from '../creator/creatorApi';
 
 export const CreatorPortal: React.FC = () => {
-  const [creatorId, setCreatorId] = useState<string | null>(() => loadStoredCreatorId());
-  const [payload, setPayload] = useState<CreatorDashboardPayload | null>(null);
+  const [creator, setCreator] = useState<CreatorAccount | null>(() => loadStoredCreator());
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [submissions, setSubmissions] = useState<CampaignSubmission[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [submitCampaign, setSubmitCampaign] = useState<Campaign | null>(null);
 
-  const loadDashboard = useCallback(async (id: string) => {
+  const loadExtras = useCallback(async (creatorId: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCreatorDashboard(id);
-      setPayload(data);
+      const [campaignsData, submissionsData, withdrawalsData] = await Promise.all([
+        fetchCampaigns(),
+        fetchCampaignSubmissions(creatorId),
+        fetchWithdrawalHistory(creatorId)
+      ]);
+      setCampaigns(campaignsData);
+      setSubmissions(submissionsData);
+      setWithdrawals(withdrawalsData);
     } catch (err: any) {
-      setError(err.message || 'Something went wrong loading your dashboard.');
+      setError(err.message || 'Something went wrong loading your data.');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (creatorId) {
-      loadDashboard(creatorId);
-    }
-  }, [creatorId, loadDashboard]);
+    if (creator) loadExtras(creator.id);
+  }, [creator?.id, loadExtras]);
 
   const handleSignOut = () => {
-    clearStoredCreatorId();
-    setCreatorId(null);
-    setPayload(null);
+    clearStoredCreator();
+    setCreator(null);
   };
 
-  if (!creatorId) {
-    return <CreatorAuthGate onAuthenticated={setCreatorId} />;
+  const handleCreatorUpdated = (updated: CreatorAccount) => {
+    storeCreator(updated);
+    setCreator(updated);
+  };
+
+  if (!creator) {
+    return <CreatorAuthGate onAuthenticated={setCreator} />;
   }
 
   return (
     <div className="min-h-screen bg-creator-canvas text-creator-ink font-sans antialiased">
       <CreatorShell
-        payload={payload}
+        creator={creator}
+        campaigns={campaigns}
+        submissions={submissions}
+        withdrawals={withdrawals}
         loading={loading}
         error={error}
-        onRetry={() => loadDashboard(creatorId)}
+        onRetry={() => loadExtras(creator.id)}
         onSignOut={handleSignOut}
+        onCreatorUpdated={handleCreatorUpdated}
         onOpenWithdraw={() => setWithdrawOpen(true)}
+        onOpenSubmit={(campaign) => setSubmitCampaign(campaign)}
       />
       <WithdrawModal
         isOpen={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
-        availableBalanceKes={payload?.wallet.available_balance_kes ?? 0}
-        defaultPhone=""
-        onSuccess={() => loadDashboard(creatorId)}
+        creatorId={creator.id}
+        availableCashKes={creator.available_cash}
+        defaultPhone={creator.whatsapp_number}
+        onSuccess={() => loadExtras(creator.id)}
+      />
+      <SubmitDeliverableModal
+        campaign={submitCampaign}
+        creator={creator}
+        onClose={() => setSubmitCampaign(null)}
+        onSuccess={() => loadExtras(creator.id)}
       />
     </div>
   );

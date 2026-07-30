@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { FormField } from '../common/FormField';
 import { useApp } from '../../context/AppContext';
-import { requestCreatorWithdrawal } from './creatorApi';
+import { requestWithdrawal } from './creatorApi';
 import { formatKes } from './format';
 
 interface WithdrawModalProps {
   isOpen: boolean;
   onClose: () => void;
-  availableBalanceKes: number;
-  defaultPhone?: string;
+  creatorId: string;
+  availableCashKes: number;
+  defaultPhone: string;
   onSuccess: () => void;
 }
 
@@ -18,12 +19,13 @@ const MIN_WITHDRAWAL_KES = 500;
 export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   isOpen,
   onClose,
-  availableBalanceKes,
-  defaultPhone = '',
+  creatorId,
+  availableCashKes,
+  defaultPhone,
   onSuccess
 }) => {
   const { addToast } = useApp();
-  const [amount, setAmount] = useState(String(Math.min(1000, Math.max(availableBalanceKes, 0)) || ''));
+  const [amount, setAmount] = useState(String(Math.min(1000, Math.max(availableCashKes, 0)) || ''));
   const [phone, setPhone] = useState(defaultPhone);
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,8 +33,8 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   const amountError =
     amount && (Number.isNaN(amountNumber) || amountNumber < MIN_WITHDRAWAL_KES)
       ? `Minimum withdrawal is ${formatKes(MIN_WITHDRAWAL_KES)}`
-      : amount && amountNumber > availableBalanceKes
-      ? 'Amount exceeds your available balance'
+      : amount && amountNumber > availableCashKes
+      ? 'Amount exceeds your available cash'
       : undefined;
 
   const canSubmit = !amountError && amountNumber > 0 && phone.trim().length >= 9 && !submitting;
@@ -42,7 +44,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await requestCreatorWithdrawal(amountNumber, phone.trim());
+      await requestWithdrawal(creatorId, amountNumber, phone.trim());
       addToast({ type: 'success', title: 'Withdrawal requested', message: `${formatKes(amountNumber)} is on its way to ${phone}.` });
       onSuccess();
       onClose();
@@ -54,14 +56,14 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Withdraw earnings" description={`Available balance: ${formatKes(availableBalanceKes)}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title="Withdraw earnings" description={`Available cash: ${formatKes(availableCashKes)}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormField
           label="Amount (KES)"
           type="number"
           required
           min={MIN_WITHDRAWAL_KES}
-          max={availableBalanceKes}
+          max={availableCashKes}
           value={amount}
           error={amountError}
           onChange={(e) => setAmount((e.target as HTMLInputElement).value)}
