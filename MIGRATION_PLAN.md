@@ -1,5 +1,17 @@
 # Migration Plan: Vite/Express → Next.js App Router + Firebase Auth + Firestore
 
+> **Superseded in part by `docs/adr/0000-ui-rebuild.md`.** §1 below
+> (presentational components porting "with two mechanical changes... No
+> logic rewrite") described the plan as it stood before that decision.
+> The presentation layer — pages, layouts, navigation, components,
+> interactions, animations, responsive behavior, accessibility, visual
+> design — is now rebuilt from first principles instead, using the
+> current screens as reference material for business requirements only,
+> not as a porting source. Everything below this notice is left as
+> written, as the historical record of the plan at the time; see the ADR
+> for the current decision and `TECHNICAL_DESIGN_DOCUMENT.md` §14 for how
+> it's reflected in the architecture.
+
 Answers the question directly: **yes, this is feasible**, and a substantial
 share of the UI layer survives close to unchanged. The backend does not —
 its entire data-access pattern (in-memory object + `.find()`/`.push()`/

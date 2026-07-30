@@ -207,27 +207,31 @@ flow specifically; everything else in this phase can start in parallel.
    `app/api/withdrawals/[id]/decision/route.ts` — both call their
    Service, both admin-session-gated (verify role claim, not just
    session presence).
-5. **UI, ported from the current repo's `src/components/creator/`:**
-   copy `views/*.tsx` (`DashboardView`, `EarningsView`, `PaymentsView`,
-   `CampaignsView`, `ContentView`, `AnalyticsView`, `ReferralsView`,
-   `AchievementsView`, `ProfileView`, `ResourcesView`, `SupportView`),
-   `CreatorShell.tsx`, `WithdrawModal.tsx`, `SubmitDeliverableModal.tsx`,
-   `nav.ts`, `format.ts` verbatim — these already read from a typed API
-   client and render correctly; only `creatorApi.ts`'s implementation
-   changes (below).
+5. **UI, designed fresh per `docs/adr/0000-ui-rebuild.md`:** the current
+   repo's `src/components/creator/` (`views/*.tsx`, `CreatorShell.tsx`,
+   `WithdrawModal.tsx`, `SubmitDeliverableModal.tsx`, `nav.ts`) is
+   reference material for *what each screen needs to do* (the nav IA —
+   dashboard, earnings, payments, campaigns, content, analytics,
+   referrals, achievements, profile, resources, support — carries
+   forward as a product decision), not a source to copy markup or
+   visual treatment from. Design and build
+   `app/creators-portal/**`/`components/creator/**` from first
+   principles using `components/ui/*` as building blocks and the
+   design-focused skills; evolve a primitive in place if a screen's
+   needs expose a real gap in it, rather than working around a bad API.
 6. **Rewrite `creatorApi.ts` → thin client wrappers:** reads call the
    Firebase client SDK directly against `creatorProfiles`,
    `campaignSubmissions`, `withdrawals` (the TDD §2 principle 8
    exception, rules-enforced); writes call the Route Handlers from step
    4, or — for `campaigns`/submission creation, which don't need a
    transaction — a direct rules-governed client create.
-7. **Rewrite `CreatorAuthGate.tsx`:** replace every call currently
-   hitting `/api/v1/creator-auth/*` with Firebase client SDK calls
+7. **Build the sign-up/sign-in flow:** Firebase client SDK calls
    (`createUserWithEmailAndPassword`, `signInWithEmailAndPassword`,
    `sendEmailVerification`, `sendPasswordResetEmail`) followed by the
-   session-cookie exchange (step 3). Keep the existing screen flow
-   (register → verify → onboarding → dashboard) — only the calls
-   underneath change, per this guide's "don't repeat the UI work" scope.
+   session-cookie exchange (step 3). The current `CreatorAuthGate.tsx`'s
+   step sequence (register → verify → onboarding → dashboard) is a
+   reasonable flow to keep as a product decision; the screens
+   themselves are designed fresh per step 5, not copied from it.
 8. **Events (TDD §11):** `events/withdrawalApproved.ts`,
    `events/campaignSubmissionReviewed.ts` — Cloud Function handlers
    triggered on `withdrawals`/`campaignSubmissions` writes, calling
@@ -307,9 +311,10 @@ portal. **Blocked on:** nothing; can run in parallel with Phase 1.
 2. `app/api/orders/route.ts` — `POST`, validates pricing/credit
    redemption server-side (never trusts a client-supplied total).
 3. `app/(marketing)/layout.tsx`, `page.tsx`, `products/`, `checkout/`.
-4. Port `components/marketing/*` from the current
-   `src/components/marketing/*` (public-facing pieces only — the admin
-   campaign/marketing tools belong to Phase 5, not this phase).
+4. Design `components/marketing/*` fresh per ADR-0000, using the current
+   `src/components/marketing/*` as reference for what the public site
+   needs to do (public-facing pieces only — the admin campaign/marketing
+   tools belong to Phase 5, not this phase).
 5. Extend `proxy.ts`'s hostname map to include the apex domain
    `snackquests.shop` → `(marketing)`.
 6. Feature flag: `new-checkout`.
@@ -356,8 +361,9 @@ screen; the permission-matrix work below can proceed either way.
    (instrument current admin usage first if possible, per TDD §26
    question 4, rather than guessing): start with whichever of
    orders/CRM is highest-traffic today.
-5. `app/admin-portal/layout.tsx` (Sidebar/TopBar shell, ported from
-   `src/components/layout/Sidebar.tsx` / `TopBar.tsx`), then one
+5. `app/admin-portal/layout.tsx` (Sidebar/TopBar shell, designed fresh
+   per ADR-0000 — `src/components/layout/Sidebar.tsx`/`TopBar.tsx` are
+   reference for the current IA, not a source to copy from), then one
    `page.tsx` per screen as its Service/Repository pair lands.
 6. Extend `proxy.ts`: `admin.snackquests.shop` → `(admin)`, with a
    **stricter** check than other portals — role must be
@@ -418,11 +424,11 @@ if the decision differs.
 3. `services/rewardsService.ts`, `services/referralService.ts`.
 4. Auth-triggered `customerProfiles/{uid}` creation, same pattern as
    Phase 1's `creatorProfiles`.
-5. `app/quest-portal/layout.tsx` + screens, porting
-   `src/components/quest-center/*`'s UI (note: converge its
-   currently-duplicated empty-state/status-pill patterns onto
-   `components/ui/*` while porting, per TDD §14 — don't port the
-   duplication along with the component).
+5. `app/quest-portal/layout.tsx` + screens, designed fresh per
+   ADR-0000, using `src/components/quest-center/*` as reference for
+   what each screen needs to do — build on `components/ui/*`'s
+   `EmptyState`/`StatusBadge` etc. rather than recreating that logic
+   per screen.
 6. Extend `proxy.ts`: `quest.snackquests.shop` → `(quest)`.
 7. Feature flag: `wallet-engine-v2`.
 
@@ -464,9 +470,10 @@ linear task list — copy this per domain:
 2. `types/<domain>.ts`, `repositories/<domain>Repository.ts`,
    `services/<domain>Service.ts` — following the Phase 0 reference
    implementation's shape exactly.
-3. `app/admin-portal/<domain>/page.tsx` + components, ported from the
-   current repo's corresponding folder (`src/components/inventory/`,
-   `src/components/accounting/`, etc.).
+3. `app/admin-portal/<domain>/page.tsx` + components, designed fresh
+   per ADR-0000 on `components/ui/*`, using the current repo's
+   corresponding folder (`src/components/inventory/`,
+   `src/components/accounting/`, etc.) as reference for the workflow.
 4. Route Handlers only for what TDD §10 says needs one (transactions,
    secrets, derived data) — default to direct client-SDK reads governed
    by rules for everything else (TDD §2 principle 8).
@@ -539,7 +546,7 @@ phase is cleanup, not a risk point.
       shape-validated create, server-only status transitions)
 - [ ] Route Handler(s) added only where TDD §10's criteria are met, each
       thin (auth check → Service call → response)
-- [ ] UI ported/built using `components/ui/*` primitives, no new
+- [ ] UI designed fresh per ADR-0000, built using `components/ui/*` primitives, no new
       one-off component where an existing one fits
 - [ ] Feature flag added if this is a cutover from an existing Express
       path (TDD §20)

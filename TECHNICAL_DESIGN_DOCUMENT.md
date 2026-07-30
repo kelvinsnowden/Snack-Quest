@@ -420,12 +420,14 @@ them.
 - **Authorization:** `role: 'creator'` custom claim required; a document
   at `creatorProfiles/{uid}` must exist (created automatically at sign-up,
   §8).
-- **Navigation:** the existing `CreatorShell` top nav (desktop) + bottom
-  nav (mobile) — ported as-is, no redesign needed.
-- **Shared components:** `common/*` primitives already built
+- **Navigation:** the IA above (which tabs exist, how they're grouped)
+  carries forward as a product decision; the `CreatorShell` nav
+  *component* itself is redesigned per ADR-0000, not ported as-is.
+- **Shared components:** `components/ui/*` primitives from Phase 0
   (`StatCard`, `FormField`, `PillTabs`, `Modal`, `StatusBadge`,
-  `EmptyState`, `ErrorState`, `DataTable`) — these are framework-agnostic
-  React and port directly (§14).
+  `EmptyState`, `ErrorState`, `DataTable`) are the starting foundation —
+  evolved as needed while building this portal's screens, not treated as
+  fixed (§14, ADR-0000).
 - **Protected routes:** all of them. The proxy redirects unauthenticated
   visitors to `/sign-in`.
 - **Data ownership:** owns `creatorProfiles/{uid}`, writes
@@ -1170,9 +1172,9 @@ snack-quest/
 │   │                                 #   StatCard, FormField, PillTabs, Modal,
 │   │                                 #   StatusBadge, EmptyState, ErrorState,
 │   │                                 #   DataTable, ChartWrapper, Toast
-│   ├── creator/                     # ported ~verbatim from src/components/creator/
-│   ├── quest/                       # ported from src/components/quest-center/
-│   ├── admin/                       # ported from src/components/{crm,orders,...}
+│   ├── creator/                     # designed fresh, built on components/ui/* — ADR-0000
+│   ├── quest/                       # designed fresh, built on components/ui/* — ADR-0000
+│   ├── admin/                       # designed fresh, built on components/ui/* — ADR-0000
 │   ├── marketing/
 │   └── providers/                   # AuthProvider, ToastProvider, ThemeProvider
 ├── services/                        # Domain Services — §4
@@ -1269,14 +1271,33 @@ wrong about where the real seams are.
 
 ## 14. Component Architecture
 
-**Shared components** (`components/ui/*`) are the 11 files already built
-in `src/components/common/` this session and prior — these need zero
-redesign, only a `'use client'` directive audit and import-path updates
-(§11 of `MIGRATION_PLAN.md`).
+> **ADR-0000 (see `docs/adr/0000-ui-rebuild.md`):** following Phase 0,
+> the presentation layer is no longer ported from the current Vite
+> app — it's rebuilt. This section reflects that decision; it
+> previously described porting the current screens near-verbatim, which
+> `MIGRATION_PLAN.md` §1 still describes and is now superseded for
+> anything above the primitive layer.
 
-**Portal-specific components** mirror the current `src/components/creator/*`,
-`quest-center/*`, admin domain folders — same organization principle,
-same files, new home.
+**Shared components** (`components/ui/*`) are infrastructure, not
+product UI, and are the one part of the presentation layer that *is*
+carried forward — the 9 primitives ported in Phase 0
+(`StatCard`, `FormField`, `PillTabs`, `Modal`/`Drawer`, `StatusBadge`,
+`EmptyState`, `ErrorState`, `DataTable`, `ChartWrapper`) are the
+starting foundation, not a frozen artifact. They're evolved as screen
+work reveals real needs: redesigned or refactored whenever doing so
+improves API consistency, accessibility, composability, or visual
+quality, with no obligation to preserve their original Gemini-era
+styling. `Toast`/`CommandPalette` remain deferred until the provider
+architecture (§15) exists to back them.
+
+**Portal-specific components and page compositions are designed from
+first principles, not mirrored from `src/components/creator/*`,
+`quest-center/*`, or the admin domain folders.** The current screens are
+reference material for understanding what a flow needs to do — not a
+source to port layouts, markup, or visual treatment from. Each portal's
+screens are built using the shared primitives above plus the project's
+design system and design-focused skills, per §23's phase-by-phase
+migration plan.
 
 **Design system.** The `creator-*` token set added to `index.css` this
 session (scoped, additive tokens: `--color-creator-canvas`,
@@ -1749,7 +1770,8 @@ depends on that pattern existing, not on it being retrofitted later.
   whole pattern (auth, data, rules, routing, Service/Repository, §4) end
   to end before committing further.
 - **Files affected:** `app/creators-portal/**`, `components/creator/**`
-  (ported near-verbatim), `services/creatorDashboardService.ts`,
+  (designed fresh on top of `components/ui/*`, per ADR-0000 — not
+  ported from `src/components/creator/`), `services/creatorDashboardService.ts`,
   `services/campaignService.ts`, `services/withdrawalService.ts`,
   `repositories/creatorRepository.ts`, `repositories/campaignRepository.ts`,
   `repositories/withdrawalRepository.ts` (new — replace
@@ -1847,8 +1869,9 @@ depends on that pattern existing, not on it being retrofitted later.
   `services/referralService.ts`, `repositories/walletRepository.ts`.
 - **Migration steps:** blocked on the identity-method decision (§26);
   once decided, follows the same shape as Phase 1 (auto-created
-  `customerProfiles`, ported UI, Firestore-backed wallet/quests, all
-  behind a `wallet-engine-v2` flag, §20).
+  `customerProfiles`, screens designed fresh per ADR-0000,
+  Firestore-backed wallet/quests, all behind a `wallet-engine-v2` flag,
+  §20).
 - **Validation checklist:** a customer's wallet balance is only ever
   written by `WalletService` (rules §9 already enforce this at the data
   layer — verify with a rules unit test that a direct client write to
@@ -1987,6 +2010,7 @@ prior choice was made at the time).
 
 ```
 docs/adr/
+  0000-ui-rebuild.md                   # §14 — why the presentation layer is rebuilt, not ported (already written)
   0001-nextjs-app-router.md            # §3 — why Next.js over remaining on Vite/Express
   0002-firestore.md                    # §8 — why Firestore over a relational database
   0003-authentication.md               # §6.9 — why Firebase Auth over custom
