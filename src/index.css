@@ -1,5 +1,64 @@
 @import "tailwindcss";
 
+/*
+ * The app toggles a `.dark` class on <html> (see AppContext/index.html) to
+ * control theme, but Tailwind v4's `dark:` variant defaults to the
+ * `prefers-color-scheme` media query. Without this, every `dark:` utility
+ * in the codebase is inert whenever the OS/browser reports light mode.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Creator Portal design tokens.
+ * Prefixed/additive only (creator-*) so existing Admin, Public and Quest
+ * portal styling is untouched while creator.snackquests.shop consumes a
+ * single consistent token set instead of ad-hoc hex values per component.
+ */
+@theme {
+  --color-creator-canvas: #0B0B0D;
+  --color-creator-surface: #17171A;
+  --color-creator-surface-hover: #1F1F23;
+  --color-creator-surface-raised: #1C1C20;
+  --color-creator-border: #27272B;
+  --color-creator-border-strong: #38383D;
+
+  --color-creator-ink: #F7F7F5;
+  --color-creator-ink-muted: #A6A6AD;
+  --color-creator-ink-faint: #6B6B72;
+
+  --color-creator-brand: #FF7A00;
+  --color-creator-brand-strong: #E56A00;
+  --color-creator-brand-soft: #FFB066;
+  --color-creator-brand-ink: #1F1105;
+
+  --color-creator-accent: #6C3BFF;
+  --color-creator-highlight: #C8FF00;
+
+  --color-creator-success: #2FBE7A;
+  --color-creator-warning: #FF7A00;
+  --color-creator-danger: #FF5A5F;
+  --color-creator-info: #4EA1FF;
+
+  --radius-creator-control: 12px;
+  --radius-creator-card: 16px;
+  --radius-creator-card-lg: 24px;
+
+  --text-creator-caption: 0.75rem;
+  --text-creator-caption--line-height: 1.35;
+  --text-creator-body: 1rem;
+  --text-creator-body--line-height: 1.5;
+  --text-creator-subtitle: 1.25rem;
+  --text-creator-subtitle--line-height: 1.3;
+  --text-creator-card-title: 1.5rem;
+  --text-creator-card-title--line-height: 1.25;
+  --text-creator-section-title: 2.25rem;
+  --text-creator-section-title--line-height: 1.15;
+  --text-creator-page-title: 3rem;
+  --text-creator-page-title--line-height: 1.1;
+
+  --shadow-creator-soft: 0 16px 40px -16px rgb(0 0 0 / 0.45);
+}
+
 @layer base {
   body {
     background-color: #09090B;
