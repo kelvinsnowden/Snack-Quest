@@ -1,5 +1,5 @@
-import path from "node:path";
-import type { NextConfig } from "next";
+import path from 'node:path';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   // The parent Snack-Quest repo also has a package-lock.json, which makes
