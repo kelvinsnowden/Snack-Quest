@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Placeholder deny-by-default ruleset for emulator bring-up.
+// Replaced with the full ruleset from TECHNICAL_DESIGN_DOCUMENT.md §9
+// in a later Phase 0 milestone (reference Repository/Service pair + rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
