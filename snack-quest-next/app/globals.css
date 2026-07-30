@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --background: #ffffff;
@@ -23,4 +23,115 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/*
+ * The app toggles a `.dark` class on <html> to control theme, but
+ * Tailwind v4's `dark:` variant defaults to the `prefers-color-scheme`
+ * media query. Without this, every `dark:` utility is inert whenever the
+ * OS/browser reports light mode. Ported from the current Vite app's
+ * src/index.css (found during this session's Creator Portal work).
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Creator Portal design tokens, ported verbatim from src/index.css.
+ * Prefixed/additive only (creator-*) so other portals' styling is
+ * unaffected while the Creator Portal consumes a single consistent
+ * token set instead of ad-hoc hex values per component.
+ */
+@theme {
+  --color-creator-canvas: #0b0b0d;
+  --color-creator-surface: #17171a;
+  --color-creator-surface-hover: #1f1f23;
+  --color-creator-surface-raised: #1c1c20;
+  --color-creator-border: #27272b;
+  --color-creator-border-strong: #38383d;
+
+  --color-creator-ink: #f7f7f5;
+  --color-creator-ink-muted: #a6a6ad;
+  --color-creator-ink-faint: #6b6b72;
+
+  --color-creator-brand: #ff7a00;
+  --color-creator-brand-strong: #e56a00;
+  --color-creator-brand-soft: #ffb066;
+  --color-creator-brand-ink: #1f1105;
+
+  --color-creator-accent: #6c3bff;
+  --color-creator-highlight: #c8ff00;
+
+  --color-creator-success: #2fbe7a;
+  --color-creator-warning: #ff7a00;
+  --color-creator-danger: #ff5a5f;
+  --color-creator-info: #4ea1ff;
+
+  --radius-creator-control: 12px;
+  --radius-creator-card: 16px;
+  --radius-creator-card-lg: 24px;
+
+  --text-creator-caption: 0.75rem;
+  --text-creator-caption--line-height: 1.35;
+  --text-creator-body: 1rem;
+  --text-creator-body--line-height: 1.5;
+  --text-creator-subtitle: 1.25rem;
+  --text-creator-subtitle--line-height: 1.3;
+  --text-creator-card-title: 1.5rem;
+  --text-creator-card-title--line-height: 1.25;
+  --text-creator-section-title: 2.25rem;
+  --text-creator-section-title--line-height: 1.15;
+  --text-creator-page-title: 3rem;
+  --text-creator-page-title--line-height: 1.1;
+
+  --shadow-creator-soft: 0 16px 40px -16px rgb(0 0 0 / 0.45);
+}
+
+/*
+ * Animation utilities used by the ported UI primitives (Modal, Drawer,
+ * ToastContainer, CommandPalette) — ported verbatim from src/index.css.
+ */
+@layer utilities {
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleUp {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-scale-up {
+    animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
 }
