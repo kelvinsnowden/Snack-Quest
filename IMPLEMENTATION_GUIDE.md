@@ -588,6 +588,15 @@ one (TDD §17).
   of adding a Repository method — always add the method, even for a
   one-off read; the discipline only holds if it holds every time (TDD
   §2, principle 8).
+- Cloud Storage for Firebase cannot be provisioned on a Spark (free)
+  plan project — confirmed against `snack-quest-8c354` during Phase 0.
+  This is a billing-account upgrade decision for a human to make, not
+  something to work around. Any feature needing file upload must go
+  through `repositories/storageRepository.ts`'s `StorageRepository`
+  interface (TDD §16), which currently resolves to
+  `UnavailableStorageRepository` and throws a typed
+  `StorageUnavailableError` — never reach for `adminStorage`/
+  `clientStorage` directly in a Service or component.
 - Standing up a new withdrawal-like flow that doesn't go through
   `WithdrawalService` — this is exactly how the current codebase ended up
   with three competing implementations; there should never be a second

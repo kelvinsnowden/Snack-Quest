@@ -1368,18 +1368,44 @@ Firestore.*
 |---|---|---|---|
 | Firebase Auth | Identity | Unused (dead code) | Primary auth provider, §6 |
 | Firestore | Data | Unused (dead code) | Primary data store, §8, accessed only via Repositories (§4) |
-| Firebase Storage | Media (campaign proof, avatars) | Unused | Direct client upload with Storage security rules mirroring Firestore's owner model; server generates signed URLs where needed |
+| Firebase Storage | Media (campaign proof, avatars) | Unused; **cannot be enabled on the current Firebase project without upgrading to the Blaze (pay-as-you-go) billing plan** — a Firestore/Auth-only Spark-plan project does not expose Cloud Storage for Firebase at all, confirmed against the actual `snack-quest-8c354` project during Phase 0 | Direct client upload with Storage security rules mirroring Firestore's owner model; server generates signed URLs where needed. Until the Blaze upgrade happens, all file-upload call sites go through a `StorageRepository` interface (§4) with a stub implementation that fails closed with a typed, catchable error — see the note below the table |
 | Firebase Cloud Functions | Background/triggered work | Unused | Only where necessary — Firestore triggers, scheduled jobs, webhooks, async event processing (§11 has the full strategy and event catalog) |
 | Email (SendGrid) | Transactional email | Configured in `.env.example`, unclear if actually wired | Email verification / password reset custom templates, order confirmations, campaign review notifications — dispatched asynchronously via `NotificationService` (§4, §11) |
 | Payments (M-Pesa Daraja) | STK push, B2C payout | Simulated/sandboxed per `ARCHITECTURAL_BLUEPRINT.md` §15 | Same simulation approach preserved short-term; production Daraja credentials are a business/ops decision outside this document's scope |
 | WhatsApp (WhatChimp / Cloud API) | Notifications, current OTP delivery | Simulated | Notification delivery preserved; OTP role is an open question (§26) |
 | Analytics | Product/marketing analytics | `src/lib/attributionTracker.ts` — session/referral tracking, framework-agnostic | Ported as-is; consider Vercel Analytics or GA4 for page-level metrics, additive not replacing the existing attribution logic |
-| Storage (media hosting) | Product imagery | Raw Unsplash URLs hardcoded in seed data | Firebase Storage for user-generated content (campaign proof); product imagery can stay CDN-hosted, doesn't need to move |
+| Storage (media hosting) | Product imagery | Raw Unsplash URLs hardcoded in seed data | Firebase Storage for user-generated content (campaign proof) once the Blaze-plan gap above is resolved; product imagery can stay CDN-hosted, doesn't need to move |
 | Monitoring | Uptime/error tracking | `SystemHealthCenter.tsx` — self-reported/simulated metrics | Full observability strategy in §22 |
 | Logging | Request/audit logging | `src/api/utils/logger.ts`, structured JSON logs — sound pattern | Ported as-is; see §22 |
 | Error reporting | — | Not present | Sentry (or equivalent) — see §22 |
 | Search (future) | — | Not present, not needed today | See §19 |
 | Feature flags | — | Not present | See §20 |
+
+**On the Storage/Blaze-plan gap (added during Phase 0):** the `snack-quest-8c354`
+project is currently on the Spark (free) plan, and Firebase does not let
+Cloud Storage be provisioned on Spark at all — enabling it requires a
+billing-account upgrade to Blaze, which is a business/ops decision, not
+a technical one, so it isn't made unilaterally here. Firestore and
+Authentication have no such requirement and are already provisioned.
+
+Rather than let this stall any feature that happens to need a file
+upload, or let call sites reach for the Storage SDK directly and quietly
+assume it exists, `repositories/storageRepository.ts` defines a
+`StorageRepository` interface (`uploadFile`, `getDownloadUrl`,
+`deleteFile`) — the same Repository-layer discipline §4 already applies
+to Firestore. Two implementations exist behind it:
+`FirebaseStorageRepository` (the real one, using the Admin SDK) and
+`UnavailableStorageRepository` (the current default — every method
+rejects with a typed `StorageUnavailableError` naming exactly what's
+blocked and why). A single factory function picks which one is active,
+switched by one environment variable
+(`FIREBASE_STORAGE_ENABLED`). Any Service that needs file storage (e.g.
+`CampaignService` for submission proof, once built) codes against the
+interface, not the concrete class, so flipping that one variable after
+the Blaze upgrade is the entire migration — no call site changes, no
+architectural rework. Until then, features needing uploads surface a
+clear "storage not yet enabled" error rather than a confusing SDK
+failure or, worse, silently accepting an upload that goes nowhere.
 
 ---
 

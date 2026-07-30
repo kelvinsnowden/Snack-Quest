@@ -40,8 +40,12 @@ function createAdminApp(): App {
   if (isEmulator) {
     // No real credentials needed against the emulators — a project ID
     // is enough for the Admin SDK to address the right emulator project.
+    const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? 'demo-project';
     return initializeApp({
-      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID ?? 'demo-project',
+      projectId,
+      storageBucket:
+        process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ??
+        `${projectId}.appspot.com`,
     });
   }
 
@@ -55,6 +59,7 @@ function createAdminApp(): App {
         '\n',
       ),
     }),
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   });
 }
 
