@@ -53,7 +53,7 @@ export default function ProfileView({
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5 flex items-center gap-1">
-                <span>{customer?.email || 'customer@snackquest.co.ke'}</span>
+                <span>{customer?.email || 'customer@snackquests.shop'}</span>
                 <span>•</span>
                 <span className="flex items-center gap-0.5">
                   <MapPin className="w-3 h-3 text-amber-400" />

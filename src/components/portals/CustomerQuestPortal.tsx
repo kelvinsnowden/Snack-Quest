@@ -57,7 +57,7 @@ export const CustomerQuestPortal: React.FC = () => {
           </div>
           <div>
             <span className="font-extrabold text-white text-sm tracking-tight block">
-              quest.snackquest.shop
+              quest.snackquests.shop
             </span>
             <span className="text-[10px] text-purple-400 font-medium block -mt-0.5">
               Customer Quest Center & Loyalty Wallet

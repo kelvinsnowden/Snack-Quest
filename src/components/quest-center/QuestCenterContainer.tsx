@@ -382,7 +382,7 @@ export default function QuestCenterContainer() {
         isOpen={qrCodeOpen}
         onClose={() => setQrCodeOpen(false)}
         referralCode={overviewData?.referral?.referral_code || 'WANJ123'}
-        referralLink={overviewData?.referral?.referral_link || `https://snackquest.co.ke/join?ref=${selectedCustomerId}`}
+        referralLink={overviewData?.referral?.referral_link || `https://snackquests.shop/join?ref=${selectedCustomerId}`}
       />
 
       {/* Cash Withdrawal Modal */}

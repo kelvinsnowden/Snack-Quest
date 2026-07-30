@@ -76,7 +76,7 @@ export default function QRCodeModal({ isOpen, onClose, referralCode, referralLin
                   alt="Referral QR Code"
                   className="w-48 h-48 object-contain rounded-xl"
                   onError={(e: any) => {
-                    e.target.src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=snackquest.co.ke';
+                    e.target.src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=snackquests.shop';
                   }}
                 />
               </div>

@@ -2,6 +2,13 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import { securityHeaders, corsMiddleware, requestIdMiddleware } from './src/api/middleware/security';
+import { globalRateLimiter } from './src/api/middleware/rateLimiter';
+import { requestLogger } from './src/api/middleware/requestLogger';
+import { errorHandler } from './src/api/middleware/errorHandler';
+import { initDbRepository } from './src/api/repositories/dbRepository';
+import { v1Router } from './src/api/routes/v1Router';
+import { docsRouter } from './src/api/docs/swaggerUi';
 import {
   getInitialAdPlatformConfigs,
   dispatchToAdPlatforms,
@@ -313,10 +320,10 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         business_shortcode: '174379'
       },
       endpoints: {
-        callback_url: 'https://snackquest.co.ke/api/v1/webhooks/daraja/callback',
-        confirmation_url: 'https://snackquest.co.ke/api/v1/webhooks/daraja/confirmation',
-        validation_url: 'https://snackquest.co.ke/api/v1/webhooks/daraja/validation',
-        timeout_url: 'https://snackquest.co.ke/api/v1/webhooks/daraja/timeout',
+        callback_url: 'https://snackquests.shop/api/v1/webhooks/daraja/callback',
+        confirmation_url: 'https://snackquests.shop/api/v1/webhooks/daraja/confirmation',
+        validation_url: 'https://snackquests.shop/api/v1/webhooks/daraja/validation',
+        timeout_url: 'https://snackquests.shop/api/v1/webhooks/daraja/timeout',
         stk_push_endpoint: 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
       },
       token_status: { status: 'valid', expires_in_minutes: 43 },
@@ -342,7 +349,7 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         verify_token: '****************11X'
       },
       endpoints: {
-        webhook_url: 'https://snackquest.co.ke/api/v1/webhooks/whatchimp'
+        webhook_url: 'https://snackquests.shop/api/v1/webhooks/whatchimp'
       },
       token_status: { status: 'valid', expires_in_minutes: 120 },
       webhook_status: { status: 'healthy', retry_count_24h: 0, failed_events_24h: 0 },
@@ -362,11 +369,11 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
       status: 'connected',
       credentials: {
         api_key: '****************88F',
-        sender_email: 'orders@snackquest.co.ke',
+        sender_email: 'orders@snackquests.shop',
         sender_name: 'Snack Quest Operations'
       },
       endpoints: {
-        webhook_url: 'https://snackquest.co.ke/api/v1/webhooks/sendgrid/events'
+        webhook_url: 'https://snackquests.shop/api/v1/webhooks/sendgrid/events'
       },
       token_status: { status: 'valid', expires_in_minutes: 1440 },
       webhook_status: { status: 'healthy', retry_count_24h: 0, failed_events_24h: 0 },
@@ -390,7 +397,7 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         sender_id: 'SNACKQUEST'
       },
       endpoints: {
-        callback_url: 'https://snackquest.co.ke/api/v1/webhooks/sms/delivery'
+        callback_url: 'https://snackquests.shop/api/v1/webhooks/sms/delivery'
       },
       token_status: { status: 'valid', expires_in_minutes: 1440 },
       webhook_status: { status: 'healthy', retry_count_24h: 0, failed_events_24h: 0 },
@@ -483,7 +490,7 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         webhook_signing_secret: '****************11B'
       },
       endpoints: {
-        webhook_url: 'https://snackquest.co.ke/api/v1/webhooks/make'
+        webhook_url: 'https://snackquests.shop/api/v1/webhooks/make'
       },
       token_status: { status: 'valid', expires_in_minutes: 1440 },
       webhook_status: { status: 'healthy', signing_secret_preview: 'sq_make_sec_99a8', retry_count_24h: 1, failed_events_24h: 0 },
@@ -507,7 +514,7 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         temperature: '0.7'
       },
       endpoints: {
-        ai_proxy_endpoint: 'https://snackquest.co.ke/api/v1/ai/generate'
+        ai_proxy_endpoint: 'https://snackquests.shop/api/v1/ai/generate'
       },
       token_status: { status: 'valid', expires_in_minutes: 1440 },
       webhook_status: { status: 'healthy', retry_count_24h: 0, failed_events_24h: 0 },
@@ -531,7 +538,7 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         provider: 'wells_fargo_v2'
       },
       endpoints: {
-        waybill_callback_url: 'https://snackquest.co.ke/api/v1/webhooks/courier/waybill'
+        waybill_callback_url: 'https://snackquests.shop/api/v1/webhooks/courier/waybill'
       },
       token_status: { status: 'valid', expires_in_minutes: 30 },
       webhook_status: { status: 'warning', retry_count_24h: 2, failed_events_24h: 1 },
@@ -555,7 +562,7 @@ function getInitialIntegrationConfigs(): IntegrationConfig[] {
         webhook_secret: '****************22S'
       },
       endpoints: {
-        webhook_url: 'https://snackquest.co.ke/api/v1/webhooks/shopify/orders'
+        webhook_url: 'https://snackquests.shop/api/v1/webhooks/shopify/orders'
       },
       token_status: { status: 'expired', expires_in_minutes: 0 },
       webhook_status: { status: 'degraded', retry_count_24h: 5, failed_events_24h: 2 },
@@ -1599,6 +1606,17 @@ function saveDb() {
 }
 
 db = loadDb();
+initDbRepository(db, saveDb);
+
+// ==========================================
+// API GATEWAY V1 ROUTER & OPENAPI DOCS
+// ==========================================
+app.use(requestIdMiddleware);
+app.use(requestLogger);
+app.use('/docs', docsRouter);
+app.use('/v1/docs', docsRouter);
+app.use('/v1', v1Router);
+app.use('/api/v1', v1Router);
 
 // Shared Audit Helper
 function addAuditLog(
@@ -2664,8 +2682,8 @@ app.get('/api/v1/creator/dashboard', (req, res) => {
       pending_payout_kes: Math.round((totalEarnedCents * 0.4) / 100),
       total_referrals: referrals.length,
       conversion_rate: '18.4%',
-      referral_link: `https://snackquest.co.ke/?ref=${creator.referral_code || 'CREATOR10'}`,
-      qr_code_url: `https://api.qrserver.com/v1/create-qr-code/?data=https://snackquest.co.ke/?ref=${creator.referral_code || 'CREATOR10'}&size=200x200`
+      referral_link: `https://snackquests.shop/?ref=${creator.referral_code || 'CREATOR10'}`,
+      qr_code_url: `https://api.qrserver.com/v1/create-qr-code/?data=https://snackquests.shop/?ref=${creator.referral_code || 'CREATOR10'}&size=200x200`
     }
   });
 });
@@ -6540,11 +6558,11 @@ function ensureDarajaEnterpriseDb() {
       paybill_number: '4088200',
       initiator_name: 'SnackQuestFinOps',
       security_credential: 'Safaricom_RSA_Encrypted_Credential_Token_2026',
-      stk_callback_url: 'https://api.snackquest.co.ke/api/v1/payments/callback',
-      b2c_result_url: 'https://api.snackquest.co.ke/api/v1/payments/b2c/callback',
-      b2c_timeout_url: 'https://api.snackquest.co.ke/api/v1/payments/b2c/timeout',
-      reversal_result_url: 'https://api.snackquest.co.ke/api/v1/payments/reversal/callback',
-      reversal_timeout_url: 'https://api.snackquest.co.ke/api/v1/payments/reversal/timeout',
+      stk_callback_url: 'https://api.snackquests.shop/api/v1/payments/callback',
+      b2c_result_url: 'https://api.snackquests.shop/api/v1/payments/b2c/callback',
+      b2c_timeout_url: 'https://api.snackquests.shop/api/v1/payments/b2c/timeout',
+      reversal_result_url: 'https://api.snackquests.shop/api/v1/payments/reversal/callback',
+      reversal_timeout_url: 'https://api.snackquests.shop/api/v1/payments/reversal/timeout',
       oauth_status: 'valid',
       oauth_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
       cert_status: 'valid',
@@ -7626,7 +7644,7 @@ app.post('/api/v1/marketing/events', async (req, res) => {
     customer_id: body.customer_id || null,
     order_id: body.order_id || null,
     timestamp: body.timestamp || getNowIso(),
-    page_url: body.page_url || 'https://snackquest.co.ke',
+    page_url: body.page_url || 'https://snackquests.shop',
     referrer: body.referrer || 'Direct',
     device_type: body.device_type || 'Desktop',
     browser: body.browser || 'Chrome',
@@ -7692,7 +7710,7 @@ app.post('/api/v1/marketing/batch', async (req, res) => {
       session_id: item.session_id || 'sess-unknown',
       landing_page_id: item.landing_page_id || 'lp_home_v1',
       timestamp: item.timestamp || getNowIso(),
-      page_url: item.page_url || 'https://snackquest.co.ke',
+      page_url: item.page_url || 'https://snackquests.shop',
       referrer: item.referrer || 'Direct',
       device_type: item.device_type || 'Mobile',
       browser: item.browser || 'Chrome',
@@ -7897,7 +7915,7 @@ app.get('/api/v1/marketing/sessions/explorer', (req, res) => {
           id: `e1_${sess.id}`,
           event_name: 'PageView',
           timestamp: sess.first_visit_timestamp,
-          page_url: 'https://snackquest.co.ke/landing',
+          page_url: 'https://snackquests.shop/landing',
           device_type: sess.device_type
         },
         {
@@ -7984,7 +8002,7 @@ app.post('/api/v1/marketing/test-event', async (req, res) => {
     event_name: event_name || 'Purchase',
     session_id: 'sess_test_runner_99',
     timestamp: getNowIso(),
-    page_url: 'https://snackquest.co.ke/test-runner',
+    page_url: 'https://snackquests.shop/test-runner',
     referrer: 'https://facebook.com/ads',
     device_type: 'Desktop',
     browser: 'Chrome Test',
@@ -9278,7 +9296,7 @@ app.get('/api/v1/customer/portal/overview', (req, res) => {
     },
     referral: {
       referral_code: cust.referral_code,
-      referral_link: `https://snackquest.co.ke/join?ref=${cust.referral_code}`,
+      referral_link: `https://snackquests.shop/join?ref=${cust.referral_code}`,
       friends_invited: myReferrals.length,
       qualified_referrals: qualifiedReferrals,
       pending_referrals: pendingReferrals,
@@ -9349,7 +9367,7 @@ app.get('/api/v1/customer/portal/available-quests', (req, res) => {
       category: 'Bonus',
       image_url: 'https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=600&q=80',
       description: rt.description || 'Complete this special quest to unlock bonus Quest Credits!',
-      external_platform_url: rt.external_platform_url || 'https://snackquest.co.ke',
+      external_platform_url: rt.external_platform_url || 'https://snackquests.shop',
       platform_button_label: rt.platform_button_label || 'Start Quest'
     };
 
@@ -9722,7 +9740,7 @@ function ensureAffiliateDb() {
         status: 'active',
         commission_rate_kes: 500,
         rules: 'Create a 30-60s unboxing or taste-test video on TikTok or Instagram Reels. Include your referral link in bio.',
-        assets_url: 'https://snackquest.co/assets/campaigns/gourmet-launch.zip',
+        assets_url: 'https://snackquests.shop/assets/campaigns/gourmet-launch.zip',
         deadline: '2026-08-30',
         cta_text: 'Order Gourmet Box',
         brand_guidelines: 'Mention authentic Kenyan gourmet ingredients. Tag @SnackQuestKE.',
@@ -9734,7 +9752,7 @@ function ensureAffiliateDb() {
         status: 'active',
         commission_rate_kes: 750,
         rules: 'Share a video of sharing Snack Quest boxes with your team/colleagues at work.',
-        assets_url: 'https://snackquest.co/assets/campaigns/office-break.zip',
+        assets_url: 'https://snackquests.shop/assets/campaigns/office-break.zip',
         deadline: '2026-09-15',
         cta_text: 'Get Team Snack Pack',
         brand_guidelines: 'Highlight corporate delivery & bulk savings. Tag #SnackQuestAtWork.',
@@ -9746,7 +9764,7 @@ function ensureAffiliateDb() {
         status: 'scheduled',
         commission_rate_kes: 400,
         rules: 'Promote snack boxes for late-night university study sessions.',
-        assets_url: 'https://snackquest.co/assets/campaigns/campus-quest.zip',
+        assets_url: 'https://snackquests.shop/assets/campaigns/campus-quest.zip',
         deadline: '2026-10-01',
         cta_text: 'Claim Student Snack Pack',
         brand_guidelines: 'Focus on affordable price & instant fuel.',
@@ -9758,7 +9776,7 @@ function ensureAffiliateDb() {
         status: 'completed',
         commission_rate_kes: 600,
         rules: 'Review Swahili Chili Crunch snacks on video.',
-        assets_url: 'https://snackquest.co/assets/campaigns/chili-crunch.zip',
+        assets_url: 'https://snackquests.shop/assets/campaigns/chili-crunch.zip',
         deadline: '2026-06-30',
         cta_text: 'Try Chili Crunch Box',
         brand_guidelines: 'Show genuine spice reaction!',
@@ -9770,7 +9788,7 @@ function ensureAffiliateDb() {
         status: 'draft',
         commission_rate_kes: 800,
         rules: 'Holiday snack gifting video.',
-        assets_url: 'https://snackquest.co/assets/campaigns/madaraka.zip',
+        assets_url: 'https://snackquests.shop/assets/campaigns/madaraka.zip',
         deadline: '2026-12-01',
         cta_text: 'Gift a Holiday Box',
         brand_guidelines: 'Festive celebration packaging.',
@@ -9919,7 +9937,7 @@ app.post('/api/v1/customer/auth/signup', (req, res) => {
     id: newCustId,
     full_name,
     phone: cleanPhone,
-    email: email || `${refCode.toLowerCase()}@snackquest.co.ke`,
+    email: email || `${refCode.toLowerCase()}@snackquests.shop`,
     county: county || 'Nairobi',
     town: town || 'Nairobi CBD',
     delivery_address: 'Default Delivery Address',
@@ -10288,7 +10306,7 @@ app.post('/api/v1/admin/creator-campaigns', (req, res) => {
     status: status || 'active',
     commission_rate_kes: Number(commission_rate_kes) || 500,
     rules: rules || 'Promote Snack Quest boxes using your unique referral link.',
-    assets_url: assets_url || 'https://snackquest.co/assets/campaigns/default.zip',
+    assets_url: assets_url || 'https://snackquests.shop/assets/campaigns/default.zip',
     deadline: deadline || '2026-12-31',
     cta_text: cta_text || 'Order Now',
     brand_guidelines: brand_guidelines || 'Tag @SnackQuestKE in all posts.',
@@ -12000,24 +12018,24 @@ function ensureDomainConfigDb() {
           dns_status: 'RESOLVED'
         },
         staging: {
-          landing_url: 'https://staging.snackquest.co.ke',
-          api_base_url: 'https://staging-api.snackquest.co.ke',
-          quest_center_url: 'https://staging-quest.snackquest.co.ke',
-          creator_portal_url: 'https://staging-creators.snackquest.co.ke',
-          admin_os_url: 'https://staging-admin.snackquest.co.ke',
-          cdn_url: 'https://staging-cdn.snackquest.co.ke',
-          static_assets_url: 'https://staging-assets.snackquest.co.ke',
+          landing_url: 'https://staging.snackquests.shop',
+          api_base_url: 'https://staging-api.snackquests.shop',
+          quest_center_url: 'https://staging-quest.snackquests.shop',
+          creator_portal_url: 'https://staging-creators.snackquests.shop',
+          admin_os_url: 'https://staging-admin.snackquests.shop',
+          cdn_url: 'https://staging-cdn.snackquests.shop',
+          static_assets_url: 'https://staging-assets.snackquests.shop',
           ssl_status: 'HEALTHY',
           dns_status: 'RESOLVED'
         },
         production: {
-          landing_url: 'https://snackquest.co.ke',
-          api_base_url: 'https://api.snackquest.co.ke',
-          quest_center_url: 'https://quest.snackquest.co.ke',
-          creator_portal_url: 'https://creators.snackquest.co.ke',
-          admin_os_url: 'https://admin.snackquest.co.ke',
-          cdn_url: 'https://cdn.snackquest.co.ke',
-          static_assets_url: 'https://assets.snackquest.co.ke',
+          landing_url: 'https://snackquests.shop',
+          api_base_url: 'https://api.snackquests.shop',
+          quest_center_url: 'https://quest.snackquests.shop',
+          creator_portal_url: 'https://creators.snackquests.shop',
+          admin_os_url: 'https://admin.snackquests.shop',
+          cdn_url: 'https://cdn.snackquests.shop',
+          static_assets_url: 'https://assets.snackquests.shop',
           ssl_status: 'HEALTHY',
           dns_status: 'RESOLVED'
         }
@@ -12032,7 +12050,7 @@ function ensureDomainConfigDb() {
         creator_register: '/register'
       },
       country_domains: [
-        { code: 'KE', name: 'Kenya', domain: 'snackquest.co.ke', active: true, currency: 'KES' },
+        { code: 'KE', name: 'Kenya', domain: 'snackquests.shop', active: true, currency: 'KES' },
         { code: 'UG', name: 'Uganda', domain: 'snackquest.ug', active: true, currency: 'UGX' },
         { code: 'TZ', name: 'Tanzania', domain: 'snackquest.co.tz', active: true, currency: 'TZS' }
       ],
@@ -12530,7 +12548,7 @@ app.post('/api/v1/creator-auth/magic-login-request', (req, res) => {
   res.json({
     success: true,
     magic_token: magicToken,
-    magic_link: `https://snackquest.co/creator/magic-login?token=${magicToken}`,
+    magic_link: `https://snackquests.shop/creator/magic-login?token=${magicToken}`,
     message: 'Magic login link dispatched via WhatsApp.'
   });
 });
@@ -12614,6 +12632,8 @@ app.post('/api/v1/creator-auth/admin/status', (req, res) => {
 });
 
 
+
+  app.use(errorHandler);
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

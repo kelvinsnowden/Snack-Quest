@@ -427,7 +427,7 @@ export const LandingPageManager: React.FC = () => {
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `<script src="https://api.snackquest.co.ke/sdk.js"></script>\n<script>\n  SnackQuestTracker.init({\n    apiUrl: "https://api.snackquest.co.ke",\n    landingPageId: "${selectedLpForSdk.id}",\n    environment: "production"\n  });\n</script>`,
+                        `<script src="https://api.snackquests.shop/sdk.js"></script>\n<script>\n  SnackQuestTracker.init({\n    apiUrl: "https://api.snackquests.shop",\n    landingPageId: "${selectedLpForSdk.id}",\n    environment: "production"\n  });\n</script>`,
                         'script'
                       )
                     }
@@ -438,10 +438,10 @@ export const LandingPageManager: React.FC = () => {
                   </button>
                 </div>
                 <pre className="p-3 bg-slate-900 text-amber-400 text-xs font-mono rounded-xl overflow-x-auto">
-                  {`<script src="https://api.snackquest.co.ke/sdk.js"></script>
+                  {`<script src="https://api.snackquests.shop/sdk.js"></script>
 <script>
   SnackQuestTracker.init({
-    apiUrl: "https://api.snackquest.co.ke",
+    apiUrl: "https://api.snackquests.shop",
     landingPageId: "${selectedLpForSdk.id}",
     environment: "production"
   });
@@ -459,7 +459,7 @@ export const LandingPageManager: React.FC = () => {
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `import SnackQuestTracker from "@snackquest/sdk";\n\nSnackQuestTracker.init({\n  apiUrl: "https://api.snackquest.co.ke",\n  landingPageId: "${selectedLpForSdk.id}",\n  environment: "production"\n});`,
+                        `import SnackQuestTracker from "@snackquest/sdk";\n\nSnackQuestTracker.init({\n  apiUrl: "https://api.snackquests.shop",\n  landingPageId: "${selectedLpForSdk.id}",\n  environment: "production"\n});`,
                         'import'
                       )
                     }
@@ -473,7 +473,7 @@ export const LandingPageManager: React.FC = () => {
                   {`import SnackQuestTracker from "@snackquest/sdk";
 
 SnackQuestTracker.init({
-  apiUrl: "https://api.snackquest.co.ke",
+  apiUrl: "https://api.snackquests.shop",
   landingPageId: "${selectedLpForSdk.id}",
   environment: "production"
 });`}

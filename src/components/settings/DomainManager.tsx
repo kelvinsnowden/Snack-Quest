@@ -271,7 +271,7 @@ export const DomainManager: React.FC = () => {
               type="text"
               value={editUrls.landing_url}
               onChange={(e) => setEditUrls({ ...editUrls, landing_url: e.target.value })}
-              placeholder="https://snackquest.co.ke"
+              placeholder="https://snackquests.shop"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[10px] text-zinc-500 mt-1">Public marketing website</p>
@@ -283,7 +283,7 @@ export const DomainManager: React.FC = () => {
               type="text"
               value={editUrls.api_base_url}
               onChange={(e) => setEditUrls({ ...editUrls, api_base_url: e.target.value })}
-              placeholder="https://api.snackquest.co.ke"
+              placeholder="https://api.snackquests.shop"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[10px] text-zinc-500 mt-1">Operating System backend</p>
@@ -295,7 +295,7 @@ export const DomainManager: React.FC = () => {
               type="text"
               value={editUrls.quest_center_url}
               onChange={(e) => setEditUrls({ ...editUrls, quest_center_url: e.target.value })}
-              placeholder="https://quest.snackquest.co.ke"
+              placeholder="https://quest.snackquests.shop"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[10px] text-zinc-500 mt-1">Customer rewards & quest portal</p>
@@ -307,7 +307,7 @@ export const DomainManager: React.FC = () => {
               type="text"
               value={editUrls.creator_portal_url}
               onChange={(e) => setEditUrls({ ...editUrls, creator_portal_url: e.target.value })}
-              placeholder="https://creators.snackquest.co.ke"
+              placeholder="https://creators.snackquests.shop"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[10px] text-zinc-500 mt-1">Affiliate & creator workspace</p>
@@ -319,7 +319,7 @@ export const DomainManager: React.FC = () => {
               type="text"
               value={editUrls.admin_os_url}
               onChange={(e) => setEditUrls({ ...editUrls, admin_os_url: e.target.value })}
-              placeholder="https://admin.snackquest.co.ke"
+              placeholder="https://admin.snackquests.shop"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[10px] text-zinc-500 mt-1">Internal administrative console</p>
@@ -331,7 +331,7 @@ export const DomainManager: React.FC = () => {
               type="text"
               value={editUrls.cdn_url}
               onChange={(e) => setEditUrls({ ...editUrls, cdn_url: e.target.value, static_assets_url: e.target.value })}
-              placeholder="https://cdn.snackquest.co.ke"
+              placeholder="https://cdn.snackquests.shop"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[10px] text-zinc-500 mt-1">Edge content delivery network</p>

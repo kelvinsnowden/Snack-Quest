@@ -40,7 +40,7 @@ export default function QuestOverview({ overviewData, onNavigate }: QuestOvervie
   const ref = overviewData?.referral;
 
   const refCode = ref?.referral_code || 'WANJ123';
-  const refLink = ref?.referral_link || `https://snackquest.co.ke/join?ref=${refCode}`;
+  const refLink = ref?.referral_link || `https://snackquests.shop/join?ref=${refCode}`;
 
   const copyToClipboard = (text: string, isLink = false) => {
     navigator.clipboard.writeText(text);

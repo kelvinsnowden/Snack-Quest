@@ -37,10 +37,10 @@ export const PortalSwitcherBar: React.FC = () => {
               ? 'bg-blue-600 text-white font-bold shadow-sm'
               : 'bg-[#18181B] hover:bg-[#27272A] text-zinc-400 hover:text-white border border-[#27272A]'
           }`}
-          title="www.snackquest.shop"
+          title="www.snackquests.shop"
         >
           <ShoppingBag className="h-3 w-3" />
-          <span>www.snackquest.shop</span>
+          <span>www.snackquests.shop</span>
         </button>
 
         <button
@@ -50,10 +50,10 @@ export const PortalSwitcherBar: React.FC = () => {
               ? 'bg-purple-600 text-white font-bold shadow-sm'
               : 'bg-[#18181B] hover:bg-[#27272A] text-zinc-400 hover:text-white border border-[#27272A]'
           }`}
-          title="quest.snackquest.shop"
+          title="quest.snackquests.shop"
         >
           <Sparkles className="h-3 w-3" />
-          <span>quest.snackquest.shop</span>
+          <span>quest.snackquests.shop</span>
         </button>
 
         <button
@@ -63,10 +63,10 @@ export const PortalSwitcherBar: React.FC = () => {
               ? 'bg-amber-500 text-black font-bold shadow-sm'
               : 'bg-[#18181B] hover:bg-[#27272A] text-zinc-400 hover:text-white border border-[#27272A]'
           }`}
-          title="creators.snackquest.shop"
+          title="creators.snackquests.shop"
         >
           <Globe className="h-3 w-3" />
-          <span>creators.snackquest.shop</span>
+          <span>creators.snackquests.shop</span>
         </button>
 
         <button
@@ -76,10 +76,10 @@ export const PortalSwitcherBar: React.FC = () => {
               ? 'bg-emerald-600 text-white font-bold shadow-sm'
               : 'bg-[#18181B] hover:bg-[#27272A] text-zinc-400 hover:text-white border border-[#27272A]'
           }`}
-          title="admin.snackquest.shop"
+          title="admin.snackquests.shop"
         >
           <Shield className="h-3 w-3" />
-          <span>admin.snackquest.shop</span>
+          <span>admin.snackquests.shop</span>
         </button>
 
         <button
@@ -89,10 +89,10 @@ export const PortalSwitcherBar: React.FC = () => {
               ? 'bg-zinc-100 text-black font-bold shadow-sm'
               : 'bg-[#18181B] hover:bg-[#27272A] text-zinc-400 hover:text-white border border-[#27272A]'
           }`}
-          title="api.snackquest.shop"
+          title="api.snackquests.shop"
         >
           <Terminal className="h-3 w-3" />
-          <span>api.snackquest.shop</span>
+          <span>api.snackquests.shop</span>
         </button>
 
         {portalInfo.isOverride && (

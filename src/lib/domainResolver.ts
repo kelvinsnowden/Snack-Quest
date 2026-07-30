@@ -2,11 +2,11 @@
  * Domain & Subdomain Resolution Library for Snack Quest Multi-Portal Architecture
  * 
  * Target Subdomains:
- * - www.snackquest.shop -> 'public' (Public Website)
- * - quest.snackquest.shop -> 'quest' (Customer Quest Center)
- * - creators.snackquest.shop -> 'creators' (Creator Portal)
- * - admin.snackquest.shop -> 'admin' (Admin Operating System)
- * - api.snackquest.shop -> 'api' (API Gateway & Spec)
+ * - www.snackquests.shop -> 'public' (Public Website)
+ * - quest.snackquests.shop -> 'quest' (Customer Quest Center)
+ * - creators.snackquests.shop -> 'creators' (Creator Portal)
+ * - admin.snackquests.shop -> 'admin' (Admin Operating System)
+ * - api.snackquests.shop -> 'api' (API Gateway & Spec)
  */
 
 export type PortalType = 'public' | 'quest' | 'creators' | 'admin' | 'api';
@@ -23,27 +23,27 @@ export interface PortalInfo {
 export const PORTAL_METADATA: Record<PortalType, { title: string; subdomain: string; description: string }> = {
   public: {
     title: 'Snack Quest Public Website',
-    subdomain: 'www.snackquest.shop',
+    subdomain: 'www.snackquests.shop',
     description: 'Product catalog, creator recruitment, brand story, and direct box orders.'
   },
   quest: {
     title: 'Customer Quest Center',
-    subdomain: 'quest.snackquest.shop',
+    subdomain: 'quest.snackquests.shop',
     description: 'Consumer loyalty app, active quests, order tracking, and reward wallet.'
   },
   creators: {
     title: 'Creator Portal',
-    subdomain: 'creators.snackquest.shop',
+    subdomain: 'creators.snackquests.shop',
     description: 'Dedicated YouTube Studio-style affiliate & creator management dashboard.'
   },
   admin: {
     title: 'Admin Operating System',
-    subdomain: 'admin.snackquest.shop',
+    subdomain: 'admin.snackquests.shop',
     description: 'Enterprise staff control room for orders, inventory, finance, and moderation.'
   },
   api: {
     title: 'Snack Quest API Gateway',
-    subdomain: 'api.snackquest.shop',
+    subdomain: 'api.snackquests.shop',
     description: 'REST API endpoints documentation, webhooks, and system health status.'
   }
 };
@@ -57,7 +57,7 @@ export function resolvePortal(): PortalInfo {
       type: 'public',
       title: PORTAL_METADATA.public.title,
       subdomain: PORTAL_METADATA.public.subdomain,
-      expectedHost: 'www.snackquest.shop',
+      expectedHost: 'www.snackquests.shop',
       isOverride: false,
       detectedHostname: 'localhost'
     };
@@ -107,17 +107,18 @@ export function resolvePortal(): PortalInfo {
   // Hostname matching logic for real subdomains
   let detectedType: PortalType = 'public';
 
-  if (hostname.startsWith('admin.') || hostname === 'admin.snackquest.shop') {
+  if (hostname.startsWith('admin.') || hostname === 'admin.snackquests.shop' || hostname === 'admin.snackquest.shop') {
     detectedType = 'admin';
   } else if (
     hostname.startsWith('creators.') ||
     hostname.startsWith('creator.') ||
+    hostname === 'creators.snackquests.shop' ||
     hostname === 'creators.snackquest.shop'
   ) {
     detectedType = 'creators';
-  } else if (hostname.startsWith('quest.') || hostname === 'quest.snackquest.shop') {
+  } else if (hostname.startsWith('quest.') || hostname === 'quest.snackquests.shop' || hostname === 'quest.snackquest.shop') {
     detectedType = 'quest';
-  } else if (hostname.startsWith('api.') || hostname === 'api.snackquest.shop') {
+  } else if (hostname.startsWith('api.') || hostname === 'api.snackquests.shop' || hostname === 'api.snackquest.shop') {
     detectedType = 'api';
   } else {
     detectedType = 'public';

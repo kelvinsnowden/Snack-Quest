@@ -13,8 +13,8 @@ export function getApiBaseUrl(): string {
   const hostname = window.location.hostname;
   
   // Production subdomain setup
-  if (hostname.endsWith('snackquest.shop') && !hostname.includes('localhost')) {
-    return 'https://api.snackquest.shop';
+  if ((hostname.endsWith('snackquests.shop') || hostname.endsWith('snackquest.shop')) && !hostname.includes('localhost')) {
+    return 'https://api.snackquests.shop';
   }
 
   // Development or Cloud Run preview fallback (same-origin relative path)

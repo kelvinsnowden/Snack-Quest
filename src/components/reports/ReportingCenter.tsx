@@ -297,7 +297,7 @@ export const ReportingCenter: React.FC = () => {
                 <label className="text-xs font-semibold text-[#A1A1AA]">Recipient Emails (comma separated)</label>
                 <input
                   type="text"
-                  placeholder="admin@snackquest.co.ke, finance@snackquest.co.ke"
+                  placeholder="admin@snackquests.shop, finance@snackquests.shop"
                   value={recipients}
                   onChange={(e) => setRecipients(e.target.value)}
                   className="w-full mt-1.5 bg-[#18181B] border border-[#27272A] rounded-lg p-2.5 text-xs text-white focus:outline-none"

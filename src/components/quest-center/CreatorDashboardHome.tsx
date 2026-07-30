@@ -50,7 +50,7 @@ export default function CreatorDashboardHome({
 
   const cust = overviewData?.customer;
   const refCode = overviewData?.referral?.referral_code || cust?.referral_code || 'CREATOR254';
-  const refLink = overviewData?.referral?.referral_link || `https://snackquest.co.ke/join?ref=${refCode}`;
+  const refLink = overviewData?.referral?.referral_link || `https://snackquests.shop/join?ref=${refCode}`;
 
   useEffect(() => {
     if (!cust?.id) return;

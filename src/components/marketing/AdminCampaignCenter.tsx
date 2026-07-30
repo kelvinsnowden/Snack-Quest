@@ -188,7 +188,7 @@ export const AdminCampaignCenter: React.FC = () => {
       status: 'active',
       commission_rate_kes: 500,
       rules: 'Share unboxing or review video on TikTok/Instagram Reels with your referral link.',
-      assets_url: 'https://snackquest.co/assets/campaigns/default.zip',
+      assets_url: 'https://snackquests.shop/assets/campaigns/default.zip',
       deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       cta_text: 'Order Swahili Snack Box',
       brand_guidelines: 'Mention authentic gourmet Kenyan ingredients. Tag @SnackQuestKE.',

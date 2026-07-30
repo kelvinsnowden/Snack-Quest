@@ -1081,7 +1081,7 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                 <p className="text-zinc-300 font-mono break-all bg-[#09090B] p-2 rounded">{magicLinkGenerated}</p>
                 <button
                   onClick={() => {
-                    fetch(magicLinkGenerated.replace('https://snackquest.co', ''))
+                    fetch(magicLinkGenerated.replace('https://snackquests.shop', '').replace('https://snackquest.co', ''))
                       .then((r) => r.json())
                       .then((data) => {
                         if (data.creator) {
@@ -1279,7 +1279,7 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                     {currentCreator.referral_code}
                   </div>
                   <span className="text-[11px] text-zinc-400 block font-mono">
-                    https://snackquest.co/?ref={currentCreator.referral_code}
+                    https://snackquests.shop/?ref={currentCreator.referral_code}
                   </span>
                 </div>
 
@@ -1287,7 +1287,7 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                 <div className="space-y-2">
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(`https://snackquest.co/?ref=${currentCreator.referral_code}`);
+                      navigator.clipboard.writeText(`https://snackquests.shop/?ref=${currentCreator.referral_code}`);
                       addToast({ type: 'success', title: 'Link Copied', message: 'Referral link copied to clipboard!' });
                     }}
                     className="w-full py-3 bg-amber-500 text-black font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer text-xs"
@@ -1300,7 +1300,7 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                     onClick={() => {
                       window.open(
                         `https://api.whatsapp.com/send?text=${encodeURIComponent(
-                          `Get your Snack Quest box in Kenya! Order here: https://snackquest.co/?ref=${currentCreator.referral_code}`
+                          `Get your Snack Quest box in Kenya! Order here: https://snackquests.shop/?ref=${currentCreator.referral_code}`
                         )}`
                       );
                     }}
@@ -1453,12 +1453,12 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                   <input
                     type="text"
                     readOnly
-                    value={`https://snackquest.co/?ref=${currentCreator.referral_code}`}
+                    value={`https://snackquests.shop/?ref=${currentCreator.referral_code}`}
                     className="w-full bg-[#09090B] border border-[#27272A] text-white text-xs font-mono rounded-xl p-3 focus:outline-none"
                   />
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(`https://snackquest.co/?ref=${currentCreator.referral_code}`);
+                      navigator.clipboard.writeText(`https://snackquests.shop/?ref=${currentCreator.referral_code}`);
                       addToast({ type: 'success', title: 'Link Copied', message: 'Referral link copied to clipboard!' });
                     }}
                     className="px-4 py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs shrink-0 cursor-pointer"
@@ -1469,7 +1469,7 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                     onClick={() => {
                       window.open(
                         `https://api.whatsapp.com/send?text=${encodeURIComponent(
-                          `Get your gourmet Snack Quest box in Kenya! Order here: https://snackquest.co/?ref=${currentCreator.referral_code}`
+                          `Get your gourmet Snack Quest box in Kenya! Order here: https://snackquests.shop/?ref=${currentCreator.referral_code}`
                         )}`
                       );
                     }}
@@ -2326,7 +2326,7 @@ export const CreatorPortalAuth: React.FC<{ onComplete?: (creator: any) => void }
                 </label>
                 <input
                   type="url"
-                  placeholder="https://snackquest.co/uploads/creators/proof.jpg or .mp4 / Drive link"
+                  placeholder="https://snackquests.shop/uploads/creators/proof.jpg or .mp4 / Drive link"
                   value={deliverableForm.file_url}
                   onChange={(e) => setDeliverableForm({ ...deliverableForm, file_url: e.target.value })}
                   className="w-full bg-[#09090B] border border-[#27272A] text-white rounded-xl p-3 focus:outline-none focus:border-amber-500 font-mono text-[11px]"

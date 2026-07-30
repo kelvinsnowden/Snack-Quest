@@ -18,7 +18,7 @@ export const ApiGatewayPortal: React.FC = () => {
   ];
 
   const handleCopy = (path: string) => {
-    navigator.clipboard.writeText(`https://api.snackquest.shop${path}`);
+    navigator.clipboard.writeText(`https://api.snackquests.shop${path}`);
     setCopiedEndpoint(path);
     setTimeout(() => setCopiedEndpoint(null), 2000);
   };
@@ -32,7 +32,7 @@ export const ApiGatewayPortal: React.FC = () => {
             <Terminal className="h-5 w-5 text-black" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-white tracking-tight">api.snackquest.shop</h1>
+            <h1 className="text-xl font-extrabold text-white tracking-tight">api.snackquests.shop</h1>
             <p className="text-xs text-zinc-400">Enterprise REST API Gateway & Microservices Documentation</p>
           </div>
         </div>
@@ -49,7 +49,7 @@ export const ApiGatewayPortal: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
         <div className="p-5 bg-[#18181B] border border-[#27272A] rounded-2xl space-y-2">
           <span className="text-zinc-400 font-medium block">API Base Endpoint</span>
-          <code className="text-emerald-400 font-mono text-sm block">https://api.snackquest.shop</code>
+          <code className="text-emerald-400 font-mono text-sm block">https://api.snackquests.shop</code>
         </div>
         <div className="p-5 bg-[#18181B] border border-[#27272A] rounded-2xl space-y-2">
           <span className="text-zinc-400 font-medium block">Rate Limiting</span>
@@ -57,7 +57,7 @@ export const ApiGatewayPortal: React.FC = () => {
         </div>
         <div className="p-5 bg-[#18181B] border border-[#27272A] rounded-2xl space-y-2">
           <span className="text-zinc-400 font-medium block">Cross-Domain CORS</span>
-          <span className="text-purple-400 font-bold block">*.snackquest.shop Enabled</span>
+          <span className="text-purple-400 font-bold block">*.snackquests.shop Enabled</span>
         </div>
       </div>
 

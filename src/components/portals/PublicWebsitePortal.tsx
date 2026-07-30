@@ -111,7 +111,7 @@ export const PublicWebsitePortal: React.FC = () => {
           </div>
           <div>
             <span className="font-extrabold text-white text-base tracking-tight block">
-              www.snackquest.shop
+              www.snackquests.shop
             </span>
             <span className="text-[10px] text-zinc-400 block -mt-0.5">Kenya's Premier Gourmet Snack Subscription & Rewards</span>
           </div>
@@ -281,7 +281,7 @@ export const PublicWebsitePortal: React.FC = () => {
                 onClick={() => setDevPortalOverride('creators')}
                 className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs shadow-lg shadow-amber-500/20 cursor-pointer"
               >
-                Go to Creators Portal (creators.snackquest.shop)
+                Go to Creators Portal (creators.snackquests.shop)
               </button>
             </div>
           </div>
@@ -420,12 +420,12 @@ export const PublicWebsitePortal: React.FC = () => {
 
       {/* Footer */}
       <footer className="border-t border-[#27272A] py-8 px-4 text-center text-xs text-zinc-500 space-y-2">
-        <p>© 2026 SnackQuest Kenya Ltd. All Rights Reserved. Operating on www.snackquest.shop</p>
+        <p>© 2026 SnackQuest Kenya Ltd. All Rights Reserved. Operating on www.snackquests.shop</p>
         <div className="flex justify-center gap-4 text-zinc-400">
-          <button onClick={() => setDevPortalOverride('quest')} className="hover:underline">quest.snackquest.shop</button>
-          <button onClick={() => setDevPortalOverride('creators')} className="hover:underline">creators.snackquest.shop</button>
-          <button onClick={() => setDevPortalOverride('admin')} className="hover:underline">admin.snackquest.shop</button>
-          <button onClick={() => setDevPortalOverride('api')} className="hover:underline">api.snackquest.shop</button>
+          <button onClick={() => setDevPortalOverride('quest')} className="hover:underline">quest.snackquests.shop</button>
+          <button onClick={() => setDevPortalOverride('creators')} className="hover:underline">creators.snackquests.shop</button>
+          <button onClick={() => setDevPortalOverride('admin')} className="hover:underline">admin.snackquests.shop</button>
+          <button onClick={() => setDevPortalOverride('api')} className="hover:underline">api.snackquests.shop</button>
         </div>
       </footer>
     </div>

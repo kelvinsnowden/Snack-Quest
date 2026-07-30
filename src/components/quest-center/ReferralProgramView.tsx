@@ -27,7 +27,7 @@ export default function ReferralProgramView({ customerId, referralData }: Referr
   const [loadingFriends, setLoadingFriends] = useState(true);
 
   const referralCode = referralData?.referral_code || 'WANJ123';
-  const referralLink = referralData?.referral_link || `https://snackquest.co.ke/join?ref=${referralCode}`;
+  const referralLink = referralData?.referral_link || `https://snackquests.shop/join?ref=${referralCode}`;
 
   const copyCode = () => {
     navigator.clipboard.writeText(referralCode);
