@@ -1,12 +1,128 @@
 rules_version = '2';
 
-// Placeholder deny-by-default ruleset for emulator bring-up.
-// Replaced with the full ruleset from TECHNICAL_DESIGN_DOCUMENT.md §9
-// in a later Phase 0 milestone (reference Repository/Service pair + rules).
+// Full ruleset from TECHNICAL_DESIGN_DOCUMENT.md §9. Deny by default,
+// grant explicitly — every rule below is additive to an implicit
+// `allow read, write: if false;` base.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function hasRole(role) {
+      return isSignedIn() && role in request.auth.token.roles;
+    }
+    function isAdmin() {
+      return hasRole('admin') || hasRole('super_admin');
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isNotDeleted() {
+      return resource.data.deletedAt == null;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid); // triggered at sign-up, uid must match auth
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if false; // soft delete only, via server
+    }
+
+    match /creatorProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if false; // server-created at sign-up (see §8 automation)
+      allow update: if (isOwner(uid) &&
+                          // creators may edit their own profile fields,
+                          // but never the financial fields directly
+                          !request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasAny(['availableCashKes','pendingEarningsKes',
+                                     'lifetimeEarningsKes','status'])) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /customerProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow update: if (isOwner(uid) &&
+                          !request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasAny(['walletBalanceKes','lifetimeCreditsEarnedKes'])) || isAdmin();
+      allow create, delete: if false;
+    }
+
+    match /staffProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if hasRole('super_admin'); // only super admins manage staff
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if isSignedIn() && resource.data.status == 'active' || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /campaignSubmissions/{submissionId} {
+      allow read: if isAdmin() ||
+                     (hasRole('creator') && resource.data.creatorId == request.auth.uid);
+      allow create: if hasRole('creator') &&
+                       request.resource.data.creatorId == request.auth.uid &&
+                       request.resource.data.status == 'pending'; // cannot self-approve
+      allow update: if isAdmin(); // status transitions are admin/server-only
+      allow delete: if false;
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       request.resource.data.ownerId == request.auth.uid &&
+                       request.resource.data.status == 'pending';
+      allow update: if isAdmin(); // approve/reject/pay is admin/server-only
+      allow delete: if false;
+    }
+
+    match /walletTransactions/{transactionId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.customerId == request.auth.uid);
+      allow write: if false; // ledger is server/Cloud-Function-written only, ever
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.customerId == request.auth.uid);
+      allow create: if false; // orders created via Route Handler (payment validation)
+      allow update: if isAdmin();
+
+      match /items/{itemId} {
+        allow read: if isAdmin() ||
+                       (isSignedIn() &&
+                        get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid);
+        allow write: if false;
+      }
+    }
+
+    match /questSubmissions/{submissionId} {
+      allow read: if isAdmin() ||
+                     (hasRole('customer') && resource.data.customerId == request.auth.uid);
+      allow create: if hasRole('customer') &&
+                       request.resource.data.customerId == request.auth.uid &&
+                       request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.recipientId == request.auth.uid);
+      allow update: if isSignedIn() &&
+                       resource.data.recipientId == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false; // server-written only
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Function / Admin SDK only, immutable
     }
   }
 }
