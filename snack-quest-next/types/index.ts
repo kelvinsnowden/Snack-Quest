@@ -25,3 +25,4 @@ export * from './business';
 export * from './pickupStation';
 export * from './deliveryZoneRule';
 export * from './delivery';
+export * from './inventoryMovement';

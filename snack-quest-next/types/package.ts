@@ -20,6 +20,13 @@ export interface Package extends AuditFields {
    * a given box are ready to ship — never a fabricated number.
    */
   stockCount?: number;
+  /**
+   * Below this, the Admin Inventory view (§ Admin: Inventory) flags
+   * the box as low stock. Only meaningful when `stockCount` is
+   * tracked — undefined here just means "no alert threshold set",
+   * never a fabricated default.
+   */
+  lowStockThreshold?: number;
   /** Vercel Blob URL — null until an image is uploaded. Synced to the WhatsApp product catalog (§ product catalog sync) alongside name/description/price. */
   imageUrl: string | null;
 }

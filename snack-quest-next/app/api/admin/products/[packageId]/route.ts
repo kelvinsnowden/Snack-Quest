@@ -8,6 +8,7 @@ interface UpdateProductBody {
   priceKes?: unknown;
   isActive?: unknown;
   stockCount?: unknown;
+  lowStockThreshold?: unknown;
   imageUrl?: unknown;
 }
 
@@ -43,6 +44,16 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
       return { error: '"stockCount" must be a non-negative number when provided.' };
     }
     patch.stockCount = body.stockCount;
+  }
+  if (body.lowStockThreshold !== undefined) {
+    if (
+      typeof body.lowStockThreshold !== 'number' ||
+      !Number.isFinite(body.lowStockThreshold) ||
+      body.lowStockThreshold < 0
+    ) {
+      return { error: '"lowStockThreshold" must be a non-negative number when provided.' };
+    }
+    patch.lowStockThreshold = body.lowStockThreshold;
   }
   if (body.imageUrl !== undefined) {
     if (body.imageUrl !== null && typeof body.imageUrl !== 'string') {

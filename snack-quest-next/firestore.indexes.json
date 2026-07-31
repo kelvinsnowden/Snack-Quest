@@ -90,6 +90,15 @@
       "collectionGroup": "attempts",
       "queryScope": "COLLECTION_GROUP",
       "fields": [{ "fieldPath": "checkoutRequestId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "inventoryMovements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "packageId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

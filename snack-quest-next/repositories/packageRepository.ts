@@ -11,6 +11,27 @@ export class OutOfStockError extends Error {
   }
 }
 
+export class PackageNotFoundError extends Error {
+  constructor(packageId: string) {
+    super(`Package ${packageId} not found`);
+    this.name = 'PackageNotFoundError';
+  }
+}
+
+export class StockNotTrackedError extends Error {
+  constructor(packageId: string) {
+    super(`Package ${packageId} does not track stock — enable stock tracking before adjusting it`);
+    this.name = 'StockNotTrackedError';
+  }
+}
+
+export class InsufficientStockError extends Error {
+  constructor(packageId: string, attempted: number, available: number) {
+    super(`Cannot remove ${attempted} units from package ${packageId} — only ${available} in stock`);
+    this.name = 'InsufficientStockError';
+  }
+}
+
 /**
  * Decrements stock inside an existing transaction, if this package
  * tracks stock at all. Undefined `stockCount` means unlimited — most
@@ -33,6 +54,37 @@ export async function reserveStockInTransaction(
     throw new OutOfStockError(packageId);
   }
   tx.update(ref, { stockCount: data.stockCount - 1 });
+}
+
+/**
+ * Applies a manual stock adjustment (§ Admin: Inventory) inside the
+ * caller's transaction, tenant-scoped and validated: the package must
+ * belong to `businessId`, must actually track stock (`stockCount` set —
+ * an "unlimited" box has nothing to adjust), and the result must never
+ * go negative. Returns the resulting `stockCount` so the caller can
+ * record it on the movement it writes in the same transaction.
+ */
+export async function adjustStockInTransaction(
+  tx: Transaction,
+  businessId: string,
+  packageId: string,
+  delta: number,
+): Promise<number> {
+  const ref = adminFirestore.collection(COLLECTION).doc(packageId);
+  const snapshot = await tx.get(ref);
+  const data = snapshot.data() as Package | undefined;
+  if (!data || data.businessId !== businessId) {
+    throw new PackageNotFoundError(packageId);
+  }
+  if (data.stockCount === undefined) {
+    throw new StockNotTrackedError(packageId);
+  }
+  const next = data.stockCount + delta;
+  if (next < 0) {
+    throw new InsufficientStockError(packageId, Math.abs(delta), data.stockCount);
+  }
+  tx.update(ref, { stockCount: next, updatedAt: FieldValue.serverTimestamp() });
+  return next;
 }
 
 /**

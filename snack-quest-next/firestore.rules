@@ -209,6 +209,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // inventoryMovements: the stock-adjustment audit trail (§ Admin:
+    // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
+    // is the sole writer, always inside the same transaction as the
+    // packages.stockCount update it records).
+    match /inventoryMovements/{movementId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // conversationCheckoutSnapshots: server-only, same reasoning as
     // conversations — the frozen pre-payment snapshot has no client
     // reader in the WhatsApp-first flow.

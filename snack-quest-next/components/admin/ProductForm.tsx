@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
 import { ImagePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ export interface ProductFormValues {
   priceKes: number;
   isActive: boolean;
   stockCount?: number;
+  lowStockThreshold?: number;
   imageUrl: string | null;
 }
 
@@ -32,6 +34,7 @@ const DEFAULTS: ProductFormValues = {
   priceKes: 0,
   isActive: true,
   stockCount: undefined,
+  lowStockThreshold: undefined,
   imageUrl: null,
 };
 
@@ -101,7 +104,15 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
         priceKes: values.priceKes,
         isActive: values.isActive,
         imageUrl,
-        ...(trackStock && typeof values.stockCount === 'number' ? { stockCount: values.stockCount } : {}),
+        // Only sent on create — an initial stock count, not an adjustment.
+        // Editing an existing product's stock happens on the audited
+        // Inventory page instead (§ Admin: Inventory), never here.
+        ...(mode === 'create' && trackStock && typeof values.stockCount === 'number'
+          ? { stockCount: values.stockCount }
+          : {}),
+        ...(trackStock && typeof values.lowStockThreshold === 'number'
+          ? { lowStockThreshold: values.lowStockThreshold }
+          : {}),
       };
 
       const response = await fetch(
@@ -204,6 +215,7 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
                 <Label htmlFor="stockCount">Track stock</Label>
                 <Switch
                   checked={trackStock}
+                  disabled={mode === 'edit'}
                   onCheckedChange={(checked) => {
                     setTrackStock(checked);
                     if (!checked) setValues((v) => ({ ...v, stockCount: undefined }));
@@ -215,12 +227,38 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
                 type="number"
                 min={0}
                 step={1}
-                disabled={!trackStock}
+                disabled={!trackStock || mode === 'edit'}
                 value={values.stockCount ?? ''}
                 onChange={(event) => setValues((v) => ({ ...v, stockCount: Number(event.target.value) }))}
                 placeholder={trackStock ? '0' : 'Unlimited'}
               />
+              {mode === 'edit' && trackStock ? (
+                <p className="text-caption text-muted-foreground">
+                  Adjust stock from{' '}
+                  <Link href="/admin/inventory" className="text-primary hover:underline">
+                    Inventory
+                  </Link>
+                  .
+                </p>
+              ) : null}
             </div>
+
+            {trackStock ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="lowStockThreshold">Low stock alert at</Label>
+                <Input
+                  id="lowStockThreshold"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={values.lowStockThreshold ?? ''}
+                  onChange={(event) =>
+                    setValues((v) => ({ ...v, lowStockThreshold: Number(event.target.value) }))
+                  }
+                  placeholder="e.g. 10"
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-between rounded-md border border-border p-3">

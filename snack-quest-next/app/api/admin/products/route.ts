@@ -7,6 +7,7 @@ interface CreateProductBody {
   priceKes?: unknown;
   isActive?: unknown;
   stockCount?: unknown;
+  lowStockThreshold?: unknown;
   imageUrl?: unknown;
 }
 
@@ -29,6 +30,13 @@ function validate(body: CreateProductBody): { error: string } | null {
     (typeof body.stockCount !== 'number' || !Number.isFinite(body.stockCount) || body.stockCount < 0)
   ) {
     return { error: '"stockCount" must be a non-negative number, null, or omitted.' };
+  }
+  if (
+    body.lowStockThreshold !== undefined &&
+    body.lowStockThreshold !== null &&
+    (typeof body.lowStockThreshold !== 'number' || !Number.isFinite(body.lowStockThreshold) || body.lowStockThreshold < 0)
+  ) {
+    return { error: '"lowStockThreshold" must be a non-negative number, null, or omitted.' };
   }
   if (body.imageUrl !== undefined && body.imageUrl !== null && typeof body.imageUrl !== 'string') {
     return { error: '"imageUrl" must be a string or null when provided.' };
@@ -68,8 +76,9 @@ export async function POST(request: Request): Promise<Response> {
       priceKes: body.priceKes as number,
       isActive: (body.isActive as boolean | undefined) ?? true,
       imageUrl: (body.imageUrl as string | null | undefined) ?? null,
-      // Omitted entirely (not `undefined`) when unlimited — Firestore rejects an explicit `undefined` field value.
+      // Omitted entirely (not `undefined`) when unset — Firestore rejects an explicit `undefined` field value.
       ...(typeof body.stockCount === 'number' ? { stockCount: body.stockCount } : {}),
+      ...(typeof body.lowStockThreshold === 'number' ? { lowStockThreshold: body.lowStockThreshold } : {}),
     },
     session.uid,
   );
