@@ -56,3 +56,16 @@ describe('referralAttributionRepository.listByBusiness', () => {
     expect(secondPage.attributions).toHaveLength(1);
   });
 });
+
+describe('referralAttributionRepository.listByCreator', () => {
+  it('lists only the given creator’s attributions within the business, newest first', async () => {
+    await seedAttribution({ creatorId: 'creator-1', orderId: 'order-mine' });
+    await seedAttribution({ creatorId: 'creator-2', orderId: 'order-theirs' });
+    await seedAttribution({ businessId: OTHER_BUSINESS_ID, creatorId: 'creator-1', orderId: 'order-other-biz' });
+
+    const { attributions } = await referralAttributionRepository.listByCreator(BUSINESS_ID, 'creator-1');
+
+    expect(attributions).toHaveLength(1);
+    expect(attributions[0].data.orderId).toBe('order-mine');
+  });
+});

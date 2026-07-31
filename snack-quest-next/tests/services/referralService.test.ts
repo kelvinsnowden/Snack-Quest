@@ -213,6 +213,41 @@ describe('ReferralService.recordClick', () => {
   });
 });
 
+describe('ReferralService.listCommissionsForCreator', () => {
+  it('returns only the given creator’s own commission history', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    const linkId = await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-1', code: 'SAVE10', discountKes: 100, commissionKes: 50, isActive: true },
+      'creator-1',
+    );
+    await referralService.awardCommission({
+      businessId: BUSINESS_ID,
+      referralLinkId: linkId,
+      ownerId: 'creator-1',
+      orderId: 'order-1',
+      conversationId: 'conv-1',
+      discountKes: 100,
+      commissionKes: 50,
+    });
+    await adminFirestore.runTransaction(async (tx) => {
+      createAttributionInTransaction(tx, {
+        businessId: BUSINESS_ID,
+        referralLinkId: linkId,
+        creatorId: 'someone-else',
+        orderId: 'order-2',
+        conversationId: 'conv-2',
+        discountKes: 10,
+        commissionKes: 5,
+      });
+    });
+
+    const { attributions } = await referralService.listCommissionsForCreator(BUSINESS_ID, 'creator-1');
+
+    expect(attributions).toHaveLength(1);
+    expect(attributions[0].data.orderId).toBe('order-1');
+  });
+});
+
 describe('ReferralService.setActiveForOwner', () => {
   it('lets a creator deactivate their own link', async () => {
     await seedCreator('creator-1', { businessId: BUSINESS_ID });

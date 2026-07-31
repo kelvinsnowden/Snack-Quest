@@ -186,6 +186,15 @@ class ReferralService {
     return referralLinkRepository.listByOwner(businessId, ownerId, options);
   }
 
+  /** § Creator Portal commission views — a creator's own commission history, same "already earned, no approval queue" reality as `referralAttributionRepository`'s own doc comment describes. */
+  async listCommissionsForCreator(
+    businessId: string,
+    creatorId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ attributions: { id: string; data: ReferralAttribution }[]; nextCursor: string | null }> {
+    return referralAttributionRepository.listByCreator(businessId, creatorId, options);
+  }
+
   /**
    * § app/r/[code]/route.ts — a real click-through. Fails soft (returns
    * null) for an unknown or inactive code so the redirect route can

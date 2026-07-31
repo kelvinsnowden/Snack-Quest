@@ -62,6 +62,42 @@ class ReferralAttributionRepository {
       nextCursor: hasMore ? docs[docs.length - 1].id : null,
     };
   }
+
+  /**
+   * § Creator Portal commission views — a creator's own commission
+   * history, newest first. Same "no pending-approval state" reality
+   * as `listByBusiness` above: every row here is already earned money,
+   * not a queue waiting on anything.
+   */
+  async listByCreator(
+    businessId: string,
+    creatorId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ attributions: { id: string; data: ReferralAttribution }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 25;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('creatorId', '==', creatorId)
+      .orderBy('createdAt', 'desc')
+      .limit(pageSize + 1) as FirebaseFirestore.Query;
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      attributions: docs.map((doc) => ({ id: doc.id, data: doc.data() as ReferralAttribution })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
 }
 
 export const referralAttributionRepository = new ReferralAttributionRepository();
