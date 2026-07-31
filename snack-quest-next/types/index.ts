@@ -12,3 +12,8 @@ export * from './questSubmission';
 export * from './notification';
 export * from './auditLog';
 export * from './webhookEvent';
+export * from './conversation';
+export * from './conversationCheckoutSnapshot';
+export * from './domainEvent';
+export * from './package';
+export * from './paymentIntent';

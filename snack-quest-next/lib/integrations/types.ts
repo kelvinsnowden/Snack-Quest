@@ -41,20 +41,66 @@ export interface WhatsAppSendResult {
   providerMessageId: string;
 }
 
+export interface WhatsAppButton {
+  id: string;
+  title: string;
+}
+
+export interface WhatsAppListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface WhatsAppListSection {
+  title: string;
+  rows: WhatsAppListRow[];
+}
+
 export interface WhatsAppInboundMessage {
   providerMessageId: string;
   fromPhone: string;
   text: string;
+  /** Set when the inbound message was a button/list reply rather than free text. */
+  selectedId?: string;
   receivedAt: string;
 }
 
+/**
+ * The full interface every WhatsApp BSP implementation must satisfy —
+ * Whatchimp today, anything else later, never touched by a Service
+ * directly (PLATFORM_ARCHITECTURE_V2.md §13). `sendMessage` is
+ * free-text (only valid inside WhatsApp's 24-hour customer-initiated
+ * session window); `sendTemplate` is the pre-approved-template path
+ * required to message a customer outside that window — a real
+ * WhatsApp Business API distinction, not an implementation detail.
+ */
 export interface WhatsAppGateway {
-  sendMessage(input: {
+  sendMessage(input: { phone: string; text: string }): Promise<WhatsAppSendResult>;
+  sendTemplate(input: {
     phone: string;
     templateCode: string;
     params: Record<string, string>;
   }): Promise<WhatsAppSendResult>;
-  parseInboundWebhook(payload: unknown): WhatsAppInboundMessage;
+  sendButtons(input: {
+    phone: string;
+    bodyText: string;
+    buttons: WhatsAppButton[];
+  }): Promise<WhatsAppSendResult>;
+  sendList(input: {
+    phone: string;
+    bodyText: string;
+    buttonLabel: string;
+    sections: WhatsAppListSection[];
+  }): Promise<WhatsAppSendResult>;
+  markAsRead(providerMessageId: string): Promise<void>;
+  parseIncomingMessage(payload: unknown): WhatsAppInboundMessage;
+  /** Handles the BSP's webhook-verification handshake (e.g. a GET challenge echo). Returns the challenge to echo back, or null if verification fails. */
+  verifyWebhookChallenge(query: {
+    mode?: string;
+    token?: string;
+    challenge?: string;
+  }): string | null;
 }
 
 export interface ShipmentResult {

@@ -63,8 +63,32 @@ function createAdminApp(): App {
   });
 }
 
-const app = createAdminApp();
+// Lazy: app/SDK creation is deferred to first actual use, not import
+// time. Route Handlers pull this module in transitively (via
+// Services/Repositories), and Next.js's build-time "collect page
+// data" step imports every route module to inspect its config —
+// without this, that step would call requireEnv() and fail the build
+// in any environment without real credentials configured, even though
+// no request was ever made. A Proxy keeps every existing call site
+// (`adminFirestore.collection(...)`, `adminAuth.verifyIdToken(...)`)
+// unchanged; only the first property access triggers real init.
+function lazy<T extends object>(factory: () => T): T {
+  let instance: T | undefined;
+  return new Proxy({} as T, {
+    get(_target, prop, receiver) {
+      instance ??= factory();
+      const value = Reflect.get(instance as object, prop, receiver);
+      return typeof value === 'function' ? value.bind(instance) : value;
+    },
+  });
+}
 
-export const adminAuth: Auth = getAuth(app);
-export const adminFirestore: Firestore = getFirestore(app);
-export const adminStorage: Storage = getStorage(app);
+let cachedApp: App | undefined;
+function getAdminApp(): App {
+  cachedApp ??= createAdminApp();
+  return cachedApp;
+}
+
+export const adminAuth: Auth = lazy(() => getAuth(getAdminApp()));
+export const adminFirestore: Firestore = lazy(() => getFirestore(getAdminApp()));
+export const adminStorage: Storage = lazy(() => getStorage(getAdminApp()));

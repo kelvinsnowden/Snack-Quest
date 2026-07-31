@@ -139,5 +139,61 @@ service cloud.firestore {
     match /outboundGatewayCalls/{callId} {
       allow read, write: if false; // Admin SDK only, always
     }
+
+    // conversations: the transactional surface (§6). Most Snack Quest
+    // customers never have a Firebase Auth account at all (WhatsApp is
+    // the identity), so in practice almost every read of this
+    // collection is server-side (Admin SDK, bypasses rules) — this
+    // rule only matters for the minority of customers who ARE
+    // identified AND later sign in (e.g. via a future Quest Center),
+    // letting them see their own conversation history.
+    match /conversations/{conversationId} {
+      allow read: if isSignedIn() && resource.data.customerId == request.auth.uid;
+      allow write: if false; // ConversationService (Admin SDK) only, always
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() &&
+                       get(/databases/$(database)/documents/conversations/$(conversationId)).data.customerId == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
+    // packages: public product catalog for the conversation's box
+    // presentation step (§5) — same public-read/admin-write shape as
+    // campaigns' active-only rule.
+    match /packages/{packageId} {
+      allow read: if resource.data.isActive == true || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // conversationCheckoutSnapshots: server-only, same reasoning as
+    // conversations — the frozen pre-payment snapshot has no client
+    // reader in the WhatsApp-first flow.
+    match /conversationCheckoutSnapshots/{snapshotId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // paymentIntents: a signed-in customer may read their own intent's
+    // status; every transition is server-verified (§7).
+    match /paymentIntents/{intentId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.customerId == request.auth.uid);
+      allow write: if false;
+
+      match /attempts/{attemptId} {
+        allow read: if isAdmin() ||
+                       (isSignedIn() &&
+                        get(/databases/$(database)/documents/paymentIntents/$(intentId)).data.customerId == request.auth.uid);
+        allow write: if false;
+      }
+    }
+
+    // domainEvents: internal event log (§14) — admin-visible for
+    // debugging, never client-written.
+    match /domainEvents/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }
