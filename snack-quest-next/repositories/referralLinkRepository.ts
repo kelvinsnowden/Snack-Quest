@@ -6,9 +6,17 @@ import type { ReferralLink } from '@/types';
 const COLLECTION = 'referralLinks';
 
 class ReferralLinkRepository {
-  async findByCode(code: string): Promise<{ id: string; data: ReferralLink } | null> {
+  /**
+   * Scoped by `businessId` — a referral code is only unique within one
+   * tenant. Two businesses' creators could both hand out "SAVE10".
+   */
+  async findByCode(
+    businessId: string,
+    code: string,
+  ): Promise<{ id: string; data: ReferralLink } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
+      .where('businessId', '==', businessId)
       .where('code', '==', code)
       .where('isActive', '==', true)
       .limit(1)

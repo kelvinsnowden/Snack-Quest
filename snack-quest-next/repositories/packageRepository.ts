@@ -52,9 +52,10 @@ class PackageRepository {
    * a package by that same order, so an unordered query here would
    * make the numbered options a customer sees unstable between reads.
    */
-  async listActive(): Promise<{ id: string; data: Package }[]> {
+  async listActive(businessId: string): Promise<{ id: string; data: Package }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
+      .where('businessId', '==', businessId)
       .where('isActive', '==', true)
       .orderBy('priceKes', 'asc')
       .get();

@@ -1,32 +1,15 @@
 import 'server-only';
 
+import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import type { DarajaIntegrationSecret } from '@/types';
+
 /**
- * Daraja credentials, read lazily (only when a Gateway method actually
- * runs), not at module load — so importing `DarajaGateway` never
- * crashes a build or an unrelated request just because credentials
- * aren't configured yet. Keyed by env var today; the seam for a real
- * second tenant (PLATFORM_ARCHITECTURE_V2.md §17) is resolving these
- * from `businesses/{businessId}` instead — deferred until a second
- * tenant exists, per that section's own reasoning.
+ * Daraja credentials, resolved per business
+ * (`businesses/{businessId}/integrationSecrets/daraja`) — never a bare
+ * env var. `process.env` is only ever touched by seed scripts, which
+ * write a tenant's credentials in here once, the same way any other
+ * tenant would configure their own.
  */
-
-export class DarajaConfigError extends Error {
-  constructor(missing: string) {
-    super(
-      `Missing required Daraja configuration: ${missing}. Register a Daraja sandbox app at https://developer.safaricom.co.ke and set it in .env.local (see .env.local.example).`,
-    );
-    this.name = 'DarajaConfigError';
-  }
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new DarajaConfigError(name);
-  }
-  return value;
-}
-
 export interface DarajaConfig {
   consumerKey: string;
   consumerSecret: string;
@@ -36,17 +19,20 @@ export interface DarajaConfig {
   baseUrl: string;
 }
 
-export function getDarajaConfig(): DarajaConfig {
-  const env = process.env.DARAJA_ENV === 'production' ? 'production' : 'sandbox';
+function toBaseUrl(secret: DarajaIntegrationSecret): string {
+  return secret.env === 'production'
+    ? 'https://api.safaricom.co.ke'
+    : 'https://sandbox.safaricom.co.ke';
+}
+
+export async function getDarajaConfig(businessId: string): Promise<DarajaConfig> {
+  const secret = await businessIntegrationSecretRepository.get(businessId, 'daraja');
   return {
-    consumerKey: requireEnv('DARAJA_CONSUMER_KEY'),
-    consumerSecret: requireEnv('DARAJA_CONSUMER_SECRET'),
-    shortcode: requireEnv('DARAJA_SHORTCODE'),
-    passkey: requireEnv('DARAJA_PASSKEY'),
-    callbackUrl: requireEnv('DARAJA_CALLBACK_URL'),
-    baseUrl:
-      env === 'production'
-        ? 'https://api.safaricom.co.ke'
-        : 'https://sandbox.safaricom.co.ke',
+    consumerKey: secret.consumerKey,
+    consumerSecret: secret.consumerSecret,
+    shortcode: secret.shortcode,
+    passkey: secret.passkey,
+    callbackUrl: secret.callbackUrl,
+    baseUrl: toBaseUrl(secret),
   };
 }

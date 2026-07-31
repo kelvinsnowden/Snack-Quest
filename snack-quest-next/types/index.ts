@@ -21,3 +21,4 @@ export * from './referralLink';
 export * from './referralAttribution';
 export * from './creatorEarningsLedgerEntry';
 export * from './shipment';
+export * from './business';

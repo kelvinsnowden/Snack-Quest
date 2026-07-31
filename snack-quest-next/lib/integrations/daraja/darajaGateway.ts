@@ -7,16 +7,20 @@ import type { PaymentCallbackResult, PaymentGateway, StkPushResult } from '../ty
 
 const GATEWAY_NAME = 'daraja';
 
-let cachedToken: { value: string; expiresAt: number } | null = null;
+// Keyed by businessId — each tenant has its own consumerKey/secret and
+// therefore its own token; a single shared cache would leak one
+// tenant's token into another's requests.
+const tokenCache = new Map<string, { value: string; expiresAt: number }>();
 
 /** Reset between test runs / after a credential change. Not used in production code paths. */
 export function resetDarajaTokenCache(): void {
-  cachedToken = null;
+  tokenCache.clear();
 }
 
-async function fetchAccessToken(config: DarajaConfig): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now()) {
-    return cachedToken.value;
+async function fetchAccessToken(businessId: string, config: DarajaConfig): Promise<string> {
+  const cached = tokenCache.get(businessId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
 
   const credentials = Buffer.from(
@@ -25,7 +29,7 @@ async function fetchAccessToken(config: DarajaConfig): Promise<string> {
 
   // OAuth token fetch has no side effects — safe to retry on transient
   // failure, unlike the STK push initiation below.
-  const data = await withCircuitBreaker(GATEWAY_NAME, () =>
+  const data = await withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, () =>
     withRetry(async () => {
       const response = await fetch(
         `${config.baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
@@ -43,12 +47,13 @@ async function fetchAccessToken(config: DarajaConfig): Promise<string> {
     }),
   );
 
-  cachedToken = {
+  const entry = {
     value: data.access_token,
     // Refresh a minute early rather than racing the provider's own expiry.
     expiresAt: Date.now() + (Number(data.expires_in) - 60) * 1000,
   };
-  return cachedToken.value;
+  tokenCache.set(businessId, entry);
+  return entry.value;
 }
 
 function buildPassword(config: DarajaConfig, timestamp: string): string {
@@ -89,13 +94,14 @@ interface RawDarajaCallback {
 
 class DarajaGateway implements PaymentGateway {
   async initiateStkPush(input: {
+    businessId: string;
     phone: string;
     amountKes: number;
     accountReference: string;
     transactionDesc: string;
   }): Promise<StkPushResult> {
-    const config = getDarajaConfig();
-    const accessToken = await fetchAccessToken(config);
+    const config = await getDarajaConfig(input.businessId);
+    const accessToken = await fetchAccessToken(input.businessId, config);
     const timestamp = timestampNow();
     const password = buildPassword(config, timestamp);
 
@@ -105,7 +111,7 @@ class DarajaGateway implements PaymentGateway {
     // retry after an ambiguous failure is a decision for PaymentService
     // (§7), which has payment-intent state to reason about whether a
     // prior attempt actually reached Safaricom — this Gateway doesn't.
-    return withCircuitBreaker(GATEWAY_NAME, async () => {
+    return withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, async () => {
       const response = await fetch(
         `${config.baseUrl}/mpesa/stkpush/v1/processrequest`,
         {

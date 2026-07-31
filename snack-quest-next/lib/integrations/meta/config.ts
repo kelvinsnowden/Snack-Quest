@@ -1,19 +1,6 @@
 import 'server-only';
 
-export class MetaConfigError extends Error {
-  constructor(missing: string) {
-    super(`Missing required Meta configuration: ${missing}. See .env.local.example.`);
-    this.name = 'MetaConfigError';
-  }
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new MetaConfigError(name);
-  }
-  return value;
-}
+import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 
 export interface MetaConfig {
   pixelId: string;
@@ -21,10 +8,11 @@ export interface MetaConfig {
   apiVersion: string;
 }
 
-export function getMetaConfig(): MetaConfig {
+export async function getMetaConfig(businessId: string): Promise<MetaConfig> {
+  const secret = await businessIntegrationSecretRepository.get(businessId, 'meta');
   return {
-    pixelId: requireEnv('META_PIXEL_ID'),
-    accessToken: requireEnv('META_ACCESS_TOKEN'),
-    apiVersion: process.env.META_API_VERSION ?? 'v21.0',
+    pixelId: secret.pixelId,
+    accessToken: secret.accessToken,
+    apiVersion: secret.apiVersion ?? 'v21.0',
   };
 }

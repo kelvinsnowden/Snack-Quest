@@ -24,7 +24,17 @@ import type { ConversationStateBlob } from '@/types';
  * find-or-create, turn-by-turn state machine transitions, and the
  * hand-off into Payment once an order is confirmed. This is the
  * *only* place inbound WhatsApp messages get processed — the webhook
- * route does nothing but parse the provider payload and call `start()`.
+ * route does nothing but resolve which business owns the message and
+ * call `start()`.
+ *
+ * `businessId` is a parameter, not a constructor field, on every
+ * public method — a single running server handles every tenant's
+ * traffic, and which business a given inbound message belongs to is
+ * resolved per-request (by the webhook route, from the message
+ * itself), not fixed at construction. The `WhatsAppGateway` passed to
+ * the constructor stays a plain object (used for tests, mainly) — the
+ * *credentials* it resolves per call are already businessId-scoped
+ * inside the Gateway itself.
  *
  * Deliberate, documented simplification still standing (not silently
  * assumed correct — a named follow-up): customer identification
@@ -37,8 +47,8 @@ import type { ConversationStateBlob } from '@/types';
  * fabricating business data a real order doesn't actually need.
  */
 
-async function getAvailablePackages(): Promise<PackageOption[]> {
-  const packages = await packageRepository.listActive();
+async function getAvailablePackages(businessId: string): Promise<PackageOption[]> {
+  const packages = await packageRepository.listActive(businessId);
   return packages.map(({ id, data }) => ({
     id,
     name: data.name,
@@ -80,11 +90,12 @@ class ConversationService {
    * there is exactly one path an inbound message can take.
    */
   async start(
+    businessId: string,
     phoneNumber: string,
     inboundMessage: InboundMessage,
     options: StartOptions = {},
   ): Promise<ConversationTurnResult> {
-    const existing = await conversationRepository.findActiveByPhoneNumber(phoneNumber);
+    const existing = await conversationRepository.findActiveByPhoneNumber(businessId, phoneNumber);
 
     let conversationId: string;
     const isNewConversation = !existing;
@@ -92,8 +103,8 @@ class ConversationService {
     if (existing) {
       conversationId = existing.id;
     } else {
-      conversationId = await conversationRepository.create({ phoneNumber, ...options });
-      await publishEvent('ConversationStarted', 'conversation', conversationId, {
+      conversationId = await conversationRepository.create({ businessId, phoneNumber, ...options });
+      await publishEvent(businessId, 'ConversationStarted', 'conversation', conversationId, {
         phoneNumber,
       });
     }
@@ -110,10 +121,11 @@ class ConversationService {
     }
 
     if (isNewConversation) {
-      return this.sendWelcome(conversationId, phoneNumber);
+      return this.sendWelcome(businessId, conversationId, phoneNumber);
     }
 
     return this.processTurn(
+      businessId,
       conversationId,
       phoneNumber,
       existing!.conversation.currentStep,
@@ -123,24 +135,26 @@ class ConversationService {
   }
 
   private async sendWelcome(
+    businessId: string,
     conversationId: string,
     phoneNumber: string,
   ): Promise<ConversationTurnResult> {
-    const availablePackages = await getAvailablePackages();
+    const availablePackages = await getAvailablePackages(businessId);
     const { nextStep, botReply } = startConversationMessages(availablePackages);
     await conversationRepository.updateStep(conversationId, nextStep);
-    await this.reply(conversationId, phoneNumber, botReply);
+    await this.reply(businessId, conversationId, phoneNumber, botReply);
     return { conversationId, botReply };
   }
 
   private async processTurn(
+    businessId: string,
     conversationId: string,
     phoneNumber: string,
     currentStep: import('@/types').ConversationStep,
     stateBlob: ConversationStateBlob,
     inboundText: string,
   ): Promise<ConversationTurnResult> {
-    const availablePackages = await getAvailablePackages();
+    const availablePackages = await getAvailablePackages(businessId);
     const result = transition({
       currentStep,
       stateBlob,
@@ -153,10 +167,10 @@ class ConversationService {
       result.nextStep,
       result.stateBlobPatch,
     );
-    await this.reply(conversationId, phoneNumber, result.botReply);
+    await this.reply(businessId, conversationId, phoneNumber, result.botReply);
 
     if (result.sideEffect === 'FREEZE_SNAPSHOT') {
-      await this.confirmAndFreeze(conversationId, phoneNumber, {
+      await this.confirmAndFreeze(businessId, conversationId, phoneNumber, {
         ...stateBlob,
         ...result.stateBlobPatch,
       });
@@ -172,6 +186,7 @@ class ConversationService {
    * STK prompt on their phone, so this cannot be async.
    */
   private async confirmAndFreeze(
+    businessId: string,
     conversationId: string,
     phoneNumber: string,
     stateBlob: ConversationStateBlob,
@@ -182,7 +197,7 @@ class ConversationService {
     }
 
     const referral = stateBlob.referralCode
-      ? await referralService.validateCode(stateBlob.referralCode)
+      ? await referralService.validateCode(businessId, stateBlob.referralCode)
       : null;
 
     const subtotalKes = stateBlob.priceKes ?? 0;
@@ -191,6 +206,7 @@ class ConversationService {
     const totalKes = subtotalKes - discountKes + shippingKes;
 
     const snapshotId = await conversationCheckoutSnapshotRepository.create({
+      businessId,
       conversationId,
       customerId: conversation.customerId,
       phoneNumber,
@@ -216,6 +232,7 @@ class ConversationService {
       conversationCheckoutSnapshotId: snapshotId,
     });
     await publishEvent(
+      businessId,
       'ConversationCheckoutSnapshotCreated',
       'conversationCheckoutSnapshot',
       snapshotId,
@@ -223,6 +240,7 @@ class ConversationService {
     );
 
     const intentId = await paymentService.createIntent({
+      businessId,
       conversationId,
       conversationCheckoutSnapshotId: snapshotId,
       customerId: conversation.customerId,
@@ -231,7 +249,7 @@ class ConversationService {
     });
 
     try {
-      await paymentService.initiateAttempt(intentId, {
+      await paymentService.initiateAttempt(businessId, intentId, {
         phone: phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
@@ -242,6 +260,7 @@ class ConversationService {
       // return the conversation to the confirmation step so a retry
       // (customer replies YES again) triggers a fresh attempt.
       await this.reply(
+        businessId,
         conversationId,
         phoneNumber,
         "We couldn't start the M-Pesa payment prompt. Please reply YES to try again.",
@@ -256,7 +275,10 @@ class ConversationService {
    * after `paymentService.processCallback()`). Kept here, not in the
    * route file, so the actual domain reaction — what happens to the
    * conversation on success/failure — is Service-layer logic, not
-   * route-handler glue.
+   * route-handler glue. `businessId` isn't part of `ProcessCallbackResult`
+   * (Payment Domain doesn't need to carry it once the callback is
+   * already tenant-verified) — resolved here from the loaded
+   * conversation, which is the authoritative source of its own tenant.
    */
   async handlePaymentResult(result: ProcessCallbackResult): Promise<void> {
     if (
@@ -271,9 +293,10 @@ class ConversationService {
     if (!conversation) {
       return;
     }
+    const businessId = conversation.businessId;
 
     if (result.status === 'succeeded') {
-      await this.completeOrder(result, conversation.phoneNumber);
+      await this.completeOrder(businessId, result, conversation.phoneNumber);
       return;
     }
 
@@ -284,6 +307,7 @@ class ConversationService {
       currentStep: 'awaiting_order_confirmation',
     });
     await this.reply(
+      businessId,
       result.conversationId,
       conversation.phoneNumber,
       "Your M-Pesa payment wasn't completed. Reply YES to try again.",
@@ -299,6 +323,7 @@ class ConversationService {
    * a missing Meta credential must never undo a paid, confirmed order.
    */
   private async completeOrder(
+    businessId: string,
     result: Extract<ProcessCallbackResult, { status: 'succeeded' }>,
     phoneNumber: string,
   ): Promise<void> {
@@ -322,9 +347,11 @@ class ConversationService {
         // human, not an automatic refund this codebase doesn't build
         // yet. Never silently lose a paid order.
         await this.notifications.notifyAdmin(
+          businessId,
           `URGENT: payment succeeded for ${snapshot.packageLabel} (${phoneNumber}) but it's out of stock. Manual resolution needed. Payment intent: ${result.intentId}`,
         );
         await this.reply(
+          businessId,
           result.conversationId,
           phoneNumber,
           "There's an issue with your order — our team will contact you shortly to sort it out. Your payment is safe.",
@@ -343,6 +370,7 @@ class ConversationService {
     if (snapshot.referralLinkId && snapshot.referralOwnerId) {
       try {
         await referralService.awardCommission({
+          businessId,
           referralLinkId: snapshot.referralLinkId,
           ownerId: snapshot.referralOwnerId,
           orderId,
@@ -351,36 +379,39 @@ class ConversationService {
           commissionKes: snapshot.referralCommissionKes,
         });
       } catch (error) {
-        await publishEvent('ReferralAwardFailed', 'order', orderId, {
+        await publishEvent(businessId, 'ReferralAwardFailed', 'order', orderId, {
           reason: error instanceof Error ? error.message : 'unknown error',
         });
       }
     }
 
     try {
-      await deliveryService.createShipmentForOrder(orderId, {
+      await deliveryService.createShipmentForOrder(businessId, orderId, {
         customerName: snapshot.customerName,
         phoneNumber,
         county: snapshot.county,
         deliveryMethod: snapshot.deliveryMethod,
       });
     } catch (error) {
-      await publishEvent('ShipmentCreationFailed', 'order', orderId, {
+      await publishEvent(businessId, 'ShipmentCreationFailed', 'order', orderId, {
         reason: error instanceof Error ? error.message : 'unknown error',
       });
     }
 
     await adConversionService.dispatchPurchase({
+      businessId,
       orderId,
       phoneNumber,
       amountKes: snapshot.totalKes,
     });
 
     await this.notifications.notifyAdmin(
+      businessId,
       `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ${snapshot.county} (${snapshot.deliveryMethod}). Order ${orderId}.`,
     );
 
     await this.reply(
+      businessId,
       result.conversationId,
       phoneNumber,
       `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we'll be in touch with delivery details.`,
@@ -404,11 +435,12 @@ class ConversationService {
   }
 
   private async reply(
+    businessId: string,
     conversationId: string,
     phoneNumber: string,
     text: string,
   ): Promise<void> {
-    const sendResult = await this.gateway.sendMessage({ phone: phoneNumber, text });
+    const sendResult = await this.gateway.sendMessage({ businessId, phone: phoneNumber, text });
     await conversationRepository.appendMessage(conversationId, {
       direction: 'outbound',
       body: text,

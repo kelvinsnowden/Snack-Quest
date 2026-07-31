@@ -13,9 +13,19 @@ import type { StkPushResult } from '@/lib/integrations/types';
  * processed (via `webhookEventRepository`'s idempotency ledger).
  * `ConversationService`/the Daraja webhook route react to the result;
  * this Service never touches Conversation or Order state directly.
+ *
+ * `processCallback` also takes `businessId` — resolved by the webhook
+ * route from the callback URL's own path (Safaricom requires each
+ * shortcode to register its own callback URL, so the URL itself
+ * already tells us which tenant this is) — and cross-checks it
+ * against the matched intent's own `businessId`. `checkoutRequestId`
+ * lookup is a global collection-group query by construction (see
+ * `PaymentIntentRepository`), so this check is the one place a
+ * cross-tenant mismatch would ever surface.
  */
 
 export interface CreateIntentInput {
+  businessId: string;
   conversationId: string;
   conversationCheckoutSnapshotId: string;
   customerId: string | null;
@@ -55,6 +65,7 @@ class PaymentService {
   }
 
   async initiateAttempt(
+    businessId: string,
     intentId: string,
     input: {
       phone: string;
@@ -67,7 +78,7 @@ class PaymentService {
     // record an attempt against. The caller decides how to react
     // (e.g. tell the customer to try again); the intent stays 'pending'
     // so a fresh attempt can still be made against it.
-    const result = await darajaGateway.initiateStkPush(input);
+    const result = await darajaGateway.initiateStkPush({ businessId, ...input });
 
     await paymentIntentRepository.addAttempt(intentId, {
       checkoutRequestId: result.checkoutRequestId,
@@ -82,7 +93,7 @@ class PaymentService {
     return result;
   }
 
-  async processCallback(rawPayload: unknown): Promise<ProcessCallbackResult> {
+  async processCallback(businessId: string, rawPayload: unknown): Promise<ProcessCallbackResult> {
     let callback;
     try {
       callback = darajaGateway.verifyCallback(rawPayload);
@@ -94,6 +105,7 @@ class PaymentService {
     }
 
     const idempotency = await webhookEventRepository.recordIfNew({
+      businessId,
       provider: 'daraja',
       providerEventId: callback.checkoutRequestId,
       payload: rawPayload as Record<string, unknown>,
@@ -107,6 +119,7 @@ class PaymentService {
     );
     if (!match) {
       await webhookEventRepository.markFailed(
+        businessId,
         'daraja',
         callback.checkoutRequestId,
         'No matching payment attempt found (unmatched payment)',
@@ -115,11 +128,17 @@ class PaymentService {
     }
 
     const intent = await paymentIntentRepository.findById(match.intentId);
-    if (!intent) {
+    if (!intent || intent.businessId !== businessId) {
+      // Either genuinely missing, or (defense-in-depth) the matched
+      // intent belongs to a different tenant than this callback URL —
+      // treat both as unmatched, never act on another tenant's payment.
       await webhookEventRepository.markFailed(
+        businessId,
         'daraja',
         callback.checkoutRequestId,
-        `Attempt matched but paymentIntents/${match.intentId} does not exist`,
+        !intent
+          ? `Attempt matched but paymentIntents/${match.intentId} does not exist`
+          : `Attempt matched paymentIntents/${match.intentId}, which belongs to a different business`,
       );
       return { status: 'unmatched', checkoutRequestId: callback.checkoutRequestId };
     }
@@ -135,6 +154,7 @@ class PaymentService {
         mpesaReceiptNumber: callback.mpesaReceiptNumber ?? null,
       });
       await webhookEventRepository.markFailed(
+        businessId,
         'daraja',
         callback.checkoutRequestId,
         'Amount mismatch',
@@ -157,7 +177,7 @@ class PaymentService {
       match.intentId,
       succeeded ? 'succeeded' : 'failed',
     );
-    await webhookEventRepository.markProcessed('daraja', callback.checkoutRequestId);
+    await webhookEventRepository.markProcessed(businessId, 'daraja', callback.checkoutRequestId);
 
     if (succeeded) {
       return {

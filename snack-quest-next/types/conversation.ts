@@ -52,6 +52,7 @@ export interface ConversationStateBlob {
 }
 
 export interface Conversation {
+  businessId: string;
   phoneNumber: string;
   customerId: string | null;
   status: ConversationStatus;

@@ -15,6 +15,7 @@ export type WebhookProvider = 'daraja' | 'whatchimp' | 'jumia';
 export type WebhookEventStatus = 'received' | 'processed' | 'failed';
 
 export interface WebhookEvent {
+  businessId: string;
   provider: WebhookProvider;
   /** The provider's own delivery/message identifier — the actual dedup key. */
   providerEventId: string;

@@ -21,6 +21,26 @@ service cloud.firestore {
     function isNotDeleted() {
       return resource.data.deletedAt == null;
     }
+    // NOT enforced yet, deliberately — see the note below.
+    function belongsToBusiness(businessId) {
+      return isSignedIn() && businessId == request.auth.token.businessId;
+    }
+
+    // Multi-tenancy note (platform architecture direction): every
+    // document that should belong to exactly one business now carries
+    // a `businessId` field, and every Service scopes its queries and
+    // writes by it (see repositories/*). What these rules do NOT yet
+    // do is enforce `businessId` on admin/owner *reads* — `isAdmin()`
+    // below is still a platform-wide role, not scoped to one tenant,
+    // because no mechanism exists yet to put a `businessId` custom
+    // claim on a staff account (that's real, separate auth/onboarding
+    // work). Wiring `belongsToBusiness()` into `isAdmin()` before that
+    // claim-issuing mechanism exists would just lock today's real
+    // Snack Quest admins out of their own data — a regression, not a
+    // security improvement. This is the honest state of Open Question
+    // 6 in PLATFORM_ARCHITECTURE_V2.md §21: data model and Services
+    // are tenant-aware now; Security Rule tenant isolation is the
+    // next, explicitly-tracked step, gated on staff-claim issuance.
 
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
@@ -226,6 +246,23 @@ service cloud.firestore {
       allow read: if isAdmin() ||
                      (isSignedIn() && resource.data.creatorId == request.auth.uid);
       allow write: if false;
+    }
+
+    // businesses: the tenant profile itself. Admin-only for now (same
+    // caveat as belongsToBusiness() above — not yet scoped to "your
+    // own business's admin" because that claim doesn't exist yet).
+    match /businesses/{businessId} {
+      allow read: if isAdmin();
+      allow write: if false; // provisioned via seed script / Admin SDK only
+
+      // integrationSecrets: provider credentials (Daraja, Whatchimp,
+      // Jumia, Meta) — the single most sensitive collection in the
+      // schema. Unconditional deny, no admin exception, ever. Every
+      // Gateway config module reads this via the Admin SDK, which
+      // bypasses rules entirely — there is no legitimate client read.
+      match /integrationSecrets/{provider} {
+        allow read, write: if false;
+      }
     }
   }
 }

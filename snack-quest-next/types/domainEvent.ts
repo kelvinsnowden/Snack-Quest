@@ -21,6 +21,7 @@ export type ConversationEventType =
   | 'HumanTakeoverRequested';
 
 export interface DomainEvent<TPayload = Record<string, unknown>> {
+  businessId: string;
   type: ConversationEventType | string;
   aggregateType: string;
   aggregateId: string;

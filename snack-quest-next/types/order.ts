@@ -12,6 +12,7 @@ export type OrderStatus = 'pending' | 'confirmed' | 'delivered' | 'cancelled';
  * .createFromConversationSnapshot()`, only from a succeeded payment.
  */
 export interface Order extends AuditFields {
+  businessId: string;
   customerId: string | null;
   phoneNumber: string;
   customerName: string;

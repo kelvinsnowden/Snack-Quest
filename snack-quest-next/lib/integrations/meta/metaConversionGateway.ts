@@ -22,11 +22,12 @@ function hashForMeta(value: string): string {
  */
 class MetaConversionGateway implements ConversionGateway {
   async sendEvent(input: {
+    businessId: string;
     eventName: string;
     params: Record<string, unknown>;
     advancedMatching?: Record<string, string>;
   }): Promise<void> {
-    const config = getMetaConfig();
+    const config = await getMetaConfig(input.businessId);
 
     const userData: Record<string, string[]> = {};
     if (input.advancedMatching?.phone) {
@@ -38,7 +39,7 @@ class MetaConversionGateway implements ConversionGateway {
     // don't supply one yet, so a retry could double-count — acceptable
     // for now since accurate ad spend attribution isn't blocking a
     // real order, unlike a payment).
-    await withCircuitBreaker(GATEWAY_NAME, () =>
+    await withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, () =>
       withRetry(async () => {
         const response = await fetch(
           `https://graph.facebook.com/${config.apiVersion}/${config.pixelId}/events`,

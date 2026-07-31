@@ -13,8 +13,8 @@ import type { WebhookProvider } from '@/types';
 
 const COLLECTION = 'webhookEvents';
 
-function docId(provider: WebhookProvider, providerEventId: string): string {
-  return `${provider}:${providerEventId}`;
+function docId(businessId: string, provider: WebhookProvider, providerEventId: string): string {
+  return `${businessId}:${provider}:${providerEventId}`;
 }
 
 function isAlreadyExistsError(error: unknown): boolean {
@@ -27,6 +27,7 @@ function isAlreadyExistsError(error: unknown): boolean {
 }
 
 export interface RecordWebhookEventInput {
+  businessId: string;
   provider: WebhookProvider;
   providerEventId: string;
   payload: Record<string, unknown>;
@@ -40,16 +41,18 @@ class WebhookEventRepository {
    * the atomicity primitive instead of a get-then-set race. Returns
    * `{ isNew: false }` rather than throwing when the event was already
    * recorded — a duplicate delivery is expected, routine behavior for
-   * these providers, not an error.
+   * these providers, not an error. The doc ID is businessId-prefixed
+   * so two tenants' providers can never collide on the same event ID.
    */
   async recordIfNew(
     input: RecordWebhookEventInput,
   ): Promise<{ isNew: boolean }> {
     const ref = adminFirestore
       .collection(COLLECTION)
-      .doc(docId(input.provider, input.providerEventId));
+      .doc(docId(input.businessId, input.provider, input.providerEventId));
     try {
       await ref.create({
+        businessId: input.businessId,
         provider: input.provider,
         providerEventId: input.providerEventId,
         payload: input.payload,
@@ -69,12 +72,13 @@ class WebhookEventRepository {
   }
 
   async markProcessed(
+    businessId: string,
     provider: WebhookProvider,
     providerEventId: string,
   ): Promise<void> {
     await adminFirestore
       .collection(COLLECTION)
-      .doc(docId(provider, providerEventId))
+      .doc(docId(businessId, provider, providerEventId))
       .update({
         status: 'processed',
         processedAt: FieldValue.serverTimestamp(),
@@ -82,13 +86,14 @@ class WebhookEventRepository {
   }
 
   async markFailed(
+    businessId: string,
     provider: WebhookProvider,
     providerEventId: string,
     error: string,
   ): Promise<void> {
     await adminFirestore
       .collection(COLLECTION)
-      .doc(docId(provider, providerEventId))
+      .doc(docId(businessId, provider, providerEventId))
       .update({
         status: 'failed',
         processedAt: FieldValue.serverTimestamp(),

@@ -13,12 +13,14 @@ const COLLECTION = 'domainEvents';
  * silently dropped while that trigger infrastructure doesn't exist.
  */
 export async function publishEvent(
+  businessId: string,
   type: ConversationEventType | string,
   aggregateType: string,
   aggregateId: string,
   payload: Record<string, unknown> = {},
 ): Promise<void> {
   await adminFirestore.collection(COLLECTION).add({
+    businessId,
     type,
     aggregateType,
     aggregateId,

@@ -37,6 +37,7 @@ class OrderService {
       return createOrderInTransaction(
         tx,
         {
+          businessId: snapshot.businessId,
           customerId: snapshot.customerId,
           phoneNumber: snapshot.phoneNumber,
           customerName: snapshot.customerName,
@@ -63,7 +64,7 @@ class OrderService {
       );
     });
 
-    await publishEvent('OrderCreated', 'order', orderId, {
+    await publishEvent(snapshot.businessId, 'OrderCreated', 'order', orderId, {
       conversationId: snapshot.conversationId,
       totalKes: snapshot.totalKes,
     });

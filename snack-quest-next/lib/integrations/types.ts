@@ -5,6 +5,15 @@
  * depend on these interfaces, never on a concrete `*Gateway`
  * implementation or a provider SDK directly, so swapping Daraja for
  * another PSP or Jumia for another courier never touches a Service.
+ *
+ * Every outbound-call method takes `businessId` — there is no such
+ * thing as "the" Daraja credentials or "the" WhatsApp number anymore,
+ * only a given business's. Pure-parsing methods (`verifyCallback`,
+ * `parseIncomingMessage`, `parseTrackingWebhook`) don't, because they
+ * make no outbound call and need no credential — resolving *which*
+ * business a parsed payload belongs to is the caller's job (a route
+ * or Service), using data the payload itself carries (e.g. Whatchimp's
+ * `phone_number_id`), not something a Gateway method infers.
  */
 
 export interface StkPushResult {
@@ -29,6 +38,7 @@ export interface PaymentCallbackResult {
 
 export interface PaymentGateway {
   initiateStkPush(input: {
+    businessId: string;
     phone: string;
     amountKes: number;
     accountReference: string;
@@ -60,6 +70,8 @@ export interface WhatsAppListSection {
 export interface WhatsAppInboundMessage {
   providerMessageId: string;
   fromPhone: string;
+  /** The WhatsApp Cloud API phone_number_id the message was received on — how a business is resolved from a shared webhook endpoint. */
+  toPhoneNumberId: string;
   text: string;
   /** Set when the inbound message was a button/list reply rather than free text. */
   selectedId?: string;
@@ -76,26 +88,33 @@ export interface WhatsAppInboundMessage {
  * WhatsApp Business API distinction, not an implementation detail.
  */
 export interface WhatsAppGateway {
-  sendMessage(input: { phone: string; text: string }): Promise<WhatsAppSendResult>;
+  sendMessage(input: {
+    businessId: string;
+    phone: string;
+    text: string;
+  }): Promise<WhatsAppSendResult>;
   sendTemplate(input: {
+    businessId: string;
     phone: string;
     templateCode: string;
     params: Record<string, string>;
   }): Promise<WhatsAppSendResult>;
   sendButtons(input: {
+    businessId: string;
     phone: string;
     bodyText: string;
     buttons: WhatsAppButton[];
   }): Promise<WhatsAppSendResult>;
   sendList(input: {
+    businessId: string;
     phone: string;
     bodyText: string;
     buttonLabel: string;
     sections: WhatsAppListSection[];
   }): Promise<WhatsAppSendResult>;
-  markAsRead(providerMessageId: string): Promise<void>;
+  markAsRead(businessId: string, providerMessageId: string): Promise<void>;
   parseIncomingMessage(payload: unknown): WhatsAppInboundMessage;
-  /** Handles the BSP's webhook-verification handshake (e.g. a GET challenge echo). Returns the challenge to echo back, or null if verification fails. */
+  /** Handles the BSP's webhook-verification handshake (e.g. a GET challenge echo) — platform-level, not tenant-scoped; see `types/business.ts`. */
   verifyWebhookChallenge(query: {
     mode?: string;
     token?: string;
@@ -116,17 +135,19 @@ export interface TrackingStatus {
 
 export interface CourierGateway {
   createShipment(input: {
+    businessId: string;
     orderId: string;
     recipientName: string;
     recipientPhone: string;
     deliverTo: Record<string, unknown>;
   }): Promise<ShipmentResult>;
-  getTrackingStatus(shipmentRef: string): Promise<TrackingStatus>;
+  getTrackingStatus(businessId: string, shipmentRef: string): Promise<TrackingStatus>;
   parseTrackingWebhook(payload: unknown): TrackingStatus;
 }
 
 export interface ConversionGateway {
   sendEvent(input: {
+    businessId: string;
     eventName: string;
     params: Record<string, unknown>;
     advancedMatching?: Record<string, string>;
@@ -135,6 +156,7 @@ export interface ConversionGateway {
 
 export interface EmailGateway {
   send(input: {
+    businessId: string;
     to: string;
     templateCode: string;
     params: Record<string, string>;
@@ -142,9 +164,13 @@ export interface EmailGateway {
 }
 
 export interface SmsGateway {
-  send(input: { phone: string; message: string }): Promise<void>;
+  send(input: { businessId: string; phone: string; message: string }): Promise<void>;
 }
 
 export interface PushGateway {
-  send(input: { deviceToken: string; payload: Record<string, unknown> }): Promise<void>;
+  send(input: {
+    businessId: string;
+    deviceToken: string;
+    payload: Record<string, unknown>;
+  }): Promise<void>;
 }

@@ -3,27 +3,20 @@ import {
   darajaGateway,
   resetDarajaTokenCache,
 } from '@/lib/integrations/daraja/darajaGateway';
-import { DarajaConfigError } from '@/lib/integrations/daraja/config';
+import { IntegrationSecretNotFoundError } from '@/repositories/businessIntegrationSecretRepository';
+import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 
-const REQUIRED_ENV = {
-  DARAJA_CONSUMER_KEY: 'test-key',
-  DARAJA_CONSUMER_SECRET: 'test-secret',
-  DARAJA_SHORTCODE: '174379',
-  DARAJA_PASSKEY: 'test-passkey',
-  DARAJA_CALLBACK_URL: 'https://example.com/api/webhooks/daraja',
+const BUSINESS_ID = 'biz-daraja-test';
+const OTHER_BUSINESS_ID = 'biz-daraja-other';
+
+const SECRET = {
+  consumerKey: 'test-key',
+  consumerSecret: 'test-secret',
+  shortcode: '174379',
+  passkey: 'test-passkey',
+  callbackUrl: `https://example.com/api/webhooks/daraja/${BUSINESS_ID}`,
+  env: 'sandbox' as const,
 };
-
-function setEnv(vars: Record<string, string>) {
-  for (const [key, value] of Object.entries(vars)) {
-    process.env[key] = value;
-  }
-}
-
-function clearDarajaEnv() {
-  for (const key of Object.keys(REQUIRED_ENV)) {
-    delete process.env[key];
-  }
-}
 
 describe('DarajaGateway.verifyCallback', () => {
   it('parses a successful STK callback', () => {
@@ -84,28 +77,27 @@ describe('DarajaGateway.verifyCallback', () => {
 
 describe('DarajaGateway.initiateStkPush', () => {
   beforeEach(() => {
-    clearDarajaEnv();
     resetDarajaTokenCache();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    clearDarajaEnv();
   });
 
-  it('throws DarajaConfigError when credentials are not configured', async () => {
+  it('throws IntegrationSecretNotFoundError when no Daraja secret is configured for this business', async () => {
     await expect(
       darajaGateway.initiateStkPush({
+        businessId: 'biz-with-no-daraja-secret',
         phone: '254700000000',
         amountKes: 500,
         accountReference: 'ORDER-1',
         transactionDesc: 'Snack Quest order',
       }),
-    ).rejects.toBeInstanceOf(DarajaConfigError);
+    ).rejects.toBeInstanceOf(IntegrationSecretNotFoundError);
   });
 
   it('fetches a token then initiates the STK push on success', async () => {
-    setEnv(REQUIRED_ENV);
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
     const fetchMock = vi.fn().mockImplementation((url: string) =>
       Promise.resolve(
         String(url).includes('/oauth/v1/generate')
@@ -128,6 +120,7 @@ describe('DarajaGateway.initiateStkPush', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
       phone: '254700000000',
       amountKes: 500,
       accountReference: 'ORDER-1',
@@ -142,7 +135,7 @@ describe('DarajaGateway.initiateStkPush', () => {
   });
 
   it('throws when Daraja rejects the STK push request', async () => {
-    setEnv(REQUIRED_ENV);
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
     const fetchMock = vi.fn().mockImplementation((url: string) =>
       Promise.resolve(
         String(url).includes('/oauth/v1/generate')
@@ -164,6 +157,7 @@ describe('DarajaGateway.initiateStkPush', () => {
 
     await expect(
       darajaGateway.initiateStkPush({
+        businessId: BUSINESS_ID,
         phone: 'not-a-phone',
         amountKes: 500,
         accountReference: 'ORDER-1',
@@ -173,7 +167,7 @@ describe('DarajaGateway.initiateStkPush', () => {
   });
 
   it('reuses a cached token instead of re-fetching on a second call', async () => {
-    setEnv(REQUIRED_ENV);
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
     const fetchMock = vi.fn().mockImplementation((url: string) =>
       Promise.resolve(
         String(url).includes('/oauth/v1/generate')
@@ -196,6 +190,7 @@ describe('DarajaGateway.initiateStkPush', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const input = {
+      businessId: BUSINESS_ID,
       phone: '254700000000',
       amountKes: 500,
       accountReference: 'ORDER-1',
@@ -206,5 +201,52 @@ describe('DarajaGateway.initiateStkPush', () => {
 
     // 1 OAuth call + 2 STK push calls — the second initiate reused the cached token.
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('caches tokens per-business — a second tenant never reuses the first tenant\'s token', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    await businessIntegrationSecretRepository.set(OTHER_BUSINESS_ID, 'daraja', {
+      ...SECRET,
+      consumerKey: 'other-tenant-key',
+      shortcode: '999999',
+    });
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(
+              JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }),
+              { status: 200 },
+            )
+          : new Response(
+              JSON.stringify({
+                MerchantRequestID: 'merchant-1',
+                CheckoutRequestID: 'checkout-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Success. Request accepted for processing',
+                CustomerMessage: 'Success. Request accepted for processing',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'Snack Quest order',
+    });
+    await darajaGateway.initiateStkPush({
+      businessId: OTHER_BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'Snack Quest order',
+    });
+
+    // Both tenants had to fetch their own OAuth token: 2 OAuth calls + 2 STK calls.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });

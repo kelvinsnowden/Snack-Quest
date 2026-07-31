@@ -12,21 +12,23 @@ import { publishEvent } from '@/lib/events/eventBus';
  */
 class AdConversionService {
   async dispatchPurchase(input: {
+    businessId: string;
     orderId: string;
     phoneNumber: string;
     amountKes: number;
   }): Promise<void> {
     try {
       await metaConversionGateway.sendEvent({
+        businessId: input.businessId,
         eventName: 'Purchase',
         params: { currency: 'KES', value: input.amountKes },
         advancedMatching: { phone: input.phoneNumber },
       });
-      await publishEvent('ConversionDispatched', 'order', input.orderId, {
+      await publishEvent(input.businessId, 'ConversionDispatched', 'order', input.orderId, {
         eventName: 'Purchase',
       });
     } catch (error) {
-      await publishEvent('ConversionDispatchFailed', 'order', input.orderId, {
+      await publishEvent(input.businessId, 'ConversionDispatchFailed', 'order', input.orderId, {
         eventName: 'Purchase',
         reason: error instanceof Error ? error.message : 'unknown error',
       });

@@ -1,10 +1,13 @@
 // Seeds the real Snack Quest boxes (PLATFORM_ARCHITECTURE_V2.md §5) so
 // the Conversation Domain has real data to present, not hardcoded
-// strings. Idempotent — skips if any active package already exists.
-// Plain ESM (not TypeScript) deliberately, so it runs with no build
-// step: `npm run seed:packages`.
+// strings. Idempotent — skips if any active package already exists
+// for this business. Plain ESM (not TypeScript) deliberately, so it
+// runs with no build step: `npm run seed:packages`. Run
+// `npm run seed:business` first — packages belong to a business.
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+
+const SNACK_QUEST_BUSINESS_ID = process.env.SNACK_QUEST_BUSINESS_ID ?? 'snack-quest';
 
 const isEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true';
 if (isEmulator) {
@@ -49,13 +52,17 @@ const PACKAGES = [
 async function main() {
   const app = createApp();
   const db = getFirestore(app);
+  const businessId = SNACK_QUEST_BUSINESS_ID;
 
   const existing = await db
     .collection('packages')
+    .where('businessId', '==', businessId)
     .where('isActive', '==', true)
     .get();
   if (!existing.empty) {
-    console.log(`packages already seeded (${existing.size} active) — skipping`);
+    console.log(
+      `packages already seeded for business ${businessId} (${existing.size} active) — skipping`,
+    );
     return;
   }
 
@@ -65,6 +72,7 @@ async function main() {
     const ref = db.collection('packages').doc();
     batch.set(ref, {
       ...pkg,
+      businessId,
       createdAt: now,
       updatedAt: now,
       createdBy: 'system',
@@ -73,7 +81,7 @@ async function main() {
     });
   }
   await batch.commit();
-  console.log(`Seeded ${PACKAGES.length} packages.`);
+  console.log(`Seeded ${PACKAGES.length} packages for business ${businessId}.`);
 }
 
 main()

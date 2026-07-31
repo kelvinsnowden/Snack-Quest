@@ -24,8 +24,8 @@ export interface ValidatedReferral {
 
 class ReferralService {
   /** Returns null for an invalid/inactive/unknown code — never blocks the purchase. */
-  async validateCode(code: string): Promise<ValidatedReferral | null> {
-    const match = await referralLinkRepository.findByCode(code);
+  async validateCode(businessId: string, code: string): Promise<ValidatedReferral | null> {
+    const match = await referralLinkRepository.findByCode(businessId, code);
     if (!match) {
       return null;
     }
@@ -38,6 +38,7 @@ class ReferralService {
   }
 
   async awardCommission(input: {
+    businessId: string;
     referralLinkId: string;
     ownerId: string;
     orderId: string;
@@ -47,6 +48,7 @@ class ReferralService {
   }): Promise<void> {
     await adminFirestore.runTransaction(async (tx) => {
       createAttributionInTransaction(tx, {
+        businessId: input.businessId,
         referralLinkId: input.referralLinkId,
         creatorId: input.ownerId,
         orderId: input.orderId,
@@ -62,7 +64,7 @@ class ReferralService {
       });
     });
 
-    await publishEvent('ReferralAwarded', 'order', input.orderId, {
+    await publishEvent(input.businessId, 'ReferralAwarded', 'order', input.orderId, {
       referralLinkId: input.referralLinkId,
       creatorId: input.ownerId,
       commissionKes: input.commissionKes,

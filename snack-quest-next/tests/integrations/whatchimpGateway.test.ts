@@ -1,33 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { WhatchimpConfigError } from '@/lib/integrations/whatchimp/config';
+import { IntegrationSecretNotFoundError } from '@/repositories/businessIntegrationSecretRepository';
+import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 
-const REQUIRED_ENV = {
-  WHATCHIMP_API_KEY: 'test-key',
-  WHATCHIMP_PHONE_NUMBER_ID: '1234567890',
-  WHATCHIMP_WEBHOOK_VERIFY_TOKEN: 'verify-me',
-};
+const BUSINESS_ID = 'biz-whatchimp-test';
+const OTHER_BUSINESS_ID = 'biz-whatchimp-other';
 
-function setEnv(vars: Record<string, string>) {
-  for (const [key, value] of Object.entries(vars)) {
-    process.env[key] = value;
-  }
-}
-
-function clearEnv() {
-  for (const key of Object.keys(REQUIRED_ENV)) {
-    delete process.env[key];
-  }
-}
+const SECRET = { apiKey: 'test-key', phoneNumberId: '1234567890' };
 
 describe('WhatchimpGateway.parseIncomingMessage', () => {
-  it('parses a free-text inbound message', () => {
+  it('parses a free-text inbound message, including which WhatsApp number received it', () => {
     const result = whatchimpGateway.parseIncomingMessage({
       entry: [
         {
           changes: [
             {
               value: {
+                metadata: { phone_number_id: '1234567890' },
                 messages: [
                   {
                     id: 'wamid.1',
@@ -47,6 +36,7 @@ describe('WhatchimpGateway.parseIncomingMessage', () => {
     expect(result).toEqual({
       providerMessageId: 'wamid.1',
       fromPhone: '254700000000',
+      toPhoneNumberId: '1234567890',
       text: 'hello',
       selectedId: undefined,
       receivedAt: new Date(1700000000 * 1000).toISOString(),
@@ -60,6 +50,7 @@ describe('WhatchimpGateway.parseIncomingMessage', () => {
           changes: [
             {
               value: {
+                metadata: { phone_number_id: '1234567890' },
                 messages: [
                   {
                     id: 'wamid.2',
@@ -88,14 +79,42 @@ describe('WhatchimpGateway.parseIncomingMessage', () => {
       /Malformed Whatchimp webhook payload/,
     );
   });
+
+  it('throws when metadata.phone_number_id is missing (can\'t resolve a tenant)', () => {
+    expect(() =>
+      whatchimpGateway.parseIncomingMessage({
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  messages: [
+                    {
+                      id: 'wamid.3',
+                      from: '254700000000',
+                      timestamp: '1700000000',
+                      type: 'text',
+                      text: { body: 'hello' },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/Malformed Whatchimp webhook payload/);
+  });
 });
 
 describe('WhatchimpGateway.verifyWebhookChallenge', () => {
+  // Platform-level, not tenant-scoped — see lib/integrations/whatchimp/config.ts.
   beforeEach(() => {
-    clearEnv();
-    setEnv(REQUIRED_ENV);
+    process.env.WHATCHIMP_WEBHOOK_VERIFY_TOKEN = 'verify-me';
   });
-  afterEach(clearEnv);
+  afterEach(() => {
+    delete process.env.WHATCHIMP_WEBHOOK_VERIFY_TOKEN;
+  });
 
   it('echoes the challenge on a valid verify request', () => {
     const result = whatchimpGateway.verifyWebhookChallenge({
@@ -117,22 +136,22 @@ describe('WhatchimpGateway.verifyWebhookChallenge', () => {
 });
 
 describe('WhatchimpGateway.sendMessage', () => {
-  beforeEach(() => {
-    clearEnv();
-  });
   afterEach(() => {
     vi.unstubAllGlobals();
-    clearEnv();
   });
 
-  it('throws WhatchimpConfigError when credentials are not configured', async () => {
+  it('throws IntegrationSecretNotFoundError when no Whatchimp secret is configured for this business', async () => {
     await expect(
-      whatchimpGateway.sendMessage({ phone: '254700000000', text: 'hi' }),
-    ).rejects.toBeInstanceOf(WhatchimpConfigError);
+      whatchimpGateway.sendMessage({
+        businessId: 'biz-with-no-whatchimp-secret',
+        phone: '254700000000',
+        text: 'hi',
+      }),
+    ).rejects.toBeInstanceOf(IntegrationSecretNotFoundError);
   });
 
   it('sends a text message and returns the provider message id', async () => {
-    setEnv(REQUIRED_ENV);
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ messages: [{ id: 'wamid.sent-1' }] }), {
         status: 200,
@@ -141,6 +160,7 @@ describe('WhatchimpGateway.sendMessage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await whatchimpGateway.sendMessage({
+      businessId: BUSINESS_ID,
       phone: '254700000000',
       text: 'hello there',
     });
@@ -154,7 +174,7 @@ describe('WhatchimpGateway.sendMessage', () => {
   });
 
   it('throws when Whatchimp rejects the send', async () => {
-    setEnv(REQUIRED_ENV);
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: { message: 'invalid phone number' } }), {
         status: 400,
@@ -163,7 +183,36 @@ describe('WhatchimpGateway.sendMessage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      whatchimpGateway.sendMessage({ phone: 'not-a-phone', text: 'hi' }),
+      whatchimpGateway.sendMessage({
+        businessId: BUSINESS_ID,
+        phone: 'not-a-phone',
+        text: 'hi',
+      }),
     ).rejects.toThrow(/Whatchimp send failed/);
+  });
+
+  it('uses a different tenant\'s phone_number_id when sending on their behalf', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+    await businessIntegrationSecretRepository.set(OTHER_BUSINESS_ID, 'whatchimp', {
+      apiKey: 'other-tenant-key',
+      phoneNumberId: '999999999',
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ messages: [{ id: 'wamid.sent-2' }] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await whatchimpGateway.sendMessage({
+      businessId: OTHER_BUSINESS_ID,
+      phone: '254700000000',
+      text: 'hi from the other tenant',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/999999999/messages');
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer other-tenant-key');
   });
 });

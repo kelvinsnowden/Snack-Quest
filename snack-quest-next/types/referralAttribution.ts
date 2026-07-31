@@ -6,6 +6,7 @@ import type { Timestamp } from 'firebase/firestore';
  * One per order that used a referral code.
  */
 export interface ReferralAttribution {
+  businessId: string;
   referralLinkId: string;
   creatorId: string;
   orderId: string;

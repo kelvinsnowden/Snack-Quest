@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { getWhatchimpConfig, type WhatchimpConfig } from './config';
+import { getWhatchimpConfig, getWhatchimpWebhookVerifyToken, type WhatchimpConfig } from './config';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
 import type {
   WhatsAppGateway,
@@ -14,6 +14,7 @@ interface RawIncomingWebhook {
   entry?: Array<{
     changes?: Array<{
       value?: {
+        metadata?: { phone_number_id?: string };
         messages?: Array<{
           id: string;
           from: string;
@@ -33,6 +34,7 @@ interface RawIncomingWebhook {
 }
 
 async function postMessage(
+  businessId: string,
   config: WhatchimpConfig,
   body: Record<string, unknown>,
 ): Promise<WhatsAppSendResult> {
@@ -43,7 +45,7 @@ async function postMessage(
   // decision belongs to NotificationService/ConversationService, which
   // have conversation state to reason about whether the first attempt
   // actually reached Whatchimp.
-  return withCircuitBreaker(GATEWAY_NAME, async () => {
+  return withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, async () => {
     const response = await fetch(
       `${config.baseUrl}/${config.phoneNumberId}/messages`,
       {
@@ -70,9 +72,13 @@ async function postMessage(
 }
 
 class WhatchimpGateway implements WhatsAppGateway {
-  async sendMessage(input: { phone: string; text: string }): Promise<WhatsAppSendResult> {
-    const config = getWhatchimpConfig();
-    return postMessage(config, {
+  async sendMessage(input: {
+    businessId: string;
+    phone: string;
+    text: string;
+  }): Promise<WhatsAppSendResult> {
+    const config = await getWhatchimpConfig(input.businessId);
+    return postMessage(input.businessId, config, {
       to: input.phone,
       type: 'text',
       text: { body: input.text },
@@ -80,12 +86,13 @@ class WhatchimpGateway implements WhatsAppGateway {
   }
 
   async sendTemplate(input: {
+    businessId: string;
     phone: string;
     templateCode: string;
     params: Record<string, string>;
   }): Promise<WhatsAppSendResult> {
-    const config = getWhatchimpConfig();
-    return postMessage(config, {
+    const config = await getWhatchimpConfig(input.businessId);
+    return postMessage(input.businessId, config, {
       to: input.phone,
       type: 'template',
       template: {
@@ -105,12 +112,13 @@ class WhatchimpGateway implements WhatsAppGateway {
   }
 
   async sendButtons(input: {
+    businessId: string;
     phone: string;
     bodyText: string;
     buttons: { id: string; title: string }[];
   }): Promise<WhatsAppSendResult> {
-    const config = getWhatchimpConfig();
-    return postMessage(config, {
+    const config = await getWhatchimpConfig(input.businessId);
+    return postMessage(input.businessId, config, {
       to: input.phone,
       type: 'interactive',
       interactive: {
@@ -127,13 +135,14 @@ class WhatchimpGateway implements WhatsAppGateway {
   }
 
   async sendList(input: {
+    businessId: string;
     phone: string;
     bodyText: string;
     buttonLabel: string;
     sections: { title: string; rows: { id: string; title: string; description?: string }[] }[];
   }): Promise<WhatsAppSendResult> {
-    const config = getWhatchimpConfig();
-    return postMessage(config, {
+    const config = await getWhatchimpConfig(input.businessId);
+    return postMessage(input.businessId, config, {
       to: input.phone,
       type: 'interactive',
       interactive: {
@@ -144,9 +153,9 @@ class WhatchimpGateway implements WhatsAppGateway {
     });
   }
 
-  async markAsRead(providerMessageId: string): Promise<void> {
-    const config = getWhatchimpConfig();
-    await withCircuitBreaker(GATEWAY_NAME, async () => {
+  async markAsRead(businessId: string, providerMessageId: string): Promise<void> {
+    const config = await getWhatchimpConfig(businessId);
+    await withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, async () => {
       const response = await fetch(
         `${config.baseUrl}/${config.phoneNumberId}/messages`,
         {
@@ -169,11 +178,12 @@ class WhatchimpGateway implements WhatsAppGateway {
   }
 
   parseIncomingMessage(payload: unknown): WhatsAppInboundMessage {
-    const message = (payload as RawIncomingWebhook).entry?.[0]?.changes?.[0]
-      ?.value?.messages?.[0];
-    if (!message) {
+    const value = (payload as RawIncomingWebhook).entry?.[0]?.changes?.[0]?.value;
+    const message = value?.messages?.[0];
+    const phoneNumberId = value?.metadata?.phone_number_id;
+    if (!message || !phoneNumberId) {
       throw new Error(
-        'Malformed Whatchimp webhook payload: missing entry[0].changes[0].value.messages[0]',
+        'Malformed Whatchimp webhook payload: missing entry[0].changes[0].value.messages[0] or .metadata.phone_number_id',
       );
     }
 
@@ -189,6 +199,7 @@ class WhatchimpGateway implements WhatsAppGateway {
     return {
       providerMessageId: message.id,
       fromPhone: message.from,
+      toPhoneNumberId: phoneNumberId,
       text,
       selectedId,
       receivedAt: new Date(Number(message.timestamp) * 1000).toISOString(),
@@ -200,8 +211,8 @@ class WhatchimpGateway implements WhatsAppGateway {
     token?: string;
     challenge?: string;
   }): string | null {
-    const config = getWhatchimpConfig();
-    if (query.mode === 'subscribe' && query.token === config.webhookVerifyToken) {
+    const verifyToken = getWhatchimpWebhookVerifyToken();
+    if (query.mode === 'subscribe' && query.token === verifyToken) {
       return query.challenge ?? null;
     }
     return null;

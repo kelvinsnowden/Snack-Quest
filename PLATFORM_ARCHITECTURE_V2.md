@@ -1616,56 +1616,58 @@ of the event it emits.
 
 ## 17. Multi-Tenant SaaS Readiness
 
-### 17.1 The decision
+### 17.1 The decision (superseded from "seam" to "built")
 
-The instruction governing this section is explicit: *don't introduce
-premature multi-tenancy if it significantly increases complexity
-today; identify what should be designed now, what can safely wait, and
-what must never be hard-coded to Snack Quest.* The answer applied
-throughout §3-16 is a **seam, not an infrastructure build** — a single
-reserved field and a small set of naming/config disciplines, with
-every actual multi-tenant capability (workspace switching, per-tenant
-billing, tenant-scoped admin roles, tenant onboarding flows) deferred
-in full. This is not a hedge — it's a considered trade-off, argued
-below.
+This section originally argued for a seam-only stance — a reserved
+`businessId` field and nothing more, with every actual multi-tenant
+capability deferred until a second tenant was funded. **That stance
+has been superseded by explicit direction**: Snack Quest is now
+treated as the first tenant of a Creator Commerce OS, not the
+architecture itself, and every domain in §3-16 has been retrofitted
+accordingly — `businessId` is a real, populated field on every
+tenant-scoped collection, every Repository query is scoped by it,
+every Gateway resolves its credentials per-tenant, and the governing
+test for any new feature is *"if another Kenyan business connected
+its own WhatsApp number, Daraja credentials, Meta Pixel, referral
+program, and Jumia account tomorrow, could it use this feature
+without modifying the code?"* — proven, not just asserted, by a
+dedicated second-tenant integration test (§17.6).
 
-**Why a seam and not real infrastructure, yet.** Building real
-multi-tenancy now — tenant onboarding, per-tenant billing, a workspace
-switcher, tenant-scoped RBAC — would roughly double the surface area
-of every domain in §3-16 before a single paying second tenant exists.
-Every Repository method would need a `businessId` parameter threaded
-through it, every Security Rule would need a tenant-membership check
-instead of a simple owner-or-admin check, and every Service would need
-to reason about cross-tenant data isolation. That is real, ongoing
-cost paid on every future feature, for a capability with exactly zero
-current demand. **Why a seam and not silence either** — retrofitting
-`businessId` onto collections and documents *after* thousands of
-production documents exist without it is a one-way migration with
-real downtime/backfill risk; reserving the field now, even unused, is
-nearly free and forecloses that risk permanently.
+**What did NOT change**: the original §17.3 deferral list below is
+still correct and still deferred — this retrofit is data-model and
+Service-layer tenant-awareness, not tenant *infrastructure* (billing,
+onboarding UI, workspace switching). Those remain premature until a
+second tenant is a real, funded initiative, for the same reasoning as
+before: building them now serves no current demand.
 
-### 17.2 What's designed now
+### 17.2 What's actually built now
 
-| Element | Design | Why now, not later |
+| Element | Reality | Where |
 |---|---|---|
-| `businesses` collection | `{businessId, name, whatsappBusinessNumber, darajaShortcode, currency, countyCoverage[], brandConfig: {logoUrl, primaryColor, ...}, createdAt}` — **one document exists today**, for Snack Quest itself | Establishes the shape a second tenant would take, without building anything that acts on a second tenant |
-| `businessId` field | Reserved (present, defaulted to Snack Quest's single `businessId`) on every collection listed in §17.4's "must never be hard-coded" table | Adding the field to a document schema is free; adding it retroactively to millions of existing documents is not |
-| Config-not-code discipline | Every value in §17.4 is read from the `businesses` document (or environment config keyed by `businessId`), never inlined in Service/Gateway code | Costs nothing extra today (Snack Quest's one business record holds the values either way) and is the entire difference between "a seam" and "hard-coded" |
-| Gateway credential lookup keyed by `businessId` | `lib/integrations/{provider}/config.ts` (§13) resolves credentials via `businessId`, not a bare env var, even though today there's exactly one set of credentials to resolve to | The alternative — env-var-per-provider today, `businessId`-keyed lookup later — is the exact kind of rework this section exists to avoid |
+| `businesses/{businessId}` | Real collection, real documents — `{name, currency, whatsappPhoneNumberId, countyCoverage[], adminWhatsappPhone, status}` | `types/business.ts`, `repositories/businessRepository.ts` |
+| `businesses/{businessId}/integrationSecrets/{provider}` | Per-tenant Daraja/Whatchimp/Jumia/Meta credentials, in Firestore, unconditional-deny security rule (no client, no admin exception) | `types/business.ts`, `repositories/businessIntegrationSecretRepository.ts` |
+| `businessId` on every tenant-scoped collection | Not reserved-but-unused — actually populated and actually queried on: `conversations`, `conversationCheckoutSnapshots`, `paymentIntents`, `orders`, `shipments`, `packages`, `referralLinks`, `referralAttributions`, `webhookEvents`, `domainEvents`, `creatorProfiles`, `customerProfiles` | Every type in `types/`, every repository query |
+| Gateway credential resolution | `initiateStkPush`, `sendMessage`, `createShipment`, `sendEvent` all take `businessId` and resolve credentials via `businessIntegrationSecretRepository` — no Gateway reads `process.env` for a tenant credential, ever | `lib/integrations/{daraja,whatchimp,jumia,meta}/config.ts` |
+| Circuit-breaker isolation | Circuit-breaker keys are `${gatewayName}:${businessId}` — one tenant's Daraja outage trips only that tenant's breaker | `lib/integrations/{daraja,whatchimp,jumia}Gateway.ts` |
+| OAuth token isolation | Daraja's token cache is `Map<businessId, token>`, not a single shared value — two tenants' Daraja apps never share a bearer token | `lib/integrations/daraja/darajaGateway.ts` |
+| Webhook tenant resolution | Whatchimp: resolved from the inbound payload's `phone_number_id` via `businessRepository.findByWhatsappPhoneNumberId()` — one shared URL, every tenant. Daraja: resolved from the URL path itself (`/api/webhooks/daraja/{businessId}`), matching how Safaricom actually requires a distinct callback URL per shortcode | `app/api/webhooks/whatchimp/route.ts`, `app/api/webhooks/daraja/[businessId]/route.ts` |
+| Cross-tenant defense-in-depth | `PaymentService.processCallback()` cross-checks the resolved `paymentIntent.businessId` against the URL-resolved `businessId` — a `checkoutRequestId` collision across two tenants (astronomically unlikely, Safaricom-generated) would still be rejected, not acted on | `services/paymentService.ts` |
+| Per-tenant referral codes | `referralLinks.findByCode()` scoped by `businessId` — the same code string means nothing across tenants, proven by the second-tenant test applying `SQ10` to both a Snack Quest order (discount applied) and a Rival Snacks order (code not recognized, full price) | `repositories/referralLinkRepository.ts` |
+| Per-tenant admin notifications | `adminWhatsappPhone` lives on the `businesses` document, not a global env var — a second tenant's order never has any code path that could notify the first tenant's admin | `services/notificationService.ts` |
 
-### 17.3 What can safely wait
+### 17.3 What can still safely wait
 
-None of the following exist in this architecture, and none should be
-built until a second tenant is a real, funded initiative:
+Unchanged from the original assessment — none of the following exist,
+and none should be built until a second tenant is a real, funded
+initiative:
 
-- Tenant onboarding flow (self-serve business signup, plan selection)
+- Tenant onboarding flow (self-serve business signup, plan selection,
+  or even an internal "add a business" admin form — today's tenant
+  provisioning is a seed script, `npm run seed:business`, deliberately)
 - Per-tenant billing/subscription/metering (Snack Quest OS billing
   *its* tenants — distinct from `subscriptions` in §5, which is
   Snack Quest billing *its own customers*)
 - A workspace switcher or any cross-tenant admin UI
-- Tenant-scoped RBAC (today's `staffProfiles`/role model assumes one
-  business; a real second tenant needs role scoping *per business*,
-  not just per user)
 - Tenant-level feature flags/plan tiers (which Gateways a given
   tenant has access to, usage caps, etc.)
 - Data residency/isolation guarantees beyond "the same Firestore
@@ -1673,37 +1675,54 @@ built until a second tenant is a real, funded initiative:
   outside Kenya, may need this reconsidered entirely (separate
   Firestore databases, or at least separate security-rule roots)
 
-Building any of these before a second tenant is contracted is exactly
-the premature complexity the governing instruction warns against.
-
 ### 17.4 What must never be hard-coded to Snack Quest
 
-This is the discipline that makes §17.3's deferral safe — as long as
-the following stay config-driven, adding a second tenant later is a
-data-and-config change, not an architecture change:
+The discipline is no longer aspirational — verified per row:
 
-| Never hard-code | Where it lives instead | Currently hard-coded in the pre-migration codebase? |
+| Never hard-code | Where it lives instead | Verified how |
 |---|---|---|
-| WhatsApp Business number | `businesses/{id}.whatsappBusinessNumber` | Yes — found inline in the current chatbot config |
-| Daraja shortcode/paybill/till number | `businesses/{id}.darajaShortcode` + Gateway config | Yes — Daraja setup today assumes one shortcode |
-| Currency (`KES`) | `businesses/{id}.currency` | Yes, pervasively — every `amountKes`-style field name is itself a Snack-Quest-specific assumption worth flagging as a naming convention to revisit if a second tenant trades in a different currency, even though renaming every field today would be premature |
-| County/delivery coverage list | `businesses/{id}.countyCoverage[]` + `deliveryZoneRules` (§12) already keyed for this | Partially — the completeness audit found county lists inline in frontend code |
-| Brand assets (logo, colors, domain) | `businesses/{id}.brandConfig` + subdomain routing (TDD §6) already resolves per-hostname, which is most of the mechanism a second tenant's own domain would reuse | Yes — Tailwind theme tokens are Snack-Quest-branded today by design (ADR-0000 scope), acceptable since there is one tenant |
-| Commission/fee structure defaults | `commissionRules` (§8) is already `businessId`-shaped, not global | No — already designed correctly |
-| Email/SMS "from" identity | Gateway config keyed by `businessId`, not a global constant | Yes — `SendGridGateway` config today assumes one sender identity |
+| WhatsApp number / `phone_number_id` | `businesses/{id}.whatsappPhoneNumberId` + `integrationSecrets/whatchimp.phoneNumberId` | Second-tenant test: two tenants, two numbers, correct webhook resolution for both |
+| Daraja shortcode/consumer key/secret | `integrationSecrets/daraja` | Second-tenant test: two shortcodes, two independently-cached OAuth tokens, two independent STK pushes |
+| Jumia merchant ID/API key | `integrationSecrets/jumia` | Second-tenant test: two merchant IDs, two distinct shipment references |
+| Meta Pixel ID/access token | `integrationSecrets/meta` | Second-tenant test: two access tokens, asserted in the dispatched request body |
+| Currency (`KES`) | `businesses/{id}.currency` | Still a naming-convention debt (`amountKes`-style field names) — unchanged from the original assessment, still premature to rename with one tenant live |
+| Admin WhatsApp number | `businesses/{id}.adminWhatsappPhone` | Second-tenant test: each tenant's admin notified, never the other's |
+| Referral codes | `referralLinks`, scoped by `businessId` | Second-tenant test: the same code string, valid for one tenant, meaningless for the other |
+| Package/product catalog | `packages`, scoped by `businessId` | Second-tenant test: two independent catalogs, two independent numbered option lists |
 
-### 17.5 Security rules implication
+### 17.5 Security rules: still the honest gap
 
-Every Security Rule in §3-16 is written today as owner-or-admin or
-server-only — **not** tenant-scoped, because there is exactly one
-tenant and adding a `businessId` membership check to every rule now
-would be unverifiable complexity (no second tenant to test isolation
-against) for zero present benefit. The moment a second tenant is
-funded, every rule needs a `resource.data.businessId in
-request.auth.token.businessIds` -shaped amendment before that
-tenant's data can be trusted alongside Snack Quest's — this is called
-out explicitly as **Open Question 6** in §21, not silently assumed
-safe.
+Unlike §17.2-17.4, Firestore Security Rules are **not** fully
+tenant-scoped yet, and this is a deliberate, named gap, not an
+oversight. `firestore.rules` now has a `belongsToBusiness(businessId)`
+helper and every collection carries `businessId`, but wiring that
+helper into `isAdmin()` requires a `businessId` custom claim on staff
+accounts — and no mechanism to issue that claim exists yet (staff
+onboarding is still single-tenant). Enforcing tenant-scoped admin
+reads before that claim-issuing mechanism exists would lock today's
+real Snack Quest admins out of their own data — a regression, not a
+security improvement. **This closes Open Question 6 (§21) partially**:
+the data model and Service layer are answered; Security Rule
+enforcement is now explicitly blocked on staff-claim issuance, tracked
+as its own follow-up rather than silently assumed safe. Every
+write-path collection remains `allow write: if false` (Admin SDK
+only) regardless, which is the higher-stakes half of tenant isolation
+and *is* fully enforced today.
+
+### 17.6 The proof
+
+`tests/integration/conversationJourney.test.ts`'s "platform proof: a
+second, independent tenant" test is the operational answer to the
+governing question for this section: Snack Quest and a fabricated
+second tenant ("Rival Snacks Co", its own WhatsApp number, Daraja
+shortcode, Jumia account, Meta Pixel, and referral codes) each
+complete a full order — from first WhatsApp message through payment,
+order creation, referral commission, Jumia shipment, and Meta CAPI
+dispatch — through the *identical* `ConversationService`,
+`PaymentService`, `OrderService`, `DeliveryService`, `ReferralService`,
+and `AdConversionService` code, zero modification, and the test
+asserts the two tenants' data never cross-contaminates at any of the
+seams above.
 
 ---
 

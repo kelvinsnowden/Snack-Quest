@@ -16,17 +16,18 @@ const GATEWAY_NAME = 'jumia';
  */
 class JumiaGateway implements CourierGateway {
   async createShipment(input: {
+    businessId: string;
     orderId: string;
     recipientName: string;
     recipientPhone: string;
     deliverTo: Record<string, unknown>;
   }): Promise<ShipmentResult> {
-    const config = getJumiaConfig();
+    const config = await getJumiaConfig(input.businessId);
 
     // Shipment creation is idempotent by orderId on Jumia's side (a
     // real courier API dedupes on merchant order reference) — safe to
     // retry on a transient network failure, unlike a payment prompt.
-    return withCircuitBreaker(GATEWAY_NAME, () =>
+    return withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, () =>
       withRetry(async () => {
         const response = await fetch(`${config.baseUrl}/shipments`, {
           method: 'POST',
@@ -60,9 +61,9 @@ class JumiaGateway implements CourierGateway {
     );
   }
 
-  async getTrackingStatus(shipmentRef: string): Promise<TrackingStatus> {
-    const config = getJumiaConfig();
-    return withCircuitBreaker(GATEWAY_NAME, () =>
+  async getTrackingStatus(businessId: string, shipmentRef: string): Promise<TrackingStatus> {
+    const config = await getJumiaConfig(businessId);
+    return withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, () =>
       withRetry(async () => {
         const response = await fetch(`${config.baseUrl}/shipments/${shipmentRef}`, {
           headers: { Authorization: `Bearer ${config.apiKey}` },

@@ -14,6 +14,7 @@ export type ShipmentStatus =
   | 'failed';
 
 export interface Shipment {
+  businessId: string;
   orderId: string;
   courierShipmentRef: string | null;
   trackingUrl: string | null;

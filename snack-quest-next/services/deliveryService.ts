@@ -25,9 +25,14 @@ export interface ShipmentRecipient {
 }
 
 class DeliveryService {
-  async createShipmentForOrder(orderId: string, recipient: ShipmentRecipient): Promise<void> {
+  async createShipmentForOrder(
+    businessId: string,
+    orderId: string,
+    recipient: ShipmentRecipient,
+  ): Promise<void> {
     const shipmentId = await shipmentRepository.create(
       {
+        businessId,
         orderId,
         courierShipmentRef: null,
         trackingUrl: null,
@@ -42,6 +47,7 @@ class DeliveryService {
 
     try {
       const result = await jumiaGateway.createShipment({
+        businessId,
         orderId,
         recipientName: recipient.customerName,
         recipientPhone: recipient.phoneNumber,
@@ -51,13 +57,13 @@ class DeliveryService {
         courierShipmentRef: result.courierShipmentRef,
         trackingUrl: result.trackingUrl,
       });
-      await publishEvent('ShipmentCreated', 'order', orderId, {
+      await publishEvent(businessId, 'ShipmentCreated', 'order', orderId, {
         shipmentId,
         courierShipmentRef: result.courierShipmentRef,
       });
     } catch (error) {
       await shipmentRepository.updateStatus(shipmentId, 'failed');
-      await publishEvent('ShipmentCreationFailed', 'order', orderId, {
+      await publishEvent(businessId, 'ShipmentCreationFailed', 'order', orderId, {
         shipmentId,
         reason: error instanceof Error ? error.message : 'unknown error',
       });

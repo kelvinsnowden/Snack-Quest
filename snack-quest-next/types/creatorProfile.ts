@@ -6,6 +6,7 @@ export type PaymentPreference = 'mpesa' | 'bank';
 
 /** `creatorProfiles/{uid}` — creator-specific business data. TDD §8. */
 export interface CreatorProfile extends AuditFields {
+  businessId: string;
   referralCode: string;
   tier: CreatorTier;
   // Financial fields — client-writable only by the server (rules §9

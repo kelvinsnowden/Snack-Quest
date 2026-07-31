@@ -9,6 +9,7 @@ import type { AuditFields } from './common';
  * real order needs them.
  */
 export interface ReferralLink extends AuditFields {
+  businessId: string;
   code: string;
   ownerId: string;
   discountKes: number;

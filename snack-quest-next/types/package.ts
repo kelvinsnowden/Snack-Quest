@@ -9,6 +9,7 @@ import type { AuditFields } from './common';
  * milestone.
  */
 export interface Package extends AuditFields {
+  businessId: string;
   name: string;
   description: string;
   priceKes: number;

@@ -6,6 +6,7 @@ import { adminFirestore } from '@/lib/firebase/admin';
 const COLLECTION = 'referralAttributions';
 
 export interface ReferralAttributionInput {
+  businessId: string;
   referralLinkId: string;
   creatorId: string;
   orderId: string;

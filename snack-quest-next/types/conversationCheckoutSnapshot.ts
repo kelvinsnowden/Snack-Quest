@@ -18,6 +18,7 @@ export type ConversationCheckoutSnapshotStatus =
   | 'expired';
 
 export interface ConversationCheckoutSnapshot {
+  businessId: string;
   conversationId: string;
   customerId: string | null;
   phoneNumber: string;

@@ -9,6 +9,10 @@ import type { Conversation, ConversationMessage, ConversationStateBlob, Conversa
  * (PLATFORM_ARCHITECTURE_V2.md §6). Persistence only — the state
  * machine and business rules live in `lib/conversation/stateMachine.ts`
  * and `services/conversationService.ts`.
+ *
+ * Every read that could span tenants (i.e. every query, as opposed to
+ * a single doc-by-id lookup) is scoped by `businessId` — phone numbers
+ * are not globally unique to one business, and never will be.
  */
 
 const COLLECTION = 'conversations';
@@ -18,6 +22,7 @@ const COLLECTION = 'conversations';
 const ACTIVE_STATUSES = ['active', 'awaiting_payment', 'agent_assigned'];
 
 export interface CreateConversationInput {
+  businessId: string;
   phoneNumber: string;
   attributionSnapshot?: Record<string, unknown> | null;
   referralLinkId?: string | null;
@@ -34,6 +39,7 @@ class ConversationRepository {
   async create(input: CreateConversationInput): Promise<string> {
     const now = FieldValue.serverTimestamp();
     const ref = await adminFirestore.collection(COLLECTION).add({
+      businessId: input.businessId,
       phoneNumber: input.phoneNumber,
       customerId: null,
       status: 'active',
@@ -62,15 +68,17 @@ class ConversationRepository {
 
   /**
    * The natural resumption lookup: "does this phone number already
-   * have an in-progress conversation?" Ordered by most recent so a
-   * customer who somehow has more than one active thread resumes the
-   * newest, never an arbitrary one.
+   * have an in-progress conversation with this business?" Ordered by
+   * most recent so a customer who somehow has more than one active
+   * thread resumes the newest, never an arbitrary one.
    */
   async findActiveByPhoneNumber(
+    businessId: string,
     phoneNumber: string,
   ): Promise<{ id: string; conversation: Conversation } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
+      .where('businessId', '==', businessId)
       .where('phoneNumber', '==', phoneNumber)
       .where('status', 'in', ACTIVE_STATUSES)
       .orderBy('startedAt', 'desc')

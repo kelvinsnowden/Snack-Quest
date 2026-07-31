@@ -15,6 +15,7 @@ export type PaymentIntentStatus =
   | 'expired';
 
 export interface PaymentIntent {
+  businessId: string;
   conversationId: string;
   conversationCheckoutSnapshotId: string;
   customerId: string | null;
