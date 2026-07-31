@@ -1,4 +1,5 @@
 import { withdrawalService } from '@/services/withdrawalService';
+import { verifyDarajaWebhookRequest } from '@/lib/webhooks/verifyDarajaWebhookRequest';
 
 /**
  * Daraja's B2C QueueTimeOutURL (§ Admin: Withdrawals — Daraja B2C) —
@@ -13,6 +14,11 @@ export async function POST(
   { params }: { params: Promise<{ businessId: string }> },
 ): Promise<Response> {
   const { businessId } = await params;
+  const verification = await verifyDarajaWebhookRequest(businessId, request);
+  if (!verification.ok) {
+    return verification.response;
+  }
+
   const payload = await request.json();
   await withdrawalService.handleB2CResult(businessId, payload);
 

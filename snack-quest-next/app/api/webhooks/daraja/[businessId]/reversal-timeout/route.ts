@@ -1,4 +1,5 @@
 import { refundService } from '@/services/refundService';
+import { verifyDarajaWebhookRequest } from '@/lib/webhooks/verifyDarajaWebhookRequest';
 
 /**
  * Daraja's reversal QueueTimeOutURL (§ RefundService + Daraja reversal
@@ -14,6 +15,11 @@ export async function POST(
   { params }: { params: Promise<{ businessId: string }> },
 ): Promise<Response> {
   const { businessId } = await params;
+  const verification = await verifyDarajaWebhookRequest(businessId, request);
+  if (!verification.ok) {
+    return verification.response;
+  }
+
   const payload = await request.json();
   await refundService.handleReversalResult(businessId, payload);
 

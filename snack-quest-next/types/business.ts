@@ -60,6 +60,18 @@ export interface DarajaIntegrationSecret {
    */
   b2cInitiatorName?: string;
   b2cSecurityCredential?: string;
+  /**
+   * Real origin verification for this business's Daraja webhooks
+   * (§ Secure the Daraja and Whatchimp webhook routes) — Safaricom
+   * signs nothing, so a secret this codebase generates itself and
+   * embeds in the CallBackURL/ResultURL/QueueTimeOutURL it submits on
+   * every API call (see `lib/integrations/daraja/config.ts`) is the
+   * one verifiable mechanism available. Optional and fail-open when
+   * absent (see `lib/webhooks/webhookSecret.ts`) so provisioning this
+   * for existing businesses is a safe, non-breaking migration, not a
+   * flag day.
+   */
+  webhookSecret?: string;
 }
 
 export interface WhatchimpIntegrationSecret {

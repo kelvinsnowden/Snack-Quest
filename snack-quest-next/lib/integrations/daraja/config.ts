@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import { withWebhookSecret } from '@/lib/webhooks/webhookSecret';
 import type { DarajaIntegrationSecret } from '@/types';
 
 /**
@@ -85,7 +86,7 @@ export async function getDarajaConfig(businessId: string): Promise<DarajaConfig>
     consumerSecret: secret.consumerSecret,
     shortcode: secret.shortcode,
     passkey: secret.passkey,
-    callbackUrl: secret.callbackUrl,
+    callbackUrl: withWebhookSecret(secret.callbackUrl, secret.webhookSecret),
     baseUrl: toBaseUrl(secret),
   };
 }
@@ -104,8 +105,8 @@ export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CC
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: `${origin}/api/webhooks/daraja/${businessId}/b2c-result`,
-    queueTimeoutUrl: `${origin}/api/webhooks/daraja/${businessId}/b2c-timeout`,
+    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-result`, secret.webhookSecret),
+    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-timeout`, secret.webhookSecret),
   };
 }
 
@@ -123,7 +124,7 @@ export async function getDarajaReversalConfig(businessId: string): Promise<Daraj
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: `${origin}/api/webhooks/daraja/${businessId}/reversal-result`,
-    queueTimeoutUrl: `${origin}/api/webhooks/daraja/${businessId}/reversal-timeout`,
+    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-result`, secret.webhookSecret),
+    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-timeout`, secret.webhookSecret),
   };
 }

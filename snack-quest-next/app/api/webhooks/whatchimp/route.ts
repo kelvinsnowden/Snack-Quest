@@ -3,6 +3,7 @@ import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { businessRepository } from '@/repositories/businessRepository';
 import { conversationService } from '@/services/conversationService';
 import { productService } from '@/services/productService';
+import { checkWebhookSecret } from '@/lib/webhooks/webhookSecret';
 import type { WhatsAppInboundMessage } from '@/lib/integrations/types';
 
 /**
@@ -12,9 +13,38 @@ import type { WhatsAppInboundMessage } from '@/lib/integrations/types';
  * POST is every inbound customer message, for *every* tenant — one
  * shared URL, disambiguated by which WhatsApp number (`phone_number_id`)
  * received the message.
+ *
+ * `WHATCHIMP_WEBHOOK_SECRET` (§ Secure the Daraja and Whatchimp webhook
+ * routes) is checked on both verbs, same fail-open-until-configured
+ * discipline as `lib/webhooks/webhookSecret.ts`'s own comment explains
+ * for Daraja — except here provisioning it is NOT automatic: this
+ * shared URL is registered once in Whatchimp's/Meta's app dashboard, so
+ * an operator must add `?key=<secret>` to that registered URL after
+ * setting the env var, or Whatchimp will keep calling the bare URL and
+ * get rejected once a secret is configured.
  */
 
+function checkSharedSecret(request: Request): Response | null {
+  const key = new URL(request.url).searchParams.get('key');
+  const expected = process.env.WHATCHIMP_WEBHOOK_SECRET;
+  const result = checkWebhookSecret(key, expected);
+  if (!result.ok) {
+    return new Response('Forbidden', { status: 403 });
+  }
+  if (!expected) {
+    console.warn(
+      '[whatchimp webhook] WHATCHIMP_WEBHOOK_SECRET is not configured — accepting unverified requests. Set it and update the registered webhook URL to include ?key=<secret>.',
+    );
+  }
+  return null;
+}
+
 export async function GET(request: Request): Promise<Response> {
+  const secretRejection = checkSharedSecret(request);
+  if (secretRejection) {
+    return secretRejection;
+  }
+
   const url = new URL(request.url);
   const challenge = whatchimpGateway.verifyWebhookChallenge({
     mode: url.searchParams.get('hub.mode') ?? undefined,
@@ -28,6 +58,11 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const secretRejection = checkSharedSecret(request);
+  if (secretRejection) {
+    return secretRejection;
+  }
+
   const payload = await request.json();
 
   let inbound;

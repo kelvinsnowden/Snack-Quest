@@ -16,7 +16,8 @@
     "seed:business": "node scripts/seedBusiness.mjs",
     "seed:staff": "node scripts/seedStaff.mjs",
     "seed:packages": "node scripts/seedPackages.mjs",
-    "seed:pickup-stations": "node scripts/seedPickupStations.mjs"
+    "seed:pickup-stations": "node scripts/seedPickupStations.mjs",
+    "secure:daraja-webhook": "node scripts/setDarajaWebhookSecret.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
