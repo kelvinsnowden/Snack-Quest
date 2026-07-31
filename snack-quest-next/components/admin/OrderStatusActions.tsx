@@ -23,7 +23,15 @@ const VARIANT_FOR_TARGET: Record<OrderStatus, ButtonProps['variant']> = {
   delivered: 'secondary',
   cancelled: 'danger',
   refund_requested: 'outline',
+  refunded: 'outline',
 };
+
+// `refund_requested -> refunded` is system-driven only (RefundService,
+// on a confirmed Daraja reversal) — never a manual click here, which
+// would just flip the status without any money actually moving. See
+// `RefundActions` for the real, money-moving action this workspace
+// exposes instead.
+const SYSTEM_ONLY_TARGETS: OrderStatus[] = ['refunded'];
 
 // A reason is required for the two transitions that need a documented
 // justification for anyone reviewing the order later — every other
@@ -40,7 +48,7 @@ export function OrderStatusActions({ orderId, status }: { orderId: string; statu
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const nextStatuses = VALID_ORDER_TRANSITIONS[status];
+  const nextStatuses = VALID_ORDER_TRANSITIONS[status].filter((next) => !SYSTEM_ONLY_TARGETS.includes(next));
   if (nextStatuses.length === 0) {
     return null;
   }

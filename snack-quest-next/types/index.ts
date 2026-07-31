@@ -27,3 +27,4 @@ export * from './deliveryZoneRule';
 export * from './delivery';
 export * from './inventoryMovement';
 export * from './marketingSpend';
+export * from './refund';

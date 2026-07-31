@@ -5,9 +5,12 @@ import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
+import { refundRepository } from '@/repositories/refundRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { OrderStatusActions } from '@/components/admin/OrderStatusActions';
+import { RefundActions } from '@/components/admin/RefundActions';
+import { RefundStatusBadge } from '@/components/admin/RefundStatusBadge';
 import { formatDateTime, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Order detail' };
@@ -34,12 +37,16 @@ export default async function AdminOrderDetailPage({
     notFound();
   }
 
-  const [items, shipment] = await Promise.all([
+  const [items, shipment, refunds] = await Promise.all([
     orderRepository.listItems(orderId),
     shipmentRepository.findByOrderId(orderId),
+    refundRepository.listByOrderId(session.businessId, orderId),
   ]);
 
   const { customer, delivery, payment, pricing, product } = order;
+  const canInitiateRefund =
+    order.status === 'refund_requested' &&
+    !refunds.some(({ data }) => data.status === 'processing' || data.status === 'succeeded');
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,7 +67,10 @@ export default async function AdminOrderDetailPage({
             Placed {formatDateTime(order.createdAt)} · Order {orderId}
           </p>
         </div>
-        <OrderStatusActions orderId={orderId} status={order.status} />
+        <div className="flex flex-col items-end gap-2">
+          <OrderStatusActions orderId={orderId} status={order.status} />
+          {canInitiateRefund ? <RefundActions orderId={orderId} /> : null}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -148,6 +158,25 @@ export default async function AdminOrderDetailPage({
                 label={`${item.packageLabel} × ${item.quantity}`}
                 value={formatKes(item.unitCostKes * item.quantity)}
               />
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {refunds.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Refunds</CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y divide-border">
+            {refunds.map(({ id, data }) => (
+              <div key={id} className="flex items-baseline justify-between gap-4 py-2 text-sm">
+                <div>
+                  <RefundStatusBadge status={data.status} />
+                  <span className="ml-2 text-muted-foreground">{formatDateTime(data.createdAt)}</span>
+                </div>
+                <span className="font-medium tabular-nums text-foreground">{formatKes(data.amountKes)}</span>
+              </div>
             ))}
           </CardContent>
         </Card>

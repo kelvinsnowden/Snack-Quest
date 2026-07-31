@@ -14,7 +14,11 @@ export const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   dispatched: ['delivered', 'refund_requested'],
   delivered: ['refund_requested'],
   cancelled: [],
-  refund_requested: [],
+  // refund_requested -> refunded is system-driven only (RefundService.handleReversalResult
+  // on a confirmed Daraja reversal), never a manual OrderStatusActions choice — see that
+  // component, which only ever exposes staff-initiated transitions.
+  refund_requested: ['refunded'],
+  refunded: [],
 };
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -24,4 +28,5 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   delivered: 'Delivered',
   cancelled: 'Cancelled',
   refund_requested: 'Refund requested',
+  refunded: 'Refunded',
 };

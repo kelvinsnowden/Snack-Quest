@@ -9,6 +9,7 @@ const VARIANT_FOR_STATUS: Record<OrderStatus, BadgeProps['variant']> = {
   delivered: 'success',
   cancelled: 'outline',
   refund_requested: 'warning',
+  refunded: 'danger',
 };
 
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {

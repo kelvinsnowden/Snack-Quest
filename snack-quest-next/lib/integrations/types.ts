@@ -86,6 +86,47 @@ export interface PayoutGateway {
   verifyB2CResult(payload: unknown): B2CResultCallback;
 }
 
+/** The synchronous ack Safaricom returns the instant a reversal request is accepted for processing — not proof the money moved back, just that the request was queued. */
+export interface ReversalResult {
+  originatorConversationId: string;
+  conversationId: string;
+  responseCode: string;
+  responseDescription: string;
+}
+
+/** The async outcome delivered later to the reversal's ResultURL — this is the actual proof of success or failure. */
+export interface ReversalResultCallback {
+  originatorConversationId: string;
+  conversationId: string;
+  resultCode: number;
+  resultDesc: string;
+  succeeded: boolean;
+  /** Present only when `succeeded` — Safaricom's own transaction id for the reversal itself. */
+  transactionId?: string;
+  amountKes?: number;
+  transactionCompletedAt?: string;
+}
+
+/**
+ * Real M-Pesa transaction reversals (§ RefundService + Daraja reversal
+ * support) — deliberately its own interface, not folded into
+ * `PayoutGateway`: a reversal undoes a specific prior C2B transaction
+ * (`TransactionID` in, not a phone number + amount like B2C), a
+ * different Safaricom product with its own request/response shape,
+ * even though it reuses the same operator credentials as B2C
+ * (`InitiatorName`/`SecurityCredential`).
+ */
+export interface RefundGateway {
+  initiateReversal(input: {
+    businessId: string;
+    transactionId: string;
+    amountKes: number;
+    remarks: string;
+    occasion?: string;
+  }): Promise<ReversalResult>;
+  verifyReversalResult(payload: unknown): ReversalResultCallback;
+}
+
 export interface WhatsAppSendResult {
   providerMessageId: string;
 }

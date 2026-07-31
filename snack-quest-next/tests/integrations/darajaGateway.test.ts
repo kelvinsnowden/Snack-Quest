@@ -393,3 +393,148 @@ describe('DarajaGateway.verifyB2CResult', () => {
     expect(() => darajaGateway.verifyB2CResult({ unexpected: true })).toThrow(/Malformed Daraja B2C result/);
   });
 });
+
+describe('DarajaGateway.initiateReversal', () => {
+  beforeEach(() => {
+    resetDarajaTokenCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('throws DarajaReversalNotConfiguredError when only C2B credentials exist', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+
+    await expect(
+      darajaGateway.initiateReversal({
+        businessId: BUSINESS_ID,
+        transactionId: 'NLJ7RT61SV',
+        amountKes: 2500,
+        remarks: 'Order refund',
+      }),
+    ).rejects.toThrow(/no Daraja operator credentials configured/);
+  });
+
+  it('initiates a real reversal request on success, reusing the B2C operator credentials', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                ConversationID: 'AG_20191219_00005797af5d7d76',
+                OriginatorConversationID: '16740-34861180-2',
+                ResponseCode: '0',
+                ResponseDescription: 'Accept the service request successfully.',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await darajaGateway.initiateReversal({
+      businessId: BUSINESS_ID,
+      transactionId: 'NLJ7RT61SV',
+      amountKes: 2500,
+      remarks: 'Order refund',
+      occasion: 'order-1',
+    });
+
+    expect(result).toEqual({
+      originatorConversationId: '16740-34861180-2',
+      conversationId: 'AG_20191219_00005797af5d7d76',
+      responseCode: '0',
+      responseDescription: 'Accept the service request successfully.',
+    });
+    const [, reversalCall] = fetchMock.mock.calls;
+    expect(String(reversalCall[0])).toContain('/mpesa/reversal/v1/request');
+    const body = JSON.parse(reversalCall[1].body);
+    expect(body.Initiator).toBe('testapiuser');
+    expect(body.SecurityCredential).toBe('encrypted-credential-base64');
+    expect(body.CommandID).toBe('TransactionReversal');
+    expect(body.TransactionID).toBe('NLJ7RT61SV');
+    expect(body.Amount).toBe(2500);
+    expect(body.ReceiverParty).toBe('174379');
+    expect(body.RecieverIdentifierType).toBe('11');
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-result`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-timeout`);
+  });
+
+  it('throws when Daraja rejects the reversal request', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(JSON.stringify({ errorMessage: 'Invalid TransactionID' }), { status: 400 }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      darajaGateway.initiateReversal({
+        businessId: BUSINESS_ID,
+        transactionId: 'bad-receipt',
+        amountKes: 2500,
+        remarks: 'Order refund',
+      }),
+    ).rejects.toThrow(/Daraja reversal request failed/);
+  });
+});
+
+describe('DarajaGateway.verifyReversalResult', () => {
+  it('parses a successful reversal result', () => {
+    const result = darajaGateway.verifyReversalResult({
+      Result: {
+        ResultType: 0,
+        ResultCode: 0,
+        ResultDesc: 'The service request is processed successfully.',
+        OriginatorConversationID: '16740-34861180-2',
+        ConversationID: 'AG_20191219_00005797af5d7d76',
+        TransactionID: 'RJ34HAY7Q',
+        ResultParameters: {
+          ResultParameter: [
+            { Key: 'Amount', Value: 2500 },
+            { Key: 'TransactionCompletedDateTime', Value: '19.12.2019 11:45:50' },
+          ],
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      originatorConversationId: '16740-34861180-2',
+      conversationId: 'AG_20191219_00005797af5d7d76',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+      succeeded: true,
+      transactionId: 'RJ34HAY7Q',
+      amountKes: 2500,
+      transactionCompletedAt: '19.12.2019 11:45:50',
+    });
+  });
+
+  it('parses a failed reversal result without transaction fields', () => {
+    const result = darajaGateway.verifyReversalResult({
+      Result: {
+        ResultType: 0,
+        ResultCode: 2001,
+        ResultDesc: 'The initiator information is invalid.',
+        OriginatorConversationID: '16740-34861180-3',
+        ConversationID: 'AG_20191219_00005797af5d7d77',
+      },
+    });
+
+    expect(result.succeeded).toBe(false);
+    expect(result.transactionId).toBeUndefined();
+    expect(result.amountKes).toBeUndefined();
+  });
+
+  it('throws on a malformed payload missing Result', () => {
+    expect(() => darajaGateway.verifyReversalResult({ unexpected: true })).toThrow(
+      /Malformed Daraja reversal result/,
+    );
+  });
+});

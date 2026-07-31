@@ -21,6 +21,7 @@ const STATUS_FILTERS: OrderStatus[] = [
   'delivered',
   'cancelled',
   'refund_requested',
+  'refunded',
 ];
 
 const PHONE_LIKE = /^\+?\d{9,15}$/;

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { getDarajaConfig, getDarajaB2CConfig, type DarajaConfig } from './config';
+import { getDarajaConfig, getDarajaB2CConfig, getDarajaReversalConfig, type DarajaConfig } from './config';
 import { withRetry } from '../shared/withRetry';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
 import type {
@@ -9,6 +9,9 @@ import type {
   PaymentCallbackResult,
   PaymentGateway,
   PayoutGateway,
+  RefundGateway,
+  ReversalResult,
+  ReversalResultCallback,
   StkPushResult,
 } from '../types';
 
@@ -95,6 +98,11 @@ interface B2CResultParameter {
   Value: string | number;
 }
 
+// Shared shape: B2C and Transaction Reversal results both come back as
+// the same `Result` envelope (ResultCode/ResultDesc/conversation ids/
+// TransactionID/ResultParameters) — one interface, reused by
+// `verifyB2CResult` and `verifyReversalResult` below, not two
+// structurally-identical copies.
 interface RawDarajaB2CResult {
   Result?: {
     ResultCode: number;
@@ -118,7 +126,7 @@ interface RawDarajaCallback {
   };
 }
 
-class DarajaGateway implements PaymentGateway, PayoutGateway {
+class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
   async initiateStkPush(input: {
     businessId: string;
     phone: string;
@@ -292,6 +300,90 @@ class DarajaGateway implements PaymentGateway, PayoutGateway {
       transactionCompletedAt: succeeded ? String(findParam('TransactionCompletedDateTime')) : undefined,
     };
   }
+  /**
+   * Initiates a real M-Pesa Transaction Reversal (`CommandID:
+   * TransactionReversal`) — reverses a specific prior C2B transaction
+   * by its own M-Pesa receipt number, not a phone-number+amount payout
+   * like B2C. `RecieverIdentifierType: '11'` (organization shortcode)
+   * is the fixed value Safaricom's API expects for a reversal back to
+   * the paybill's own shortcode. Same non-retry discipline as
+   * `initiateStkPush`/`initiateB2CPayment`: no dedup key, so a blind
+   * retry after a network failure risks reversing the same transaction
+   * twice. `RefundService` owns what to do after an ambiguous failure.
+   */
+  async initiateReversal(input: {
+    businessId: string;
+    transactionId: string;
+    amountKes: number;
+    remarks: string;
+    occasion?: string;
+  }): Promise<ReversalResult> {
+    const config = await getDarajaReversalConfig(input.businessId);
+    const accessToken = await fetchAccessToken(input.businessId, config);
+
+    return withCircuitBreaker(`${GATEWAY_NAME}-reversal:${input.businessId}`, async () => {
+      const response = await fetch(`${config.baseUrl}/mpesa/reversal/v1/request`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          Initiator: config.initiatorName,
+          SecurityCredential: config.securityCredential,
+          CommandID: 'TransactionReversal',
+          TransactionID: input.transactionId,
+          Amount: Math.round(input.amountKes),
+          ReceiverParty: config.shortcode,
+          RecieverIdentifierType: '11',
+          ResultURL: config.resultUrl,
+          QueueTimeOutURL: config.queueTimeoutUrl,
+          Remarks: input.remarks,
+          Occasion: input.occasion ?? '',
+        }),
+      });
+
+      const data = (await response.json()) as Record<string, unknown>;
+      if (!response.ok || data.ResponseCode !== '0') {
+        throw new Error(
+          `Daraja reversal request failed: ${
+            data.errorMessage ?? data.ResponseDescription ?? response.status
+          }`,
+        );
+      }
+
+      return {
+        originatorConversationId: String(data.OriginatorConversationID),
+        conversationId: String(data.ConversationID),
+        responseCode: String(data.ResponseCode),
+        responseDescription: String(data.ResponseDescription),
+      };
+    });
+  }
+
+  verifyReversalResult(payload: unknown): ReversalResultCallback {
+    const result = (payload as RawDarajaB2CResult).Result;
+    if (!result) {
+      throw new Error('Malformed Daraja reversal result payload: missing Result');
+    }
+
+    const params = result.ResultParameters?.ResultParameter ?? [];
+    const findParam = (key: string): string | number | undefined =>
+      params.find((p) => p.Key === key)?.Value;
+
+    const succeeded = result.ResultCode === 0;
+
+    return {
+      originatorConversationId: result.OriginatorConversationID,
+      conversationId: result.ConversationID,
+      resultCode: result.ResultCode,
+      resultDesc: result.ResultDesc,
+      succeeded,
+      transactionId: succeeded ? result.TransactionID : undefined,
+      amountKes: succeeded ? Number(findParam('Amount')) : undefined,
+      transactionCompletedAt: succeeded ? String(findParam('TransactionCompletedDateTime')) : undefined,
+    };
+  }
 }
 
-export const darajaGateway: PaymentGateway & PayoutGateway = new DarajaGateway();
+export const darajaGateway: PaymentGateway & PayoutGateway & RefundGateway = new DarajaGateway();

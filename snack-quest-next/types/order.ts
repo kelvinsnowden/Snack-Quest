@@ -7,12 +7,12 @@ import type { DeliveryDetails } from './delivery';
  * it only exists at all because a payment already succeeded — see
  * `repositories/orderRepository.ts`'s `createInTransaction`). The
  * Admin Orders lifecycle (§ Admin: Orders) is: confirmed -> dispatched
- * -> delivered, or confirmed/dispatched/delivered -> refund_requested,
- * or confirmed -> cancelled. `refund_requested` is a real, queryable,
- * audited state — not a real payment reversal, which doesn't exist
- * anywhere in this codebase yet (no Daraja B2C client, no
- * `RefundService`); it's the honest handoff point a future Finance
- * workflow resolves, not a status that pretends money already moved.
+ * -> delivered, or confirmed/dispatched/delivered -> refund_requested
+ * -> refunded, or confirmed -> cancelled. `refund_requested` only ever
+ * flags intent — the real M-Pesa reversal (§ RefundService + Daraja
+ * reversal support) lives in the separate `refunds` collection;
+ * `refunded` is set only once that reversal is confirmed, real proof
+ * money actually moved back, not a status that pretends it did.
  */
 export type OrderStatus =
   | 'pending'
@@ -20,7 +20,8 @@ export type OrderStatus =
   | 'dispatched'
   | 'delivered'
   | 'cancelled'
-  | 'refund_requested';
+  | 'refund_requested'
+  | 'refunded';
 
 export interface OrderProduct {
   packageId: string;

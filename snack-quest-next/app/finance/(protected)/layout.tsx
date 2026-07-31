@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 const NAV_ITEMS = [
   { href: '/finance', label: 'Withdrawals' },
   { href: '/finance/commissions', label: 'Commissions' },
+  { href: '/finance/refunds', label: 'Refunds' },
   { href: '/finance/revenue', label: 'Revenue' },
 ];
 
@@ -26,11 +27,14 @@ const NAV_ITEMS = [
  *
  * Scope note: this workspace covers what's real today — withdrawal
  * approvals + Daraja B2C (§ Admin: Withdrawals), the commission ledger
- * (§ Admin: Referrals), and revenue reporting (§ Admin: Analytics),
- * all reused rather than rebuilt. "Reconciliation" and "Refunds" are
- * deliberately NOT here yet: neither has a real backend today (no
- * `RefundService`, no `unmatchedPayments` surfacing) — those are
- * dedicated upcoming tasks, not something to fake a UI for now.
+ * (§ Admin: Referrals), revenue reporting (§ Admin: Analytics), and the
+ * refund ledger (§ RefundService + Daraja reversal support), all reused
+ * rather than rebuilt (refund initiation itself lives on the order
+ * detail page in `/admin/orders`, since that's where the order-specific
+ * context — payment, pricing, status — already is). "Reconciliation" is
+ * deliberately NOT here yet: there's no real `unmatchedPayments`
+ * surfacing today — that's a dedicated upcoming task, not something to
+ * fake a UI for now.
  */
 export default async function FinanceLayout({ children }: { children: React.ReactNode }) {
   const session = await requireStaffSession('/admin/login?next=%2Ffinance');
