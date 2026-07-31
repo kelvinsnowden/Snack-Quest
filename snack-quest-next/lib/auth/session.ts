@@ -3,6 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { parseCookie } from 'cookie';
 import { staffAuthService, type StaffSession } from '@/services/staffAuthService';
 import { STAFF_SESSION_COOKIE } from './cookieName';
 
@@ -35,4 +36,25 @@ export async function requireStaffSession(redirectTo = '/admin/login'): Promise<
     redirect(redirectTo);
   }
   return session;
+}
+
+/**
+ * The same Secure-tier check as `getStaffSession()`, but for admin
+ * mutation Route Handlers (§ Admin: Orders and every workspace after
+ * it) — those read the cookie from the raw `Request` via the `cookie`
+ * package rather than `next/headers`'s `cookies()`, deliberately,
+ * so they can be exercised directly in tests the same way
+ * `app/api/auth/session/route.ts` already is (`cookies()` throws
+ * outside a live Next.js request scope, confirmed empirically).
+ */
+export async function verifyStaffSessionFromRequest(request: Request): Promise<StaffSession | null> {
+  const header = request.headers.get('cookie');
+  if (!header) {
+    return null;
+  }
+  const cookie = parseCookie(header)[STAFF_SESSION_COOKIE];
+  if (!cookie) {
+    return null;
+  }
+  return staffAuthService.verifySessionCookie(cookie);
 }

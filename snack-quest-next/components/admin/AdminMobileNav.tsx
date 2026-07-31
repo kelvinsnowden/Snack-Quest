@@ -7,7 +7,7 @@ import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { ADMIN_NAV_ITEMS } from './adminNav';
+import { ADMIN_NAV_ITEMS, isNavItemActive } from './adminNav';
 
 /** The mobile equivalent of AdminSidebar — same nav items, a drawer instead of a fixed rail, so navigation is never hidden on small screens (design-system skill: "Never hide critical functionality on mobile"). */
 export function AdminMobileNav({ businessName }: { businessName: string }) {
@@ -32,7 +32,7 @@ export function AdminMobileNav({ businessName }: { businessName: string }) {
         </SheetHeader>
         <nav aria-label="Admin navigation" className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-5">
           {ADMIN_NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = isNavItemActive(pathname, item.href);
             const Icon = item.icon;
             return (
               <Link

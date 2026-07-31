@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { ADMIN_NAV_ITEMS } from './adminNav';
+import { ADMIN_NAV_ITEMS, isNavItemActive } from './adminNav';
 
 export function AdminSidebar({ businessName }: { businessName: string }) {
   const pathname = usePathname();
@@ -22,7 +22,7 @@ export function AdminSidebar({ businessName }: { businessName: string }) {
 
       <nav aria-label="Admin navigation" className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {ADMIN_NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = isNavItemActive(pathname, item.href);
           const Icon = item.icon;
           return (
             <Link

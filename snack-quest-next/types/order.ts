@@ -1,7 +1,26 @@
 import type { AuditFields } from './common';
 import type { DeliveryDetails } from './delivery';
 
-export type OrderStatus = 'pending' | 'confirmed' | 'delivered' | 'cancelled';
+/**
+ * `pending` only ever exists transiently inside `OrderService`'s own
+ * creation transaction (an order is created directly as `confirmed` —
+ * it only exists at all because a payment already succeeded — see
+ * `repositories/orderRepository.ts`'s `createInTransaction`). The
+ * Admin Orders lifecycle (§ Admin: Orders) is: confirmed -> dispatched
+ * -> delivered, or confirmed/dispatched/delivered -> refund_requested,
+ * or confirmed -> cancelled. `refund_requested` is a real, queryable,
+ * audited state — not a real payment reversal, which doesn't exist
+ * anywhere in this codebase yet (no Daraja B2C client, no
+ * `RefundService`); it's the honest handoff point a future Finance
+ * workflow resolves, not a status that pretends money already moved.
+ */
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'dispatched'
+  | 'delivered'
+  | 'cancelled'
+  | 'refund_requested';
 
 export interface OrderProduct {
   packageId: string;
@@ -50,6 +69,8 @@ export interface Order extends AuditFields {
   conversationId: string;
   conversationCheckoutSnapshotId: string;
   status: OrderStatus;
+  /** Set whenever a staff member changes `status` with a reason attached (e.g. a cancellation or refund note) — absent on orders whose status has never been changed with one. */
+  statusReason?: string | null;
   referralLinkId: string | null;
 }
 

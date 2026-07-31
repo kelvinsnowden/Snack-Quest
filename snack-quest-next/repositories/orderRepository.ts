@@ -65,14 +65,24 @@ class OrderRepository {
     return snapshot.docs.map((doc) => doc.data() as OrderItem);
   }
 
-  async updateStatus(orderId: string, status: OrderStatus): Promise<void> {
-    await adminFirestore.collection(COLLECTION).doc(orderId).update({
-      status,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+  async updateStatus(
+    orderId: string,
+    status: OrderStatus,
+    actor: string,
+    reason?: string,
+  ): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(orderId)
+      .update({
+        status,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor,
+        ...(reason !== undefined ? { statusReason: reason } : {}),
+      });
   }
 
-  /** A real, cheap total for the Admin dashboard — full search/filter/list is Admin Orders' own scope (§ Admin: Orders), not built here. */
+  /** A real, cheap total for the Admin dashboard (§ Admin: Dashboard). */
   async countByBusiness(businessId: string): Promise<number> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
@@ -80,6 +90,81 @@ class OrderRepository {
       .count()
       .get();
     return snapshot.data().count;
+  }
+
+  /**
+   * The Admin Orders list (§ Admin: Orders) — real cursor pagination,
+   * ordered newest-first, optionally narrowed to one status. Needs a
+   * composite index (businessId + status + createdAt, and businessId +
+   * createdAt for the unfiltered case) — see firestore.indexes.json.
+   */
+  async listByBusiness(
+    businessId: string,
+    options: { status?: OrderStatus; limit?: number; cursor?: string } = {},
+  ): Promise<{ orders: { id: string; data: Order }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 25;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+
+    if (options.status) {
+      query = query.where('status', '==', options.status);
+    }
+    query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      orders: docs.map((doc) => ({ id: doc.id, data: doc.data() as Order })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
+
+  /**
+   * Exact-match search by the customer's WhatsApp number — the one
+   * identifier every order always has (§ Admin: Orders "Search
+   * orders"), since a guest customer commonly has no name typo-proof
+   * enough for prefix search to be reliable and no account id at all.
+   */
+  async searchByPhoneNumber(
+    businessId: string,
+    phoneNumber: string,
+    limit = 25,
+  ): Promise<{ id: string; data: Order }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('customer.phoneNumber', '==', phoneNumber)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Order }));
+  }
+
+  /** Prefix search by customer name — the standard Firestore range-query trick, real (not client-side-only) filtering. */
+  async searchByCustomerNamePrefix(
+    businessId: string,
+    prefix: string,
+    limit = 25,
+  ): Promise<{ id: string; data: Order }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('customer.customerName', '>=', prefix)
+      .where('customer.customerName', '<', prefix + '')
+      .orderBy('customer.customerName')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Order }));
   }
 }
 

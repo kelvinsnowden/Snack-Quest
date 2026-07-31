@@ -1,10 +1,14 @@
 import 'server-only';
 
 import { adminFirestore } from '@/lib/firebase/admin';
-import { createInTransaction as createOrderInTransaction } from '@/repositories/orderRepository';
+import {
+  createInTransaction as createOrderInTransaction,
+  orderRepository,
+} from '@/repositories/orderRepository';
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
-import type { ConversationCheckoutSnapshot } from '@/types';
+import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
+import type { ConversationCheckoutSnapshot, Order, OrderStatus } from '@/types';
 
 /**
  * Owns order finalization (PLATFORM_ARCHITECTURE_V2.md §14/§16): an
@@ -25,6 +29,20 @@ export interface CreateOrderInput {
   snapshot: ConversationCheckoutSnapshot;
   paymentIntentId: string;
   mpesaReceiptNumber: string;
+}
+
+export class OrderNotFoundError extends Error {
+  constructor(orderId: string) {
+    super(`Order ${orderId} not found`);
+    this.name = 'OrderNotFoundError';
+  }
+}
+
+export class InvalidOrderTransitionError extends Error {
+  constructor(from: OrderStatus, to: OrderStatus) {
+    super(`Cannot move an order from '${from}' to '${to}'`);
+    this.name = 'InvalidOrderTransitionError';
+  }
 }
 
 class OrderService {
@@ -84,6 +102,40 @@ class OrderService {
     });
 
     return orderId;
+  }
+
+  /**
+   * Every admin status change (§ Admin: Orders "Update status /
+   * Dispatch / Complete / Cancel / Refund") goes through here, never
+   * a direct `orderRepository.updateStatus()` call from a route —
+   * this is the one place transition legality is enforced and the
+   * audit event is published, so a route/Server Action can never skip
+   * either by mistake.
+   */
+  async updateStatus(
+    businessId: string,
+    orderId: string,
+    next: OrderStatus,
+    actor: string,
+    reason?: string,
+  ): Promise<Order> {
+    const order = await orderRepository.findById(orderId);
+    if (!order || order.businessId !== businessId) {
+      throw new OrderNotFoundError(orderId);
+    }
+    if (!VALID_ORDER_TRANSITIONS[order.status].includes(next)) {
+      throw new InvalidOrderTransitionError(order.status, next);
+    }
+
+    await orderRepository.updateStatus(orderId, next, actor, reason);
+    await publishEvent(businessId, 'OrderStatusChanged', 'order', orderId, {
+      from: order.status,
+      to: next,
+      actor,
+      reason: reason ?? null,
+    });
+
+    return { ...order, status: next };
   }
 }
 
