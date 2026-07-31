@@ -44,6 +44,22 @@ export interface DarajaIntegrationSecret {
   passkey: string;
   callbackUrl: string;
   env: 'sandbox' | 'production';
+  /**
+   * B2C payouts (§ Admin: Withdrawals — Daraja B2C) — a distinct
+   * credential pair from the C2B fields above, only needed by a
+   * business that actually pays creators/customers out via M-Pesa.
+   * Optional: a tenant with no B2C setup yet gets a documented,
+   * fail-closed error the moment an admin tries to approve a
+   * withdrawal, never a silent no-op with real money involved.
+   *
+   * `securityCredential` is the initiator password already encrypted
+   * with Safaricom's public certificate (base64) — a one-time setup
+   * step done wherever this secret is entered, never re-encrypted at
+   * request time by this codebase (this codebase never handles the
+   * raw initiator password).
+   */
+  b2cInitiatorName?: string;
+  b2cSecurityCredential?: string;
 }
 
 export interface WhatchimpIntegrationSecret {

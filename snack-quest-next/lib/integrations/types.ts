@@ -47,6 +47,45 @@ export interface PaymentGateway {
   verifyCallback(payload: unknown): PaymentCallbackResult;
 }
 
+/** The synchronous ack Safaricom returns the instant a B2C request is accepted for processing — not proof the money moved, just that the request was queued. */
+export interface B2CPaymentResult {
+  originatorConversationId: string;
+  conversationId: string;
+  responseCode: string;
+  responseDescription: string;
+}
+
+/** The async outcome delivered later to the B2C ResultURL — this is the actual proof of success or failure. */
+export interface B2CResultCallback {
+  originatorConversationId: string;
+  conversationId: string;
+  resultCode: number;
+  resultDesc: string;
+  succeeded: boolean;
+  /** Present only when `succeeded` — Safaricom's own transaction id for this payout. */
+  transactionId?: string;
+  amountKes?: number;
+  transactionCompletedAt?: string;
+}
+
+/**
+ * Business-to-customer payouts (§ Admin: Withdrawals — Daraja B2C) —
+ * deliberately its own interface, not folded into `PaymentGateway`:
+ * a C2B collection and a B2C disbursement are different Safaricom
+ * products with different credentials, different request/response
+ * shapes, and different risk profiles (this one moves money out).
+ */
+export interface PayoutGateway {
+  initiateB2CPayment(input: {
+    businessId: string;
+    phone: string;
+    amountKes: number;
+    remarks: string;
+    occasion?: string;
+  }): Promise<B2CPaymentResult>;
+  verifyB2CResult(payload: unknown): B2CResultCallback;
+}
+
 export interface WhatsAppSendResult {
   providerMessageId: string;
 }

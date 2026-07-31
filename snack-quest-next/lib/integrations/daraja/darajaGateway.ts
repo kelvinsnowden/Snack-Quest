@@ -1,9 +1,16 @@
 import 'server-only';
 
-import { getDarajaConfig, type DarajaConfig } from './config';
+import { getDarajaConfig, getDarajaB2CConfig, type DarajaConfig } from './config';
 import { withRetry } from '../shared/withRetry';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
-import type { PaymentCallbackResult, PaymentGateway, StkPushResult } from '../types';
+import type {
+  B2CPaymentResult,
+  B2CResultCallback,
+  PaymentCallbackResult,
+  PaymentGateway,
+  PayoutGateway,
+  StkPushResult,
+} from '../types';
 
 const GATEWAY_NAME = 'daraja';
 
@@ -17,7 +24,10 @@ export function resetDarajaTokenCache(): void {
   tokenCache.clear();
 }
 
-async function fetchAccessToken(businessId: string, config: DarajaConfig): Promise<string> {
+async function fetchAccessToken(
+  businessId: string,
+  config: Pick<DarajaConfig, 'consumerKey' | 'consumerSecret' | 'baseUrl'>,
+): Promise<string> {
   const cached = tokenCache.get(businessId);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -80,6 +90,22 @@ interface StkCallbackMetadataItem {
   Value: string | number;
 }
 
+interface B2CResultParameter {
+  Key: string;
+  Value: string | number;
+}
+
+interface RawDarajaB2CResult {
+  Result?: {
+    ResultCode: number;
+    ResultDesc: string;
+    OriginatorConversationID: string;
+    ConversationID: string;
+    TransactionID?: string;
+    ResultParameters?: { ResultParameter: B2CResultParameter[] };
+  };
+}
+
 interface RawDarajaCallback {
   Body?: {
     stkCallback?: {
@@ -92,7 +118,7 @@ interface RawDarajaCallback {
   };
 }
 
-class DarajaGateway implements PaymentGateway {
+class DarajaGateway implements PaymentGateway, PayoutGateway {
   async initiateStkPush(input: {
     businessId: string;
     phone: string;
@@ -184,6 +210,88 @@ class DarajaGateway implements PaymentGateway {
       phoneNumber: succeeded ? String(findItem('PhoneNumber')) : undefined,
     };
   }
+
+  /**
+   * Initiates a real M-Pesa B2C disbursement (`CommandID: BusinessPayment`
+   * — a business paying an individual, not a salary or promotion
+   * payout, matching a withdrawal). Same non-retry discipline as
+   * `initiateStkPush`: Safaricom has no dedup key for this request, so
+   * a blind retry after a network failure risks paying out twice.
+   * `WithdrawalService` owns the decision of what to do after an
+   * ambiguous failure, not this Gateway.
+   */
+  async initiateB2CPayment(input: {
+    businessId: string;
+    phone: string;
+    amountKes: number;
+    remarks: string;
+    occasion?: string;
+  }): Promise<B2CPaymentResult> {
+    const config = await getDarajaB2CConfig(input.businessId);
+    const accessToken = await fetchAccessToken(input.businessId, config);
+
+    return withCircuitBreaker(`${GATEWAY_NAME}-b2c:${input.businessId}`, async () => {
+      const response = await fetch(`${config.baseUrl}/mpesa/b2c/v1/paymentrequest`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          InitiatorName: config.initiatorName,
+          SecurityCredential: config.securityCredential,
+          CommandID: 'BusinessPayment',
+          Amount: Math.round(input.amountKes),
+          PartyA: config.shortcode,
+          PartyB: input.phone,
+          Remarks: input.remarks,
+          QueueTimeOutURL: config.queueTimeoutUrl,
+          ResultURL: config.resultUrl,
+          Occasion: input.occasion ?? '',
+        }),
+      });
+
+      const data = (await response.json()) as Record<string, unknown>;
+      if (!response.ok || data.ResponseCode !== '0') {
+        throw new Error(
+          `Daraja B2C payment request failed: ${
+            data.errorMessage ?? data.ResponseDescription ?? response.status
+          }`,
+        );
+      }
+
+      return {
+        originatorConversationId: String(data.OriginatorConversationID),
+        conversationId: String(data.ConversationID),
+        responseCode: String(data.ResponseCode),
+        responseDescription: String(data.ResponseDescription),
+      };
+    });
+  }
+
+  verifyB2CResult(payload: unknown): B2CResultCallback {
+    const result = (payload as RawDarajaB2CResult).Result;
+    if (!result) {
+      throw new Error('Malformed Daraja B2C result payload: missing Result');
+    }
+
+    const params = result.ResultParameters?.ResultParameter ?? [];
+    const findParam = (key: string): string | number | undefined =>
+      params.find((p) => p.Key === key)?.Value;
+
+    const succeeded = result.ResultCode === 0;
+
+    return {
+      originatorConversationId: result.OriginatorConversationID,
+      conversationId: result.ConversationID,
+      resultCode: result.ResultCode,
+      resultDesc: result.ResultDesc,
+      succeeded,
+      transactionId: succeeded ? result.TransactionID : undefined,
+      amountKes: succeeded ? Number(findParam('TransactionAmount')) : undefined,
+      transactionCompletedAt: succeeded ? String(findParam('TransactionCompletedDateTime')) : undefined,
+    };
+  }
 }
 
-export const darajaGateway: PaymentGateway = new DarajaGateway();
+export const darajaGateway: PaymentGateway & PayoutGateway = new DarajaGateway();

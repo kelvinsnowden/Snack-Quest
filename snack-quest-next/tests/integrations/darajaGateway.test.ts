@@ -250,3 +250,146 @@ describe('DarajaGateway.initiateStkPush', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });
+
+const B2C_SECRET = {
+  ...SECRET,
+  b2cInitiatorName: 'testapiuser',
+  b2cSecurityCredential: 'encrypted-credential-base64',
+};
+
+describe('DarajaGateway.initiateB2CPayment', () => {
+  beforeEach(() => {
+    resetDarajaTokenCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('throws DarajaB2CNotConfiguredError when only C2B credentials exist', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+
+    await expect(
+      darajaGateway.initiateB2CPayment({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        amountKes: 500,
+        remarks: 'Withdrawal payout',
+      }),
+    ).rejects.toThrow(/no Daraja B2C credentials configured/);
+  });
+
+  it('initiates a real B2C payment request on success', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                ConversationID: 'AG_20191219_00005797af5d7d75f652',
+                OriginatorConversationID: '16740-34861180-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Accept the service request successfully.',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await darajaGateway.initiateB2CPayment({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      remarks: 'Withdrawal payout',
+    });
+
+    expect(result).toEqual({
+      originatorConversationId: '16740-34861180-1',
+      conversationId: 'AG_20191219_00005797af5d7d75f652',
+      responseCode: '0',
+      responseDescription: 'Accept the service request successfully.',
+    });
+    const [, b2cCall] = fetchMock.mock.calls;
+    expect(String(b2cCall[0])).toContain('/mpesa/b2c/v1/paymentrequest');
+    const body = JSON.parse(b2cCall[1].body);
+    expect(body.InitiatorName).toBe('testapiuser');
+    expect(body.SecurityCredential).toBe('encrypted-credential-base64');
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-result`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-timeout`);
+  });
+
+  it('throws when Daraja rejects the B2C request', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(JSON.stringify({ errorMessage: 'Invalid Initiator Information' }), { status: 400 }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      darajaGateway.initiateB2CPayment({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        amountKes: 500,
+        remarks: 'Withdrawal payout',
+      }),
+    ).rejects.toThrow(/Daraja B2C payment request failed/);
+  });
+});
+
+describe('DarajaGateway.verifyB2CResult', () => {
+  it('parses a successful B2C result', () => {
+    const result = darajaGateway.verifyB2CResult({
+      Result: {
+        ResultType: 0,
+        ResultCode: 0,
+        ResultDesc: 'The service request is processed successfully.',
+        OriginatorConversationID: '16740-34861180-1',
+        ConversationID: 'AG_20191219_00005797af5d7d75f652',
+        TransactionID: 'NLJ41HAY6Q',
+        ResultParameters: {
+          ResultParameter: [
+            { Key: 'TransactionAmount', Value: 500 },
+            { Key: 'TransactionCompletedDateTime', Value: '19.12.2019 11:45:50' },
+          ],
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      originatorConversationId: '16740-34861180-1',
+      conversationId: 'AG_20191219_00005797af5d7d75f652',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+      succeeded: true,
+      transactionId: 'NLJ41HAY6Q',
+      amountKes: 500,
+      transactionCompletedAt: '19.12.2019 11:45:50',
+    });
+  });
+
+  it('parses a failed B2C result without transaction fields', () => {
+    const result = darajaGateway.verifyB2CResult({
+      Result: {
+        ResultType: 0,
+        ResultCode: 2001,
+        ResultDesc: 'The initiator information is invalid.',
+        OriginatorConversationID: '16740-34861180-2',
+        ConversationID: 'AG_20191219_00005797af5d7d75f653',
+      },
+    });
+
+    expect(result.succeeded).toBe(false);
+    expect(result.transactionId).toBeUndefined();
+    expect(result.amountKes).toBeUndefined();
+  });
+
+  it('throws on a malformed payload missing Result', () => {
+    expect(() => darajaGateway.verifyB2CResult({ unexpected: true })).toThrow(/Malformed Daraja B2C result/);
+  });
+});

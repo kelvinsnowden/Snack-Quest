@@ -1,8 +1,53 @@
 import 'server-only';
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import type { AuditFields, CreatorProfile, CreatorStatus } from '@/types';
+
+export class CreatorProfileNotFoundError extends Error {
+  constructor(uid: string) {
+    super(`No creator profile found for uid ${uid}`);
+    this.name = 'CreatorProfileNotFoundError';
+  }
+}
+
+export class InsufficientCreatorBalanceError extends Error {
+  constructor(uid: string, requested: number, available: number) {
+    super(`Creator ${uid} has only ${available} available, cannot reserve ${requested}`);
+    this.name = 'InsufficientCreatorBalanceError';
+  }
+}
+
+/**
+ * Reserves `amountKes` of a creator's `availableCashKes` inside the
+ * caller's transaction — used by `WithdrawalService.requestWithdrawal()`
+ * so a creator can never request more than they actually have, and
+ * can never double-spend the same balance across two concurrent
+ * requests (the read-check-decrement all happens atomically here, not
+ * as a separate check before the transaction).
+ */
+export async function reserveBalanceInTransaction(
+  tx: Transaction,
+  creatorId: string,
+  amountKes: number,
+): Promise<void> {
+  const ref = adminFirestore.collection('creatorProfiles').doc(creatorId);
+  const snapshot = await tx.get(ref);
+  const data = snapshot.data() as CreatorProfile | undefined;
+  if (!data) {
+    throw new CreatorProfileNotFoundError(creatorId);
+  }
+  if (data.availableCashKes < amountKes) {
+    throw new InsufficientCreatorBalanceError(creatorId, amountKes, data.availableCashKes);
+  }
+  tx.update(ref, { availableCashKes: FieldValue.increment(-amountKes) });
+}
+
+/** The reverse of `reserveBalanceInTransaction` — a rejected or failed withdrawal releases the hold back to the creator. */
+export function refundBalanceInTransaction(tx: Transaction, creatorId: string, amountKes: number): void {
+  const ref = adminFirestore.collection('creatorProfiles').doc(creatorId);
+  tx.update(ref, { availableCashKes: FieldValue.increment(amountKes) });
+}
 
 /**
  * `creatorProfiles` reads/writes (TDD §4/§8). This is the reference

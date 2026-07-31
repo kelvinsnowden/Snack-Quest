@@ -109,6 +109,23 @@
       ]
     },
     {
+      "collectionGroup": "withdrawals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "withdrawals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "b2cOriginatorConversationId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "inventoryMovements",
       "queryScope": "COLLECTION",
       "fields": [
