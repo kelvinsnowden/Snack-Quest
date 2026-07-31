@@ -2,6 +2,8 @@ import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway'
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { businessRepository } from '@/repositories/businessRepository';
 import { conversationService } from '@/services/conversationService';
+import { productService } from '@/services/productService';
+import type { WhatsAppInboundMessage } from '@/lib/integrations/types';
 
 /**
  * The real HTTP entry point for the customer journey (PLATFORM_ARCHITECTURE_V2.md
@@ -63,10 +65,14 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    await conversationService.start(businessId, inbound.fromPhone, {
-      text: inbound.selectedId ?? inbound.text,
-      providerMessageId: inbound.providerMessageId,
-    });
+    if (inbound.catalogOrder) {
+      await handleCatalogOrder(businessId, inbound);
+    } else {
+      await conversationService.start(businessId, inbound.fromPhone, {
+        text: inbound.selectedId ?? inbound.text,
+        providerMessageId: inbound.providerMessageId,
+      });
+    }
     await webhookEventRepository.markProcessed(businessId, 'whatchimp', inbound.providerMessageId);
   } catch (error) {
     await webhookEventRepository.markFailed(
@@ -79,4 +85,35 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   return new Response(null, { status: 200 });
+}
+
+/**
+ * The secondary catalog-selection path (§ product catalog checkout
+ * hand-off): a customer submitted a WhatsApp Product Catalog cart
+ * through the generic message webhook rather than Whatchimp calling
+ * `/checkout/start` directly. Same validation, same entry point into
+ * the conversation engine as that route — this is not a parallel
+ * checkout implementation, just a second wire into it.
+ *
+ * No multi-item cart exists anywhere in this codebase yet (see
+ * `types/checkout.ts`'s `CheckoutStartRequest.quantity` note) — only
+ * the first item in the cart is acted on; that is today's real,
+ * documented limitation, not a silent drop of customer intent.
+ */
+async function handleCatalogOrder(
+  businessId: string,
+  inbound: WhatsAppInboundMessage,
+): Promise<void> {
+  const items = inbound.catalogOrder?.items ?? [];
+  const [firstItem] = items;
+  if (!firstItem) {
+    return;
+  }
+
+  const product = await productService.getCheckoutableProduct(businessId, firstItem.productRetailerId);
+  await conversationService.startFromCatalogSelection(businessId, inbound.fromPhone, {
+    id: firstItem.productRetailerId,
+    name: product.name,
+    priceKes: product.priceKes,
+  });
 }

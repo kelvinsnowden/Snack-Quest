@@ -6,6 +6,7 @@ export interface WhatchimpConfig {
   apiKey: string;
   phoneNumberId: string;
   baseUrl: string;
+  catalogId?: string;
 }
 
 export async function getWhatchimpConfig(businessId: string): Promise<WhatchimpConfig> {
@@ -14,7 +15,18 @@ export async function getWhatchimpConfig(businessId: string): Promise<WhatchimpC
     apiKey: secret.apiKey,
     phoneNumberId: secret.phoneNumberId,
     baseUrl: secret.baseUrl ?? 'https://api.whatchimp.com/v1',
+    catalogId: secret.catalogId,
   };
+}
+
+/** Thrown by catalog sync when a tenant hasn't configured a Product Catalog yet — a documented, honest no-op, never a silent failure. */
+export class CatalogNotConfiguredError extends Error {
+  constructor(businessId: string) {
+    super(
+      `No WhatsApp Product Catalog configured for business ${businessId} — set catalogId on its whatchimp integration secret.`,
+    );
+    this.name = 'CatalogNotConfiguredError';
+  }
 }
 
 /**

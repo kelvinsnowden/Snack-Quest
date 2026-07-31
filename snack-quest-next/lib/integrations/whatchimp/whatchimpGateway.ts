@@ -1,8 +1,15 @@
 import 'server-only';
 
-import { getWhatchimpConfig, getWhatchimpWebhookVerifyToken, type WhatchimpConfig } from './config';
+import {
+  CatalogNotConfiguredError,
+  getWhatchimpConfig,
+  getWhatchimpWebhookVerifyToken,
+  type WhatchimpConfig,
+} from './config';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
 import type {
+  ProductCatalogGateway,
+  ProductCatalogItem,
   WhatsAppGateway,
   WhatsAppInboundMessage,
   WhatsAppSendResult,
@@ -26,6 +33,17 @@ interface RawIncomingWebhook {
             type: string;
             button_reply?: { id: string; title: string };
             list_reply?: { id: string; title: string };
+          };
+          // The real WhatsApp Cloud API "order" message — how a
+          // customer's Product Catalog cart arrives ("Receive Order").
+          order?: {
+            catalog_id: string;
+            text?: string;
+            product_items?: Array<{
+              product_retailer_id: string;
+              quantity: number;
+              item_price?: number;
+            }>;
           };
         }>;
       };
@@ -71,7 +89,21 @@ async function postMessage(
   });
 }
 
-class WhatchimpGateway implements WhatsAppGateway {
+/**
+ * `syncItem`/`removeItem` (§ product catalog sync) are modeled on
+ * Meta's real, public WhatsApp Commerce Catalog Batch API
+ * (`POST /{catalog_id}/items_batch`), proxied through Whatchimp's own
+ * `baseUrl` — the same convention every other method here already
+ * uses. This is a deliberate, disclosed choice, not a verified fact
+ * about Whatchimp specifically: no independently checkable Whatchimp
+ * API documentation exists anywhere (see `metaConversionGateway.ts`'s
+ * own comment contrasting Meta's "well-documented" API against
+ * Whatchimp's), and the rest of this Gateway is already a faithful
+ * mirror of the real Meta Cloud API wire format — so modeling the
+ * catalog piece on Meta's real Catalog API is the closest honest
+ * approximation available, not a guess invented from nothing.
+ */
+class WhatchimpGateway implements WhatsAppGateway, ProductCatalogGateway {
   async sendMessage(input: {
     businessId: string;
     phone: string;
@@ -153,6 +185,42 @@ class WhatchimpGateway implements WhatsAppGateway {
     });
   }
 
+  /**
+   * "Send Catalog Messages" — modeled on the real Meta interactive
+   * `product_list` message (works for one product or several; there's
+   * no reason to special-case a single-product `interactive.type:
+   * 'product'` variant when `product_list` covers both).
+   */
+  async sendCatalogMessage(input: {
+    businessId: string;
+    phone: string;
+    catalogId: string;
+    productRetailerIds: string[];
+    bodyText?: string;
+  }): Promise<WhatsAppSendResult> {
+    const config = await getWhatchimpConfig(input.businessId);
+    return postMessage(input.businessId, config, {
+      to: input.phone,
+      type: 'interactive',
+      interactive: {
+        type: 'product_list',
+        header: { type: 'text', text: 'Snack Quest' },
+        body: { text: input.bodyText ?? 'Take a look at these Snack Quest boxes:' },
+        action: {
+          catalog_id: input.catalogId,
+          sections: [
+            {
+              title: 'Snack Boxes',
+              product_items: input.productRetailerIds.map((id) => ({
+                product_retailer_id: id,
+              })),
+            },
+          ],
+        },
+      },
+    });
+  }
+
   async markAsRead(businessId: string, providerMessageId: string): Promise<void> {
     const config = await getWhatchimpConfig(businessId);
     await withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, async () => {
@@ -177,6 +245,142 @@ class WhatchimpGateway implements WhatsAppGateway {
     });
   }
 
+  /**
+   * `POST {baseUrl}/{catalogId}/items_batch` — the real, publicly
+   * documented Meta WhatsApp Commerce Catalog Batch API shape,
+   * proxied through Whatchimp's own base URL the same way every other
+   * method in this Gateway is (see the class-level note below on why
+   * this is the honest choice here, absent real Whatchimp docs).
+   */
+  async syncItem(businessId: string, item: ProductCatalogItem): Promise<void> {
+    const config = await getWhatchimpConfig(businessId);
+    if (!config.catalogId) {
+      throw new CatalogNotConfiguredError(businessId);
+    }
+    await withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, async () => {
+      const response = await fetch(`${config.baseUrl}/${config.catalogId}/items_batch`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              method: 'UPDATE',
+              data: {
+                id: item.retailerId,
+                name: item.name,
+                description: item.description,
+                availability: item.availability,
+                condition: 'new',
+                price: `${item.priceKes} KES`,
+                currency: 'KES',
+                // No public product-detail page exists in this
+                // WhatsApp-only storefront — omitted rather than
+                // pointed at a fabricated URL. `image_link` only sent
+                // once a real Vercel Blob upload exists.
+                ...(item.imageUrl ? { image_link: item.imageUrl } : {}),
+              },
+            },
+          ],
+        }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(
+          `Whatchimp catalog sync failed for ${item.retailerId}: ${data.error?.message ?? response.status}`,
+        );
+      }
+    });
+  }
+
+  async removeItem(businessId: string, retailerId: string): Promise<void> {
+    const config = await getWhatchimpConfig(businessId);
+    if (!config.catalogId) {
+      throw new CatalogNotConfiguredError(businessId);
+    }
+    await withCircuitBreaker(`${GATEWAY_NAME}:${businessId}`, async () => {
+      const response = await fetch(`${config.baseUrl}/${config.catalogId}/items_batch`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [{ method: 'DELETE', data: { id: retailerId } }],
+        }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(
+          `Whatchimp catalog item removal failed for ${retailerId}: ${data.error?.message ?? response.status}`,
+        );
+      }
+    });
+  }
+
+  /**
+   * "Assign Human Agent" / "Update Conversation" — unlike every other
+   * method in this Gateway, these have no real Meta Cloud API analog
+   * to model against: agent handoff and conversation/contact status
+   * are BSP-layer inbox features (real examples: 360dialog's and
+   * Respond.io's conversation-tagging APIs), not part of the raw
+   * WhatsApp messaging API. With no real Whatchimp documentation
+   * either, this is a plausible REST shape following this Gateway's
+   * own existing base-URL convention — genuinely unverified, and
+   * every caller in this codebase treats both as best-effort for
+   * exactly that reason: Snack Quest OS's own Firestore state is the
+   * real source of truth regardless of whether this call succeeds.
+   */
+  async assignHumanAgent(input: {
+    businessId: string;
+    phone: string;
+    reason: string;
+  }): Promise<void> {
+    const config = await getWhatchimpConfig(input.businessId);
+    await withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, async () => {
+      const response = await fetch(
+        `${config.baseUrl}/${config.phoneNumberId}/conversations/${input.phone}/assign`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ reason: input.reason }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Whatchimp assignHumanAgent failed: ${response.status}`);
+      }
+    });
+  }
+
+  async updateConversationStatus(input: {
+    businessId: string;
+    phone: string;
+    status: string;
+  }): Promise<void> {
+    const config = await getWhatchimpConfig(input.businessId);
+    await withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, async () => {
+      const response = await fetch(
+        `${config.baseUrl}/${config.phoneNumberId}/conversations/${input.phone}/status`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: input.status }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Whatchimp updateConversationStatus failed: ${response.status}`);
+      }
+    });
+  }
+
   parseIncomingMessage(payload: unknown): WhatsAppInboundMessage {
     const value = (payload as RawIncomingWebhook).entry?.[0]?.changes?.[0]?.value;
     const message = value?.messages?.[0];
@@ -196,12 +400,27 @@ class WhatchimpGateway implements WhatsAppGateway {
       message.interactive?.list_reply?.title ??
       '';
 
+    // "Receive Order" — the structured Product Catalog cart signal,
+    // preferred over parsing free text whenever it's present.
+    const catalogOrder = message.order
+      ? {
+          catalogId: message.order.catalog_id,
+          items: (message.order.product_items ?? []).map((item) => ({
+            productRetailerId: item.product_retailer_id,
+            quantity: item.quantity,
+            itemPriceKes: item.item_price,
+          })),
+          text: message.order.text,
+        }
+      : undefined;
+
     return {
       providerMessageId: message.id,
       fromPhone: message.from,
       toPhoneNumberId: phoneNumberId,
       text,
       selectedId,
+      catalogOrder,
       receivedAt: new Date(Number(message.timestamp) * 1000).toISOString(),
     };
   }
@@ -219,4 +438,4 @@ class WhatchimpGateway implements WhatsAppGateway {
   }
 }
 
-export const whatchimpGateway: WhatsAppGateway = new WhatchimpGateway();
+export const whatchimpGateway: WhatsAppGateway & ProductCatalogGateway = new WhatchimpGateway();

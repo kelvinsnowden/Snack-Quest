@@ -34,18 +34,21 @@ const PACKAGES = [
     description: 'A curated starter selection of Kenyan snacks.',
     priceKes: 2500,
     isActive: true,
+    imageUrl: null,
   },
   {
     name: 'Deluxe Box',
     description: 'A bigger, more varied snack selection.',
     priceKes: 3500,
     isActive: true,
+    imageUrl: null,
   },
   {
     name: 'Premium Box',
     description: 'Our top-tier snack box with premium and imported treats.',
     priceKes: 5000,
     isActive: true,
+    imageUrl: null,
   },
 ];
 

@@ -67,6 +67,21 @@ export interface WhatsAppListSection {
   rows: WhatsAppListRow[];
 }
 
+export interface WhatsAppCatalogOrderItem {
+  productRetailerId: string;
+  quantity: number;
+  /** The price the customer's WhatsApp client displayed at selection time — informational only. Snack Quest OS is always the pricing authority; this value is never trusted for charging. */
+  itemPriceKes?: number;
+}
+
+/** The "Receive Order" capability's payload — a customer's WhatsApp Product Catalog cart, submitted as a structured signal instead of free text. */
+export interface WhatsAppCatalogOrder {
+  catalogId: string;
+  items: WhatsAppCatalogOrderItem[];
+  /** Optional free-text note the customer attached to the cart. */
+  text?: string;
+}
+
 export interface WhatsAppInboundMessage {
   providerMessageId: string;
   fromPhone: string;
@@ -75,17 +90,26 @@ export interface WhatsAppInboundMessage {
   text: string;
   /** Set when the inbound message was a button/list reply rather than free text. */
   selectedId?: string;
+  /** Set only when the customer submitted a Product Catalog cart — see `WhatsAppCatalogOrder`. */
+  catalogOrder?: WhatsAppCatalogOrder;
   receivedAt: string;
 }
 
 /**
  * The full interface every WhatsApp BSP implementation must satisfy —
  * Whatchimp today, anything else later, never touched by a Service
- * directly (PLATFORM_ARCHITECTURE_V2.md §13). `sendMessage` is
- * free-text (only valid inside WhatsApp's 24-hour customer-initiated
- * session window); `sendTemplate` is the pre-approved-template path
- * required to message a customer outside that window — a real
- * WhatsApp Business API distinction, not an implementation detail.
+ * directly (PLATFORM_ARCHITECTURE_V2.md §13). This is the capability
+ * boundary: Snack Quest OS depends on these method signatures only,
+ * never on how a given BSP implements them — swapping Whatchimp for
+ * 360dialog, Respond.io, or Meta's Cloud API directly means writing a
+ * new class that satisfies this interface, not touching the checkout,
+ * conversation engine, payment flow, or order processing.
+ *
+ * `sendMessage` is free-text (only valid inside WhatsApp's 24-hour
+ * customer-initiated session window); `sendTemplate` is the
+ * pre-approved-template path required to message a customer outside
+ * that window — a real WhatsApp Business API distinction, not an
+ * implementation detail.
  */
 export interface WhatsAppGateway {
   sendMessage(input: {
@@ -112,6 +136,23 @@ export interface WhatsAppGateway {
     buttonLabel: string;
     sections: WhatsAppListSection[];
   }): Promise<WhatsAppSendResult>;
+  /**
+   * "Send Catalog Messages" — shows the customer one or more specific
+   * products from the business's WhatsApp Product Catalog (e.g. a
+   * targeted recommendation). Distinct from the customer browsing the
+   * catalog natively via their own WhatsApp client, which needs no
+   * outbound call from this platform at all — today's real customer
+   * journey never calls this, but it's a real capability a future
+   * feature (recommendations, cart recovery) can use without a new
+   * Gateway method.
+   */
+  sendCatalogMessage(input: {
+    businessId: string;
+    phone: string;
+    catalogId: string;
+    productRetailerIds: string[];
+    bodyText?: string;
+  }): Promise<WhatsAppSendResult>;
   markAsRead(businessId: string, providerMessageId: string): Promise<void>;
   parseIncomingMessage(payload: unknown): WhatsAppInboundMessage;
   /** Handles the BSP's webhook-verification handshake (e.g. a GET challenge echo) — platform-level, not tenant-scoped; see `types/business.ts`. */
@@ -120,6 +161,23 @@ export interface WhatsAppGateway {
     token?: string;
     challenge?: string;
   }): string | null;
+  /**
+   * "Assign Human Agent" — tells the BSP layer a conversation now
+   * needs a human, so its own inbox/routing reflects that alongside
+   * Snack Quest OS's own Firestore state (`Conversation.status ===
+   * 'agent_assigned'`, which remains the actual source of truth
+   * regardless of whether this call succeeds). Every caller treats
+   * this as best-effort — a BSP outage must never block a handoff
+   * that has already happened in Firestore.
+   */
+  assignHumanAgent(input: { businessId: string; phone: string; reason: string }): Promise<void>;
+  /**
+   * "Update Conversation" — updates the BSP's own conversation/contact
+   * status (e.g. resolved, needs-attention) so its inbox stays
+   * consistent with Snack Quest OS's state. Same best-effort discipline
+   * as `assignHumanAgent`.
+   */
+  updateConversationStatus(input: { businessId: string; phone: string; status: string }): Promise<void>;
 }
 
 export interface ShipmentResult {
@@ -173,6 +231,31 @@ export interface PushGateway {
     deviceToken: string;
     payload: Record<string, unknown>;
   }): Promise<void>;
+}
+
+/**
+ * Product catalog sync — Snack Quest OS owns the master catalog;
+ * WhatsApp's Product Catalog is a mirror kept in sync (§ product
+ * catalog sync). Modeled on Meta's real, public WhatsApp Commerce
+ * Catalog Batch API (`POST /{catalog_id}/items_batch`) — the one
+ * genuinely documented external contract available here, since
+ * Whatchimp itself has no real, independently verifiable API
+ * documentation (see `whatchimpGateway.ts`'s own note on this).
+ * `retailerId` is deliberately the *same* identifier as the product's
+ * Snack Quest OS id — one identifier, never two catalogs to reconcile.
+ */
+export interface ProductCatalogItem {
+  retailerId: string;
+  name: string;
+  description: string;
+  priceKes: number;
+  imageUrl: string | null;
+  availability: 'in stock' | 'out of stock';
+}
+
+export interface ProductCatalogGateway {
+  syncItem(businessId: string, item: ProductCatalogItem): Promise<void>;
+  removeItem(businessId: string, retailerId: string): Promise<void>;
 }
 
 export interface StorageObjectMetadata {

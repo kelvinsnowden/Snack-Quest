@@ -88,6 +88,7 @@ async function main() {
         apiKey: requireEnv('WHATCHIMP_API_KEY'),
         phoneNumberId: requireEnv('WHATCHIMP_PHONE_NUMBER_ID'),
         ...(process.env.WHATCHIMP_BASE_URL ? { baseUrl: process.env.WHATCHIMP_BASE_URL } : {}),
+        ...(process.env.WHATCHIMP_CATALOG_ID ? { catalogId: process.env.WHATCHIMP_CATALOG_ID } : {}),
       },
     ]);
   }

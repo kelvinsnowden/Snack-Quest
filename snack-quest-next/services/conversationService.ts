@@ -16,13 +16,19 @@ import { adConversionService } from './adConversionService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import {
+  bootstrapFromCatalogSelection,
   formatFinalOrderSummaryMessage,
   startConversationMessages,
   transition,
   type PackageOption,
 } from '@/lib/conversation/stateMachine';
 import type { WhatsAppGateway } from '@/lib/integrations/types';
-import type { ConversationStateBlob, DeliveryDetails, PickupStationCandidate } from '@/types';
+import type {
+  ConversationStateBlob,
+  ConversationStep,
+  DeliveryDetails,
+  PickupStationCandidate,
+} from '@/types';
 
 /**
  * Owns the conversation lifecycle (PLATFORM_ARCHITECTURE_V2.md §6):
@@ -84,11 +90,26 @@ export interface InboundMessage {
 export interface StartOptions {
   referralLinkId?: string | null;
   attributionSnapshot?: Record<string, unknown> | null;
+  /** A text referral/discount code, pre-supplied by the caller (§ startFromCatalogSelection) — never applied to `Conversation` itself, only pre-fills `stateBlob.referralCode` for the existing `awaiting_referral_code` freeze-time re-validation to check. */
+  referralCode?: string | null;
 }
 
 export interface ConversationTurnResult {
   conversationId: string;
   botReply: string | null;
+}
+
+/** A product already resolved and validated by the caller of `startFromCatalogSelection` — never a raw, unchecked id. */
+export interface ValidatedCatalogProduct {
+  id: string;
+  name: string;
+  priceKes: number;
+}
+
+export interface CatalogSelectionResult {
+  conversationId: string;
+  nextStep: ConversationStep;
+  botReply: string;
 }
 
 class ConversationService {
@@ -163,6 +184,58 @@ class ConversationService {
     await conversationRepository.updateStep(conversationId, nextStep);
     await this.reply(businessId, conversationId, phoneNumber, botReply);
     return { conversationId, botReply };
+  }
+
+  /**
+   * The `POST /checkout/start` entry point (§ Product Catalog
+   * checkout hand-off): a customer just selected a box from
+   * Whatchimp's own Product Catalog UI, not from the bot's numbered
+   * text list — Whatchimp calls this directly instead of relaying a
+   * free-text message. `product` is already validated by the caller
+   * (existence, active, in stock, current price — see
+   * `app/api/checkout/start/route.ts`); this method never re-validates
+   * it, same Repository/Service boundary as everywhere else. Skips
+   * straight past `awaiting_package_selection` to
+   * `awaiting_customer_details`, exactly where a successful text match
+   * would have landed — from here on this is an ordinary conversation,
+   * indistinguishable from one that started by text.
+   */
+  async startFromCatalogSelection(
+    businessId: string,
+    phoneNumber: string,
+    product: ValidatedCatalogProduct,
+    options: StartOptions = {},
+  ): Promise<CatalogSelectionResult> {
+    const existing = await conversationRepository.findActiveByPhoneNumber(businessId, phoneNumber);
+    if (existing?.conversation.status === 'agent_assigned') {
+      throw new Error(
+        `Conversation for ${phoneNumber} is already with a human agent — cannot start a new catalog checkout until that's resolved.`,
+      );
+    }
+
+    let conversationId: string;
+    if (existing) {
+      conversationId = existing.id;
+    } else {
+      conversationId = await conversationRepository.create({ businessId, phoneNumber, ...options });
+      await publishEvent(businessId, 'ConversationStarted', 'conversation', conversationId, {
+        phoneNumber,
+      });
+    }
+
+    await conversationRepository.appendMessage(conversationId, {
+      direction: 'inbound',
+      body: `[Product Catalog selection] ${product.name}`,
+      providerMessageId: null,
+    });
+
+    const { nextStep, stateBlobPatch, botReply } = bootstrapFromCatalogSelection(product, {
+      referralCode: options.referralCode,
+    });
+    await conversationRepository.updateStep(conversationId, nextStep, stateBlobPatch);
+    await this.reply(businessId, conversationId, phoneNumber, botReply);
+
+    return { conversationId, nextStep, botReply };
   }
 
   private async processTurn(
@@ -313,6 +386,47 @@ class ConversationService {
     }
 
     const isPickup = stateBlob.deliveryMethod === 'pickup';
+
+    // Snack Quest OS is always the pricing authority — never trust the
+    // total a customer was quoted earlier without re-checking it right
+    // before charging. The box price can change (an admin edit) for
+    // either method; a pickup station's fee can too. Door delivery's
+    // fee has no live source to drift from — a human agent set it once
+    // and nothing in this codebase re-derives it automatically.
+    const currentPackage = await packageRepository.findById(businessId, stateBlob.packageId ?? '');
+    const currentPriceKes = currentPackage?.priceKes ?? stateBlob.priceKes ?? 0;
+    let currentDeliveryFeeKes = stateBlob.deliveryFeeKes ?? 0;
+    if (isPickup && stateBlob.pickupStationId) {
+      const currentStation = await pickupStationRepository.findById(
+        businessId,
+        stateBlob.pickupStationId,
+      );
+      if (currentStation) {
+        currentDeliveryFeeKes = currentStation.deliveryFeeKes;
+      }
+    }
+    const priceDrifted = currentPriceKes !== (stateBlob.priceKes ?? 0);
+    const feeDrifted = isPickup && currentDeliveryFeeKes !== (stateBlob.deliveryFeeKes ?? 0);
+    if (priceDrifted || feeDrifted) {
+      const revalidatedStateBlob: ConversationStateBlob = {
+        ...stateBlob,
+        priceKes: currentPriceKes,
+        deliveryFeeKes: currentDeliveryFeeKes,
+      };
+      await conversationRepository.updateStep(
+        conversationId,
+        'awaiting_customer_payment_confirmation',
+        { priceKes: currentPriceKes, deliveryFeeKes: currentDeliveryFeeKes },
+      );
+      await this.reply(
+        businessId,
+        conversationId,
+        phoneNumber,
+        `Prices have been updated since we last quoted you:\n\n${formatFinalOrderSummaryMessage(revalidatedStateBlob)}`,
+      );
+      return;
+    }
+
     const delivery: DeliveryDetails = isPickup
       ? {
           method: 'pickup',
@@ -422,6 +536,21 @@ class ConversationService {
       assignedAgentId: null,
       escalationReason: 'door_delivery_price_confirmation',
     });
+
+    // Tell the BSP layer too, best-effort — Firestore above is already
+    // the real source of truth for the handoff regardless of whether
+    // this succeeds (see WhatsAppGateway.assignHumanAgent's own doc).
+    try {
+      await this.gateway.assignHumanAgent({
+        businessId,
+        phone: phoneNumber,
+        reason: 'door_delivery_price_confirmation',
+      });
+    } catch (error) {
+      await publishEvent(businessId, 'AgentAssignmentSyncFailed', 'conversation', conversationId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
 
     const lines = [
       'Door delivery needs price confirmation (Bolt):',
@@ -637,6 +766,22 @@ class ConversationService {
       `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
         `${formatDeliveryLabel(snapshot.delivery)}. Order ${orderId}.`,
     );
+
+    // Best-effort, same discipline as the shipment/referral calls
+    // above — Firestore's `status: 'completed'` above is already the
+    // real source of truth regardless of whether the BSP's own inbox
+    // sync succeeds.
+    try {
+      await this.gateway.updateConversationStatus({
+        businessId,
+        phone: phoneNumber,
+        status: 'resolved',
+      });
+    } catch (error) {
+      await publishEvent(businessId, 'ConversationStatusSyncFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
 
     // Jumia pickup gets the exact required copy (tracking URL + SMS
     // notice); door delivery has no pickup station or tracking URL to

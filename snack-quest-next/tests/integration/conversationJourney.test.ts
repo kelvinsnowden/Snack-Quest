@@ -59,6 +59,9 @@ class FakeWhatsAppGateway implements WhatsAppGateway {
   async sendList(): Promise<WhatsAppSendResult> {
     throw new Error('not used in this test');
   }
+  async sendCatalogMessage(): Promise<WhatsAppSendResult> {
+    throw new Error('not used in this test');
+  }
   async markAsRead(): Promise<void> {}
   parseIncomingMessage(): never {
     throw new Error('not used in this test');
@@ -66,6 +69,8 @@ class FakeWhatsAppGateway implements WhatsAppGateway {
   verifyWebhookChallenge(): string | null {
     return null;
   }
+  async assignHumanAgent(): Promise<void> {}
+  async updateConversationStatus(): Promise<void> {}
 }
 
 const PHONE = '254712345678';
@@ -138,11 +143,11 @@ async function seedBusiness(tenant: TenantConfig) {
 async function seedPackages(businessId: string) {
   const actor = 'system';
   await packageRepository.create(
-    { businessId, name: 'Starter Box', description: 'Starter', priceKes: 2500, isActive: true },
+    { businessId, name: 'Starter Box', description: 'Starter', priceKes: 2500, isActive: true, imageUrl: null },
     actor,
   );
   await packageRepository.create(
-    { businessId, name: 'Deluxe Box', description: 'Deluxe', priceKes: 3500, isActive: true },
+    { businessId, name: 'Deluxe Box', description: 'Deluxe', priceKes: 3500, isActive: true, imageUrl: null },
     actor,
   );
 }
@@ -457,6 +462,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
         priceKes: 1500,
         isActive: true,
         stockCount: 0,
+        imageUrl: null,
       },
       'system',
     );
@@ -794,6 +800,7 @@ describe('platform proof: a second, independent tenant', () => {
         description: 'A totally different product line',
         priceKes: 4200,
         isActive: true,
+        imageUrl: null,
       },
       'system',
     );

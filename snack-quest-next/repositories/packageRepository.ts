@@ -74,6 +74,30 @@ class PackageRepository {
     });
     return ref.id;
   }
+
+  /**
+   * businessId-scoped even for a single-doc lookup — a packageId alone
+   * is never trusted as proof it belongs to the caller's tenant (same
+   * discipline as `pickupStationRepository.findById`), which matters
+   * here specifically because `/api/checkout/start` accepts a
+   * caller-supplied product id from an external system (Whatchimp).
+   */
+  async findById(businessId: string, packageId: string): Promise<Package | null> {
+    const snapshot = await adminFirestore.collection(COLLECTION).doc(packageId).get();
+    if (!snapshot.exists) {
+      return null;
+    }
+    const data = snapshot.data() as Package;
+    return data.businessId === businessId ? data : null;
+  }
+
+  async update(packageId: string, patch: Partial<PackageInput>, actor: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(packageId).update({
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor,
+    });
+  }
 }
 
 export const packageRepository = new PackageRepository();

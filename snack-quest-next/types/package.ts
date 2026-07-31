@@ -20,4 +20,6 @@ export interface Package extends AuditFields {
    * a given box are ready to ship — never a fabricated number.
    */
   stockCount?: number;
+  /** Vercel Blob URL — null until an image is uploaded. Synced to the WhatsApp product catalog (§ product catalog sync) alongside name/description/price. */
+  imageUrl: string | null;
 }

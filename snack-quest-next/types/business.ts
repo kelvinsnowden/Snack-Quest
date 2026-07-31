@@ -50,6 +50,15 @@ export interface WhatchimpIntegrationSecret {
   apiKey: string;
   phoneNumberId: string;
   baseUrl?: string;
+  /**
+   * The WhatsApp Commerce Catalog this business's product feed syncs
+   * to (§ product catalog sync). Optional — a tenant that hasn't set
+   * up a Product Catalog yet can still use every other WhatsApp
+   * feature; catalog sync just becomes a documented no-op until it's
+   * configured, same "fail closed with a clear reason, never silently"
+   * discipline as every other not-yet-configured integration here.
+   */
+  catalogId?: string;
 }
 
 export interface JumiaIntegrationSecret {

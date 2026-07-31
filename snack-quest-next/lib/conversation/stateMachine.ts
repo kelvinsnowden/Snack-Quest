@@ -78,6 +78,9 @@ export const DOOR_DELIVERY_ESCALATION_MESSAGE =
 const WELCOME_MESSAGE =
   "Welcome to Snack Quest! We curate snack boxes and deliver them anywhere in Kenya. Let's get you a box.";
 
+const CUSTOMER_DETAILS_PROMPT =
+  'Great choice! Please reply with your name and county, separated by a comma (e.g. "Jane Doe, Nairobi").';
+
 function formatPackagesMessage(packages: PackageOption[]): string {
   const lines = packages.map(
     (pkg, index) => `${index + 1}. ${pkg.name} — KES ${pkg.priceKes}`,
@@ -91,6 +94,36 @@ export function startConversationMessages(
   return {
     nextStep: 'awaiting_package_selection',
     botReply: `${WELCOME_MESSAGE}\n\n${formatPackagesMessage(availablePackages)}`,
+  };
+}
+
+/**
+ * The equivalent of a successful `awaiting_package_selection` match,
+ * for a conversation bootstrapped from a Whatchimp Product Catalog
+ * selection instead of free text (`POST /checkout/start`) — the
+ * product was already validated by the caller (existence, active,
+ * in stock; this module never touches Firestore), so there's no
+ * matching step to run, just the same next prompt a text-based match
+ * would produce.
+ */
+export function bootstrapFromCatalogSelection(
+  product: { id: string; name: string; priceKes: number },
+  attribution: { referralCode?: string | null } = {},
+): { nextStep: ConversationStep; stateBlobPatch: Partial<ConversationStateBlob>; botReply: string } {
+  return {
+    nextStep: 'awaiting_customer_details',
+    stateBlobPatch: {
+      packageId: product.id,
+      packageLabel: product.name,
+      priceKes: product.priceKes,
+      // Pre-fills what `awaiting_referral_code` would otherwise ask
+      // for later — the customer never has to type a code they
+      // already gave Whatchimp. Still re-validated at freeze time by
+      // the exact same `confirmAndFreeze` path as a text-entered code
+      // (codes can expire between now and payment).
+      ...(attribution.referralCode ? { referralCode: attribution.referralCode } : {}),
+    },
+    botReply: CUSTOMER_DETAILS_PROMPT,
   };
 }
 
@@ -314,8 +347,7 @@ export function transition(
           packageLabel: match.name,
           priceKes: match.priceKes,
         },
-        botReply:
-          "Great choice! Please reply with your name and county, separated by a comma (e.g. \"Jane Doe, Nairobi\").",
+        botReply: CUSTOMER_DETAILS_PROMPT,
       };
     }
 
