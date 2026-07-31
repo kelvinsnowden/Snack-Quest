@@ -24,6 +24,7 @@ describe('webhookEventRepository', () => {
     const result = await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: 'evt-1',
       payload: { CheckoutRequestID: 'abc' },
     });
@@ -41,6 +42,7 @@ describe('webhookEventRepository', () => {
     await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: 'evt-2',
       payload: { CheckoutRequestID: 'abc' },
     });
@@ -48,6 +50,7 @@ describe('webhookEventRepository', () => {
     const second = await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: 'evt-2',
       payload: { CheckoutRequestID: 'abc-redelivered' },
     });
@@ -65,12 +68,14 @@ describe('webhookEventRepository', () => {
     const a = await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: 'shared-id',
       payload: {},
     });
     const b = await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'whatchimp',
+      eventKind: 'inbound_message',
       providerEventId: 'shared-id',
       payload: {},
     });
@@ -82,12 +87,14 @@ describe('webhookEventRepository', () => {
     const a = await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: 'cross-tenant-id',
       payload: {},
     });
     const b = await webhookEventRepository.recordIfNew({
       businessId: OTHER_BUSINESS_ID,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: 'cross-tenant-id',
       payload: {},
     });
@@ -99,6 +106,7 @@ describe('webhookEventRepository', () => {
     await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'jumia',
+      eventKind: 'inbound_message',
       providerEventId: 'evt-3',
       payload: {},
     });
@@ -116,6 +124,7 @@ describe('webhookEventRepository', () => {
     await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
       provider: 'jumia',
+      eventKind: 'inbound_message',
       providerEventId: 'evt-4',
       payload: {},
     });
@@ -132,5 +141,86 @@ describe('webhookEventRepository', () => {
       .get();
     expect(doc.data()?.status).toBe('failed');
     expect(doc.data()?.error).toBe('signature mismatch');
+  });
+});
+
+describe('webhookEventRepository.listUnmatchedPayments', () => {
+  it('lists only failed stk_callback events for the business, newest first', async () => {
+    // Not an unmatched payment: a failed B2C result, even with no relatedEntityId.
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'b2c_result',
+      providerEventId: 'b2c-evt-1',
+      payload: {},
+    });
+    await webhookEventRepository.markFailed(BUSINESS_ID, 'daraja', 'b2c-evt-1', 'no matching withdrawal');
+
+    // Not an unmatched payment: a successfully processed stk_callback.
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: 'stk-evt-processed',
+      payload: {},
+    });
+    await webhookEventRepository.markProcessed(BUSINESS_ID, 'daraja', 'stk-evt-processed');
+
+    // Not an unmatched payment: a different business.
+    await webhookEventRepository.recordIfNew({
+      businessId: OTHER_BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: 'stk-evt-other-biz',
+      payload: {},
+    });
+    await webhookEventRepository.markFailed(OTHER_BUSINESS_ID, 'daraja', 'stk-evt-other-biz', 'unmatched payment');
+
+    // The real thing: a failed stk_callback for this business.
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: 'stk-evt-unmatched',
+      payload: { Body: { stkCallback: { CheckoutRequestID: 'stk-evt-unmatched' } } },
+    });
+    await webhookEventRepository.markFailed(BUSINESS_ID, 'daraja', 'stk-evt-unmatched', 'No matching payment attempt found (unmatched payment)');
+
+    const { events, nextCursor } = await webhookEventRepository.listUnmatchedPayments(BUSINESS_ID);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].data.providerEventId).toBe('stk-evt-unmatched');
+    expect(nextCursor).toBeNull();
+  });
+});
+
+describe('webhookEventRepository.markResolved', () => {
+  it('records who resolved the event, when, and why', async () => {
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: 'stk-evt-to-resolve',
+      payload: {},
+    });
+    await webhookEventRepository.markFailed(BUSINESS_ID, 'daraja', 'stk-evt-to-resolve', 'unmatched payment');
+
+    await webhookEventRepository.markResolved(
+      BUSINESS_ID,
+      'daraja',
+      'stk-evt-to-resolve',
+      'staff-1',
+      'Verified against M-Pesa statement — duplicate customer payment, refunded manually via till.',
+    );
+
+    const doc = await adminFirestore
+      .collection('webhookEvents')
+      .doc(`${BUSINESS_ID}:daraja:stk-evt-to-resolve`)
+      .get();
+    expect(doc.data()?.resolvedBy).toBe('staff-1');
+    expect(doc.data()?.resolvedAt).not.toBeNull();
+    expect(doc.data()?.resolutionNote).toBe(
+      'Verified against M-Pesa statement — duplicate customer payment, refunded manually via till.',
+    );
   });
 });

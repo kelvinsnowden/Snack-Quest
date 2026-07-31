@@ -196,6 +196,7 @@ class WithdrawalService {
     const idempotency = await webhookEventRepository.recordIfNew({
       businessId,
       provider: 'daraja',
+      eventKind: 'b2c_result',
       providerEventId: result.originatorConversationId,
       payload: payload as Record<string, unknown>,
       relatedEntityId: match?.id ?? null,

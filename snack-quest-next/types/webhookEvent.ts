@@ -14,9 +14,21 @@ export type WebhookProvider = 'daraja' | 'whatchimp' | 'jumia';
 
 export type WebhookEventStatus = 'received' | 'processed' | 'failed';
 
+/**
+ * What kind of event this is within its provider — `provider: 'daraja'`
+ * alone doesn't distinguish an STK C2B callback from a B2C payout
+ * result from a refund reversal result, and Payment reconciliation
+ * (§ Payment reconciliation) needs exactly that distinction to find
+ * "STK callbacks Safaricom sent us that we couldn't match to any
+ * payment attempt" without also catching an unrelated B2C/reversal
+ * failure that happens to have no `relatedEntityId` either.
+ */
+export type WebhookEventKind = 'stk_callback' | 'b2c_result' | 'reversal_result' | 'inbound_message';
+
 export interface WebhookEvent {
   businessId: string;
   provider: WebhookProvider;
+  eventKind: WebhookEventKind;
   /** The provider's own delivery/message identifier — the actual dedup key. */
   providerEventId: string;
   status: WebhookEventStatus;
@@ -27,4 +39,8 @@ export interface WebhookEvent {
   receivedAt: Timestamp;
   processedAt: Timestamp | null;
   error: string | null;
+  /** A staff member's acknowledgment of an event that needed manual follow-up (e.g. an unmatched payment, § Payment reconciliation) — distinct from `status`, which only ever reflects the system's own processing outcome, never a human's. */
+  resolvedBy: string | null;
+  resolvedAt: Timestamp | null;
+  resolutionNote: string | null;
 }

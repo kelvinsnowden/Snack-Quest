@@ -197,6 +197,16 @@
       ]
     },
     {
+      "collectionGroup": "webhookEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "eventKind", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "receivedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "refunds",
       "queryScope": "COLLECTION",
       "fields": [

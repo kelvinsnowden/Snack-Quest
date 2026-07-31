@@ -57,6 +57,7 @@ export async function POST(request: Request): Promise<Response> {
   const idempotency = await webhookEventRepository.recordIfNew({
     businessId,
     provider: 'whatchimp',
+    eventKind: 'inbound_message',
     providerEventId: inbound.providerMessageId,
     payload,
   });

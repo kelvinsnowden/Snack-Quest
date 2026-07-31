@@ -131,6 +131,7 @@ class RefundService {
     const idempotency = await webhookEventRepository.recordIfNew({
       businessId,
       provider: 'daraja',
+      eventKind: 'reversal_result',
       providerEventId: result.originatorConversationId,
       payload: payload as Record<string, unknown>,
       relatedEntityId: match?.id ?? null,

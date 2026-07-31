@@ -107,6 +107,7 @@ class PaymentService {
     const idempotency = await webhookEventRepository.recordIfNew({
       businessId,
       provider: 'daraja',
+      eventKind: 'stk_callback',
       providerEventId: callback.checkoutRequestId,
       payload: rawPayload as Record<string, unknown>,
     });

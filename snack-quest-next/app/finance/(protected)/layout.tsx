@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: '/finance', label: 'Withdrawals' },
   { href: '/finance/commissions', label: 'Commissions' },
   { href: '/finance/refunds', label: 'Refunds' },
+  { href: '/finance/reconciliation', label: 'Reconciliation' },
   { href: '/finance/revenue', label: 'Revenue' },
 ];
 
@@ -25,16 +26,14 @@ const NAV_ITEMS = [
  * `finance`/`admin`/`super_admin`; a finance-only session hitting
  * `/admin` bounces here (see that layout's own note).
  *
- * Scope note: this workspace covers what's real today — withdrawal
- * approvals + Daraja B2C (§ Admin: Withdrawals), the commission ledger
- * (§ Admin: Referrals), revenue reporting (§ Admin: Analytics), and the
- * refund ledger (§ RefundService + Daraja reversal support), all reused
- * rather than rebuilt (refund initiation itself lives on the order
- * detail page in `/admin/orders`, since that's where the order-specific
- * context — payment, pricing, status — already is). "Reconciliation" is
- * deliberately NOT here yet: there's no real `unmatchedPayments`
- * surfacing today — that's a dedicated upcoming task, not something to
- * fake a UI for now.
+ * This workspace covers what's real today — withdrawal approvals +
+ * Daraja B2C (§ Admin: Withdrawals), the commission ledger (§ Admin:
+ * Referrals), revenue reporting (§ Admin: Analytics), the refund ledger
+ * (§ RefundService + Daraja reversal support — refund initiation itself
+ * lives on the order detail page in `/admin/orders`, where the
+ * order-specific context already is), and the unmatched-payments
+ * reconciliation queue (§ Payment reconciliation), all reused rather
+ * than rebuilt.
  */
 export default async function FinanceLayout({ children }: { children: React.ReactNode }) {
   const session = await requireStaffSession('/admin/login?next=%2Ffinance');
