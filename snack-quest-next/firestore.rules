@@ -218,6 +218,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // marketingSpendEntries: manually-entered monthly ad spend, the
+    // input § Admin: Analytics computes CAC from — admin-only, same
+    // Admin-SDK-only-write discipline as everything else here.
+    match /marketingSpendEntries/{entryId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // conversationCheckoutSnapshots: server-only, same reasoning as
     // conversations — the frozen pre-payment snapshot has no client
     // reader in the WhatsApp-first flow.

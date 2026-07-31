@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { orderRepository } from '@/repositories/orderRepository';
+import { toMillis } from '@/lib/firestoreTimestamp';
 import type { Order } from '@/types';
 
 /**
@@ -86,11 +87,6 @@ class CustomerService {
 
     return Array.from(byPhone.values()).sort((a, b) => toMillis(b.lastOrderAt) - toMillis(a.lastOrderAt));
   }
-}
-
-function toMillis(value: Order['createdAt']): number {
-  const timestamp = value as unknown as { toMillis?: () => number };
-  return timestamp?.toMillis ? timestamp.toMillis() : 0;
 }
 
 export const customerService = new CustomerService();

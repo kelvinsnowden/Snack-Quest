@@ -26,3 +26,4 @@ export * from './pickupStation';
 export * from './deliveryZoneRule';
 export * from './delivery';
 export * from './inventoryMovement';
+export * from './marketingSpend';

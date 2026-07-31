@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Banknote,
+  BarChart3,
   Boxes,
   ClipboardList,
   LayoutDashboard,
@@ -28,6 +29,7 @@ export interface AdminNavItem {
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/orders', label: 'Orders', icon: ClipboardList },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/inventory', label: 'Inventory', icon: Boxes },
