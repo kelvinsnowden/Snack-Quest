@@ -14,6 +14,7 @@ export interface BusinessSettingsFormValues {
   whatsappPhoneNumberId: string;
   countyCoverage: string[];
   adminWhatsappPhone: string | null;
+  whatsappCustomerNumber: string | null;
   status: 'active' | 'suspended';
 }
 
@@ -57,6 +58,11 @@ export function BusinessSettingsForm({ initialValues }: { initialValues: Busines
       setError('Admin WhatsApp phone must be E.164 without "+", e.g. 254712345678.');
       return;
     }
+    const trimmedCustomerNumber = values.whatsappCustomerNumber?.trim() ?? '';
+    if (trimmedCustomerNumber && !/^254\d{9}$/.test(trimmedCustomerNumber)) {
+      setError('Customer WhatsApp number must be E.164 without "+", e.g. 254712345678.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -69,6 +75,7 @@ export function BusinessSettingsForm({ initialValues }: { initialValues: Busines
           whatsappPhoneNumberId: values.whatsappPhoneNumberId.trim(),
           countyCoverage,
           adminWhatsappPhone: trimmedPhone || null,
+          whatsappCustomerNumber: trimmedCustomerNumber || null,
           status: values.status,
         }),
       });
@@ -125,6 +132,21 @@ export function BusinessSettingsForm({ initialValues }: { initialValues: Busines
               />
               <p className="text-caption text-muted-foreground">Gets a message for every new order. Leave blank to disable.</p>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="whatsappCustomerNumber">Customer-facing WhatsApp number</Label>
+            <Input
+              id="whatsappCustomerNumber"
+              value={values.whatsappCustomerNumber ?? ''}
+              onChange={(event) => setValues((v) => ({ ...v, whatsappCustomerNumber: event.target.value }))}
+              placeholder="254712345678"
+            />
+            <p className="text-caption text-muted-foreground">
+              The real number behind the phone_number_id below — used to build creator referral-link
+              click-throughs and the marketing site&apos;s &quot;Order on WhatsApp&quot; buttons. Leave blank until
+              those are ready to use it.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">

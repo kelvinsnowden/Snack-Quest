@@ -92,6 +92,7 @@ async function seedBusiness() {
       whatsappPhoneNumberId: PHONE_NUMBER_ID,
       countyCoverage: [],
       adminWhatsappPhone: '254799999003',
+      whatsappCustomerNumber: null,
       status: 'active',
     },
     'system',

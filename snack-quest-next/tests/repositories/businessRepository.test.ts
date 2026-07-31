@@ -10,6 +10,7 @@ const BASE_INPUT: BusinessInput = {
   whatsappPhoneNumberId: 'wa-phone-1',
   countyCoverage: ['Nairobi'],
   adminWhatsappPhone: '254712345678',
+  whatsappCustomerNumber: null,
   status: 'active',
 };
 

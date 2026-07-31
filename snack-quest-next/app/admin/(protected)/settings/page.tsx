@@ -22,6 +22,7 @@ export default async function AdminSettingsPage() {
           whatsappPhoneNumberId: business.whatsappPhoneNumberId,
           countyCoverage: business.countyCoverage,
           adminWhatsappPhone: business.adminWhatsappPhone,
+          whatsappCustomerNumber: business.whatsappCustomerNumber,
           status: business.status,
         }}
       />

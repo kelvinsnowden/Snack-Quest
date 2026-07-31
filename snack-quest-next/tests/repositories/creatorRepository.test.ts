@@ -49,3 +49,15 @@ describe('creatorRepository.listByBusiness', () => {
     expect(secondPage.nextCursor).toBeNull();
   });
 });
+
+describe('creatorRepository.incrementClickCount', () => {
+  it('increments totalClicks by 1 each call', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+
+    await creatorRepository.incrementClickCount('creator-1');
+    await creatorRepository.incrementClickCount('creator-1');
+
+    const found = await creatorRepository.findById('creator-1');
+    expect(found?.totalClicks).toBe(2);
+  });
+});

@@ -95,6 +95,7 @@ beforeEach(async () => {
       whatsappPhoneNumberId: 'wa-admin-order-refund-route-test',
       countyCoverage: [],
       adminWhatsappPhone: null,
+      whatsappCustomerNumber: null,
       status: 'active',
     },
     'system',

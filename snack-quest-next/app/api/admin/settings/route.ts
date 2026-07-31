@@ -25,7 +25,15 @@ export async function GET(request: Request): Promise<Response> {
   }
 }
 
-const EDITABLE_FIELDS = ['name', 'currency', 'whatsappPhoneNumberId', 'countyCoverage', 'adminWhatsappPhone', 'status'] as const;
+const EDITABLE_FIELDS = [
+  'name',
+  'currency',
+  'whatsappPhoneNumberId',
+  'countyCoverage',
+  'adminWhatsappPhone',
+  'whatsappCustomerNumber',
+  'status',
+] as const;
 
 function pickPatch(body: Record<string, unknown>): BusinessSettingsPatch {
   const patch: BusinessSettingsPatch = {};

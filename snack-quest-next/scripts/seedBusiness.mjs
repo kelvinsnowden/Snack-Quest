@@ -54,6 +54,7 @@ async function main() {
       whatsappPhoneNumberId: requireEnv('WHATCHIMP_PHONE_NUMBER_ID'),
       countyCoverage: [],
       adminWhatsappPhone: process.env.ADMIN_WHATSAPP_PHONE ?? null,
+      whatsappCustomerNumber: process.env.WHATSAPP_CUSTOMER_NUMBER ?? null,
       status: 'active',
       createdAt: now,
       updatedAt: now,

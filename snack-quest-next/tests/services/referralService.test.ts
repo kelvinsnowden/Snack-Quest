@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
+import { creatorRepository } from '@/repositories/creatorRepository';
 import { createInTransaction as createAttributionInTransaction } from '@/repositories/referralAttributionRepository';
 import {
   referralService,
@@ -140,5 +141,102 @@ describe('ReferralService.listLinks / listCommissions', () => {
     expect(commissions).toHaveLength(1);
     expect(commissions[0].creator?.displayName).toBe('Cool Creator');
     expect(commissions[0].data.commissionKes).toBe(50);
+  });
+});
+
+describe('ReferralService.awardCommission', () => {
+  it('increments both the link and the creator conversion counters, alongside the existing credit', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    const linkId = await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-1', code: 'SAVE10', discountKes: 100, commissionKes: 50, isActive: true },
+      'staff-1',
+    );
+
+    await referralService.awardCommission({
+      businessId: BUSINESS_ID,
+      referralLinkId: linkId,
+      ownerId: 'creator-1',
+      orderId: 'order-1',
+      conversationId: 'conv-1',
+      discountKes: 100,
+      commissionKes: 50,
+    });
+
+    const link = await referralLinkRepository.findById(BUSINESS_ID, linkId);
+    expect(link?.conversionCount).toBe(1);
+    const creator = await creatorRepository.findById('creator-1');
+    expect(creator?.totalConversions).toBe(1);
+    expect(creator?.availableCashKes).toBe(50);
+  });
+});
+
+describe('ReferralService.listLinksForCreator', () => {
+  it('returns only the given creator’s own links', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    await seedCreator('creator-2', { businessId: BUSINESS_ID });
+    await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-1', code: 'MINE', discountKes: 0, commissionKes: 0, isActive: true },
+      'creator-1',
+    );
+    await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-2', code: 'THEIRS', discountKes: 0, commissionKes: 0, isActive: true },
+      'creator-2',
+    );
+
+    const { links } = await referralService.listLinksForCreator(BUSINESS_ID, 'creator-1');
+
+    expect(links).toHaveLength(1);
+    expect(links[0].data.code).toBe('MINE');
+  });
+});
+
+describe('ReferralService.recordClick', () => {
+  it('increments both the link and creator click counters and returns the link', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    const linkId = await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-1', code: 'SAVE10', discountKes: 100, commissionKes: 50, isActive: true },
+      'creator-1',
+    );
+
+    const result = await referralService.recordClick(BUSINESS_ID, 'save10');
+
+    expect(result?.code).toBe('SAVE10');
+    const link = await referralLinkRepository.findById(BUSINESS_ID, linkId);
+    expect(link?.clickCount).toBe(1);
+    const creator = await creatorRepository.findById('creator-1');
+    expect(creator?.totalClicks).toBe(1);
+  });
+
+  it('returns null and touches nothing for an unknown code', async () => {
+    const result = await referralService.recordClick(BUSINESS_ID, 'no-such-code');
+    expect(result).toBeNull();
+  });
+});
+
+describe('ReferralService.setActiveForOwner', () => {
+  it('lets a creator deactivate their own link', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    const linkId = await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-1', code: 'SAVE10', discountKes: 0, commissionKes: 0, isActive: true },
+      'creator-1',
+    );
+
+    await referralService.setActiveForOwner(BUSINESS_ID, 'creator-1', linkId, false, 'creator-1');
+
+    const link = await referralLinkRepository.findById(BUSINESS_ID, linkId);
+    expect(link?.isActive).toBe(false);
+  });
+
+  it('throws ReferralLinkNotFoundError for a link owned by someone else, without revealing it exists', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    await seedCreator('creator-2', { businessId: BUSINESS_ID });
+    const linkId = await referralService.createLink(
+      { businessId: BUSINESS_ID, ownerId: 'creator-1', code: 'SAVE10', discountKes: 0, commissionKes: 0, isActive: true },
+      'creator-1',
+    );
+
+    await expect(
+      referralService.setActiveForOwner(BUSINESS_ID, 'creator-2', linkId, false, 'creator-2'),
+    ).rejects.toBeInstanceOf(ReferralLinkNotFoundError);
   });
 });

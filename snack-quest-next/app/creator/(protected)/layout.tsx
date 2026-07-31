@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { CreatorUserMenu } from '@/components/creator/CreatorUserMenu';
@@ -9,6 +10,12 @@ export const metadata: Metadata = {
     template: '%s — Snack Quest Creators',
   },
 };
+
+const NAV_ITEMS = [
+  { href: '/creator', label: 'Home' },
+  { href: '/creator/referrals', label: 'Referrals' },
+  { href: '/creator/campaigns', label: 'Campaigns' },
+];
 
 /**
  * The Secure tier of the creator auth check (§ Creator Portal auth) —
@@ -26,11 +33,24 @@ export default async function CreatorProtectedLayout({ children }: { children: R
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 md:px-6">
-        <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-            SQ
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+              SQ
+            </div>
+            <span className="font-semibold text-foreground">Snack Quest Creators</span>
           </div>
-          <span className="font-semibold text-foreground">Snack Quest Creators</span>
+          <nav className="hidden items-center gap-1 sm:flex">
+            {NAV_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-border/40 hover:text-foreground"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
         </div>
         <CreatorUserMenu displayName={session.displayName} email={session.email} />
       </header>

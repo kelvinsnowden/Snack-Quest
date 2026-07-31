@@ -15,6 +15,7 @@ const BASE_INPUT: BusinessInput = {
   whatsappPhoneNumberId: 'wa-phone-1',
   countyCoverage: ['Nairobi'],
   adminWhatsappPhone: '254712345678',
+  whatsappCustomerNumber: null,
   status: 'active',
 };
 
@@ -72,6 +73,21 @@ describe('BusinessSettingsService.updateSettings', () => {
       'staff-1',
     );
     expect(after.adminWhatsappPhone).toBeNull();
+  });
+
+  it('rejects a malformed customer WhatsApp number', async () => {
+    await expect(
+      businessSettingsService.updateSettings(BUSINESS_ID, { whatsappCustomerNumber: '0712345678' }, 'staff-1'),
+    ).rejects.toBeInstanceOf(BusinessSettingsValidationError);
+  });
+
+  it('saves a valid customer WhatsApp number', async () => {
+    const { after } = await businessSettingsService.updateSettings(
+      BUSINESS_ID,
+      { whatsappCustomerNumber: '254712345678' },
+      'staff-1',
+    );
+    expect(after.whatsappCustomerNumber).toBe('254712345678');
   });
 
   it('rejects an invalid status', async () => {

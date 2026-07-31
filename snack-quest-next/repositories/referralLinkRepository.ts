@@ -1,12 +1,17 @@
 import 'server-only';
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import type { AuditFields, ReferralLink } from '@/types';
 
 const COLLECTION = 'referralLinks';
 
 export type ReferralLinkInput = Omit<ReferralLink, keyof AuditFields>;
+
+/** The conversion side of a referral link's counters (§ Creator Portal referral links) — incremented in the same transaction as `ReferralService.awardCommission()`'s other writes. */
+export function incrementConversionCountInTransaction(tx: Transaction, linkId: string): void {
+  tx.update(adminFirestore.collection(COLLECTION).doc(linkId), { conversionCount: FieldValue.increment(1) });
+}
 
 class ReferralLinkRepository {
   /**
@@ -40,6 +45,42 @@ class ReferralLinkRepository {
       .limit(1)
       .get();
     return !snapshot.empty;
+  }
+
+  /** § Creator Portal referral links — a creator's own links, newest first. */
+  async listByOwner(
+    businessId: string,
+    ownerId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ links: { id: string; data: ReferralLink }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 25;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('ownerId', '==', ownerId)
+      .orderBy('createdAt', 'desc')
+      .limit(pageSize + 1) as FirebaseFirestore.Query;
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      links: docs.map((doc) => ({ id: doc.id, data: doc.data() as ReferralLink })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
+
+  /** § app/r/[code]/route.ts — a real click-through, outside any larger transaction. */
+  async incrementClickCount(linkId: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(linkId).update({ clickCount: FieldValue.increment(1) });
   }
 
   async findById(businessId: string, linkId: string): Promise<ReferralLink | null> {

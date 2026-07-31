@@ -114,6 +114,7 @@ async function seedBusiness(tenant: TenantConfig) {
       whatsappPhoneNumberId: tenant.whatsappPhoneNumberId,
       countyCoverage: [],
       adminWhatsappPhone: tenant.adminWhatsappPhone,
+      whatsappCustomerNumber: null,
       status: 'active',
     },
     'system',

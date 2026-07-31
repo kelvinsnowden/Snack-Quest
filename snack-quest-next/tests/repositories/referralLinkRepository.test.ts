@@ -16,6 +16,8 @@ async function seedLink(overrides: Partial<Parameters<typeof referralLinkReposit
       discountKes: 100,
       commissionKes: 50,
       isActive: true,
+      clickCount: 0,
+      conversionCount: 0,
       ...overrides,
     },
     'staff-1',
@@ -72,5 +74,30 @@ describe('referralLinkRepository.listByBusiness', () => {
 
     expect(links.map((l) => l.id)).toEqual([second, first]);
     expect(nextCursor).toBeNull();
+  });
+});
+
+describe('referralLinkRepository.listByOwner', () => {
+  it('lists only the given owner’s links within the business', async () => {
+    await seedLink({ code: 'MINE', ownerId: 'creator-1' });
+    await seedLink({ code: 'THEIRS', ownerId: 'creator-2' });
+    await seedLink({ businessId: OTHER_BUSINESS_ID, code: 'OTHERBIZ', ownerId: 'creator-1' });
+
+    const { links } = await referralLinkRepository.listByOwner(BUSINESS_ID, 'creator-1');
+
+    expect(links).toHaveLength(1);
+    expect(links[0].data.code).toBe('MINE');
+  });
+});
+
+describe('referralLinkRepository.incrementClickCount', () => {
+  it('increments clickCount by 1 each call', async () => {
+    const linkId = await seedLink();
+
+    await referralLinkRepository.incrementClickCount(linkId);
+    await referralLinkRepository.incrementClickCount(linkId);
+
+    const found = await referralLinkRepository.findById(BUSINESS_ID, linkId);
+    expect(found?.clickCount).toBe(2);
   });
 });

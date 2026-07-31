@@ -49,6 +49,12 @@ export function refundBalanceInTransaction(tx: Transaction, creatorId: string, a
   tx.update(ref, { availableCashKes: FieldValue.increment(amountKes) });
 }
 
+/** The creator-level conversion counter (§ Creator Portal referral links) — incremented alongside `referralLinkRepository.incrementConversionCountInTransaction()` in the same `ReferralService.awardCommission()` transaction. */
+export function incrementConversionCountInTransaction(tx: Transaction, creatorId: string): void {
+  const ref = adminFirestore.collection('creatorProfiles').doc(creatorId);
+  tx.update(ref, { totalConversions: FieldValue.increment(1) });
+}
+
 /**
  * `creatorProfiles` reads/writes (TDD §4/§8). This is the reference
  * Repository every later repository is reviewed against: persistence
@@ -101,6 +107,11 @@ class CreatorRepository {
         ...partial,
         updatedAt: FieldValue.serverTimestamp(),
       });
+  }
+
+  /** § app/r/[code]/route.ts — the creator-level aggregate, alongside the per-link `referralLinkRepository.incrementClickCount()`. */
+  async incrementClickCount(uid: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(uid).update({ totalClicks: FieldValue.increment(1) });
   }
 
   /** § Creator Portal auth — uniqueness check while generating a new creator's referral code; see lib/creators/referralCode.ts. */

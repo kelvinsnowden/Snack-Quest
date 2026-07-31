@@ -1,28 +1,37 @@
 import 'server-only';
 
 import { adminFirestore } from '@/lib/firebase/admin';
-import { referralLinkRepository, type ReferralLinkInput } from '@/repositories/referralLinkRepository';
+import {
+  referralLinkRepository,
+  incrementConversionCountInTransaction as incrementLinkConversionInTransaction,
+  type ReferralLinkInput,
+} from '@/repositories/referralLinkRepository';
 import {
   createInTransaction as createAttributionInTransaction,
   referralAttributionRepository,
 } from '@/repositories/referralAttributionRepository';
 import { creditInTransaction as creditCreatorInTransaction } from '@/repositories/creatorEarningsLedgerRepository';
-import { creatorRepository } from '@/repositories/creatorRepository';
+import {
+  creatorRepository,
+  incrementConversionCountInTransaction as incrementCreatorConversionInTransaction,
+} from '@/repositories/creatorRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { ReferralAttribution, ReferralLink, User } from '@/types';
 
 /**
  * Owns referral validation, commission crediting, and referral-link
- * management (PLATFORM_ARCHITECTURE_V2.md §8). Minimal by design: a
- * real customer today either has a valid code (gets a discount, the
- * creator gets credited) or doesn't (order proceeds at full price) —
- * attribution windows, click tracking, and fraud scoring aren't part
- * of completing an order and aren't built yet. Commissions are
- * credited automatically the instant a valid code is used
- * (`awardCommission()`) — there is no admin approval gate before that
- * credit happens; § Admin: Referrals is oversight of what already
- * happened, not a queue to approve.
+ * management (PLATFORM_ARCHITECTURE_V2.md §8). A real customer either
+ * has a valid code (gets a discount, the creator gets credited) or
+ * doesn't (order proceeds at full price); attribution windows and
+ * fraud scoring stay out of scope until a real need arrives, but
+ * click/conversion counts are now real (§ Creator Portal referral
+ * links) — clicks via `app/r/[code]/route.ts`, conversions in the same
+ * transaction as the commission credit below. Commissions are credited
+ * automatically the instant a valid code is used (`awardCommission()`)
+ * — there is no admin approval gate before that credit happens;
+ * § Admin: Referrals is oversight of what already happened, not a
+ * queue to approve.
  */
 
 export interface ValidatedReferral {
@@ -105,6 +114,8 @@ class ReferralService {
         referralLinkId: input.referralLinkId,
         amountKes: input.commissionKes,
       });
+      incrementLinkConversionInTransaction(tx, input.referralLinkId);
+      incrementCreatorConversionInTransaction(tx, input.ownerId);
     });
 
     await publishEvent(input.businessId, 'ReferralAwarded', 'order', input.orderId, {
@@ -115,7 +126,7 @@ class ReferralService {
   }
 
   async createLink(
-    input: Omit<ReferralLinkInput, 'code'> & { code: string },
+    input: Omit<ReferralLinkInput, 'code' | 'clickCount' | 'conversionCount'> & { code: string },
     actor: string,
   ): Promise<string> {
     const creator = await creatorRepository.findById(input.ownerId);
@@ -126,7 +137,22 @@ class ReferralService {
     const code = input.code.trim().toUpperCase();
     await this.assertCodeAvailable(input.businessId, code);
 
-    return referralLinkRepository.create({ ...input, code }, actor);
+    return referralLinkRepository.create({ ...input, code, clickCount: 0, conversionCount: 0 }, actor);
+  }
+
+  /** § Creator Portal referral links — a creator toggling their own link, never someone else's; reuses `ReferralLinkNotFoundError` for "not yours" too, so ownership isn't leaked by the error shape. */
+  async setActiveForOwner(
+    businessId: string,
+    ownerId: string,
+    linkId: string,
+    isActive: boolean,
+    actor: string,
+  ): Promise<void> {
+    const existing = await referralLinkRepository.findById(businessId, linkId);
+    if (!existing || existing.ownerId !== ownerId) {
+      throw new ReferralLinkNotFoundError(linkId);
+    }
+    await referralLinkRepository.update(linkId, { isActive }, actor);
   }
 
   async updateLink(
@@ -149,6 +175,32 @@ class ReferralService {
     }
 
     await referralLinkRepository.update(linkId, normalizedPatch, actor);
+  }
+
+  /** § Creator Portal referral links — a creator's own links, no identity join needed since they're already the owner. */
+  async listLinksForCreator(
+    businessId: string,
+    ownerId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ links: { id: string; data: ReferralLink }[]; nextCursor: string | null }> {
+    return referralLinkRepository.listByOwner(businessId, ownerId, options);
+  }
+
+  /**
+   * § app/r/[code]/route.ts — a real click-through. Fails soft (returns
+   * null) for an unknown or inactive code so the redirect route can
+   * fall back gracefully rather than error a customer's tap.
+   */
+  async recordClick(businessId: string, code: string): Promise<ReferralLink | null> {
+    const match = await referralLinkRepository.findByCode(businessId, code.trim().toUpperCase());
+    if (!match) {
+      return null;
+    }
+    await Promise.all([
+      referralLinkRepository.incrementClickCount(match.id),
+      creatorRepository.incrementClickCount(match.data.ownerId),
+    ]);
+    return match.data;
   }
 
   /** Admin: Referrals list, joined with each owning creator's `users/{uid}` identity for display. */

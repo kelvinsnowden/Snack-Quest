@@ -23,6 +23,17 @@ export interface Business extends AuditFields {
   countyCoverage: string[];
   /** WhatsApp number (E.164) that gets a message for every new order. Optional — a tenant may not want admin alerts yet. */
   adminWhatsappPhone: string | null;
+  /**
+   * The customer-facing WhatsApp number (E.164, no leading "+") behind
+   * `whatsappPhoneNumberId` above — distinct from it, since that's the
+   * Cloud API's internal identifier, not something a `wa.me/` deep
+   * link can use. Needed by creator referral click-through
+   * (`app/r/[code]/route.ts`, § Creator Portal referral links) and the
+   * marketing site's own "Order on WhatsApp" CTAs; optional because a
+   * tenant can finish onboarding before configuring it, and both
+   * consumers fail closed/gracefully rather than guess at a number.
+   */
+  whatsappCustomerNumber: string | null;
   status: BusinessStatus;
 }
 

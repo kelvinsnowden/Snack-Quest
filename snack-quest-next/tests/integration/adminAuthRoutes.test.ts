@@ -45,6 +45,7 @@ beforeEach(async () => {
       whatsappPhoneNumberId: 'wa-admin-auth-routes-test',
       countyCoverage: [],
       adminWhatsappPhone: null,
+      whatsappCustomerNumber: null,
       status: 'active',
     },
     'system',

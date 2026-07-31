@@ -22,7 +22,10 @@ const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const STATUSES: BusinessStatus[] = ['active', 'suspended'];
 
 export type BusinessSettingsPatch = Partial<
-  Pick<BusinessInput, 'name' | 'currency' | 'whatsappPhoneNumberId' | 'countyCoverage' | 'adminWhatsappPhone' | 'status'>
+  Pick<
+    BusinessInput,
+    'name' | 'currency' | 'whatsappPhoneNumberId' | 'countyCoverage' | 'adminWhatsappPhone' | 'whatsappCustomerNumber' | 'status'
+  >
 >;
 
 /**
@@ -74,6 +77,13 @@ class BusinessSettingsService {
     }
     if (patch.adminWhatsappPhone !== undefined && patch.adminWhatsappPhone !== null && !PHONE_PATTERN.test(patch.adminWhatsappPhone)) {
       throw new BusinessSettingsValidationError('"adminWhatsappPhone" must be E.164 without the leading "+", e.g. "254712345678".');
+    }
+    if (
+      patch.whatsappCustomerNumber !== undefined &&
+      patch.whatsappCustomerNumber !== null &&
+      !PHONE_PATTERN.test(patch.whatsappCustomerNumber)
+    ) {
+      throw new BusinessSettingsValidationError('"whatsappCustomerNumber" must be E.164 without the leading "+", e.g. "254712345678".');
     }
     if (patch.status !== undefined && !STATUSES.includes(patch.status)) {
       throw new BusinessSettingsValidationError(`"status" must be one of: ${STATUSES.join(', ')}.`);
