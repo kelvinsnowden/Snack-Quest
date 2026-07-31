@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
+    "@vercel/blob": "^2.6.1",
     "firebase": "^12.17.0",
     "firebase-admin": "^14.2.0",
     "lucide-react": "^1.28.0",

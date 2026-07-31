@@ -174,3 +174,32 @@ export interface PushGateway {
     payload: Record<string, unknown>;
   }): Promise<void>;
 }
+
+export interface StorageObjectMetadata {
+  url: string;
+  pathname: string;
+  contentType: string;
+  size: number;
+}
+
+/**
+ * File storage — Vercel Blob today (`lib/integrations/vercelBlob/`),
+ * anything else later (§ Vercel Blob migration). Unlike every other
+ * Gateway above, methods here do NOT take `businessId`: Vercel Blob is
+ * platform infrastructure with one store and one token per deployment
+ * (like Firestore itself), not a tenant-owned credential resolved per
+ * business — `services/storageService.ts` is where `businessId`
+ * becomes part of the object's *path* for tenant organization, which
+ * is a naming concern, not a credentials one.
+ */
+export interface StorageGateway {
+  uploadFile(input: {
+    pathname: string;
+    data: Buffer;
+    contentType: string;
+    /** Overwrite an existing object at this exact pathname — used by replaceFile(), never by a fresh upload. */
+    allowOverwrite?: boolean;
+  }): Promise<StorageObjectMetadata>;
+  deleteFile(url: string): Promise<void>;
+  getMetadata(url: string): Promise<StorageObjectMetadata>;
+}
