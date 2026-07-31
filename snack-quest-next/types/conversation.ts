@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { DeliveryMethod } from './delivery';
 
 /**
  * `conversations/{conversationId}` — the source of truth for the
@@ -18,6 +19,12 @@ export type ConversationStatus =
  * The deterministic step sequence a purchase conversation moves
  * through. Matches §6's "structured operation with required steps in
  * a partial order" reasoning — a decision tree, not free-form chat.
+ * The two delivery methods diverge after `awaiting_delivery_selection`:
+ * `pickup` (Jumia) continues through the automated station-search/
+ * price/pay/confirm path; `door` (Bolt) collects address details, then
+ * escalates to a human agent — `awaiting_agent_pricing` is a "parked"
+ * step the state machine itself never advances past (see
+ * ConversationService.escalateToAgent / priceDoorDeliveryAndCharge).
  */
 export type ConversationStep =
   | 'started'
@@ -26,13 +33,13 @@ export type ConversationStep =
   | 'awaiting_customer_details'
   | 'awaiting_delivery_selection'
   | 'awaiting_pickup_station_selection'
+  | 'awaiting_door_delivery_details'
+  | 'awaiting_agent_pricing'
   | 'awaiting_referral_code'
   | 'awaiting_order_confirmation'
   | 'awaiting_payment_confirmation'
   | 'completed'
   | 'abandoned';
-
-export type DeliveryMethod = 'door_delivery' | 'jumia_pickup';
 
 /** A candidate shown to the customer during pickup-station search — carried in `stateBlob` so selection-by-number needs no new lookup. */
 export interface PickupStationCandidate {
@@ -61,7 +68,11 @@ export interface ConversationStateBlob {
   deliveryFeeKes?: number;
   /** The most recent search results shown to the customer, so replying with a number needs no new Firestore lookup. */
   pickupStationCandidates?: PickupStationCandidate[];
+  /** Door-delivery only, collected in one message: address, landmark, estate, phone. */
   addressText?: string;
+  landmark?: string;
+  estate?: string;
+  contactPhone?: string;
   referralCode?: string;
   discountKes?: number;
 }
@@ -76,6 +87,8 @@ export interface Conversation {
   referralLinkId: string | null;
   attributionSnapshot: Record<string, unknown> | null;
   assignedAgentId: string | null;
+  /** Set when status becomes 'agent_assigned' — why a human needs to act (e.g. 'door_delivery_price_confirmation'), so an agent surface never has to guess. */
+  escalationReason: string | null;
   conversationCheckoutSnapshotId: string | null;
   startedAt: Timestamp;
   lastMessageAt: Timestamp;

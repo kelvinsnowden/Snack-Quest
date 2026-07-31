@@ -48,6 +48,7 @@ class ConversationRepository {
       referralLinkId: input.referralLinkId ?? null,
       attributionSnapshot: input.attributionSnapshot ?? null,
       assignedAgentId: null,
+      escalationReason: null,
       conversationCheckoutSnapshotId: null,
       startedAt: now,
       lastMessageAt: now,

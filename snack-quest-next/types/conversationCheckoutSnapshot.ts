@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { DeliveryDetails } from './delivery';
 
 /**
  * `conversationCheckoutSnapshots/{snapshotId}` — a frozen, priced
@@ -8,6 +9,13 @@ import type { Timestamp } from 'firebase/firestore';
  * verifies a Daraja callback against this snapshot's `totalKes`, never
  * against a value re-read from `packages` at callback time — a price
  * can change mid-conversation, and the customer paid the frozen price.
+ *
+ * Created from exactly two paths (redesign: multi-delivery-method
+ * checkout): the automated Jumia-pickup flow freezes it the instant
+ * the customer replies YES to the order summary; the Nairobi
+ * door-delivery flow freezes it only once a human agent has priced
+ * the (dynamic, Bolt) delivery fee — both paths converge on this same
+ * shape, `delivery` carrying whichever method/provider applies.
  */
 
 export type ConversationCheckoutSnapshotStatus =
@@ -26,13 +34,7 @@ export interface ConversationCheckoutSnapshot {
   packageLabel: string;
   customerName: string;
   county: string;
-  deliveryMethod: 'door_delivery' | 'jumia_pickup';
-  pickupStationId: string | null;
-  /** Denormalized alongside the id so the order/admin view never needs a join back to `pickupStations`. */
-  pickupStationName: string | null;
-  /** Always 'Nairobi' today (§ business rule: Snack Quest ships only from Nairobi) — a string, not a boolean, so a second origin is a data change, not a migration. */
-  shippingOrigin: string;
-  addressText: string | null;
+  delivery: DeliveryDetails;
   referralCode: string | null;
   /** Resolved by `ReferralService.validateCode()` at freeze time — null if no code, or the code was invalid/expired. */
   referralLinkId: string | null;
@@ -41,7 +43,7 @@ export interface ConversationCheckoutSnapshot {
   referralCommissionKes: number;
   subtotalKes: number;
   discountKes: number;
-  shippingKes: number;
+  deliveryFeeKes: number;
   totalKes: number;
   status: ConversationCheckoutSnapshotStatus;
   expiresAt: Timestamp;

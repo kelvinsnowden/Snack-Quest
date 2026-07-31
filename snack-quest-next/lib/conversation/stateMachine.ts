@@ -17,6 +17,14 @@ import type {
  * caller — it fetches the context this module needs (available
  * packages, delivery eligibility), calls `transition()`, then persists
  * the result and sends `botReply` through `WhatchimpGateway`.
+ *
+ * Two delivery methods diverge at `awaiting_delivery_selection`
+ * (redesign: multi-delivery-method checkout). `pickup` (Jumia,
+ * automated, nationwide) continues through station search/selection
+ * straight to a priced order summary. `door` (Bolt, Nairobi-only,
+ * dynamic pricing) collects address details and then hands off to a
+ * human agent — this module never prices a door-delivery order
+ * itself; `sideEffect: 'ESCALATE_TO_AGENT'` is as far as it goes.
  */
 
 export interface PackageOption {
@@ -50,8 +58,14 @@ export interface ConversationTransitionResult {
   stateBlobPatch: Partial<ConversationStateBlob>;
   botReply: string;
   /** Signals a Service-layer side effect beyond persisting this transition. */
-  sideEffect?: 'FREEZE_SNAPSHOT';
+  sideEffect?: 'FREEZE_SNAPSHOT' | 'ESCALATE_TO_AGENT';
 }
+
+/** The exact required copy (redesign spec) when Door Delivery is selected and escalated — Bolt's pricing is dynamic, so no fee is ever guessed here. */
+export const DOOR_DELIVERY_ESCALATION_MESSAGE =
+  "Great choice! Door delivery within Nairobi is handled by Bolt, whose pricing changes based " +
+  'on distance and traffic. One of our team members will contact you shortly to confirm your ' +
+  'delivery cost and complete your order.';
 
 const WELCOME_MESSAGE =
   "Welcome to Snack Quest! We curate snack boxes and deliver them anywhere in Kenya. Let's get you a box.";
@@ -109,10 +123,10 @@ function deliveryOptionsFor(
 ): { index: number; method: DeliveryMethod; label: string }[] {
   return isNairobi
     ? [
-        { index: 1, method: 'door_delivery', label: 'Door Delivery' },
-        { index: 2, method: 'jumia_pickup', label: 'Jumia Pickup Station' },
+        { index: 1, method: 'door', label: 'Door Delivery (Nairobi Only)' },
+        { index: 2, method: 'pickup', label: 'Jumia Pickup Station' },
       ]
-    : [{ index: 1, method: 'jumia_pickup', label: 'Jumia Pickup Station' }];
+    : [{ index: 1, method: 'pickup', label: 'Jumia Pickup Station' }];
 }
 
 function formatDeliveryOptionsMessage(isNairobi: boolean): string {
@@ -136,10 +150,10 @@ function matchDeliveryOption(
     return byIndex.method;
   }
   if (trimmed.includes('door')) {
-    return options.find((opt) => opt.method === 'door_delivery')?.method ?? null;
+    return options.find((opt) => opt.method === 'door')?.method ?? null;
   }
   if (trimmed.includes('pickup') || trimmed.includes('jumia')) {
-    return options.find((opt) => opt.method === 'jumia_pickup')?.method ?? null;
+    return options.find((opt) => opt.method === 'pickup')?.method ?? null;
   }
   return null;
 }
@@ -180,26 +194,40 @@ function matchPickupStationSelection(
   return null;
 }
 
+const DOOR_DELIVERY_DETAILS_PROMPT =
+  'Please share your delivery address, landmark, estate, and phone number, separated by ' +
+  'commas (e.g. "123 Ngong Road, near ABC Bank, Kilimani, 0712345678").';
+
+/** Deliberately simple (comma-split, 4 fields) — matches the existing "name, county" convention rather than inventing free-text NLP; an address containing a comma is a known, documented limitation. */
+function parseDoorDeliveryDetails(
+  inboundText: string,
+): { addressText: string; landmark: string; estate: string; contactPhone: string } | null {
+  const parts = inboundText
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 4) {
+    return null;
+  }
+  const [addressText, landmark, estate, contactPhone] = parts;
+  return { addressText, landmark, estate, contactPhone };
+}
+
 function formatSummaryMessage(stateBlob: ConversationStateBlob): string {
   const discountLine = stateBlob.discountKes
     ? `\nDiscount: -KES ${stateBlob.discountKes}`
     : '';
-  const deliveryLabel =
-    stateBlob.deliveryMethod === 'door_delivery' ? 'Door Delivery' : 'Jumia Pickup';
   const deliveryDestination =
-    stateBlob.deliveryMethod === 'jumia_pickup' && stateBlob.pickupStationName
+    stateBlob.pickupStationName
       ? `${stateBlob.pickupStationName}, ${stateBlob.county}`
       : stateBlob.county;
-  const feeLine =
-    stateBlob.deliveryMethod === 'jumia_pickup'
-      ? `\nDelivery fee: ${
-          stateBlob.deliveryFeeKes ? `KES ${stateBlob.deliveryFeeKes}` : 'to be confirmed'
-        }`
-      : '';
+  const feeLine = `\nDelivery fee: ${
+    stateBlob.deliveryFeeKes ? `KES ${stateBlob.deliveryFeeKes}` : 'to be confirmed'
+  }`;
   return (
     `Order summary:\n` +
     `${stateBlob.packageLabel} — KES ${stateBlob.priceKes}${discountLine}${feeLine}\n` +
-    `Deliver to: ${stateBlob.customerName}, ${deliveryDestination} (${deliveryLabel})\n\n` +
+    `Deliver to: ${stateBlob.customerName}, ${deliveryDestination} (Jumia Pickup)\n\n` +
     `Reply YES to proceed to payment, or NO to cancel.`
   );
 }
@@ -269,11 +297,11 @@ export function transition(
           botReply: `Sorry, I didn't catch that.\n\n${formatDeliveryOptionsMessage(isNairobi)}`,
         };
       }
-      if (method === 'door_delivery') {
+      if (method === 'door') {
         return {
-          nextStep: 'awaiting_referral_code',
+          nextStep: 'awaiting_door_delivery_details',
           stateBlobPatch: { deliveryMethod: method },
-          botReply: "Do you have a referral code? Reply with the code, or reply 'no'.",
+          botReply: DOOR_DELIVERY_DETAILS_PROMPT,
         };
       }
       return {
@@ -282,6 +310,26 @@ export function transition(
         botReply:
           'Which town or area should we deliver near? Reply with your town, area, or county ' +
           '(e.g. "Kasarani", "Eldoret", "Mombasa").',
+      };
+    }
+
+    case 'awaiting_door_delivery_details': {
+      const details = parseDoorDeliveryDetails(inboundText);
+      if (!details) {
+        return {
+          nextStep: 'awaiting_door_delivery_details',
+          stateBlobPatch: {},
+          botReply: `Sorry, I didn't catch all of that.\n\n${DOOR_DELIVERY_DETAILS_PROMPT}`,
+        };
+      }
+      // Delivery fee is deliberately NOT calculated here — Bolt's
+      // pricing is dynamic; a human agent prices it next (see
+      // ConversationService.escalateToAgent / priceDoorDeliveryAndCharge).
+      return {
+        nextStep: 'awaiting_agent_pricing',
+        stateBlobPatch: details,
+        botReply: DOOR_DELIVERY_ESCALATION_MESSAGE,
+        sideEffect: 'ESCALATE_TO_AGENT',
       };
     }
 
@@ -312,6 +360,19 @@ export function transition(
         nextStep: 'awaiting_pickup_station_selection',
         stateBlobPatch: { pickupStationCandidates: matches },
         botReply: formatPickupStationOptionsMessage(inboundText.trim(), matches),
+      };
+    }
+
+    case 'awaiting_agent_pricing': {
+      // Reached only if a conversation somehow re-enters transition()
+      // while parked here — the normal path never calls transition()
+      // at all once Conversation.status is 'agent_assigned' (see
+      // ConversationService.start()). Safety net, not the primary flow.
+      return {
+        nextStep: 'awaiting_agent_pricing',
+        stateBlobPatch: {},
+        botReply:
+          "One of our team members is confirming your delivery cost — we'll be in touch shortly.",
       };
     }
 

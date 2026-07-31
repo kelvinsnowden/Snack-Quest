@@ -6,6 +6,8 @@ import { packageRepository, OutOfStockError } from '@/repositories/packageReposi
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
+import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
+import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -19,7 +21,7 @@ import {
   type PackageOption,
 } from '@/lib/conversation/stateMachine';
 import type { WhatsAppGateway } from '@/lib/integrations/types';
-import type { ConversationStateBlob, PickupStationCandidate } from '@/types';
+import type { ConversationStateBlob, DeliveryDetails, PickupStationCandidate } from '@/types';
 
 /**
  * Owns the conversation lifecycle (PLATFORM_ARCHITECTURE_V2.md §6):
@@ -44,12 +46,16 @@ import type { ConversationStateBlob, PickupStationCandidate } from '@/types';
  * `CustomerRepository.findByPhone()` doesn't exist yet, and no real
  * purchase today is blocked by its absence.
  *
- * `shippingKes` is 0 for door delivery (free/included — no real
- * per-county fee schedule exists to charge instead) and, for Jumia
- * pickup, the selected station's `deliveryFeeKes` — auto-populated the
- * moment the customer picks a station, never entered manually, and
- * still 0 (not fabricated) for any station without a real Jumia rate
- * card yet.
+ * Two checkout paths converge on the same `freezeSnapshot()` helper
+ * (redesign: multi-delivery-method checkout). Jumia pickup is priced
+ * automatically the instant the customer confirms
+ * (`confirmAndFreeze`, driven by the state machine's `FREEZE_SNAPSHOT`
+ * side effect). Nairobi door delivery cannot be — Bolt's pricing is
+ * dynamic — so it's priced by a human agent instead
+ * (`priceDoorDeliveryAndCharge`, called from the internal agent API
+ * route after `escalateToAgent` has paused the bot). Both paths freeze
+ * an identically-shaped snapshot and trigger the same STK push; only
+ * *who* supplies the delivery fee differs.
  */
 
 async function getAvailablePackages(businessId: string): Promise<PackageOption[]> {
@@ -121,7 +127,10 @@ class ConversationService {
     });
 
     if (existing?.conversation.status === 'agent_assigned') {
-      // Human takeover (§6): log the message, generate no bot reply.
+      // Human takeover (§6) — includes a conversation escalated for
+      // door-delivery price confirmation: log the message, generate no
+      // bot reply, the human agent (via the internal pricing API) is
+      // driving this thread now.
       return { conversationId, botReply: null };
     }
 
@@ -194,19 +203,88 @@ class ConversationService {
     );
     await this.reply(businessId, conversationId, phoneNumber, result.botReply);
 
+    const mergedStateBlob = { ...stateBlob, ...result.stateBlobPatch };
+
     if (result.sideEffect === 'FREEZE_SNAPSHOT') {
-      await this.confirmAndFreeze(businessId, conversationId, phoneNumber, {
-        ...stateBlob,
-        ...result.stateBlobPatch,
-      });
+      await this.confirmAndFreeze(businessId, conversationId, phoneNumber, mergedStateBlob);
+    } else if (result.sideEffect === 'ESCALATE_TO_AGENT') {
+      await this.escalateToAgent(businessId, conversationId, phoneNumber, mergedStateBlob);
     }
 
     return { conversationId, botReply: result.botReply };
   }
 
   /**
-   * The conversational equivalent of "proceed to payment" (§6):
-   * freezes a priced snapshot, then hands off to Payment Domain
+   * The core checkout-freeze logic shared by both delivery paths: runs
+   * referral validation, computes subtotal/discount/delivery-fee/total,
+   * writes the frozen `ConversationCheckoutSnapshot`, and marks the
+   * conversation `awaiting_payment`. Callers own triggering the actual
+   * STK push (and reacting to its failure) themselves, since the
+   * automated and agent-priced paths need slightly different customer
+   * messaging around it.
+   */
+  private async freezeSnapshot(
+    businessId: string,
+    conversationId: string,
+    phoneNumber: string,
+    customerId: string | null,
+    common: {
+      packageId: string;
+      packageLabel: string;
+      priceKes: number;
+      customerName: string;
+      county: string;
+      referralCode?: string;
+    },
+    delivery: DeliveryDetails,
+  ): Promise<{ snapshotId: string; totalKes: number }> {
+    const referral = common.referralCode
+      ? await referralService.validateCode(businessId, common.referralCode)
+      : null;
+
+    const subtotalKes = common.priceKes;
+    const discountKes = referral?.discountKes ?? 0;
+    const totalKes = subtotalKes - discountKes + delivery.feeKes;
+
+    const snapshotId = await conversationCheckoutSnapshotRepository.create({
+      businessId,
+      conversationId,
+      customerId,
+      phoneNumber,
+      packageId: common.packageId,
+      packageLabel: common.packageLabel,
+      customerName: common.customerName,
+      county: common.county,
+      delivery,
+      referralCode: common.referralCode ?? null,
+      referralLinkId: referral?.referralLinkId ?? null,
+      referralOwnerId: referral?.ownerId ?? null,
+      referralCommissionKes: referral?.commissionKes ?? 0,
+      subtotalKes,
+      discountKes,
+      deliveryFeeKes: delivery.feeKes,
+      totalKes,
+    });
+
+    await conversationRepository.update(conversationId, {
+      status: 'awaiting_payment',
+      conversationCheckoutSnapshotId: snapshotId,
+    });
+    await publishEvent(
+      businessId,
+      'ConversationCheckoutSnapshotCreated',
+      'conversationCheckoutSnapshot',
+      snapshotId,
+      { conversationId, totalKes },
+    );
+
+    return { snapshotId, totalKes };
+  }
+
+  /**
+   * The Jumia-pickup automated path (§6: "proceed to payment"): the
+   * customer just replied YES to a fully auto-priced order summary.
+   * Freezes the snapshot, then hands off to Payment Domain
    * synchronously — the customer is mid-conversation waiting for the
    * STK prompt on their phone, so this cannot be async.
    */
@@ -221,55 +299,39 @@ class ConversationService {
       throw new Error(`Conversation ${conversationId} vanished mid-flow`);
     }
 
-    const referral = stateBlob.referralCode
-      ? await referralService.validateCode(businessId, stateBlob.referralCode)
-      : null;
-
-    const subtotalKes = stateBlob.priceKes ?? 0;
-    const discountKes = referral?.discountKes ?? 0;
-    // Door delivery: free/included, no real per-county fee schedule exists
-    // to charge instead. Jumia pickup: the selected station's own fee,
-    // auto-populated at selection time — never re-derived, never manual.
-    const shippingKes =
-      stateBlob.deliveryMethod === 'jumia_pickup' ? stateBlob.deliveryFeeKes ?? 0 : 0;
-    const totalKes = subtotalKes - discountKes + shippingKes;
-
-    const snapshotId = await conversationCheckoutSnapshotRepository.create({
-      businessId,
-      conversationId,
-      customerId: conversation.customerId,
-      phoneNumber,
-      packageId: stateBlob.packageId ?? '',
-      packageLabel: stateBlob.packageLabel ?? '',
-      customerName: stateBlob.customerName ?? '',
+    const delivery: DeliveryDetails = {
+      method: 'pickup',
+      provider: DELIVERY_PROVIDER_FOR_METHOD.pickup,
+      status: 'pending',
+      shippingOrigin: 'Nairobi',
+      feeKes: stateBlob.deliveryFeeKes ?? 0,
       county: stateBlob.county ?? '',
-      deliveryMethod: stateBlob.deliveryMethod ?? 'jumia_pickup',
       pickupStationId: stateBlob.pickupStationId ?? null,
       pickupStationName: stateBlob.pickupStationName ?? null,
-      // Business rule: Snack Quest ships only from Nairobi — a string,
-      // not a boolean, so a second origin is a data change, not a migration.
-      shippingOrigin: 'Nairobi',
-      addressText: stateBlob.addressText ?? null,
-      referralCode: stateBlob.referralCode ?? null,
-      referralLinkId: referral?.referralLinkId ?? null,
-      referralOwnerId: referral?.ownerId ?? null,
-      referralCommissionKes: referral?.commissionKes ?? 0,
-      subtotalKes,
-      discountKes,
-      shippingKes,
-      totalKes,
-    });
+      addressText: null,
+      landmark: null,
+      estate: null,
+      contactPhone: null,
+      courierShipmentRef: null,
+      // The generic tracker is known up front — the same URL for every
+      // Jumia shipment, not something a shipment-creation call returns.
+      trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+    };
 
-    await conversationRepository.update(conversationId, {
-      status: 'awaiting_payment',
-      conversationCheckoutSnapshotId: snapshotId,
-    });
-    await publishEvent(
+    const { snapshotId, totalKes } = await this.freezeSnapshot(
       businessId,
-      'ConversationCheckoutSnapshotCreated',
-      'conversationCheckoutSnapshot',
-      snapshotId,
-      { conversationId, totalKes },
+      conversationId,
+      phoneNumber,
+      conversation.customerId,
+      {
+        packageId: stateBlob.packageId ?? '',
+        packageLabel: stateBlob.packageLabel ?? '',
+        priceKes: stateBlob.priceKes ?? 0,
+        customerName: stateBlob.customerName ?? '',
+        county: stateBlob.county ?? '',
+        referralCode: stateBlob.referralCode,
+      },
+      delivery,
     );
 
     const intentId = await paymentService.createIntent({
@@ -304,6 +366,148 @@ class ConversationService {
   }
 
   /**
+   * The Nairobi door-delivery hand-off (§ redesign): the bot has just
+   * collected the customer's address details and cannot price Bolt's
+   * dynamic delivery fee itself. Pauses the bot (`status: 'agent_assigned'`,
+   * same mechanism as `assignAgent`) and pings the business's admin
+   * WhatsApp number with everything a human needs to act — there is no
+   * agent dashboard in this codebase yet, so the admin WhatsApp thread
+   * is the real, working notification channel today; `escalationReason`
+   * is stored on the conversation itself so a future queue UI can query
+   * `status == 'agent_assigned'` without re-deriving why.
+   */
+  private async escalateToAgent(
+    businessId: string,
+    conversationId: string,
+    phoneNumber: string,
+    stateBlob: ConversationStateBlob,
+  ): Promise<void> {
+    await conversationRepository.update(conversationId, {
+      status: 'agent_assigned',
+      assignedAgentId: null,
+      escalationReason: 'door_delivery_price_confirmation',
+    });
+
+    const lines = [
+      'Door delivery needs price confirmation (Bolt):',
+      `Customer: ${stateBlob.customerName ?? 'unknown'} (${phoneNumber})`,
+      `Box: ${stateBlob.packageLabel ?? 'unknown'} — KES ${stateBlob.priceKes ?? 0}`,
+      `County: ${stateBlob.county ?? 'unknown'}`,
+      `Address: ${stateBlob.addressText ?? ''}`,
+      `Estate: ${stateBlob.estate ?? ''}`,
+      `Landmark: ${stateBlob.landmark ?? ''}`,
+      `Contact phone: ${stateBlob.contactPhone ?? phoneNumber}`,
+      `Conversation: ${conversationId}`,
+    ];
+    await this.notifications.notifyAdmin(businessId, lines.join('\n'));
+  }
+
+  /**
+   * The other half of the door-delivery hand-off: a human agent has
+   * confirmed the address and priced the Bolt delivery fee. Freezes
+   * the snapshot with that fee and triggers the same STK push the
+   * automated path uses — from here on, payment/order/shipment
+   * creation is identical to Jumia pickup. Called by the internal
+   * agent-pricing API route, never by the state machine.
+   */
+  async priceDoorDeliveryAndCharge(
+    conversationId: string,
+    input: { agentId: string; feeKes: number },
+  ): Promise<void> {
+    if (!Number.isFinite(input.feeKes) || input.feeKes < 0) {
+      throw new Error('feeKes must be a non-negative number');
+    }
+
+    const conversation = await conversationRepository.findById(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+    if (conversation.status !== 'agent_assigned') {
+      throw new Error(
+        `Conversation ${conversationId} is not awaiting agent pricing (status: ${conversation.status})`,
+      );
+    }
+    const { businessId, phoneNumber, stateBlob } = conversation;
+    if (stateBlob.deliveryMethod !== 'door') {
+      throw new Error(`Conversation ${conversationId} is not a door-delivery order`);
+    }
+
+    const delivery: DeliveryDetails = {
+      method: 'door',
+      provider: DELIVERY_PROVIDER_FOR_METHOD.door,
+      status: 'pending_manual_booking',
+      shippingOrigin: 'Nairobi',
+      feeKes: input.feeKes,
+      county: stateBlob.county ?? '',
+      pickupStationId: null,
+      pickupStationName: null,
+      addressText: stateBlob.addressText ?? null,
+      landmark: stateBlob.landmark ?? null,
+      estate: stateBlob.estate ?? null,
+      contactPhone: stateBlob.contactPhone ?? null,
+      courierShipmentRef: null,
+      // No generic Bolt tracker exists — the agent stays the customer's
+      // point of contact for this order, unlike the Jumia path.
+      trackingUrl: null,
+    };
+
+    const { snapshotId, totalKes } = await this.freezeSnapshot(
+      businessId,
+      conversationId,
+      phoneNumber,
+      conversation.customerId,
+      {
+        packageId: stateBlob.packageId ?? '',
+        packageLabel: stateBlob.packageLabel ?? '',
+        priceKes: stateBlob.priceKes ?? 0,
+        customerName: stateBlob.customerName ?? '',
+        county: stateBlob.county ?? '',
+        // No automated referral step exists for the agent-assisted
+        // path today — the agent applies one manually if relevant,
+        // which this codebase doesn't yet build a mechanism for.
+      },
+      delivery,
+    );
+
+    const intentId = await paymentService.createIntent({
+      businessId,
+      conversationId,
+      conversationCheckoutSnapshotId: snapshotId,
+      customerId: conversation.customerId,
+      phoneNumber,
+      amountKes: totalKes,
+    });
+
+    try {
+      await paymentService.initiateAttempt(businessId, intentId, {
+        phone: phoneNumber,
+        amountKes: totalKes,
+        accountReference: `SQ-${conversationId.slice(0, 8)}`,
+        transactionDesc: 'Snack Quest order',
+      });
+      await this.reply(
+        businessId,
+        conversationId,
+        phoneNumber,
+        `Thanks for waiting! Your total (box + Bolt delivery) is KES ${totalKes}. ` +
+          'Check your phone to complete payment via M-Pesa.',
+      );
+    } catch (error) {
+      // STK push never even reached Daraja — park the conversation back
+      // on the agent (not the bot) so a retry means calling this same
+      // pricing action again, not the customer texting anything.
+      await conversationRepository.update(conversationId, { status: 'agent_assigned' });
+      await this.reply(
+        businessId,
+        conversationId,
+        phoneNumber,
+        "We couldn't start the M-Pesa payment prompt. Our team will reach out shortly to try again.",
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Reacts to a resolved Daraja callback (called by the webhook route
    * after `paymentService.processCallback()`). Kept here, not in the
    * route file, so the actual domain reaction — what happens to the
@@ -333,8 +537,18 @@ class ConversationService {
       return;
     }
 
-    // 'failed' or 'amount_mismatch' — return the customer to
+    // 'failed' or 'amount_mismatch'. Door-delivery orders were priced
+    // by an agent (no automated order-confirmation step to retry from) —
+    // return to the agent, not the bot. Jumia-pickup orders return to
     // confirmation so replying YES again triggers a fresh attempt.
+    if (conversation.stateBlob.deliveryMethod === 'door') {
+      await conversationRepository.update(result.conversationId, { status: 'agent_assigned' });
+      await this.notifications.notifyAdmin(
+        businessId,
+        `M-Pesa payment failed for a Bolt door-delivery order — conversation ${result.conversationId}. Please re-confirm the price with the customer.`,
+      );
+      return;
+    }
     await conversationRepository.update(result.conversationId, {
       status: 'active',
       currentStep: 'awaiting_order_confirmation',
@@ -350,10 +564,11 @@ class ConversationService {
   /**
    * The rest of the real journey once payment has actually succeeded:
    * create the order (with inventory reservation), credit any
-   * referral commission, create the Jumia shipment, dispatch the Meta
-   * Purchase event, notify the admin, and confirm to the customer.
-   * Every step past order creation is best-effort — a Jumia outage or
-   * a missing Meta credential must never undo a paid, confirmed order.
+   * referral commission, create the shipment with whichever courier
+   * `snapshot.delivery.provider` names, dispatch the Meta Purchase
+   * event, notify the admin, and confirm to the customer. Every step
+   * past order creation is best-effort — a courier outage or a missing
+   * Meta credential must never undo a paid, confirmed order.
    */
   private async completeOrder(
     businessId: string,
@@ -373,6 +588,7 @@ class ConversationService {
         snapshotId: result.snapshotId,
         snapshot,
         paymentIntentId: result.intentId,
+        mpesaReceiptNumber: result.mpesaReceiptNumber,
       });
     } catch (error) {
       if (error instanceof OutOfStockError) {
@@ -422,10 +638,7 @@ class ConversationService {
       await deliveryService.createShipmentForOrder(businessId, orderId, {
         customerName: snapshot.customerName,
         phoneNumber,
-        county: snapshot.county,
-        deliveryMethod: snapshot.deliveryMethod,
-        pickupStationId: snapshot.pickupStationId,
-        pickupStationName: snapshot.pickupStationName,
+        delivery: snapshot.delivery,
       });
     } catch (error) {
       await publishEvent(businessId, 'ShipmentCreationFailed', 'order', orderId, {
@@ -442,16 +655,18 @@ class ConversationService {
 
     await this.notifications.notifyAdmin(
       businessId,
-      `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ${snapshot.county} (${snapshot.deliveryMethod}). Order ${orderId}.`,
+      `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
+        `${formatDeliveryLabel(snapshot.delivery)}. Order ${orderId}.`,
     );
 
     // Jumia pickup gets the exact required copy (tracking URL + SMS
     // notice); door delivery has no pickup station or tracking URL to
-    // reference, so it keeps the generic confirmation.
+    // reference — the human agent already told the customer the price,
+    // so this just confirms the payment landed.
     const confirmationMessage =
-      snapshot.deliveryMethod === 'jumia_pickup'
+      snapshot.delivery.method === 'pickup'
         ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
-        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we'll be in touch with delivery details.`;
+        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     await this.reply(businessId, result.conversationId, phoneNumber, confirmationMessage);
   }
@@ -469,6 +684,7 @@ class ConversationService {
     await conversationRepository.update(conversationId, {
       status: 'active',
       assignedAgentId: null,
+      escalationReason: null,
     });
   }
 

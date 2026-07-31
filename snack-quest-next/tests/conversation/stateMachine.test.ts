@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DOOR_DELIVERY_ESCALATION_MESSAGE,
   startConversationMessages,
   transition,
   type ConversationTransitionContext,
@@ -106,18 +107,32 @@ describe('transition: awaiting_delivery_selection', () => {
       inboundText: '1',
       context: upcountryContext,
     });
-    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'jumia_pickup' });
+    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'pickup' });
+    expect(result.nextStep).toBe('awaiting_pickup_station_selection');
   });
 
-  it('accepts a door-delivery keyword reply in Nairobi', () => {
+  it('routes a door-delivery reply in Nairobi to address collection, not straight to referral', () => {
     const result = transition({
       currentStep: 'awaiting_delivery_selection',
       stateBlob: { county: 'Nairobi' },
       inboundText: 'door please',
       context: nairobiContext,
     });
-    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'door_delivery' });
-    expect(result.nextStep).toBe('awaiting_referral_code');
+    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'door' });
+    expect(result.nextStep).toBe('awaiting_door_delivery_details');
+    expect(result.botReply).toMatch(/address/i);
+  });
+
+  it('routes a pickup reply to a pickup-station search prompt', () => {
+    const result = transition({
+      currentStep: 'awaiting_delivery_selection',
+      stateBlob: { county: 'Nairobi' },
+      inboundText: 'pickup',
+      context: nairobiContext,
+    });
+    expect(result.nextStep).toBe('awaiting_pickup_station_selection');
+    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'pickup' });
+    expect(result.botReply).toMatch(/town|area/i);
   });
 
   it('rejects an out-of-range index outside Nairobi (no door delivery option)', () => {
@@ -132,17 +147,45 @@ describe('transition: awaiting_delivery_selection', () => {
   });
 });
 
-describe('transition: awaiting_delivery_selection (jumia_pickup)', () => {
-  it('routes jumia_pickup to a pickup-station search prompt, not straight to referral', () => {
+describe('transition: awaiting_door_delivery_details', () => {
+  it('collects address/landmark/estate/phone and escalates to a human agent with the exact required copy', () => {
     const result = transition({
-      currentStep: 'awaiting_delivery_selection',
-      stateBlob: { county: 'Nairobi' },
-      inboundText: 'pickup',
+      currentStep: 'awaiting_door_delivery_details',
+      stateBlob: { deliveryMethod: 'door', customerName: 'Jane Doe', county: 'Nairobi' },
+      inboundText: '123 Ngong Road, near ABC Bank, Kilimani, 0712345678',
       context: nairobiContext,
     });
-    expect(result.nextStep).toBe('awaiting_pickup_station_selection');
-    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'jumia_pickup' });
-    expect(result.botReply).toMatch(/town|area/i);
+    expect(result.nextStep).toBe('awaiting_agent_pricing');
+    expect(result.sideEffect).toBe('ESCALATE_TO_AGENT');
+    expect(result.stateBlobPatch).toEqual({
+      addressText: '123 Ngong Road',
+      landmark: 'near ABC Bank',
+      estate: 'Kilimani',
+      contactPhone: '0712345678',
+    });
+    expect(result.botReply).toBe(DOOR_DELIVERY_ESCALATION_MESSAGE);
+  });
+
+  it('never calculates a delivery fee itself — Bolt pricing is dynamic', () => {
+    const result = transition({
+      currentStep: 'awaiting_door_delivery_details',
+      stateBlob: { deliveryMethod: 'door' },
+      inboundText: '123 Ngong Road, near ABC Bank, Kilimani, 0712345678',
+      context: nairobiContext,
+    });
+    expect(result.stateBlobPatch).not.toHaveProperty('deliveryFeeKes');
+  });
+
+  it('re-prompts when fewer than 4 comma-separated fields are given', () => {
+    const result = transition({
+      currentStep: 'awaiting_door_delivery_details',
+      stateBlob: { deliveryMethod: 'door' },
+      inboundText: '123 Ngong Road, Kilimani',
+      context: nairobiContext,
+    });
+    expect(result.nextStep).toBe('awaiting_door_delivery_details');
+    expect(result.sideEffect).toBeUndefined();
+    expect(result.stateBlobPatch).toEqual({});
   });
 });
 
@@ -155,7 +198,7 @@ describe('transition: awaiting_pickup_station_selection', () => {
   it('selects a station by number and auto-populates its delivery fee', () => {
     const result = transition({
       currentStep: 'awaiting_pickup_station_selection',
-      stateBlob: { county: 'Nairobi', deliveryMethod: 'jumia_pickup', pickupStationCandidates: candidates },
+      stateBlob: { county: 'Nairobi', deliveryMethod: 'pickup', pickupStationCandidates: candidates },
       inboundText: '1',
       context: nairobiContext,
     });
@@ -173,7 +216,7 @@ describe('transition: awaiting_pickup_station_selection', () => {
   it('shows a "fee to be confirmed" reply when the selected station has no configured fee yet', () => {
     const result = transition({
       currentStep: 'awaiting_pickup_station_selection',
-      stateBlob: { deliveryMethod: 'jumia_pickup', pickupStationCandidates: candidates },
+      stateBlob: { deliveryMethod: 'pickup', pickupStationCandidates: candidates },
       inboundText: '2',
       context: nairobiContext,
     });
@@ -187,7 +230,7 @@ describe('transition: awaiting_pickup_station_selection', () => {
     ];
     const result = transition({
       currentStep: 'awaiting_pickup_station_selection',
-      stateBlob: { deliveryMethod: 'jumia_pickup' },
+      stateBlob: { deliveryMethod: 'pickup' },
       inboundText: 'Eldoret',
       context: { ...nairobiContext, pickupStationMatches: freshMatches },
     });
@@ -199,12 +242,26 @@ describe('transition: awaiting_pickup_station_selection', () => {
   it('reports no matches without crashing when a search comes back empty', () => {
     const result = transition({
       currentStep: 'awaiting_pickup_station_selection',
-      stateBlob: { deliveryMethod: 'jumia_pickup' },
+      stateBlob: { deliveryMethod: 'pickup' },
       inboundText: 'Nowhereville',
       context: { ...nairobiContext, pickupStationMatches: [] },
     });
     expect(result.nextStep).toBe('awaiting_pickup_station_selection');
     expect(result.botReply).toContain('No pickup stations found');
+  });
+});
+
+describe('transition: awaiting_agent_pricing', () => {
+  it('stays parked and never re-escalates or advances on its own', () => {
+    const result = transition({
+      currentStep: 'awaiting_agent_pricing',
+      stateBlob: { deliveryMethod: 'door' },
+      inboundText: 'hello? anyone there?',
+      context: nairobiContext,
+    });
+    expect(result.nextStep).toBe('awaiting_agent_pricing');
+    expect(result.sideEffect).toBeUndefined();
+    expect(result.botReply).toMatch(/team/i);
   });
 });
 
@@ -217,7 +274,7 @@ describe('transition: awaiting_referral_code', () => {
         priceKes: 2500,
         customerName: 'Jane Doe',
         county: 'Nairobi',
-        deliveryMethod: 'door_delivery',
+        deliveryMethod: 'pickup',
       },
       inboundText: 'SNACK123',
       context: nairobiContext,
@@ -227,7 +284,7 @@ describe('transition: awaiting_referral_code', () => {
     expect(result.botReply).toContain('Order summary');
   });
 
-  it('presents the pickup station name and delivery fee for a jumia_pickup order', () => {
+  it('presents the pickup station name and delivery fee', () => {
     const result = transition({
       currentStep: 'awaiting_referral_code',
       stateBlob: {
@@ -235,7 +292,7 @@ describe('transition: awaiting_referral_code', () => {
         priceKes: 2500,
         customerName: 'Jane Doe',
         county: 'Nairobi',
-        deliveryMethod: 'jumia_pickup',
+        deliveryMethod: 'pickup',
         pickupStationName: 'G4S Kasarani Station',
         deliveryFeeKes: 250,
       },
@@ -263,7 +320,7 @@ describe('transition: awaiting_order_confirmation', () => {
     priceKes: 2500,
     customerName: 'Jane Doe',
     county: 'Nairobi',
-    deliveryMethod: 'door_delivery' as const,
+    deliveryMethod: 'pickup' as const,
   };
 
   it('freezes the snapshot and moves to payment on YES', () => {

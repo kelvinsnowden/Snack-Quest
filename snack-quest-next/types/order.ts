@@ -1,40 +1,55 @@
 import type { AuditFields } from './common';
-import type { DeliveryMethod } from './conversation';
+import type { DeliveryDetails } from './delivery';
 
 export type OrderStatus = 'pending' | 'confirmed' | 'delivered' | 'cancelled';
 
-/**
- * `orders/{orderId}` — snack box orders (TDD §8, expanded per
- * PLATFORM_ARCHITECTURE_V2.md §16). `customerId` is nullable because
- * the real, common case is a guest WhatsApp customer with no Firebase
- * Auth account at all — `phoneNumber` is the identifier that always
- * exists. Created exactly once, by `OrderService
- * .createFromConversationSnapshot()`, only from a succeeded payment.
- */
-export interface Order extends AuditFields {
-  businessId: string;
+export interface OrderProduct {
+  packageId: string;
+  packageLabel: string;
+}
+
+export interface OrderCustomer {
+  /** Nullable: the real, common case is a guest WhatsApp customer with no Firebase Auth account — `phoneNumber` is the identifier that always exists. */
   customerId: string | null;
   phoneNumber: string;
   customerName: string;
   county: string;
+}
+
+export interface OrderPayment {
+  paymentIntentId: string;
+  mpesaReceiptNumber: string | null;
+}
+
+export interface OrderPricing {
+  subtotalKes: number;
+  discountKes: number;
+  deliveryFeeKes: number;
+  creditsUsedKes: number;
+  totalKes: number;
+}
+
+/**
+ * `orders/{orderId}` — snack box orders (TDD §8, expanded per
+ * PLATFORM_ARCHITECTURE_V2.md §16, restructured per the multi-delivery-
+ * method redesign). Nested by concern (product/customer/delivery/
+ * payment/pricing) rather than one flat bag of fields — `delivery` is
+ * the same `DeliveryDetails` shape used by `ConversationCheckoutSnapshot`
+ * and `DeliveryService`, so a new delivery method or provider never
+ * requires touching this type. Created exactly once, by
+ * `OrderService.createFromConversationSnapshot()`, only from a
+ * succeeded payment.
+ */
+export interface Order extends AuditFields {
+  businessId: string;
+  product: OrderProduct;
+  customer: OrderCustomer;
+  delivery: DeliveryDetails;
+  payment: OrderPayment;
+  pricing: OrderPricing;
   conversationId: string;
   conversationCheckoutSnapshotId: string;
-  paymentIntentId: string;
-  packageId: string;
-  totalAmountKes: number;
-  creditsUsedKes: number;
   status: OrderStatus;
-  deliveryMethod: DeliveryMethod;
-  /** Human-readable: county + door address, or the pickup station name. */
-  deliveryAddress: string;
-  /** Set only when deliveryMethod is 'jumia_pickup' — the fields the admin/fulfillment view needs without a join. */
-  pickupStationId: string | null;
-  pickupStationName: string | null;
-  deliveryFeeKes: number;
-  shippingOrigin: string;
-  courier: string | null;
-  /** Jumia's generic package tracker — same URL for every order, shown on the order confirmation and (once one exists) the order page. */
-  trackingUrl: string | null;
   referralLinkId: string | null;
 }
 

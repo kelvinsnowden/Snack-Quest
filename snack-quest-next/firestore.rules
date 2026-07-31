@@ -115,16 +115,19 @@ service cloud.firestore {
       allow write: if false; // ledger is server/Cloud-Function-written only, ever
     }
 
+    // orders: nested per the multi-delivery-method redesign
+    // (product/customer/delivery/payment/pricing) — `customerId` now
+    // lives at `customer.customerId`, not the document root.
     match /orders/{orderId} {
       allow read: if isAdmin() ||
-                     (isSignedIn() && resource.data.customerId == request.auth.uid);
+                     (isSignedIn() && resource.data.customer.customerId == request.auth.uid);
       allow create: if false; // orders created via Route Handler (payment validation)
       allow update: if isAdmin();
 
       match /items/{itemId} {
         allow read: if isAdmin() ||
                        (isSignedIn() &&
-                        get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid);
+                        get(/databases/$(database)/documents/orders/$(orderId)).data.customer.customerId == request.auth.uid);
         allow write: if false;
       }
     }

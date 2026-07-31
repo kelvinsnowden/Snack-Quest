@@ -4,7 +4,6 @@ import { adminFirestore } from '@/lib/firebase/admin';
 import { createInTransaction as createOrderInTransaction } from '@/repositories/orderRepository';
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
-import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import type { ConversationCheckoutSnapshot } from '@/types';
 
 /**
@@ -13,22 +12,24 @@ import type { ConversationCheckoutSnapshot } from '@/types';
  * created any other way. Order creation and inventory reservation run
  * in the same Firestore transaction — a payment can never result in an
  * order without a matching stock decrement, or vice versa.
+ *
+ * `snapshot.delivery` is copied onto the order as-is — the snapshot is
+ * already the single source of truth for method/provider/fee/tracking
+ * URL by the time payment succeeds, whether it was priced
+ * automatically (Jumia pickup) or by a human agent (Bolt door
+ * delivery); this Service never re-derives delivery details itself.
  */
 
 export interface CreateOrderInput {
   snapshotId: string;
   snapshot: ConversationCheckoutSnapshot;
   paymentIntentId: string;
+  mpesaReceiptNumber: string;
 }
 
 class OrderService {
   async createFromConversationSnapshot(input: CreateOrderInput): Promise<string> {
-    const { snapshotId, snapshot, paymentIntentId } = input;
-
-    const deliveryAddress =
-      snapshot.deliveryMethod === 'door_delivery'
-        ? `${snapshot.county} (door delivery)`
-        : `${snapshot.pickupStationName ?? 'Jumia pickup station'}, ${snapshot.county}`;
+    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber } = input;
 
     const orderId = await adminFirestore.runTransaction(async (tx) => {
       // Stock check/decrement first — if this throws (OutOfStockError),
@@ -39,26 +40,30 @@ class OrderService {
         tx,
         {
           businessId: snapshot.businessId,
-          customerId: snapshot.customerId,
-          phoneNumber: snapshot.phoneNumber,
-          customerName: snapshot.customerName,
-          county: snapshot.county,
+          product: {
+            packageId: snapshot.packageId,
+            packageLabel: snapshot.packageLabel,
+          },
+          customer: {
+            customerId: snapshot.customerId,
+            phoneNumber: snapshot.phoneNumber,
+            customerName: snapshot.customerName,
+            county: snapshot.county,
+          },
+          delivery: snapshot.delivery,
+          payment: {
+            paymentIntentId,
+            mpesaReceiptNumber,
+          },
+          pricing: {
+            subtotalKes: snapshot.subtotalKes,
+            discountKes: snapshot.discountKes,
+            deliveryFeeKes: snapshot.deliveryFeeKes,
+            creditsUsedKes: 0,
+            totalKes: snapshot.totalKes,
+          },
           conversationId: snapshot.conversationId,
           conversationCheckoutSnapshotId: snapshotId,
-          paymentIntentId,
-          packageId: snapshot.packageId,
-          totalAmountKes: snapshot.totalKes,
-          creditsUsedKes: 0,
-          deliveryMethod: snapshot.deliveryMethod,
-          deliveryAddress,
-          pickupStationId: snapshot.pickupStationId,
-          pickupStationName: snapshot.pickupStationName,
-          deliveryFeeKes: snapshot.shippingKes,
-          shippingOrigin: snapshot.shippingOrigin,
-          // Jumia is the courier for both delivery methods today (see
-          // DeliveryService) — not fabricated, just today's only courier.
-          courier: 'jumia',
-          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
           referralLinkId: snapshot.referralLinkId,
           createdBy: 'system',
         },
