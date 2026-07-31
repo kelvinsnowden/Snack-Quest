@@ -5,7 +5,7 @@ import { InventoryStockTable } from '@/components/inventory/InventoryStockTable'
 
 export const metadata: Metadata = { title: 'Inventory' };
 
-export default async function AdminInventoryPage() {
+export default async function WarehouseInventoryPage() {
   const session = await requireStaffSession();
   const products = await packageRepository.listAllByBusiness(session.businessId);
 
@@ -15,7 +15,7 @@ export default async function AdminInventoryPage() {
         <h1 className="text-page-title font-bold tracking-tight text-foreground">Inventory</h1>
         <p className="mt-1 text-sm text-muted-foreground">Stock levels for every box that tracks stock.</p>
       </div>
-      <InventoryStockTable products={products} productHref={(id) => `/admin/products/${id}`} />
+      <InventoryStockTable products={products} />
     </div>
   );
 }

@@ -23,16 +23,19 @@ export const metadata: Metadata = {
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireStaffSession();
 
-  // An agent-only account (no admin/super_admin role) has a focused
-  // workspace of its own now (§ Human Sales Agent workspace) — this
-  // full portal isn't built for them (Products, Inventory, Withdrawals,
-  // Settings, ...), so send them there instead of rendering it anyway.
-  // Roles without a dedicated workspace yet (warehouse, finance) still
-  // fall through to this portal, same as before.
-  const isAgentOnly =
-    session.roles.includes('agent') && !session.roles.some((role) => role === 'admin' || role === 'super_admin');
-  if (isAgentOnly) {
+  // An agent-only or warehouse-only account (no admin/super_admin role)
+  // has a focused workspace of its own now (§ Human Sales Agent
+  // workspace, § Warehouse workspace) — this full portal isn't built
+  // for them, so send them there instead of rendering it anyway. Roles
+  // without a dedicated workspace yet (finance) still fall through to
+  // this portal, same as before.
+  const isStaffOnly = (role: 'agent' | 'warehouse') =>
+    session.roles.includes(role) && !session.roles.some((r) => r === 'admin' || r === 'super_admin');
+  if (isStaffOnly('agent')) {
     redirect('/agent');
+  }
+  if (isStaffOnly('warehouse')) {
+    redirect('/warehouse');
   }
 
   const business = await businessRepository.findById(session.businessId);
