@@ -62,6 +62,14 @@
       ]
     },
     {
+      "collectionGroup": "packages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "priceKes", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "pickupStations",
       "queryScope": "COLLECTION",
       "fields": [

@@ -62,6 +62,21 @@ class PackageRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Package }));
   }
 
+  /**
+   * Admin: Products & Packages (§ Admin: Products) — every package
+   * regardless of `isActive`, since a staff member managing the
+   * catalog needs to see (and reactivate) inactive ones too, unlike
+   * `listActive()` which is what the customer-facing checkout reads.
+   */
+  async listAllByBusiness(businessId: string): Promise<{ id: string; data: Package }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .orderBy('priceKes', 'asc')
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Package }));
+  }
+
   async create(data: PackageInput, actor: string): Promise<string> {
     const now = FieldValue.serverTimestamp();
     const ref = await adminFirestore.collection(COLLECTION).add({
