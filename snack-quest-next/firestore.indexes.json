@@ -153,6 +153,14 @@
       ]
     },
     {
+      "collectionGroup": "creatorProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "referralCode", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "withdrawals",
       "queryScope": "COLLECTION",
       "fields": [

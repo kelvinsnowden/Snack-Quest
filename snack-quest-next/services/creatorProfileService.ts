@@ -1,0 +1,86 @@
+import 'server-only';
+
+import { creatorRepository } from '@/repositories/creatorRepository';
+import { CreatorNotFoundError } from '@/services/creatorDashboardService';
+import { publishEvent } from '@/lib/events/eventBus';
+import type { PaymentPreference } from '@/types';
+
+export { CreatorNotFoundError };
+
+export class OnboardingAlreadyCompletedError extends Error {
+  constructor(uid: string) {
+    super(`${uid} already completed onboarding`);
+    this.name = 'OnboardingAlreadyCompletedError';
+  }
+}
+
+export class InvalidOnboardingInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidOnboardingInputError';
+  }
+}
+
+const VALID_PAYMENT_PREFERENCES: PaymentPreference[] = ['mpesa', 'bank'];
+
+export interface CompleteOnboardingInput {
+  bio: string;
+  niche: string;
+  followersRange: string;
+  paymentPreference: PaymentPreference;
+  socialHandles: Record<string, string>;
+}
+
+function assertValid(input: CompleteOnboardingInput): void {
+  if (!input.bio.trim()) {
+    throw new InvalidOnboardingInputError('Bio is required');
+  }
+  if (!input.niche.trim()) {
+    throw new InvalidOnboardingInputError('Niche is required');
+  }
+  if (!input.followersRange.trim()) {
+    throw new InvalidOnboardingInputError('Follower range is required');
+  }
+  if (!VALID_PAYMENT_PREFERENCES.includes(input.paymentPreference)) {
+    throw new InvalidOnboardingInputError('Payment preference must be "mpesa" or "bank"');
+  }
+}
+
+/**
+ * Owns a creator's self-service profile writes (§ Creator Portal
+ * auth) — currently just onboarding completion, the one profile write
+ * every creator makes exactly once between registering and reaching
+ * the dashboard. `firestore.rules` already lets a creator edit their
+ * own non-financial profile fields directly from the client (see the
+ * `creatorProfiles` match block), but onboarding completion goes
+ * through here instead so it stays a deliberate, validated, one-time
+ * transition rather than an arbitrary field patch — and so it can
+ * publish `CreatorOnboardingCompleted` the same way every other
+ * state-changing creator action does (§8).
+ */
+class CreatorProfileService {
+  async completeOnboarding(uid: string, input: CompleteOnboardingInput): Promise<void> {
+    const profile = await creatorRepository.findById(uid);
+    if (!profile) {
+      throw new CreatorNotFoundError(uid);
+    }
+    if (profile.onboardingCompleted) {
+      throw new OnboardingAlreadyCompletedError(uid);
+    }
+    assertValid(input);
+
+    await creatorRepository.update(uid, {
+      bio: input.bio.trim(),
+      niche: input.niche.trim(),
+      followersRange: input.followersRange.trim(),
+      paymentPreference: input.paymentPreference,
+      socialHandles: input.socialHandles,
+      onboardingCompleted: true,
+      updatedBy: uid,
+    });
+
+    await publishEvent(profile.businessId, 'CreatorOnboardingCompleted', 'creatorProfile', uid, {});
+  }
+}
+
+export const creatorProfileService = new CreatorProfileService();

@@ -103,6 +103,17 @@ class CreatorRepository {
       });
   }
 
+  /** § Creator Portal auth — uniqueness check while generating a new creator's referral code; see lib/creators/referralCode.ts. */
+  async existsByReferralCode(businessId: string, referralCode: string): Promise<boolean> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('referralCode', '==', referralCode)
+      .limit(1)
+      .get();
+    return !snapshot.empty;
+  }
+
   /**
    * Admin: Creators (§ Admin: Creators) — real cursor pagination,
    * newest-first, optionally narrowed to one status. The filtered

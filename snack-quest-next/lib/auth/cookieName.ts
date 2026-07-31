@@ -6,3 +6,6 @@
  * tier (Server Components/Route Handlers — see `requireStaffSession`).
  */
 export const STAFF_SESSION_COOKIE = 'sq_staff_session';
+
+/** Same split, same reasoning, for the Creator Portal's own session (§ Creator Portal auth) — a separate cookie so a staff and a creator session can coexist in the same browser. */
+export const CREATOR_SESSION_COOKIE = 'sq_creator_session';
