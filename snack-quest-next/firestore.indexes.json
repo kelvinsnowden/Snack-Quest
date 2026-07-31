@@ -197,6 +197,15 @@
       ]
     },
     {
+      "collectionGroup": "creatorProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lifetimeEarningsKes", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "withdrawals",
       "queryScope": "COLLECTION",
       "fields": [

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { creatorRepository } from '@/repositories/creatorRepository';
+import { userRepository } from '@/repositories/userRepository';
 import type { CreatorProfile } from '@/types';
 
 /**
@@ -44,6 +45,21 @@ function resolveAccessLevel(
   return 'full';
 }
 
+export interface LeaderboardEntry {
+  uid: string;
+  displayName: string;
+  tier: CreatorProfile['tier'];
+  lifetimeEarningsKes: number;
+  totalConversions: number;
+}
+
+export interface CreatorLeaderboard {
+  top: LeaderboardEntry[];
+  /** Null when the caller isn't an `active` creator — a pending/suspended creator hasn't really participated, matching the leaderboard query's own `status == 'active'` scope. */
+  myRank: number | null;
+  totalActiveCreators: number;
+}
+
 class CreatorDashboardService {
   async getDashboard(uid: string): Promise<CreatorDashboardView> {
     const profile = await creatorRepository.findById(uid);
@@ -55,6 +71,37 @@ class CreatorDashboardService {
       profile,
       accessLevel: resolveAccessLevel(profile),
     };
+  }
+
+  /**
+   * § Creator Portal leaderboards — top earners plus the caller's own
+   * rank, computed with a cheap `.count()` aggregation rather than
+   * reading every competing creator's document.
+   */
+  async getLeaderboard(businessId: string, uid: string): Promise<CreatorLeaderboard> {
+    const [profile, top, totalActiveCreators] = await Promise.all([
+      creatorRepository.findById(uid),
+      creatorRepository.listTopByBusiness(businessId, 10),
+      creatorRepository.countActive(businessId),
+    ]);
+
+    const withIdentity = await Promise.all(
+      top.map(async ({ id, data }) => ({
+        uid: id,
+        displayName: (await userRepository.findById(id))?.displayName ?? 'Unknown creator',
+        tier: data.tier,
+        lifetimeEarningsKes: data.lifetimeEarningsKes,
+        totalConversions: data.totalConversions,
+      })),
+    );
+
+    let myRank: number | null = null;
+    if (profile && profile.businessId === businessId && profile.status === 'active') {
+      const above = await creatorRepository.countActiveAboveEarnings(businessId, profile.lifetimeEarningsKes);
+      myRank = above + 1;
+    }
+
+    return { top: withIdentity, myRank, totalActiveCreators };
   }
 }
 

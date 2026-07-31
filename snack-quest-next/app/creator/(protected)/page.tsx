@@ -5,16 +5,9 @@ import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CreatorStatusBadge } from '@/components/admin/CreatorStatusBadge';
-import type { CreatorTier } from '@/types';
+import { CREATOR_TIER_LABELS } from '@/lib/creators/tier';
 
 export const metadata: Metadata = { title: 'Home' };
-
-const TIER_LABELS: Record<CreatorTier, string> = {
-  bronze: 'Bronze',
-  silver: 'Silver',
-  gold: 'Gold',
-  platinum: 'Platinum',
-};
 
 interface StatCardProps {
   label: string;
@@ -50,7 +43,7 @@ export default async function CreatorHomePage() {
         </h1>
         <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
           <CreatorStatusBadge status={profile.status} />
-          <Badge variant="outline">{TIER_LABELS[profile.tier]} tier</Badge>
+          <Badge variant="outline">{CREATOR_TIER_LABELS[profile.tier]} tier</Badge>
         </p>
       </div>
 
@@ -100,16 +93,6 @@ export default async function CreatorHomePage() {
             <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">Bio</p>
             <p className="mt-1 text-sm text-foreground">{profile.bio || '—'}</p>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>More is on the way</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0 text-sm text-muted-foreground">
-          Campaign browsing, named referral links with click/conversion tracking, commission and earnings
-          statements, and withdrawals land here next, each with real data the moment it&apos;s ready.
         </CardContent>
       </Card>
     </div>

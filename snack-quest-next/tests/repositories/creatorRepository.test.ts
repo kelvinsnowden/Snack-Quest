@@ -61,3 +61,45 @@ describe('creatorRepository.incrementClickCount', () => {
     expect(found?.totalClicks).toBe(2);
   });
 });
+
+describe('creatorRepository.listTopByBusiness', () => {
+  it('ranks only active creators in the business by lifetime earnings, highest first', async () => {
+    await seedCreator('creator-low', { businessId: BUSINESS_ID, status: 'active', lifetimeEarningsKes: 100 });
+    await seedCreator('creator-high', { businessId: BUSINESS_ID, status: 'active', lifetimeEarningsKes: 900 });
+    await seedCreator('creator-pending', { businessId: BUSINESS_ID, status: 'pending', lifetimeEarningsKes: 5000 });
+    await seedCreator('creator-other-biz', { businessId: OTHER_BUSINESS_ID, status: 'active', lifetimeEarningsKes: 5000 });
+
+    const top = await creatorRepository.listTopByBusiness(BUSINESS_ID, 10);
+
+    expect(top.map((c) => c.id)).toEqual(['creator-high', 'creator-low']);
+  });
+
+  it('respects the limit', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await seedCreator(`creator-${i}`, { businessId: BUSINESS_ID, status: 'active', lifetimeEarningsKes: i * 100 });
+    }
+
+    const top = await creatorRepository.listTopByBusiness(BUSINESS_ID, 2);
+    expect(top).toHaveLength(2);
+  });
+});
+
+describe('creatorRepository.countActiveAboveEarnings / countActive', () => {
+  it('counts only active creators strictly above the given amount', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', lifetimeEarningsKes: 100 });
+    await seedCreator('creator-2', { businessId: BUSINESS_ID, status: 'active', lifetimeEarningsKes: 500 });
+    await seedCreator('creator-3', { businessId: BUSINESS_ID, status: 'active', lifetimeEarningsKes: 1000 });
+    await seedCreator('creator-pending', { businessId: BUSINESS_ID, status: 'pending', lifetimeEarningsKes: 5000 });
+
+    await expect(creatorRepository.countActiveAboveEarnings(BUSINESS_ID, 500)).resolves.toBe(1);
+    await expect(creatorRepository.countActiveAboveEarnings(BUSINESS_ID, 0)).resolves.toBe(3);
+  });
+
+  it('counts every active creator in the business, regardless of earnings', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active' });
+    await seedCreator('creator-2', { businessId: BUSINESS_ID, status: 'active' });
+    await seedCreator('creator-pending', { businessId: BUSINESS_ID, status: 'pending' });
+
+    await expect(creatorRepository.countActive(BUSINESS_ID)).resolves.toBe(2);
+  });
+});

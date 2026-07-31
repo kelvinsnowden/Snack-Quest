@@ -162,6 +162,55 @@ class CreatorRepository {
       nextCursor: hasMore ? docs[docs.length - 1].id : null,
     };
   }
+
+  /**
+   * § Creator Portal leaderboards — the top `limit` active creators by
+   * lifetime earnings. `active` only: a pending or suspended creator
+   * hasn't really participated, matching the access-level gating
+   * `CreatorDashboardService` already applies.
+   */
+  async listTopByBusiness(
+    businessId: string,
+    limit = 10,
+  ): Promise<{ id: string; data: CreatorProfile }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', 'active')
+      .orderBy('lifetimeEarningsKes', 'desc')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as CreatorProfile }));
+  }
+
+  /**
+   * § Creator Portal leaderboards — how many active creators outrank
+   * a given lifetime-earnings figure; `rank = count + 1`. A cheap
+   * aggregation query (`.count()`), not a full document read of every
+   * competing creator.
+   */
+  async countActiveAboveEarnings(businessId: string, lifetimeEarningsKes: number): Promise<number> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', 'active')
+      .where('lifetimeEarningsKes', '>', lifetimeEarningsKes)
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
+
+  /** § Creator Portal leaderboards — the "#N of M" denominator. */
+  async countActive(businessId: string): Promise<number> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', 'active')
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
 }
 
 export const creatorRepository = new CreatorRepository();
