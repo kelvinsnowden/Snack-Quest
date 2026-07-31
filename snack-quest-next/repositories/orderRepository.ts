@@ -71,6 +71,16 @@ class OrderRepository {
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
+
+  /** A real, cheap total for the Admin dashboard — full search/filter/list is Admin Orders' own scope (§ Admin: Orders), not built here. */
+  async countByBusiness(businessId: string): Promise<number> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
 }
 
 export const orderRepository = new OrderRepository();

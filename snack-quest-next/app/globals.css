@@ -1,28 +1,189 @@
 @import 'tailwindcss';
 
+/*
+ * Platform-wide semantic design tokens (Snack Quest Design System —
+ * see the `design-system` skill). Primitive brand colors -> semantic
+ * roles -> the components in components/ui/* consume only the
+ * semantic `--color-*` Tailwind tokens below, never a raw hex value.
+ * This is the token set every surface built from here on (Admin,
+ * Warehouse, Finance, Agent workspace, eventually the public site)
+ * draws from; the pre-existing `--color-creator-*` block further down
+ * remains a separate, additive set the Creator Portal specifically
+ * uses and is untouched.
+ *
+ * Root-level variables are prefixed `--sq-*` (not `--color-*`)
+ * deliberately: `@theme inline` below maps each one to the Tailwind
+ * token of the same semantic name, and giving the source variable a
+ * distinct name avoids a same-name self-reference between the two.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Primitives */
+  --sq-primitive-orange: #ff7a00;
+  --sq-primitive-purple: #6c3bff;
+  --sq-primitive-cream: #fff8ee;
+  --sq-primitive-charcoal: #1f1f1f;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Semantic — light mode (default) */
+  --sq-background: var(--sq-primitive-cream);
+  --sq-foreground: var(--sq-primitive-charcoal);
+  --sq-surface: #ffffff;
+  --sq-surface-raised: #ffffff;
+  --sq-border: #e7dfd0;
+  --sq-muted: #756e5f;
+  --sq-muted-foreground: #756e5f;
+
+  --sq-primary: var(--sq-primitive-orange);
+  --sq-primary-foreground: #ffffff;
+  --sq-secondary: var(--sq-primitive-purple);
+  --sq-secondary-foreground: #ffffff;
+
+  --sq-success: #1f8a5c;
+  --sq-success-foreground: #ffffff;
+  --sq-warning: #b9790a;
+  --sq-warning-foreground: #ffffff;
+  --sq-danger: #d1483c;
+  --sq-danger-foreground: #ffffff;
+  --sq-info: #2f78c4;
+  --sq-info-foreground: #ffffff;
+
+  --sq-shadow-sm: 0 1px 2px 0 rgb(31 31 31 / 0.06);
+  --sq-shadow-md: 0 12px 32px -12px rgb(31 31 31 / 0.18);
+  --sq-shadow-lg: 0 24px 64px -20px rgb(31 31 31 / 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --sq-background: #17140f;
+    --sq-foreground: #f7f3ea;
+    --sq-surface: #211d16;
+    --sq-surface-raised: #29241b;
+    --sq-border: #38311f;
+    --sq-muted: #a89d87;
+    --sq-muted-foreground: #a89d87;
+
+    --sq-primary: #ff8f24;
+    --sq-primary-foreground: #1f1105;
+    --sq-secondary: #8a63ff;
+    --sq-secondary-foreground: #ffffff;
+
+    --sq-success: #3ba873;
+    --sq-success-foreground: #0d2117;
+    --sq-warning: #d99a2b;
+    --sq-warning-foreground: #241a05;
+    --sq-danger: #e2685c;
+    --sq-danger-foreground: #250a07;
+    --sq-info: #5a9ce0;
+    --sq-info-foreground: #061626;
+
+    --sq-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --sq-shadow-md: 0 12px 32px -12px rgb(0 0 0 / 0.5);
+    --sq-shadow-lg: 0 24px 64px -20px rgb(0 0 0 / 0.6);
   }
 }
 
+/* The theme toggle stamps data-theme on <html>, and must win over the OS media query in both directions. */
+:root[data-theme='dark'] {
+  --sq-background: #17140f;
+  --sq-foreground: #f7f3ea;
+  --sq-surface: #211d16;
+  --sq-surface-raised: #29241b;
+  --sq-border: #38311f;
+  --sq-muted: #a89d87;
+  --sq-muted-foreground: #a89d87;
+  --sq-primary: #ff8f24;
+  --sq-primary-foreground: #1f1105;
+  --sq-secondary: #8a63ff;
+  --sq-secondary-foreground: #ffffff;
+  --sq-success: #3ba873;
+  --sq-success-foreground: #0d2117;
+  --sq-warning: #d99a2b;
+  --sq-warning-foreground: #241a05;
+  --sq-danger: #e2685c;
+  --sq-danger-foreground: #250a07;
+  --sq-info: #5a9ce0;
+  --sq-info-foreground: #061626;
+}
+:root[data-theme='light'] {
+  --sq-background: var(--sq-primitive-cream);
+  --sq-foreground: var(--sq-primitive-charcoal);
+  --sq-surface: #ffffff;
+  --sq-surface-raised: #ffffff;
+  --sq-border: #e7dfd0;
+  --sq-muted: #756e5f;
+  --sq-muted-foreground: #756e5f;
+  --sq-primary: var(--sq-primitive-orange);
+  --sq-primary-foreground: #ffffff;
+  --sq-secondary: var(--sq-primitive-purple);
+  --sq-secondary-foreground: #ffffff;
+  --sq-success: #1f8a5c;
+  --sq-success-foreground: #ffffff;
+  --sq-warning: #b9790a;
+  --sq-warning-foreground: #ffffff;
+  --sq-danger: #d1483c;
+  --sq-danger-foreground: #ffffff;
+  --sq-info: #2f78c4;
+  --sq-info-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--sq-background);
+  --color-foreground: var(--sq-foreground);
+  --color-surface: var(--sq-surface);
+  --color-surface-raised: var(--sq-surface-raised);
+  --color-border: var(--sq-border);
+  --color-muted: var(--sq-muted);
+  --color-muted-foreground: var(--sq-muted-foreground);
+  --color-primary: var(--sq-primary);
+  --color-primary-foreground: var(--sq-primary-foreground);
+  --color-secondary: var(--sq-secondary);
+  --color-secondary-foreground: var(--sq-secondary-foreground);
+  --color-success: var(--sq-success);
+  --color-success-foreground: var(--sq-success-foreground);
+  --color-warning: var(--sq-warning);
+  --color-warning-foreground: var(--sq-warning-foreground);
+  --color-danger: var(--sq-danger);
+  --color-danger-foreground: var(--sq-danger-foreground);
+  --color-info: var(--sq-info);
+  --color-info-foreground: var(--sq-info-foreground);
+
+  --shadow-sm: var(--sq-shadow-sm);
+  --shadow-md: var(--sq-shadow-md);
+  --shadow-lg: var(--sq-shadow-lg);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+
+  /* Type scale — design-system skill: Display Hero 72 / Hero 56 / Page Title 48 / Section Title 36 / Card Title 24 / Subtitle 20 / Body 16 / Small 14 / Caption 12 */
+  --text-display-hero: 4.5rem;
+  --text-display-hero--line-height: 1.05;
+  --text-hero: 3.5rem;
+  --text-hero--line-height: 1.08;
+  --text-page-title: 3rem;
+  --text-page-title--line-height: 1.1;
+  --text-section-title: 2.25rem;
+  --text-section-title--line-height: 1.15;
+  --text-card-title: 1.5rem;
+  --text-card-title--line-height: 1.25;
+  --text-subtitle: 1.25rem;
+  --text-subtitle--line-height: 1.35;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.45;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.35;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 /*

@@ -44,8 +44,20 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid); // triggered at sign-up, uid must match auth
-      allow update: if isOwner(uid) || isAdmin();
+      // A self-registering customer may only ever grant themselves the
+      // 'customer' role — staff/creator roles are never client-writable,
+      // since `roles` here is the exact array copied onto the Auth custom
+      // claim that Security Rules and route guards trust everywhere else
+      // (§ Admin auth foundation). Anyone provisioning a staff or creator
+      // account does so with the Admin SDK, which bypasses these rules
+      // entirely, so this restriction only closes the client-write path.
+      allow create: if isOwner(uid) &&
+                       request.resource.data.roles == ['customer'];
+      allow update: if isAdmin() ||
+                       (isOwner(uid) &&
+                        !request.resource.data.diff(resource.data)
+                          .affectedKeys()
+                          .hasAny(['roles']));
       allow delete: if false; // soft delete only, via server
     }
 

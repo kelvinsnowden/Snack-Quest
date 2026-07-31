@@ -93,6 +93,17 @@ class ConversationRepository {
     return { id: doc.id, conversation: doc.data() as Conversation };
   }
 
+  /** A real, cheap count for the Admin dashboard (§ Admin auth foundation) — uses Firestore's aggregation `count()` so it never pulls full documents just to size a stat card. */
+  async countByStatus(businessId: string, status: Conversation['status']): Promise<number> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', status)
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
+
   async updateStep(
     conversationId: string,
     step: ConversationStep,
