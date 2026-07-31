@@ -1,25 +1,31 @@
 import { storageService } from '@/services/storageService';
 import { StorageUploadError, StorageValidationError } from '@/lib/storage/errors';
 import { STORAGE_DIRECTORIES, isStorageDirectory } from '@/lib/storage/policies';
+import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 
 /**
  * The real upload wire for `services/storageService.ts` (§ Vercel
  * Blob migration's "Upload Flow": receive the file → validate → hand
  * to Vercel Blob → return the Blob URL). Multipart/form-data in, JSON
  * out — deliberately not saving the returned URL into any Firestore
- * document itself; the caller (a future product/creator-content
- * Service) owns that write, same Repository/Service boundary as
- * everywhere else.
+ * document itself; the caller (e.g. `ProductService.updateProduct()`)
+ * owns that write, same Repository/Service boundary as everywhere
+ * else.
  *
- * Honest gap, not silently assumed away: like the internal
- * agent-pricing route, this codebase has no staff/creator session
- * auth wired into API routes yet, so this endpoint accepts any
- * caller. Directory/MIME/size validation still applies to every
- * request — it isn't wide open to arbitrary data, just not yet scoped
- * to "which caller may upload to which business/directory." Add that
- * check here once session auth reaches Route Handlers.
+ * Staff-session gated (§ Admin: Products & Packages — the first real
+ * caller of this route): `businessId` is taken from the verified
+ * session, never from the request body, so a caller can never upload
+ * into another tenant's storage path by supplying a different id.
+ * Creator-facing uploads will need their own auth path once the
+ * Creator Portal has real sessions (§ Creator Portal) — not added here
+ * speculatively.
  */
 export async function POST(request: Request): Promise<Response> {
+  const session = await verifyStaffSessionFromRequest(request);
+  if (!session) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -29,7 +35,6 @@ export async function POST(request: Request): Promise<Response> {
 
   const file = formData.get('file');
   const directory = formData.get('directory');
-  const businessId = formData.get('businessId');
 
   if (!(file instanceof File)) {
     return Response.json({ error: '"file" is required.' }, { status: 400 });
@@ -40,15 +45,12 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  if (typeof businessId !== 'string' || businessId.length === 0) {
-    return Response.json({ error: '"businessId" is required.' }, { status: 400 });
-  }
 
   const data = Buffer.from(await file.arrayBuffer());
 
   try {
     const uploaded = await storageService.uploadFile({
-      businessId,
+      businessId: session.businessId,
       directory,
       filename: file.name,
       data,
