@@ -124,5 +124,20 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false; // Cloud Function / Admin SDK only, immutable
     }
+
+    // webhookEvents: the shared inbound idempotency ledger for every
+    // provider webhook (Daraja, Whatchimp, Jumia) — PLATFORM_ARCHITECTURE_V2.md
+    // §7/§13/§15. No client ever reads or writes this; it exists purely
+    // for server-side handlers to check before processing a callback.
+    match /webhookEvents/{eventId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+
+    // outboundGatewayCalls: outbound idempotency for Gateway calls with
+    // side effects (§13). Same server-only discipline as webhookEvents,
+    // just for the opposite direction.
+    match /outboundGatewayCalls/{callId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
   }
 }

@@ -11,3 +11,4 @@ export * from './order';
 export * from './questSubmission';
 export * from './notification';
 export * from './auditLog';
+export * from './webhookEvent';
