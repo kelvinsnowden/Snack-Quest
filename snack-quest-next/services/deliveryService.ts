@@ -2,8 +2,23 @@ import 'server-only';
 
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { getDeliveryProviderDefinition } from '@/lib/delivery/providers';
+import { VALID_SHIPMENT_TRANSITIONS } from '@/lib/delivery/transitions';
 import { publishEvent } from '@/lib/events/eventBus';
-import type { DeliveryDetails } from '@/types';
+import type { DeliveryDetails, Shipment, ShipmentStatus } from '@/types';
+
+export class ShipmentNotFoundError extends Error {
+  constructor(shipmentId: string) {
+    super(`Shipment ${shipmentId} not found`);
+    this.name = 'ShipmentNotFoundError';
+  }
+}
+
+export class InvalidShipmentTransitionError extends Error {
+  constructor(from: ShipmentStatus, to: ShipmentStatus) {
+    super(`Cannot move a shipment from '${from}' to '${to}'`);
+    this.name = 'InvalidShipmentTransitionError';
+  }
+}
 
 /**
  * Owns fulfillment (PLATFORM_ARCHITECTURE_V2.md §12, redesigned for
@@ -115,6 +130,66 @@ class DeliveryService {
         reason: error instanceof Error ? error.message : 'unknown error',
       });
     }
+  }
+
+  /** Admin: Delivery monitoring (§ Admin: Delivery monitoring) — the manual-booking queue's real action: an agent booked the courier themselves (Bolt today) and records what they got back. */
+  async completeManualBooking(
+    businessId: string,
+    shipmentId: string,
+    input: { courierShipmentRef: string; trackingUrl: string | null },
+    actor: string,
+  ): Promise<void> {
+    const shipment = await this.requireTransition(businessId, shipmentId, 'created');
+
+    await shipmentRepository.updateStatus(shipmentId, 'created', {
+      courierShipmentRef: input.courierShipmentRef,
+      trackingUrl: input.trackingUrl,
+    });
+    await publishEvent(businessId, 'ShipmentManuallyBooked', 'order', shipment.orderId, {
+      shipmentId,
+      actor,
+      courierShipmentRef: input.courierShipmentRef,
+    });
+  }
+
+  /**
+   * A manual status override (§ Admin: Delivery monitoring) — the
+   * only way a shipment reaches `delivered` today, since no courier
+   * tracking webhook is consumed yet (§ Logistics).
+   */
+  async updateShipmentStatus(
+    businessId: string,
+    shipmentId: string,
+    next: ShipmentStatus,
+    actor: string,
+  ): Promise<void> {
+    const shipment = await this.requireTransition(businessId, shipmentId, next);
+
+    await shipmentRepository.updateStatus(shipmentId, next);
+    await publishEvent(businessId, 'ShipmentStatusChanged', 'order', shipment.orderId, {
+      shipmentId,
+      from: shipment.status,
+      to: next,
+      actor,
+    });
+  }
+
+  async listShipments(
+    businessId: string,
+    options: { status?: ShipmentStatus; cursor?: string } = {},
+  ): Promise<{ shipments: { id: string; data: Shipment }[]; nextCursor: string | null }> {
+    return shipmentRepository.listByBusiness(businessId, options);
+  }
+
+  private async requireTransition(businessId: string, shipmentId: string, next: ShipmentStatus): Promise<Shipment> {
+    const shipment = await shipmentRepository.findById(businessId, shipmentId);
+    if (!shipment) {
+      throw new ShipmentNotFoundError(shipmentId);
+    }
+    if (!VALID_SHIPMENT_TRANSITIONS[shipment.status].includes(next)) {
+      throw new InvalidShipmentTransitionError(shipment.status, next);
+    }
+    return shipment;
   }
 }
 
