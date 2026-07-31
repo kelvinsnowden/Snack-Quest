@@ -132,6 +132,82 @@ describe('transition: awaiting_delivery_selection', () => {
   });
 });
 
+describe('transition: awaiting_delivery_selection (jumia_pickup)', () => {
+  it('routes jumia_pickup to a pickup-station search prompt, not straight to referral', () => {
+    const result = transition({
+      currentStep: 'awaiting_delivery_selection',
+      stateBlob: { county: 'Nairobi' },
+      inboundText: 'pickup',
+      context: nairobiContext,
+    });
+    expect(result.nextStep).toBe('awaiting_pickup_station_selection');
+    expect(result.stateBlobPatch).toEqual({ deliveryMethod: 'jumia_pickup' });
+    expect(result.botReply).toMatch(/town|area/i);
+  });
+});
+
+describe('transition: awaiting_pickup_station_selection', () => {
+  const candidates = [
+    { id: 'st-1', name: 'G4S Kasarani Station', county: 'Nairobi', town: 'Kasarani', deliveryFeeKes: 250 },
+    { id: 'st-2', name: 'Naivas Kasarani Mwiki', county: 'Nairobi', town: 'Kasarani', deliveryFeeKes: 0 },
+  ];
+
+  it('selects a station by number and auto-populates its delivery fee', () => {
+    const result = transition({
+      currentStep: 'awaiting_pickup_station_selection',
+      stateBlob: { county: 'Nairobi', deliveryMethod: 'jumia_pickup', pickupStationCandidates: candidates },
+      inboundText: '1',
+      context: nairobiContext,
+    });
+    expect(result.nextStep).toBe('awaiting_referral_code');
+    expect(result.stateBlobPatch).toEqual({
+      pickupStationId: 'st-1',
+      pickupStationName: 'G4S Kasarani Station',
+      deliveryFeeKes: 250,
+      county: 'Nairobi',
+    });
+    expect(result.botReply).toContain('G4S Kasarani Station');
+    expect(result.botReply).toContain('250');
+  });
+
+  it('shows a "fee to be confirmed" reply when the selected station has no configured fee yet', () => {
+    const result = transition({
+      currentStep: 'awaiting_pickup_station_selection',
+      stateBlob: { deliveryMethod: 'jumia_pickup', pickupStationCandidates: candidates },
+      inboundText: '2',
+      context: nairobiContext,
+    });
+    expect(result.stateBlobPatch.deliveryFeeKes).toBe(0);
+    expect(result.botReply).toContain('to be confirmed');
+  });
+
+  it('treats free text as a fresh search using the Service-provided matches, not a dead end', () => {
+    const freshMatches = [
+      { id: 'st-3', name: 'G4S Eldoret Station', county: 'Uasin Gishu', town: 'Eldoret', deliveryFeeKes: 300 },
+    ];
+    const result = transition({
+      currentStep: 'awaiting_pickup_station_selection',
+      stateBlob: { deliveryMethod: 'jumia_pickup' },
+      inboundText: 'Eldoret',
+      context: { ...nairobiContext, pickupStationMatches: freshMatches },
+    });
+    expect(result.nextStep).toBe('awaiting_pickup_station_selection');
+    expect(result.stateBlobPatch).toEqual({ pickupStationCandidates: freshMatches });
+    expect(result.botReply).toContain('G4S Eldoret Station');
+  });
+
+  it('reports no matches without crashing when a search comes back empty', () => {
+    const result = transition({
+      currentStep: 'awaiting_pickup_station_selection',
+      stateBlob: { deliveryMethod: 'jumia_pickup' },
+      inboundText: 'Nowhereville',
+      context: { ...nairobiContext, pickupStationMatches: [] },
+    });
+    expect(result.nextStep).toBe('awaiting_pickup_station_selection');
+    expect(result.botReply).toContain('No pickup stations found');
+  });
+});
+
 describe('transition: awaiting_referral_code', () => {
   it('captures a referral code and presents the summary', () => {
     const result = transition({
@@ -149,6 +225,25 @@ describe('transition: awaiting_referral_code', () => {
     expect(result.stateBlobPatch).toEqual({ referralCode: 'SNACK123' });
     expect(result.nextStep).toBe('awaiting_order_confirmation');
     expect(result.botReply).toContain('Order summary');
+  });
+
+  it('presents the pickup station name and delivery fee for a jumia_pickup order', () => {
+    const result = transition({
+      currentStep: 'awaiting_referral_code',
+      stateBlob: {
+        packageLabel: 'Starter Box',
+        priceKes: 2500,
+        customerName: 'Jane Doe',
+        county: 'Nairobi',
+        deliveryMethod: 'jumia_pickup',
+        pickupStationName: 'G4S Kasarani Station',
+        deliveryFeeKes: 250,
+      },
+      inboundText: 'no',
+      context: nairobiContext,
+    });
+    expect(result.botReply).toContain('G4S Kasarani Station');
+    expect(result.botReply).toContain('KES 250');
   });
 
   it('treats "no" as skipping the referral code', () => {

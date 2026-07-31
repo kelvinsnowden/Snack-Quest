@@ -4,6 +4,7 @@ import { adminFirestore } from '@/lib/firebase/admin';
 import { createInTransaction as createOrderInTransaction } from '@/repositories/orderRepository';
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
+import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import type { ConversationCheckoutSnapshot } from '@/types';
 
 /**
@@ -27,7 +28,7 @@ class OrderService {
     const deliveryAddress =
       snapshot.deliveryMethod === 'door_delivery'
         ? `${snapshot.county} (door delivery)`
-        : `${snapshot.county} — Jumia pickup station`;
+        : `${snapshot.pickupStationName ?? 'Jumia pickup station'}, ${snapshot.county}`;
 
     const orderId = await adminFirestore.runTransaction(async (tx) => {
       // Stock check/decrement first — if this throws (OutOfStockError),
@@ -50,6 +51,14 @@ class OrderService {
           creditsUsedKes: 0,
           deliveryMethod: snapshot.deliveryMethod,
           deliveryAddress,
+          pickupStationId: snapshot.pickupStationId,
+          pickupStationName: snapshot.pickupStationName,
+          deliveryFeeKes: snapshot.shippingKes,
+          shippingOrigin: snapshot.shippingOrigin,
+          // Jumia is the courier for both delivery methods today (see
+          // DeliveryService) — not fabricated, just today's only courier.
+          courier: 'jumia',
+          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
           referralLinkId: snapshot.referralLinkId,
           createdBy: 'system',
         },

@@ -3,7 +3,9 @@ import 'server-only';
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { conversationCheckoutSnapshotRepository } from '@/repositories/conversationCheckoutSnapshotRepository';
 import { packageRepository, OutOfStockError } from '@/repositories/packageRepository';
+import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
+import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -17,7 +19,7 @@ import {
   type PackageOption,
 } from '@/lib/conversation/stateMachine';
 import type { WhatsAppGateway } from '@/lib/integrations/types';
-import type { ConversationStateBlob } from '@/types';
+import type { ConversationStateBlob, PickupStationCandidate } from '@/types';
 
 /**
  * Owns the conversation lifecycle (PLATFORM_ARCHITECTURE_V2.md §6):
@@ -42,9 +44,12 @@ import type { ConversationStateBlob } from '@/types';
  * `CustomerRepository.findByPhone()` doesn't exist yet, and no real
  * purchase today is blocked by its absence.
  *
- * `shippingKes` is always 0 (free/included) — no real per-county fee
- * schedule exists to charge instead, and inventing one would be
- * fabricating business data a real order doesn't actually need.
+ * `shippingKes` is 0 for door delivery (free/included — no real
+ * per-county fee schedule exists to charge instead) and, for Jumia
+ * pickup, the selected station's `deliveryFeeKes` — auto-populated the
+ * moment the customer picks a station, never entered manually, and
+ * still 0 (not fabricated) for any station without a real Jumia rate
+ * card yet.
  */
 
 async function getAvailablePackages(businessId: string): Promise<PackageOption[]> {
@@ -155,11 +160,31 @@ class ConversationService {
     inboundText: string,
   ): Promise<ConversationTurnResult> {
     const availablePackages = await getAvailablePackages(businessId);
+
+    // Populated on every turn spent in this step — the state machine
+    // decides whether inboundText was a valid selection number or a
+    // fresh search term; either way the Service has already searched.
+    let pickupStationMatches: PickupStationCandidate[] | undefined;
+    if (currentStep === 'awaiting_pickup_station_selection') {
+      const matches = await pickupStationRepository.search(businessId, inboundText);
+      pickupStationMatches = matches.map(({ id, data }) => ({
+        id,
+        name: data.name,
+        county: data.county,
+        town: data.town,
+        deliveryFeeKes: data.deliveryFeeKes,
+      }));
+    }
+
     const result = transition({
       currentStep,
       stateBlob,
       inboundText,
-      context: { availablePackages, isNairobi: isNairobiCounty(stateBlob.county) },
+      context: {
+        availablePackages,
+        isNairobi: isNairobiCounty(stateBlob.county),
+        pickupStationMatches,
+      },
     });
 
     await conversationRepository.updateStep(
@@ -202,7 +227,11 @@ class ConversationService {
 
     const subtotalKes = stateBlob.priceKes ?? 0;
     const discountKes = referral?.discountKes ?? 0;
-    const shippingKes = 0; // Free/included — no real per-county fee schedule exists to charge instead.
+    // Door delivery: free/included, no real per-county fee schedule exists
+    // to charge instead. Jumia pickup: the selected station's own fee,
+    // auto-populated at selection time — never re-derived, never manual.
+    const shippingKes =
+      stateBlob.deliveryMethod === 'jumia_pickup' ? stateBlob.deliveryFeeKes ?? 0 : 0;
     const totalKes = subtotalKes - discountKes + shippingKes;
 
     const snapshotId = await conversationCheckoutSnapshotRepository.create({
@@ -216,6 +245,10 @@ class ConversationService {
       county: stateBlob.county ?? '',
       deliveryMethod: stateBlob.deliveryMethod ?? 'jumia_pickup',
       pickupStationId: stateBlob.pickupStationId ?? null,
+      pickupStationName: stateBlob.pickupStationName ?? null,
+      // Business rule: Snack Quest ships only from Nairobi — a string,
+      // not a boolean, so a second origin is a data change, not a migration.
+      shippingOrigin: 'Nairobi',
       addressText: stateBlob.addressText ?? null,
       referralCode: stateBlob.referralCode ?? null,
       referralLinkId: referral?.referralLinkId ?? null,
@@ -391,6 +424,8 @@ class ConversationService {
         phoneNumber,
         county: snapshot.county,
         deliveryMethod: snapshot.deliveryMethod,
+        pickupStationId: snapshot.pickupStationId,
+        pickupStationName: snapshot.pickupStationName,
       });
     } catch (error) {
       await publishEvent(businessId, 'ShipmentCreationFailed', 'order', orderId, {
@@ -410,12 +445,15 @@ class ConversationService {
       `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ${snapshot.county} (${snapshot.deliveryMethod}). Order ${orderId}.`,
     );
 
-    await this.reply(
-      businessId,
-      result.conversationId,
-      phoneNumber,
-      `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we'll be in touch with delivery details.`,
-    );
+    // Jumia pickup gets the exact required copy (tracking URL + SMS
+    // notice); door delivery has no pickup station or tracking URL to
+    // reference, so it keeps the generic confirmation.
+    const confirmationMessage =
+      snapshot.deliveryMethod === 'jumia_pickup'
+        ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
+        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we'll be in touch with delivery details.`;
+
+    await this.reply(businessId, result.conversationId, phoneNumber, confirmationMessage);
   }
 
   /** Pauses automatic bot replies — an agent has taken over this thread (§6). */

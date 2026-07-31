@@ -22,6 +22,9 @@ export interface ShipmentRecipient {
   phoneNumber: string;
   county: string;
   deliveryMethod: DeliveryMethod;
+  /** Set only when deliveryMethod is 'jumia_pickup' — the specific station Jumia should route to, not just the county. */
+  pickupStationId?: string | null;
+  pickupStationName?: string | null;
 }
 
 class DeliveryService {
@@ -45,13 +48,22 @@ class DeliveryService {
       'pending',
     );
 
+    const deliverTo: Record<string, unknown> = {
+      county: recipient.county,
+      method: recipient.deliveryMethod,
+    };
+    if (recipient.deliveryMethod === 'jumia_pickup') {
+      deliverTo.pickupStationId = recipient.pickupStationId ?? null;
+      deliverTo.pickupStationName = recipient.pickupStationName ?? null;
+    }
+
     try {
       const result = await jumiaGateway.createShipment({
         businessId,
         orderId,
         recipientName: recipient.customerName,
         recipientPhone: recipient.phoneNumber,
-        deliverTo: { county: recipient.county, method: recipient.deliveryMethod },
+        deliverTo,
       });
       await shipmentRepository.updateStatus(shipmentId, 'created', {
         courierShipmentRef: result.courierShipmentRef,

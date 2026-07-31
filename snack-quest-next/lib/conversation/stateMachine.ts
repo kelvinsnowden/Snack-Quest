@@ -2,6 +2,7 @@ import type {
   ConversationStateBlob,
   ConversationStep,
   DeliveryMethod,
+  PickupStationCandidate,
 } from '@/types';
 
 /**
@@ -28,6 +29,13 @@ export interface ConversationTransitionContext {
   availablePackages: PackageOption[];
   /** Nairobi customers get a door-delivery choice; everyone else is Jumia-pickup only. */
   isNairobi: boolean;
+  /**
+   * Search results for the customer's most recent pickup-station
+   * search text, fetched by the Service *before* calling `transition()`
+   * — this module never touches Firestore. Only populated/relevant
+   * while `currentStep === 'awaiting_pickup_station_selection'`.
+   */
+  pickupStationMatches?: PickupStationCandidate[];
 }
 
 export interface ConversationTransitionInput {
@@ -136,16 +144,62 @@ function matchDeliveryOption(
   return null;
 }
 
+function formatPickupStationOptionsMessage(
+  searchText: string,
+  matches: PickupStationCandidate[],
+): string {
+  if (matches.length === 0) {
+    return (
+      `No pickup stations found for "${searchText}". Try a different town, area, or county ` +
+      `(e.g. "Kasarani", "Eldoret", "Mombasa").`
+    );
+  }
+  const lines = matches.map((station, index) => {
+    const location = [station.town, station.county].filter(Boolean).join(', ');
+    const feeLabel =
+      station.deliveryFeeKes > 0 ? `KES ${station.deliveryFeeKes}` : 'fee to be confirmed';
+    return `${index + 1}. ${station.name}${location ? ` (${location})` : ''} — ${feeLabel}`;
+  });
+  return (
+    `Pickup stations matching "${searchText}":\n${lines.join('\n')}\n\n` +
+    `Reply with a number to select, or type a different town/area to search again.`
+  );
+}
+
+function matchPickupStationSelection(
+  inboundText: string,
+  candidates: PickupStationCandidate[] | undefined,
+): PickupStationCandidate | null {
+  if (!candidates || candidates.length === 0) {
+    return null;
+  }
+  const asIndex = Number(inboundText.trim());
+  if (Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= candidates.length) {
+    return candidates[asIndex - 1];
+  }
+  return null;
+}
+
 function formatSummaryMessage(stateBlob: ConversationStateBlob): string {
   const discountLine = stateBlob.discountKes
     ? `\nDiscount: -KES ${stateBlob.discountKes}`
     : '';
   const deliveryLabel =
     stateBlob.deliveryMethod === 'door_delivery' ? 'Door Delivery' : 'Jumia Pickup';
+  const deliveryDestination =
+    stateBlob.deliveryMethod === 'jumia_pickup' && stateBlob.pickupStationName
+      ? `${stateBlob.pickupStationName}, ${stateBlob.county}`
+      : stateBlob.county;
+  const feeLine =
+    stateBlob.deliveryMethod === 'jumia_pickup'
+      ? `\nDelivery fee: ${
+          stateBlob.deliveryFeeKes ? `KES ${stateBlob.deliveryFeeKes}` : 'to be confirmed'
+        }`
+      : '';
   return (
     `Order summary:\n` +
-    `${stateBlob.packageLabel} — KES ${stateBlob.priceKes}${discountLine}\n` +
-    `Deliver to: ${stateBlob.customerName}, ${stateBlob.county} (${deliveryLabel})\n\n` +
+    `${stateBlob.packageLabel} — KES ${stateBlob.priceKes}${discountLine}${feeLine}\n` +
+    `Deliver to: ${stateBlob.customerName}, ${deliveryDestination} (${deliveryLabel})\n\n` +
     `Reply YES to proceed to payment, or NO to cancel.`
   );
 }
@@ -215,10 +269,49 @@ export function transition(
           botReply: `Sorry, I didn't catch that.\n\n${formatDeliveryOptionsMessage(isNairobi)}`,
         };
       }
+      if (method === 'door_delivery') {
+        return {
+          nextStep: 'awaiting_referral_code',
+          stateBlobPatch: { deliveryMethod: method },
+          botReply: "Do you have a referral code? Reply with the code, or reply 'no'.",
+        };
+      }
       return {
-        nextStep: 'awaiting_referral_code',
+        nextStep: 'awaiting_pickup_station_selection',
         stateBlobPatch: { deliveryMethod: method },
-        botReply: "Do you have a referral code? Reply with the code, or reply 'no'.",
+        botReply:
+          'Which town or area should we deliver near? Reply with your town, area, or county ' +
+          '(e.g. "Kasarani", "Eldoret", "Mombasa").',
+      };
+    }
+
+    case 'awaiting_pickup_station_selection': {
+      const selected = matchPickupStationSelection(inboundText, stateBlob.pickupStationCandidates);
+      if (selected) {
+        return {
+          nextStep: 'awaiting_referral_code',
+          stateBlobPatch: {
+            pickupStationId: selected.id,
+            pickupStationName: selected.name,
+            deliveryFeeKes: selected.deliveryFeeKes,
+            // The station's own (computed) county is now the authoritative
+            // delivery destination — more precise than whatever the
+            // customer free-typed earlier in awaiting_customer_details.
+            county: selected.county ?? stateBlob.county,
+          },
+          botReply:
+            `Selected: ${selected.name}${selected.county ? ` (${selected.county})` : ''}. ` +
+            `Delivery fee: ${selected.deliveryFeeKes > 0 ? `KES ${selected.deliveryFeeKes}` : 'to be confirmed'}.\n\n` +
+            "Do you have a referral code? Reply with the code, or reply 'no'.",
+        };
+      }
+      // Not a valid selection index — treat it as a fresh search instead
+      // of a dead end, using whatever the Service already searched for.
+      const matches = context.pickupStationMatches ?? [];
+      return {
+        nextStep: 'awaiting_pickup_station_selection',
+        stateBlobPatch: { pickupStationCandidates: matches },
+        botReply: formatPickupStationOptionsMessage(inboundText.trim(), matches),
       };
     }
 

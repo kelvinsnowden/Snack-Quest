@@ -27,6 +27,14 @@ export interface Order extends AuditFields {
   deliveryMethod: DeliveryMethod;
   /** Human-readable: county + door address, or the pickup station name. */
   deliveryAddress: string;
+  /** Set only when deliveryMethod is 'jumia_pickup' — the fields the admin/fulfillment view needs without a join. */
+  pickupStationId: string | null;
+  pickupStationName: string | null;
+  deliveryFeeKes: number;
+  shippingOrigin: string;
+  courier: string | null;
+  /** Jumia's generic package tracker — same URL for every order, shown on the order confirmation and (once one exists) the order page. */
+  trackingUrl: string | null;
   referralLinkId: string | null;
 }
 

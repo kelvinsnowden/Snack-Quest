@@ -25,6 +25,7 @@ export type ConversationStep =
   | 'awaiting_package_selection'
   | 'awaiting_customer_details'
   | 'awaiting_delivery_selection'
+  | 'awaiting_pickup_station_selection'
   | 'awaiting_referral_code'
   | 'awaiting_order_confirmation'
   | 'awaiting_payment_confirmation'
@@ -32,6 +33,15 @@ export type ConversationStep =
   | 'abandoned';
 
 export type DeliveryMethod = 'door_delivery' | 'jumia_pickup';
+
+/** A candidate shown to the customer during pickup-station search — carried in `stateBlob` so selection-by-number needs no new lookup. */
+export interface PickupStationCandidate {
+  id: string;
+  name: string;
+  county: string | null;
+  town: string | null;
+  deliveryFeeKes: number;
+}
 
 /**
  * The accumulated selections for the in-progress transaction — this
@@ -46,6 +56,11 @@ export interface ConversationStateBlob {
   county?: string;
   deliveryMethod?: DeliveryMethod;
   pickupStationId?: string;
+  pickupStationName?: string;
+  /** Populated from the selected station's zone fee — 0 until a real Jumia rate card is entered, never fabricated. */
+  deliveryFeeKes?: number;
+  /** The most recent search results shown to the customer, so replying with a number needs no new Firestore lookup. */
+  pickupStationCandidates?: PickupStationCandidate[];
   addressText?: string;
   referralCode?: string;
   discountKes?: number;

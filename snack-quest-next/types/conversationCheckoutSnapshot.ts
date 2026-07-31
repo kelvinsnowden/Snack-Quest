@@ -28,6 +28,10 @@ export interface ConversationCheckoutSnapshot {
   county: string;
   deliveryMethod: 'door_delivery' | 'jumia_pickup';
   pickupStationId: string | null;
+  /** Denormalized alongside the id so the order/admin view never needs a join back to `pickupStations`. */
+  pickupStationName: string | null;
+  /** Always 'Nairobi' today (§ business rule: Snack Quest ships only from Nairobi) — a string, not a boolean, so a second origin is a data change, not a migration. */
+  shippingOrigin: string;
   addressText: string | null;
   referralCode: string | null;
   /** Resolved by `ReferralService.validateCode()` at freeze time — null if no code, or the code was invalid/expired. */

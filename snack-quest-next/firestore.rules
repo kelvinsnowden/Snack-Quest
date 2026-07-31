@@ -248,6 +248,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // pickupStations: Jumia's pickup-station catalog, imported wholesale
+    // from the authoritative dataset (§ Jumia pickup station integration).
+    // Same public-read/admin-write shape as packages — a customer's
+    // station search reads through the server (ConversationService,
+    // Admin SDK), but nothing here is sensitive, so the pattern still
+    // holds for any future direct client read.
+    match /pickupStations/{stationId} {
+      allow read: if resource.data.isActive == true || isAdmin();
+      allow write: if isAdmin(); // seed script / Admin SDK only in practice
+    }
+
+    // deliveryZoneRules: per-zone Jumia pricing. Admin-only — this is
+    // the flat delivery fee a customer's total is computed from, never
+    // a client-writable value.
+    match /deliveryZoneRules/{ruleId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin(); // seed script / Admin SDK only in practice
+    }
+
     // businesses: the tenant profile itself. Admin-only for now (same
     // caveat as belongsToBusiness() above — not yet scoped to "your
     // own business's admin" because that claim doesn't exist yet).

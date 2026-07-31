@@ -10,6 +10,8 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { businessRepository } from '@/repositories/businessRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import { pickupStationRepository } from '@/repositories/pickupStationRepository';
+import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import type { WhatsAppGateway, WhatsAppSendResult } from '@/lib/integrations/types';
 
 /**
@@ -223,6 +225,7 @@ async function cleanCollections() {
     'referralAttributions',
     'creatorProfiles',
     'outboundGatewayCalls',
+    'pickupStations',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
@@ -450,6 +453,88 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
 
     const ordersSnapshot = await adminFirestore.collection('orders').get();
     expect(ordersSnapshot.size).toBe(1);
+  });
+});
+
+describe('the full Jumia pickup station journey: search, select, auto-priced fee, order, tracking confirmation', () => {
+  beforeEach(async () => {
+    await seedBusiness(SNACK_QUEST);
+    await seedPackages(SNACK_QUEST.businessId);
+  });
+
+  it('walks a customer from station search through a confirmed order with a real delivery fee and the exact required tracking-URL copy', async () => {
+    mockAllProviders();
+
+    await pickupStationRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        courier: 'jumia',
+        name: 'G4S Kasarani Station',
+        latitude: -1.2201,
+        longitude: 36.8899,
+        description: 'Kasarani, opposite Sportsview Hotel',
+        county: 'Nairobi',
+        town: 'Kasarani',
+        zone: 'Nairobi',
+        shippingOrigin: 'Nairobi',
+        packageCategory: 'small',
+        deliveryFeeKes: 250,
+        isActive: true,
+        searchTokens: ['g4s', 'kasarani', 'station', 'nairobi'],
+      },
+      'system',
+    );
+
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' }); // Starter Box (2500)
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Jane Doe, Nairobi' });
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: '2' }); // Jumia Pickup Station
+
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Kasarani' }); // search by town
+    expect(gateway.sent.at(-1)?.text).toContain('G4S Kasarani Station');
+
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' }); // select the station
+    expect(gateway.sent.at(-1)?.text).toContain('KES 250'); // fee auto-populated, never typed by the customer
+
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'no' }); // no referral code
+    expect(gateway.sent.at(-1)?.text).toContain('G4S Kasarani Station'); // order summary shows the station
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'yes' });
+
+    const conversation = await conversationRepository.findActiveByPhoneNumber(
+      SNACK_QUEST.businessId,
+      PHONE,
+    );
+    const snapshotId = conversation!.conversation.conversationCheckoutSnapshotId!;
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(snapshotId);
+    expect(snapshot?.pickupStationName).toBe('G4S Kasarani Station');
+    expect(snapshot?.shippingKes).toBe(250);
+    expect(snapshot?.totalKes).toBe(2750); // 2500 box + 250 delivery, no discount
+    expect(snapshot?.shippingOrigin).toBe('Nairobi');
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, 2750),
+    );
+    expect(callback.status).toBe('succeeded');
+    await service.handlePaymentResult(callback);
+
+    const ordersSnapshot = await adminFirestore.collection('orders').get();
+    expect(ordersSnapshot.size).toBe(1);
+    const order = ordersSnapshot.docs[0].data();
+    expect(order.pickupStationName).toBe('G4S Kasarani Station');
+    expect(order.deliveryFeeKes).toBe(250);
+    expect(order.shippingOrigin).toBe('Nairobi');
+    expect(order.courier).toBe('jumia');
+    expect(order.trackingUrl).toBe(JUMIA_PACKAGE_TRACKER_URL);
+    expect(order.totalAmountKes).toBe(2750);
+    expect(order.deliveryAddress).toContain('G4S Kasarani Station');
+
+    const finalMessage = gateway.sent.at(-1)?.text ?? '';
+    expect(finalMessage).toContain('curated within 24 hours');
+    expect(finalMessage).toContain(JUMIA_PACKAGE_TRACKER_URL);
   });
 });
 
