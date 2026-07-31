@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { AuditFields, CreatorProfile } from '@/types';
+import type { AuditFields, CreatorProfile, CreatorStatus } from '@/types';
 
 /**
  * `creatorProfiles` reads/writes (TDD §4/§8). This is the reference
@@ -56,6 +56,44 @@ class CreatorRepository {
         ...partial,
         updatedAt: FieldValue.serverTimestamp(),
       });
+  }
+
+  /**
+   * Admin: Creators (§ Admin: Creators) — real cursor pagination,
+   * newest-first, optionally narrowed to one status. The filtered
+   * shape (businessId + status + createdAt) needs a composite index
+   * — see firestore.indexes.json; the unfiltered shape (a single
+   * equality plus an orderBy on a different field) does not.
+   */
+  async listByBusiness(
+    businessId: string,
+    options: { status?: CreatorStatus; limit?: number; cursor?: string } = {},
+  ): Promise<{ creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 25;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+
+    if (options.status) {
+      query = query.where('status', '==', options.status);
+    }
+    query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      creators: docs.map((doc) => ({ id: doc.id, data: doc.data() as CreatorProfile })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
   }
 }
 
