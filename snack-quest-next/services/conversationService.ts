@@ -16,6 +16,7 @@ import { adConversionService } from './adConversionService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import {
+  formatFinalOrderSummaryMessage,
   startConversationMessages,
   transition,
   type PackageOption,
@@ -47,15 +48,19 @@ import type { ConversationStateBlob, DeliveryDetails, PickupStationCandidate } f
  * purchase today is blocked by its absence.
  *
  * Two checkout paths converge on the same `freezeSnapshot()` helper
- * (redesign: multi-delivery-method checkout). Jumia pickup is priced
- * automatically the instant the customer confirms
- * (`confirmAndFreeze`, driven by the state machine's `FREEZE_SNAPSHOT`
- * side effect). Nairobi door delivery cannot be — Bolt's pricing is
- * dynamic — so it's priced by a human agent instead
- * (`priceDoorDeliveryAndCharge`, called from the internal agent API
- * route after `escalateToAgent` has paused the bot). Both paths freeze
- * an identically-shaped snapshot and trigger the same STK push; only
- * *who* supplies the delivery fee differs.
+ * (redesign: multi-delivery-method checkout) and on the same rule
+ * (redesign: customer-controlled STK push) — an STK push is never
+ * sent as a side effect of pricing, only in direct response to the
+ * customer's own PAY/PROCEED/CONFIRM reply. Jumia pickup is priced
+ * automatically; Nairobi door delivery is priced by a human agent
+ * (`priceDoorDelivery`, called from the internal agent API route after
+ * `escalateToAgent` has paused the bot) — but either way, pricing only
+ * ever produces a quotation and moves the conversation to
+ * `awaiting_customer_payment_confirmation`. `confirmAndFreeze` (the
+ * state machine's `FREEZE_SNAPSHOT` side effect, fired only once the
+ * customer has explicitly confirmed) is the one place that actually
+ * freezes the snapshot and triggers the STK push, for both delivery
+ * methods alike.
  */
 
 async function getAvailablePackages(businessId: string): Promise<PackageOption[]> {
@@ -282,11 +287,19 @@ class ConversationService {
   }
 
   /**
-   * The Jumia-pickup automated path (§6: "proceed to payment"): the
-   * customer just replied YES to a fully auto-priced order summary.
-   * Freezes the snapshot, then hands off to Payment Domain
-   * synchronously — the customer is mid-conversation waiting for the
-   * STK prompt on their phone, so this cannot be async.
+   * The one place either checkout path actually charges the customer
+   * (redesign: customer-controlled STK push) — reached only via the
+   * state machine's `FREEZE_SNAPSHOT` side effect, which only fires
+   * once the customer has explicitly replied PAY/PROCEED/CONFIRM from
+   * `awaiting_customer_payment_confirmation`. Builds the right
+   * `DeliveryDetails` for whichever method priced this order
+   * (`stateBlob.deliveryMethod` — pickup's fee was computed
+   * automatically at station selection; door's was set by a human
+   * agent via `priceDoorDelivery`, already sitting in
+   * `stateBlob.deliveryFeeKes` either way), freezes the snapshot, then
+   * hands off to Payment Domain synchronously — the customer is
+   * mid-conversation waiting for the STK prompt on their phone, so
+   * this cannot be async.
    */
   private async confirmAndFreeze(
     businessId: string,
@@ -299,24 +312,46 @@ class ConversationService {
       throw new Error(`Conversation ${conversationId} vanished mid-flow`);
     }
 
-    const delivery: DeliveryDetails = {
-      method: 'pickup',
-      provider: DELIVERY_PROVIDER_FOR_METHOD.pickup,
-      status: 'pending',
-      shippingOrigin: 'Nairobi',
-      feeKes: stateBlob.deliveryFeeKes ?? 0,
-      county: stateBlob.county ?? '',
-      pickupStationId: stateBlob.pickupStationId ?? null,
-      pickupStationName: stateBlob.pickupStationName ?? null,
-      addressText: null,
-      landmark: null,
-      estate: null,
-      contactPhone: null,
-      courierShipmentRef: null,
-      // The generic tracker is known up front — the same URL for every
-      // Jumia shipment, not something a shipment-creation call returns.
-      trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
-    };
+    const isPickup = stateBlob.deliveryMethod === 'pickup';
+    const delivery: DeliveryDetails = isPickup
+      ? {
+          method: 'pickup',
+          provider: DELIVERY_PROVIDER_FOR_METHOD.pickup,
+          status: 'pending',
+          shippingOrigin: 'Nairobi',
+          feeKes: stateBlob.deliveryFeeKes ?? 0,
+          county: stateBlob.county ?? '',
+          pickupStationId: stateBlob.pickupStationId ?? null,
+          pickupStationName: stateBlob.pickupStationName ?? null,
+          addressText: null,
+          landmark: null,
+          estate: null,
+          contactPhone: null,
+          courierShipmentRef: null,
+          // The generic tracker is known up front — the same URL for
+          // every Jumia shipment, not something a shipment-creation
+          // call returns.
+          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+        }
+      : {
+          method: 'door',
+          provider: DELIVERY_PROVIDER_FOR_METHOD.door,
+          status: 'pending_manual_booking',
+          shippingOrigin: 'Nairobi',
+          // Set by a human agent in priceDoorDelivery(), never re-derived here.
+          feeKes: stateBlob.deliveryFeeKes ?? 0,
+          county: stateBlob.county ?? '',
+          pickupStationId: null,
+          pickupStationName: null,
+          addressText: stateBlob.addressText ?? null,
+          landmark: stateBlob.landmark ?? null,
+          estate: stateBlob.estate ?? null,
+          contactPhone: stateBlob.contactPhone ?? null,
+          courierShipmentRef: null,
+          // No generic Bolt tracker exists — the agent stays the
+          // customer's point of contact for this order, unlike Jumia.
+          trackingUrl: null,
+        };
 
     const { snapshotId, totalKes } = await this.freezeSnapshot(
       businessId,
@@ -353,15 +388,15 @@ class ConversationService {
     } catch {
       // STK push never even reached Daraja — tell the customer, and
       // return the conversation to the confirmation step so a retry
-      // (customer replies YES again) triggers a fresh attempt.
+      // (customer replies PAY again) triggers a fresh attempt.
       await this.reply(
         businessId,
         conversationId,
         phoneNumber,
-        "We couldn't start the M-Pesa payment prompt. Please reply YES to try again.",
+        "We couldn't start the M-Pesa payment prompt. Please reply PAY to try again.",
       );
       await conversationRepository.update(conversationId, { status: 'active' });
-      await conversationRepository.updateStep(conversationId, 'awaiting_order_confirmation');
+      await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation');
     }
   }
 
@@ -404,13 +439,17 @@ class ConversationService {
 
   /**
    * The other half of the door-delivery hand-off: a human agent has
-   * confirmed the address and priced the Bolt delivery fee. Freezes
-   * the snapshot with that fee and triggers the same STK push the
-   * automated path uses — from here on, payment/order/shipment
-   * creation is identical to Jumia pickup. Called by the internal
-   * agent-pricing API route, never by the state machine.
+   * confirmed the address and priced the Bolt delivery fee. This does
+   * NOT charge the customer (redesign: customer-controlled STK push)
+   * — it only records the price, hands control back to the bot
+   * (`status: 'active'`), and sends the itemized quotation ending in
+   * "reply PAY". The actual STK push only fires later, from
+   * `confirmAndFreeze`, in direct response to the customer's own PAY
+   * reply — exactly the same gate the automated Jumia-pickup path
+   * goes through. Called by the internal agent-pricing API route,
+   * never by the state machine.
    */
-  async priceDoorDeliveryAndCharge(
+  async priceDoorDelivery(
     conversationId: string,
     input: { agentId: string; feeKes: number },
   ): Promise<void> {
@@ -432,79 +471,24 @@ class ConversationService {
       throw new Error(`Conversation ${conversationId} is not a door-delivery order`);
     }
 
-    const delivery: DeliveryDetails = {
-      method: 'door',
-      provider: DELIVERY_PROVIDER_FOR_METHOD.door,
-      status: 'pending_manual_booking',
-      shippingOrigin: 'Nairobi',
-      feeKes: input.feeKes,
-      county: stateBlob.county ?? '',
-      pickupStationId: null,
-      pickupStationName: null,
-      addressText: stateBlob.addressText ?? null,
-      landmark: stateBlob.landmark ?? null,
-      estate: stateBlob.estate ?? null,
-      contactPhone: stateBlob.contactPhone ?? null,
-      courierShipmentRef: null,
-      // No generic Bolt tracker exists — the agent stays the customer's
-      // point of contact for this order, unlike the Jumia path.
-      trackingUrl: null,
-    };
-
-    const { snapshotId, totalKes } = await this.freezeSnapshot(
-      businessId,
+    const patch: Partial<ConversationStateBlob> = { deliveryFeeKes: input.feeKes };
+    await conversationRepository.updateStep(
       conversationId,
-      phoneNumber,
-      conversation.customerId,
-      {
-        packageId: stateBlob.packageId ?? '',
-        packageLabel: stateBlob.packageLabel ?? '',
-        priceKes: stateBlob.priceKes ?? 0,
-        customerName: stateBlob.customerName ?? '',
-        county: stateBlob.county ?? '',
-        // No automated referral step exists for the agent-assisted
-        // path today — the agent applies one manually if relevant,
-        // which this codebase doesn't yet build a mechanism for.
-      },
-      delivery,
+      'awaiting_customer_payment_confirmation',
+      patch,
     );
-
-    const intentId = await paymentService.createIntent({
-      businessId,
-      conversationId,
-      conversationCheckoutSnapshotId: snapshotId,
-      customerId: conversation.customerId,
-      phoneNumber,
-      amountKes: totalKes,
+    await conversationRepository.update(conversationId, {
+      status: 'active',
+      assignedAgentId: input.agentId,
+      escalationReason: null,
     });
 
-    try {
-      await paymentService.initiateAttempt(businessId, intentId, {
-        phone: phoneNumber,
-        amountKes: totalKes,
-        accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
-      });
-      await this.reply(
-        businessId,
-        conversationId,
-        phoneNumber,
-        `Thanks for waiting! Your total (box + Bolt delivery) is KES ${totalKes}. ` +
-          'Check your phone to complete payment via M-Pesa.',
-      );
-    } catch (error) {
-      // STK push never even reached Daraja — park the conversation back
-      // on the agent (not the bot) so a retry means calling this same
-      // pricing action again, not the customer texting anything.
-      await conversationRepository.update(conversationId, { status: 'agent_assigned' });
-      await this.reply(
-        businessId,
-        conversationId,
-        phoneNumber,
-        "We couldn't start the M-Pesa payment prompt. Our team will reach out shortly to try again.",
-      );
-      throw error;
-    }
+    await this.reply(
+      businessId,
+      conversationId,
+      phoneNumber,
+      formatFinalOrderSummaryMessage({ ...stateBlob, ...patch }),
+    );
   }
 
   /**
@@ -537,27 +521,22 @@ class ConversationService {
       return;
     }
 
-    // 'failed' or 'amount_mismatch'. Door-delivery orders were priced
-    // by an agent (no automated order-confirmation step to retry from) —
-    // return to the agent, not the bot. Jumia-pickup orders return to
-    // confirmation so replying YES again triggers a fresh attempt.
-    if (conversation.stateBlob.deliveryMethod === 'door') {
-      await conversationRepository.update(result.conversationId, { status: 'agent_assigned' });
-      await this.notifications.notifyAdmin(
-        businessId,
-        `M-Pesa payment failed for a Bolt door-delivery order — conversation ${result.conversationId}. Please re-confirm the price with the customer.`,
-      );
-      return;
-    }
+    // 'failed' or 'amount_mismatch'. The price (whether auto-computed
+    // for pickup or agent-set for door delivery) is already sitting in
+    // stateBlob — no need to re-price or re-escalate to an agent, just
+    // return to the same customer-controlled confirmation step so
+    // replying PAY again triggers a fresh STK attempt. Identical
+    // handling for both delivery methods now that neither one charges
+    // the customer without an explicit PAY reply.
     await conversationRepository.update(result.conversationId, {
       status: 'active',
-      currentStep: 'awaiting_order_confirmation',
+      currentStep: 'awaiting_customer_payment_confirmation',
     });
     await this.reply(
       businessId,
       result.conversationId,
       conversation.phoneNumber,
-      "Your M-Pesa payment wasn't completed. Reply YES to try again.",
+      "Your M-Pesa payment wasn't completed. Reply PAY to try again.",
     );
   }
 

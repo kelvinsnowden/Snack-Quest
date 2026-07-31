@@ -25,6 +25,14 @@ import type {
  * dynamic pricing) collects address details and then hands off to a
  * human agent — this module never prices a door-delivery order
  * itself; `sideEffect: 'ESCALATE_TO_AGENT'` is as far as it goes.
+ *
+ * Neither path ever triggers the M-Pesa STK push as a side effect of
+ * pricing (redesign: customer-controlled STK push). Both converge on
+ * `awaiting_customer_payment_confirmation` once a real total exists —
+ * `sideEffect: 'FREEZE_SNAPSHOT'` only fires from *that* step, and
+ * only once the customer has explicitly replied with one of
+ * `PAYMENT_CONFIRMATION_KEYWORDS`. A customer is never surprised by an
+ * unrequested payment prompt.
  */
 
 export interface PackageOption {
@@ -213,26 +221,68 @@ function parseDoorDeliveryDetails(
   return { addressText, landmark, estate, contactPhone };
 }
 
-function formatSummaryMessage(stateBlob: ConversationStateBlob): string {
-  const discountLine = stateBlob.discountKes
-    ? `\nDiscount: -KES ${stateBlob.discountKes}`
-    : '';
-  const deliveryDestination =
-    stateBlob.pickupStationName
-      ? `${stateBlob.pickupStationName}, ${stateBlob.county}`
-      : stateBlob.county;
-  const feeLine = `\nDelivery fee: ${
-    stateBlob.deliveryFeeKes ? `KES ${stateBlob.deliveryFeeKes}` : 'to be confirmed'
-  }`;
-  return (
-    `Order summary:\n` +
-    `${stateBlob.packageLabel} — KES ${stateBlob.priceKes}${discountLine}${feeLine}\n` +
-    `Deliver to: ${stateBlob.customerName}, ${deliveryDestination} (Jumia Pickup)\n\n` +
-    `Reply YES to proceed to payment, or NO to cancel.`
+/**
+ * The exact keywords that count as "the customer explicitly asked to
+ * pay now" (redesign: customer-controlled STK push) — configurable by
+ * design (an array, not a hardcoded regex branch), so adding a fourth
+ * keyword later is a one-line change. Matched by exact value after
+ * normalization, not substring — "PAY" confirms, "let's pay later"
+ * does not, which is the deliberate, literal reading of "the customer
+ * must always explicitly indicate they are ready to pay."
+ */
+export const PAYMENT_CONFIRMATION_KEYWORDS = ['PAY', 'PROCEED', 'CONFIRM'] as const;
+
+function normalizeConfirmationReply(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function isPaymentConfirmation(inboundText: string): boolean {
+  return (PAYMENT_CONFIRMATION_KEYWORDS as readonly string[]).includes(
+    normalizeConfirmationReply(inboundText),
   );
 }
 
-const AFFIRMATIVE = /\b(yes|proceed|confirm|ok|okay)\b/i;
+/** Shown when the customer's reply while parked in `awaiting_customer_payment_confirmation` isn't a recognized keyword — a short nudge, not the full itemized bill again. */
+export const PAYMENT_CONFIRMATION_REMINDER =
+  "Your order is ready. Whenever you're ready, simply reply PAY and we'll send the M-Pesa " +
+  'payment request to your phone.';
+
+/**
+ * The final, itemized total — the last thing shown before the
+ * customer is asked to explicitly opt into payment. Used both when
+ * first entering `awaiting_customer_payment_confirmation` (from the
+ * automated Jumia-pickup referral step, or from a human agent's Bolt
+ * quotation) and, unchanged, is exactly what a real order is priced
+ * at — never re-derived or re-guessed later.
+ */
+export function formatFinalOrderSummaryMessage(stateBlob: ConversationStateBlob): string {
+  const isPickup = stateBlob.deliveryMethod === 'pickup';
+  const subtotalKes = stateBlob.priceKes ?? 0;
+  const discountKes = stateBlob.discountKes ?? 0;
+  const deliveryFeeKes = stateBlob.deliveryFeeKes ?? 0;
+  const totalKes = subtotalKes - discountKes + deliveryFeeKes;
+
+  const lines = [`${stateBlob.packageLabel}: KES ${subtotalKes}`];
+  if (discountKes) {
+    lines.push(`Discount: -KES ${discountKes}`);
+  }
+  const deliveryLabel = isPickup ? 'Delivery' : 'Bolt Delivery';
+  const feeText = deliveryFeeKes > 0 ? `KES ${deliveryFeeKes}` : 'to be confirmed';
+  lines.push(`${deliveryLabel}: ${feeText}`);
+  lines.push(`Total: KES ${totalKes}`);
+
+  const destination = isPickup
+    ? [stateBlob.pickupStationName, stateBlob.county].filter(Boolean).join(', ')
+    : [stateBlob.addressText, stateBlob.estate, stateBlob.county].filter(Boolean).join(', ');
+  lines.push(`Deliver to: ${stateBlob.customerName ?? ''}, ${destination}`);
+
+  const closing = isPickup
+    ? 'To continue, reply PAY whenever you are ready to receive the M-Pesa payment prompt.'
+    : 'Reply PAY whenever you are ready to receive the M-Pesa payment request.';
+
+  return `Order summary:\n${lines.join('\n')}\n\n${closing}`;
+}
+
 const NEGATIVE = /\b(no|cancel|stop)\b/i;
 const SKIP_REFERRAL = /^(no|none|skip|n\/a)$/i;
 
@@ -324,7 +374,7 @@ export function transition(
       }
       // Delivery fee is deliberately NOT calculated here — Bolt's
       // pricing is dynamic; a human agent prices it next (see
-      // ConversationService.escalateToAgent / priceDoorDeliveryAndCharge).
+      // ConversationService.escalateToAgent / priceDoorDelivery).
       return {
         nextStep: 'awaiting_agent_pricing',
         stateBlobPatch: details,
@@ -382,18 +432,18 @@ export function transition(
         ? {}
         : { referralCode: trimmed };
       return {
-        nextStep: 'awaiting_order_confirmation',
+        nextStep: 'awaiting_customer_payment_confirmation',
         stateBlobPatch: patch,
-        botReply: formatSummaryMessage({ ...stateBlob, ...patch }),
+        botReply: formatFinalOrderSummaryMessage({ ...stateBlob, ...patch }),
       };
     }
 
-    case 'awaiting_order_confirmation': {
-      if (AFFIRMATIVE.test(inboundText)) {
+    case 'awaiting_customer_payment_confirmation': {
+      if (isPaymentConfirmation(inboundText)) {
         return {
           nextStep: 'awaiting_payment_confirmation',
           stateBlobPatch: {},
-          botReply: "Sending your M-Pesa payment prompt now — check your phone.",
+          botReply: 'Sending your M-Pesa payment prompt now — check your phone.',
           sideEffect: 'FREEZE_SNAPSHOT',
         };
       }
@@ -405,9 +455,9 @@ export function transition(
         };
       }
       return {
-        nextStep: 'awaiting_order_confirmation',
+        nextStep: 'awaiting_customer_payment_confirmation',
         stateBlobPatch: {},
-        botReply: formatSummaryMessage(stateBlob),
+        botReply: PAYMENT_CONFIRMATION_REMINDER,
       };
     }
 

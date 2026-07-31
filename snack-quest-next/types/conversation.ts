@@ -20,11 +20,15 @@ export type ConversationStatus =
  * through. Matches §6's "structured operation with required steps in
  * a partial order" reasoning — a decision tree, not free-form chat.
  * The two delivery methods diverge after `awaiting_delivery_selection`:
- * `pickup` (Jumia) continues through the automated station-search/
- * price/pay/confirm path; `door` (Bolt) collects address details, then
- * escalates to a human agent — `awaiting_agent_pricing` is a "parked"
- * step the state machine itself never advances past (see
- * ConversationService.escalateToAgent / priceDoorDeliveryAndCharge).
+ * `pickup` (Jumia) continues through automated station search/pricing;
+ * `door` (Bolt) collects address details, then escalates to a human
+ * agent — `awaiting_agent_pricing` is a "parked" step the state
+ * machine itself never advances past (see
+ * ConversationService.escalateToAgent / priceDoorDelivery). Both
+ * methods converge on `awaiting_customer_payment_confirmation` once a
+ * real price exists (redesign: customer-controlled STK push) — the
+ * STK push is never sent until the customer explicitly replies PAY/
+ * PROCEED/CONFIRM from that step, regardless of delivery method.
  */
 export type ConversationStep =
   | 'started'
@@ -36,7 +40,7 @@ export type ConversationStep =
   | 'awaiting_door_delivery_details'
   | 'awaiting_agent_pricing'
   | 'awaiting_referral_code'
-  | 'awaiting_order_confirmation'
+  | 'awaiting_customer_payment_confirmation'
   | 'awaiting_payment_confirmation'
   | 'completed'
   | 'abandoned';

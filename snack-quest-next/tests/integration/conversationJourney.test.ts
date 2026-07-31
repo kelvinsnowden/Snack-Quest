@@ -300,7 +300,7 @@ async function walkToConfirmation(
   await service.start(businessId, PHONE, { text: 'CBD' }); // search
   await service.start(businessId, PHONE, { text: '1' }); // select the seeded station
   await service.start(businessId, PHONE, { text: referralReply });
-  await service.start(businessId, PHONE, { text: 'yes' });
+  await service.start(businessId, PHONE, { text: 'PAY' }); // explicit customer opt-in — never automatic
 }
 
 describe('the full customer journey: Meta ad through Jumia shipment confirmation', () => {
@@ -470,7 +470,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'CBD' });
     await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' });
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'no' });
-    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'yes' });
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'PAY' });
 
     const conversation = await conversationRepository.findActiveByPhoneNumber(
       SNACK_QUEST.businessId,
@@ -557,8 +557,10 @@ describe('the full Jumia pickup station journey: search, select, auto-priced fee
     expect(gateway.sent.at(-1)?.text).toContain('KES 250'); // fee auto-populated, never typed by the customer
 
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'no' }); // no referral code
-    expect(gateway.sent.at(-1)?.text).toContain('G4S Kasarani Station'); // order summary shows the station
-    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'yes' });
+    const summaryTurn = await service.start(SNACK_QUEST.businessId, PHONE, { text: 'huh?' });
+    // An unrecognized reply here must never trigger payment — only PAY does.
+    expect(summaryTurn.botReply).not.toContain('check your phone');
+    await service.start(SNACK_QUEST.businessId, PHONE, { text: 'PAY' });
 
     const conversation = await conversationRepository.findActiveByPhoneNumber(
       SNACK_QUEST.businessId,
@@ -643,7 +645,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     expect(ignored.botReply).toBeNull();
   });
 
-  it('prices the order through the real internal agent API, charges M-Pesa, and completes the order with the nested delivery/provider schema', async () => {
+  it('prices the order through the real internal agent API WITHOUT charging, then only charges once the customer replies PAY, completing with the nested delivery/provider schema', async () => {
     mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
     const service = new ConversationService(gateway);
@@ -682,9 +684,38 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     );
     expect(response.status).toBe(200);
 
+    // Pricing alone must NEVER charge the customer (redesign:
+    // customer-controlled STK push) — the bot is back in control,
+    // waiting on an explicit PAY reply, and nothing has been frozen
+    // or charged yet.
     const pricedConversation = await conversationRepository.findById(conversationId);
-    expect(pricedConversation?.status).toBe('awaiting_payment');
-    const snapshotId = pricedConversation!.conversationCheckoutSnapshotId!;
+    expect(pricedConversation?.status).toBe('active');
+    expect(pricedConversation?.currentStep).toBe('awaiting_customer_payment_confirmation');
+    expect(pricedConversation?.conversationCheckoutSnapshotId).toBeNull();
+    expect(pricedConversation?.stateBlob.deliveryFeeKes).toBe(400);
+
+    const paymentIntentsBeforePay = await adminFirestore.collection('paymentIntents').get();
+    expect(paymentIntentsBeforePay.size).toBe(0);
+
+    // The pricing route runs through the module-level `conversationService`
+    // singleton (its real WhatsApp gateway, not this test's local
+    // `gateway`) — read the persisted transcript instead of `gateway.sent`.
+    const messagesAfterPricing = await conversationRepository.listMessages(conversationId);
+    const quotation = messagesAfterPricing.at(-1)?.body ?? '';
+    expect(quotation).toContain('Bolt Delivery: KES 400');
+    expect(quotation).toContain('Total: KES 2900');
+    expect(quotation).toContain('Reply PAY whenever you are ready to receive the M-Pesa payment request.');
+    expect(quotation).not.toContain('check your phone'); // no STK sent yet
+
+    // Only NOW — the customer's own explicit reply — may payment begin.
+    // This goes through the test's local `service`/`gateway`, since the
+    // conversation is back under bot control (status: 'active').
+    const payTurn = await service.start(SNACK_QUEST.businessId, PHONE, { text: 'PAY' });
+    expect(payTurn.botReply).toContain('Sending your M-Pesa payment prompt now');
+
+    const pricedAndConfirmed = await conversationRepository.findById(conversationId);
+    expect(pricedAndConfirmed?.status).toBe('awaiting_payment');
+    const snapshotId = pricedAndConfirmed!.conversationCheckoutSnapshotId!;
     const snapshot = await conversationCheckoutSnapshotRepository.findById(snapshotId);
     expect(snapshot?.delivery.method).toBe('door');
     expect(snapshot?.delivery.provider).toBe('bolt');
@@ -692,11 +723,8 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     expect(snapshot?.delivery.addressText).toBe('123 Ngong Road');
     expect(snapshot?.totalKes).toBe(2900); // 2500 box + 400 Bolt fee, no automated referral step for door delivery
 
-    // The pricing route runs through the module-level `conversationService`
-    // singleton (its real WhatsApp gateway, not this test's local
-    // `gateway`) — read the persisted transcript instead of `gateway.sent`.
-    const messagesAfterPricing = await conversationRepository.listMessages(conversationId);
-    expect(messagesAfterPricing.at(-1)?.body).toContain('KES 2900');
+    const paymentIntentsAfterPay = await adminFirestore.collection('paymentIntents').get();
+    expect(paymentIntentsAfterPay.size).toBe(1);
 
     const callback = await paymentService.processCallback(
       SNACK_QUEST.businessId,
@@ -836,7 +864,7 @@ describe('platform proof: a second, independent tenant', () => {
     await sqService.start(SNACK_QUEST.businessId, PHONE, { text: 'CBD' });
     await sqService.start(SNACK_QUEST.businessId, PHONE, { text: '1' }); // select the seeded (free) station
     await sqService.start(SNACK_QUEST.businessId, PHONE, { text: 'SQ10' }); // valid here
-    await sqService.start(SNACK_QUEST.businessId, PHONE, { text: 'yes' });
+    await sqService.start(SNACK_QUEST.businessId, PHONE, { text: 'PAY' });
 
     const rivalGateway = new FakeWhatsAppGateway();
     const rivalService = new ConversationService(rivalGateway);
@@ -849,7 +877,7 @@ describe('platform proof: a second, independent tenant', () => {
     await rivalService.start(RIVAL_SNACKS.businessId, PHONE, { text: '1' });
     // The SAME code, meaningless here — must NOT discount Rival's order.
     await rivalService.start(RIVAL_SNACKS.businessId, PHONE, { text: 'SQ10' });
-    await rivalService.start(RIVAL_SNACKS.businessId, PHONE, { text: 'yes' });
+    await rivalService.start(RIVAL_SNACKS.businessId, PHONE, { text: 'PAY' });
 
     const sqConversation = await conversationRepository.findActiveByPhoneNumber(
       SNACK_QUEST.businessId,

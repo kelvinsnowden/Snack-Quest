@@ -6,10 +6,12 @@ import { conversationService } from '@/services/conversationService';
  * agent has confirmed the address with the customer and knows the
  * Bolt fee (checked on the Bolt app — nothing in this codebase calls
  * Bolt's API, because there is no such integration to call), and
- * calls this route to price the order and trigger the M-Pesa STK
- * push. `ConversationService.priceDoorDeliveryAndCharge()` owns the
- * actual business logic; this route is just the wire, same pattern as
- * the Daraja/Whatchimp webhook routes.
+ * calls this route to price the order. It does NOT trigger the M-Pesa
+ * STK push (§ redesign: customer-controlled STK push) — pricing only
+ * sends the customer a quotation and waits for them to reply PAY;
+ * `ConversationService.priceDoorDelivery()` owns the actual business
+ * logic; this route is just the wire, same pattern as the
+ * Daraja/Whatchimp webhook routes.
  *
  * Honest gap, not a silently-assumed one: this codebase has no staff
  * authentication (no login, no per-agent identity, no `staffProfiles`
@@ -47,7 +49,7 @@ export async function POST(
   }
 
   try {
-    await conversationService.priceDoorDeliveryAndCharge(conversationId, { agentId, feeKes });
+    await conversationService.priceDoorDelivery(conversationId, { agentId, feeKes });
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json(

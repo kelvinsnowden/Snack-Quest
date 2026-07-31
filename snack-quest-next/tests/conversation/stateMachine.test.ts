@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DOOR_DELIVERY_ESCALATION_MESSAGE,
+  PAYMENT_CONFIRMATION_KEYWORDS,
+  PAYMENT_CONFIRMATION_REMINDER,
+  formatFinalOrderSummaryMessage,
   startConversationMessages,
   transition,
   type ConversationTransitionContext,
@@ -266,7 +269,7 @@ describe('transition: awaiting_agent_pricing', () => {
 });
 
 describe('transition: awaiting_referral_code', () => {
-  it('captures a referral code and presents the summary', () => {
+  it('captures a referral code and moves to the customer-controlled payment confirmation step', () => {
     const result = transition({
       currentStep: 'awaiting_referral_code',
       stateBlob: {
@@ -280,8 +283,10 @@ describe('transition: awaiting_referral_code', () => {
       context: nairobiContext,
     });
     expect(result.stateBlobPatch).toEqual({ referralCode: 'SNACK123' });
-    expect(result.nextStep).toBe('awaiting_order_confirmation');
+    expect(result.nextStep).toBe('awaiting_customer_payment_confirmation');
     expect(result.botReply).toContain('Order summary');
+    // Pricing alone must never trigger a side effect — only an explicit PAY reply does.
+    expect(result.sideEffect).toBeUndefined();
   });
 
   it('presents the pickup station name and delivery fee', () => {
@@ -314,29 +319,96 @@ describe('transition: awaiting_referral_code', () => {
   });
 });
 
-describe('transition: awaiting_order_confirmation', () => {
+describe('formatFinalOrderSummaryMessage', () => {
+  it('itemizes the box, delivery fee, and an explicit total for a pickup order', () => {
+    const message = formatFinalOrderSummaryMessage({
+      packageLabel: 'Deluxe Box',
+      priceKes: 3500,
+      customerName: 'Jane Doe',
+      county: 'Nairobi',
+      deliveryMethod: 'pickup',
+      pickupStationName: 'G4S Kasarani Station',
+      deliveryFeeKes: 350,
+    });
+    expect(message).toContain('Deluxe Box: KES 3500');
+    expect(message).toContain('Delivery: KES 350');
+    expect(message).toContain('Total: KES 3850');
+    expect(message).toContain('To continue, reply PAY whenever you are ready to receive the M-Pesa payment prompt.');
+  });
+
+  it('labels the fee "Bolt Delivery" and closes with the door-delivery PAY copy', () => {
+    const message = formatFinalOrderSummaryMessage({
+      packageLabel: 'Deluxe Box',
+      priceKes: 3500,
+      customerName: 'Jane Doe',
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: '123 Ngong Road',
+      estate: 'Kilimani',
+      deliveryFeeKes: 420,
+    });
+    expect(message).toContain('Bolt Delivery: KES 420');
+    expect(message).toContain('Total: KES 3920');
+    expect(message).toContain('Reply PAY whenever you are ready to receive the M-Pesa payment request.');
+  });
+
+  it('subtracts a discount from the total', () => {
+    const message = formatFinalOrderSummaryMessage({
+      packageLabel: 'Starter Box',
+      priceKes: 2500,
+      deliveryMethod: 'pickup',
+      deliveryFeeKes: 250,
+      discountKes: 200,
+    });
+    expect(message).toContain('Discount: -KES 200');
+    expect(message).toContain('Total: KES 2550'); // 2500 - 200 + 250
+  });
+});
+
+describe('transition: awaiting_customer_payment_confirmation', () => {
   const summaryStateBlob = {
     packageLabel: 'Starter Box',
     priceKes: 2500,
     customerName: 'Jane Doe',
     county: 'Nairobi',
     deliveryMethod: 'pickup' as const,
+    deliveryFeeKes: 250,
   };
 
-  it('freezes the snapshot and moves to payment on YES', () => {
-    const result = transition({
-      currentStep: 'awaiting_order_confirmation',
-      stateBlob: summaryStateBlob,
-      inboundText: 'yes',
-      context: nairobiContext,
-    });
-    expect(result.nextStep).toBe('awaiting_payment_confirmation');
-    expect(result.sideEffect).toBe('FREEZE_SNAPSHOT');
+  it.each(['PAY', 'pay', '  Pay  ', 'PROCEED', 'confirm'])(
+    'freezes the snapshot and moves to payment on %j',
+    (reply) => {
+      const result = transition({
+        currentStep: 'awaiting_customer_payment_confirmation',
+        stateBlob: summaryStateBlob,
+        inboundText: reply,
+        context: nairobiContext,
+      });
+      expect(result.nextStep).toBe('awaiting_payment_confirmation');
+      expect(result.sideEffect).toBe('FREEZE_SNAPSHOT');
+    },
+  );
+
+  it('does not treat "yes" or "ok" as a payment confirmation — only the configured keywords count', () => {
+    for (const reply of ['yes', 'ok', 'okay', 'sure']) {
+      const result = transition({
+        currentStep: 'awaiting_customer_payment_confirmation',
+        stateBlob: summaryStateBlob,
+        inboundText: reply,
+        context: nairobiContext,
+      });
+      expect(result.sideEffect).toBeUndefined();
+      expect(result.nextStep).toBe('awaiting_customer_payment_confirmation');
+    }
+  });
+
+  it('exposes the configured keyword list as PAY/PROCEED/CONFIRM', () => {
+    expect(PAYMENT_CONFIRMATION_KEYWORDS).toEqual(['PAY', 'PROCEED', 'CONFIRM']);
   });
 
   it('abandons the conversation on NO', () => {
     const result = transition({
-      currentStep: 'awaiting_order_confirmation',
+      currentStep: 'awaiting_customer_payment_confirmation',
       stateBlob: summaryStateBlob,
       inboundText: 'no thanks',
       context: nairobiContext,
@@ -345,14 +417,16 @@ describe('transition: awaiting_order_confirmation', () => {
     expect(result.sideEffect).toBeUndefined();
   });
 
-  it('re-presents the summary on an unrecognized reply', () => {
+  it('sends a short reminder — not the full itemized bill again — on an unrecognized reply', () => {
     const result = transition({
-      currentStep: 'awaiting_order_confirmation',
+      currentStep: 'awaiting_customer_payment_confirmation',
       stateBlob: summaryStateBlob,
       inboundText: 'maybe later',
       context: nairobiContext,
     });
-    expect(result.nextStep).toBe('awaiting_order_confirmation');
+    expect(result.nextStep).toBe('awaiting_customer_payment_confirmation');
+    expect(result.sideEffect).toBeUndefined();
+    expect(result.botReply).toBe(PAYMENT_CONFIRMATION_REMINDER);
   });
 });
 
