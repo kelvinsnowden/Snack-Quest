@@ -20,6 +20,7 @@ export type ConversationCheckoutSnapshotStatus =
 export interface ConversationCheckoutSnapshot {
   conversationId: string;
   customerId: string | null;
+  phoneNumber: string;
   packageId: string;
   packageLabel: string;
   customerName: string;
@@ -28,6 +29,11 @@ export interface ConversationCheckoutSnapshot {
   pickupStationId: string | null;
   addressText: string | null;
   referralCode: string | null;
+  /** Resolved by `ReferralService.validateCode()` at freeze time — null if no code, or the code was invalid/expired. */
+  referralLinkId: string | null;
+  /** Frozen alongside the price, for the same reason the price is frozen — a commission rate change mid-conversation shouldn't change what was already promised. */
+  referralOwnerId: string | null;
+  referralCommissionKes: number;
   subtotalKes: number;
   discountKes: number;
   shippingKes: number;

@@ -13,4 +13,10 @@ export interface Package extends AuditFields {
   description: string;
   priceKes: number;
   isActive: boolean;
+  /**
+   * Undefined = unlimited (no real stock ceiling known/set for this
+   * box). Present only when the business actually tracks how many of
+   * a given box are ready to ship — never a fabricated number.
+   */
+  stockCount?: number;
 }

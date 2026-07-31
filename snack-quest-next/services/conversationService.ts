@@ -2,9 +2,14 @@ import 'server-only';
 
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { conversationCheckoutSnapshotRepository } from '@/repositories/conversationCheckoutSnapshotRepository';
-import { packageRepository } from '@/repositories/packageRepository';
+import { packageRepository, OutOfStockError } from '@/repositories/packageRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
+import { orderService } from './orderService';
+import { referralService } from './referralService';
+import { deliveryService } from './deliveryService';
+import { adConversionService } from './adConversionService';
+import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import {
   startConversationMessages,
@@ -21,14 +26,15 @@ import type { ConversationStateBlob } from '@/types';
  * *only* place inbound WhatsApp messages get processed — the webhook
  * route does nothing but parse the provider payload and call `start()`.
  *
- * Deliberate, documented simplifications for this milestone (not
- * silently assumed correct — each is a named follow-up):
- * - Customer identification always proceeds as guest (`customerId:
- *   null`) — `CustomerRepository.findByPhone()` doesn't exist yet.
- * - Referral codes are captured into `stateBlob` but never validated
- *   and never produce a discount — Referral Domain (Milestone 6).
- * - `shippingKes` is always 0 — Delivery Domain's fee calculation
- *   (Milestone 5) isn't wired yet.
+ * Deliberate, documented simplification still standing (not silently
+ * assumed correct — a named follow-up): customer identification
+ * always proceeds as guest (`customerId: null`) —
+ * `CustomerRepository.findByPhone()` doesn't exist yet, and no real
+ * purchase today is blocked by its absence.
+ *
+ * `shippingKes` is always 0 (free/included) — no real per-county fee
+ * schedule exists to charge instead, and inventing one would be
+ * fabricating business data a real order doesn't actually need.
  */
 
 async function getAvailablePackages(): Promise<PackageOption[]> {
@@ -60,7 +66,11 @@ export interface ConversationTurnResult {
 }
 
 class ConversationService {
-  constructor(private readonly gateway: WhatsAppGateway = whatchimpGateway) {}
+  private readonly notifications: NotificationService;
+
+  constructor(private readonly gateway: WhatsAppGateway = whatchimpGateway) {
+    this.notifications = new NotificationService(gateway);
+  }
 
   /**
    * The single entry point for every inbound WhatsApp message
@@ -171,14 +181,19 @@ class ConversationService {
       throw new Error(`Conversation ${conversationId} vanished mid-flow`);
     }
 
+    const referral = stateBlob.referralCode
+      ? await referralService.validateCode(stateBlob.referralCode)
+      : null;
+
     const subtotalKes = stateBlob.priceKes ?? 0;
-    const discountKes = stateBlob.discountKes ?? 0;
-    const shippingKes = 0; // Delivery fee calc not yet wired — Milestone 5.
+    const discountKes = referral?.discountKes ?? 0;
+    const shippingKes = 0; // Free/included — no real per-county fee schedule exists to charge instead.
     const totalKes = subtotalKes - discountKes + shippingKes;
 
     const snapshotId = await conversationCheckoutSnapshotRepository.create({
       conversationId,
       customerId: conversation.customerId,
+      phoneNumber,
       packageId: stateBlob.packageId ?? '',
       packageLabel: stateBlob.packageLabel ?? '',
       customerName: stateBlob.customerName ?? '',
@@ -187,6 +202,9 @@ class ConversationService {
       pickupStationId: stateBlob.pickupStationId ?? null,
       addressText: stateBlob.addressText ?? null,
       referralCode: stateBlob.referralCode ?? null,
+      referralLinkId: referral?.referralLinkId ?? null,
+      referralOwnerId: referral?.ownerId ?? null,
+      referralCommissionKes: referral?.commissionKes ?? 0,
       subtotalKes,
       discountKes,
       shippingKes,
@@ -255,19 +273,7 @@ class ConversationService {
     }
 
     if (result.status === 'succeeded') {
-      await conversationCheckoutSnapshotRepository.updateStatus(
-        result.snapshotId,
-        'completed',
-      );
-      await conversationRepository.update(result.conversationId, {
-        status: 'completed',
-        currentStep: 'completed',
-      });
-      await this.reply(
-        result.conversationId,
-        conversation.phoneNumber,
-        `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we'll be in touch with delivery details.`,
-      );
+      await this.completeOrder(result, conversation.phoneNumber);
       return;
     }
 
@@ -281,6 +287,103 @@ class ConversationService {
       result.conversationId,
       conversation.phoneNumber,
       "Your M-Pesa payment wasn't completed. Reply YES to try again.",
+    );
+  }
+
+  /**
+   * The rest of the real journey once payment has actually succeeded:
+   * create the order (with inventory reservation), credit any
+   * referral commission, create the Jumia shipment, dispatch the Meta
+   * Purchase event, notify the admin, and confirm to the customer.
+   * Every step past order creation is best-effort — a Jumia outage or
+   * a missing Meta credential must never undo a paid, confirmed order.
+   */
+  private async completeOrder(
+    result: Extract<ProcessCallbackResult, { status: 'succeeded' }>,
+    phoneNumber: string,
+  ): Promise<void> {
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      result.snapshotId,
+    );
+    if (!snapshot) {
+      return;
+    }
+
+    let orderId: string;
+    try {
+      orderId = await orderService.createFromConversationSnapshot({
+        snapshotId: result.snapshotId,
+        snapshot,
+        paymentIntentId: result.intentId,
+      });
+    } catch (error) {
+      if (error instanceof OutOfStockError) {
+        // Money already collected, box unavailable — this needs a
+        // human, not an automatic refund this codebase doesn't build
+        // yet. Never silently lose a paid order.
+        await this.notifications.notifyAdmin(
+          `URGENT: payment succeeded for ${snapshot.packageLabel} (${phoneNumber}) but it's out of stock. Manual resolution needed. Payment intent: ${result.intentId}`,
+        );
+        await this.reply(
+          result.conversationId,
+          phoneNumber,
+          "There's an issue with your order — our team will contact you shortly to sort it out. Your payment is safe.",
+        );
+        return;
+      }
+      throw error;
+    }
+
+    await conversationCheckoutSnapshotRepository.updateStatus(result.snapshotId, 'completed');
+    await conversationRepository.update(result.conversationId, {
+      status: 'completed',
+      currentStep: 'completed',
+    });
+
+    if (snapshot.referralLinkId && snapshot.referralOwnerId) {
+      try {
+        await referralService.awardCommission({
+          referralLinkId: snapshot.referralLinkId,
+          ownerId: snapshot.referralOwnerId,
+          orderId,
+          conversationId: result.conversationId,
+          discountKes: snapshot.discountKes,
+          commissionKes: snapshot.referralCommissionKes,
+        });
+      } catch (error) {
+        await publishEvent('ReferralAwardFailed', 'order', orderId, {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
+    }
+
+    try {
+      await deliveryService.createShipmentForOrder(orderId, {
+        customerName: snapshot.customerName,
+        phoneNumber,
+        county: snapshot.county,
+        deliveryMethod: snapshot.deliveryMethod,
+      });
+    } catch (error) {
+      await publishEvent('ShipmentCreationFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
+    await adConversionService.dispatchPurchase({
+      orderId,
+      phoneNumber,
+      amountKes: snapshot.totalKes,
+    });
+
+    await this.notifications.notifyAdmin(
+      `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ${snapshot.county} (${snapshot.deliveryMethod}). Order ${orderId}.`,
+    );
+
+    await this.reply(
+      result.conversationId,
+      phoneNumber,
+      `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we'll be in touch with delivery details.`,
     );
   }
 

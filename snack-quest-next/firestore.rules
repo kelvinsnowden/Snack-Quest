@@ -40,6 +40,14 @@ service cloud.firestore {
                             .hasAny(['availableCashKes','pendingEarningsKes',
                                      'lifetimeEarningsKes','status'])) || isAdmin();
       allow delete: if false;
+
+      // earningsLedger: the immutable source of truth behind
+      // availableCashKes/lifetimeEarningsKes above — server-written
+      // only, same discipline as walletTransactions.
+      match /earningsLedger/{entryId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+      }
     }
 
     match /customerProfiles/{uid} {
@@ -193,6 +201,30 @@ service cloud.firestore {
     // debugging, never client-written.
     match /domainEvents/{eventId} {
       allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // shipments: fulfillment record, distinct from orders.status (§12).
+    // Admin-only for now — no customer-facing web read of shipment
+    // status exists yet (tracking updates go out over WhatsApp).
+    match /shipments/{shipmentId} {
+      allow read: if isAdmin();
+      allow write: if false; // DeliveryService (Admin SDK) only
+    }
+
+    // referralLinks: a creator's own referral code (§8) — the owning
+    // creator can see their own link, never anyone else's.
+    match /referralLinks/{linkId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow write: if isAdmin(); // creator onboarding creates these server-side
+    }
+
+    // referralAttributions: the ledger proving why a commission was
+    // paid (§8) — server-written only, same discipline as walletTransactions.
+    match /referralAttributions/{attributionId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.creatorId == request.auth.uid);
       allow write: if false;
     }
   }
