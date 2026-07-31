@@ -1,5 +1,16 @@
 import type { LucideIcon } from 'lucide-react';
-import { Banknote, Boxes, ClipboardList, LayoutDashboard, Megaphone, Package, Share2, Truck, Users } from 'lucide-react';
+import {
+  Banknote,
+  Boxes,
+  ClipboardList,
+  LayoutDashboard,
+  Megaphone,
+  MessageCircle,
+  Package,
+  Share2,
+  Truck,
+  Users,
+} from 'lucide-react';
 
 /**
  * The Admin Portal's real navigation — every entry here has a real,
@@ -25,6 +36,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/referrals', label: 'Referrals', icon: Share2 },
   { href: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote },
   { href: '/admin/deliveries', label: 'Deliveries', icon: Truck },
+  { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle },
 ];
 
 /** `/admin` only matches its own page exactly; every other section also matches its own detail sub-routes (e.g. `/admin/orders/abc123`). */

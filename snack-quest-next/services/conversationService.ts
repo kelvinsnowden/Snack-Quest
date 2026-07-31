@@ -24,7 +24,9 @@ import {
 } from '@/lib/conversation/stateMachine';
 import type { WhatsAppGateway } from '@/lib/integrations/types';
 import type {
+  Conversation,
   ConversationStateBlob,
+  ConversationStatus,
   ConversationStep,
   DeliveryDetails,
   PickupStationCandidate,
@@ -110,6 +112,13 @@ export interface CatalogSelectionResult {
   conversationId: string;
   nextStep: ConversationStep;
   botReply: string;
+}
+
+export class ConversationNotFoundError extends Error {
+  constructor(conversationId: string) {
+    super(`Conversation ${conversationId} not found`);
+    this.name = 'ConversationNotFoundError';
+  }
 }
 
 class ConversationService {
@@ -810,6 +819,45 @@ class ConversationService {
       assignedAgentId: null,
       escalationReason: null,
     });
+  }
+
+  /**
+   * Admin: Conversation monitoring (§ Admin: Conversation monitoring)
+   * — the tenant-scoped, existence-checked entry points a staff-facing
+   * route calls, wrapping the bare `assignAgent`/`returnToBot` above
+   * (which trust their caller to have already resolved the right
+   * conversation, same as every other Repository-adjacent method in
+   * this Service).
+   */
+  async listConversations(
+    businessId: string,
+    options: { status?: ConversationStatus; cursor?: string } = {},
+  ): ReturnType<typeof conversationRepository.listByBusiness> {
+    return conversationRepository.listByBusiness(businessId, options);
+  }
+
+  async getConversation(businessId: string, conversationId: string): Promise<Conversation> {
+    const conversation = await conversationRepository.findById(conversationId);
+    if (!conversation || conversation.businessId !== businessId) {
+      throw new ConversationNotFoundError(conversationId);
+    }
+    return conversation;
+  }
+
+  async adminAssignAgent(businessId: string, conversationId: string, agentId: string): Promise<void> {
+    await this.getConversation(businessId, conversationId);
+    await this.assignAgent(conversationId, agentId);
+  }
+
+  async adminReturnToBot(businessId: string, conversationId: string): Promise<void> {
+    await this.getConversation(businessId, conversationId);
+    await this.returnToBot(conversationId);
+  }
+
+  /** A staff member replying to the customer directly (§ Admin: Conversation monitoring — the human agent queue's actual point). */
+  async sendAgentReply(businessId: string, conversationId: string, text: string): Promise<void> {
+    const conversation = await this.getConversation(businessId, conversationId);
+    await this.reply(businessId, conversationId, conversation.phoneNumber, text);
   }
 
   private async reply(
