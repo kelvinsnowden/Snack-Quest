@@ -142,6 +142,49 @@ class ConversationRepository {
     };
   }
 
+  /**
+   * The Human Sales Agent workspace's "My conversations" (§ Human Sales
+   * Agent workspace) — every conversation currently assigned to one
+   * agent, most-recently-active first. Distinct from `listByBusiness`'s
+   * `agent_assigned`-only status filter: an agent keeps a conversation
+   * assigned to themselves through pricing/payment/booking (see
+   * `ConversationService.priceDoorDelivery`, which sets
+   * `assignedAgentId` but moves `status` to `'active'`), so their
+   * worklist needs every status, not just the pre-claim one.
+   */
+  async listByAssignedAgent(
+    businessId: string,
+    agentId: string,
+    options: { status?: Conversation['status']; limit?: number; cursor?: string } = {},
+  ): Promise<{ conversations: { id: string; data: Conversation }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 25;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('assignedAgentId', '==', agentId) as FirebaseFirestore.Query;
+
+    if (options.status) {
+      query = query.where('status', '==', options.status);
+    }
+    query = query.orderBy('lastMessageAt', 'desc').limit(pageSize + 1);
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      conversations: docs.map((doc) => ({ id: doc.id, data: doc.data() as Conversation })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
+
   async updateStep(
     conversationId: string,
     step: ConversationStep,

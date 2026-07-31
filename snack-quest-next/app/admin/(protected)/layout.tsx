@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
@@ -21,6 +22,19 @@ export const metadata: Metadata = {
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireStaffSession();
+
+  // An agent-only account (no admin/super_admin role) has a focused
+  // workspace of its own now (§ Human Sales Agent workspace) — this
+  // full portal isn't built for them (Products, Inventory, Withdrawals,
+  // Settings, ...), so send them there instead of rendering it anyway.
+  // Roles without a dedicated workspace yet (warehouse, finance) still
+  // fall through to this portal, same as before.
+  const isAgentOnly =
+    session.roles.includes('agent') && !session.roles.some((role) => role === 'admin' || role === 'super_admin');
+  if (isAgentOnly) {
+    redirect('/agent');
+  }
+
   const business = await businessRepository.findById(session.businessId);
 
   return (

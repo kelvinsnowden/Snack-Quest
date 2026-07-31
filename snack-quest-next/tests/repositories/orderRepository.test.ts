@@ -58,6 +58,21 @@ describe('orderRepository.listByBusiness', () => {
   });
 });
 
+describe('orderRepository.findByConversationId', () => {
+  it('finds the order a given conversation resulted in, scoped to the business', async () => {
+    await seedOrder({ businessId: OTHER_BUSINESS_ID, conversationId: 'conv-shared' });
+    const match = await seedOrder({ businessId: BUSINESS_ID, conversationId: 'conv-1' });
+
+    const result = await orderRepository.findByConversationId(BUSINESS_ID, 'conv-1');
+
+    expect(result?.id).toBe(match);
+  });
+
+  it('returns null when no order exists for the conversation', async () => {
+    await expect(orderRepository.findByConversationId(BUSINESS_ID, 'does-not-exist')).resolves.toBeNull();
+  });
+});
+
 describe('orderRepository.searchByPhoneNumber', () => {
   it('finds an exact phone match scoped to the business', async () => {
     await seedOrder({ businessId: OTHER_BUSINESS_ID, customer: { customerId: null, phoneNumber: '254700000000', customerName: 'Other', county: 'Nairobi' } });

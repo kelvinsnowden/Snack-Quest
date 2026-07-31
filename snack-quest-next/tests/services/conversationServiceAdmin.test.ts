@@ -72,6 +72,69 @@ describe('ConversationService.adminAssignAgent / adminReturnToBot', () => {
   });
 });
 
+describe('ConversationService.adminPriceDoorDelivery', () => {
+  it('prices a door-delivery conversation awaiting agent pricing and sends the quote', async () => {
+    const gateway = mockGateway();
+    const service = new ConversationService(gateway);
+    const id = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000010' });
+    await conversationRepository.update(id, {
+      status: 'agent_assigned',
+      escalationReason: 'door_delivery_price_confirmation',
+      stateBlob: { deliveryMethod: 'door', packageLabel: 'Deluxe Box', priceKes: 3500 },
+    });
+
+    await service.adminPriceDoorDelivery(BUSINESS_ID, id, { agentId: 'staff-1', feeKes: 350 });
+
+    const conversation = await conversationRepository.findById(id);
+    expect(conversation?.status).toBe('active');
+    expect(conversation?.assignedAgentId).toBe('staff-1');
+    expect(conversation?.escalationReason).toBeNull();
+    expect(conversation?.currentStep).toBe('awaiting_customer_payment_confirmation');
+    expect(conversation?.stateBlob.deliveryFeeKes).toBe(350);
+    expect(gateway.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a conversation outside the business without pricing it', async () => {
+    const gateway = mockGateway();
+    const service = new ConversationService(gateway);
+    const id = await conversationRepository.create({ businessId: OTHER_BUSINESS_ID, phoneNumber: '254700000011' });
+    await conversationRepository.update(id, {
+      status: 'agent_assigned',
+      escalationReason: 'door_delivery_price_confirmation',
+      stateBlob: { deliveryMethod: 'door' },
+    });
+
+    await expect(
+      service.adminPriceDoorDelivery(BUSINESS_ID, id, { agentId: 'staff-1', feeKes: 350 }),
+    ).rejects.toBeInstanceOf(ConversationNotFoundError);
+    expect(gateway.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('propagates the underlying state error for a conversation not awaiting pricing', async () => {
+    const gateway = mockGateway();
+    const service = new ConversationService(gateway);
+    const id = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000012' });
+
+    await expect(
+      service.adminPriceDoorDelivery(BUSINESS_ID, id, { agentId: 'staff-1', feeKes: 350 }),
+    ).rejects.toThrow(/awaiting agent pricing/);
+  });
+});
+
+describe('ConversationService.listMyConversations', () => {
+  it('returns only conversations assigned to the given agent', async () => {
+    const service = new ConversationService(mockGateway());
+    const mine = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000013' });
+    await conversationRepository.update(mine, { assignedAgentId: 'staff-1', status: 'agent_assigned' });
+    const someoneElses = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000014' });
+    await conversationRepository.update(someoneElses, { assignedAgentId: 'staff-2', status: 'agent_assigned' });
+
+    const { conversations } = await service.listMyConversations(BUSINESS_ID, 'staff-1');
+
+    expect(conversations.map((c) => c.id)).toEqual([mine]);
+  });
+});
+
 describe('ConversationService.sendAgentReply', () => {
   it('sends through the gateway and appends the message to the transcript', async () => {
     const gateway = mockGateway();

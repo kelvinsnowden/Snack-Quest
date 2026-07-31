@@ -836,6 +836,15 @@ class ConversationService {
     return conversationRepository.listByBusiness(businessId, options);
   }
 
+  /** Human Sales Agent workspace (§ Human Sales Agent workspace) — one agent's own worklist, every status, not just the pre-claim `agent_assigned` one (see `ConversationRepository.listByAssignedAgent`). */
+  async listMyConversations(
+    businessId: string,
+    agentId: string,
+    options: { status?: ConversationStatus; cursor?: string } = {},
+  ): ReturnType<typeof conversationRepository.listByAssignedAgent> {
+    return conversationRepository.listByAssignedAgent(businessId, agentId, options);
+  }
+
   async getConversation(businessId: string, conversationId: string): Promise<Conversation> {
     const conversation = await conversationRepository.findById(conversationId);
     if (!conversation || conversation.businessId !== businessId) {
@@ -852,6 +861,24 @@ class ConversationService {
   async adminReturnToBot(businessId: string, conversationId: string): Promise<void> {
     await this.getConversation(businessId, conversationId);
     await this.returnToBot(conversationId);
+  }
+
+  /**
+   * The tenant-checked entry point a real staff-authenticated route
+   * calls (§ Human Sales Agent workspace — replaces the shared-secret
+   * `/api/internal/.../price-door-delivery` route's direct call to the
+   * bare `priceDoorDelivery` below, now that staff auth actually
+   * exists). Existence/tenant-checked the same way as
+   * `adminAssignAgent`/`adminReturnToBot`; `priceDoorDelivery` itself
+   * still does its own state/delivery-method validation.
+   */
+  async adminPriceDoorDelivery(
+    businessId: string,
+    conversationId: string,
+    input: { agentId: string; feeKes: number },
+  ): Promise<void> {
+    await this.getConversation(businessId, conversationId);
+    await this.priceDoorDelivery(conversationId, input);
   }
 
   /** A staff member replying to the customer directly (§ Admin: Conversation monitoring — the human agent queue's actual point). */

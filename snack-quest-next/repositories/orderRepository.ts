@@ -129,6 +129,21 @@ class OrderRepository {
     };
   }
 
+  /** The order (if any) a given conversation resulted in — how the Human Sales Agent workspace finds "what did paying this conversation actually create" (§ Human Sales Agent workspace), e.g. to locate its shipment for manual courier booking. */
+  async findByConversationId(businessId: string, conversationId: string): Promise<{ id: string; data: Order } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('conversationId', '==', conversationId)
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() as Order };
+  }
+
   /**
    * Exact-match search by the customer's WhatsApp number — the one
    * identifier every order always has (§ Admin: Orders "Search
