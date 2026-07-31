@@ -21,7 +21,15 @@ export class InvalidOnboardingInputError extends Error {
   }
 }
 
+export class InvalidProfileUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidProfileUpdateError';
+  }
+}
+
 const VALID_PAYMENT_PREFERENCES: PaymentPreference[] = ['mpesa', 'bank'];
+const PAYOUT_PHONE_PATTERN = /^254\d{9}$/;
 
 export interface CompleteOnboardingInput {
   bio: string;
@@ -43,6 +51,33 @@ function assertValid(input: CompleteOnboardingInput): void {
   }
   if (!VALID_PAYMENT_PREFERENCES.includes(input.paymentPreference)) {
     throw new InvalidOnboardingInputError('Payment preference must be "mpesa" or "bank"');
+  }
+}
+
+export interface UpdateProfileInput {
+  bio: string;
+  niche: string;
+  followersRange: string;
+  paymentPreference: PaymentPreference;
+  payoutPhoneNumber: string | null;
+  socialHandles: Record<string, string>;
+}
+
+function assertValidUpdate(input: UpdateProfileInput): void {
+  if (!input.bio.trim()) {
+    throw new InvalidProfileUpdateError('Bio is required');
+  }
+  if (!input.niche.trim()) {
+    throw new InvalidProfileUpdateError('Niche is required');
+  }
+  if (!input.followersRange.trim()) {
+    throw new InvalidProfileUpdateError('Follower range is required');
+  }
+  if (!VALID_PAYMENT_PREFERENCES.includes(input.paymentPreference)) {
+    throw new InvalidProfileUpdateError('Payment preference must be "mpesa" or "bank"');
+  }
+  if (input.payoutPhoneNumber !== null && !PAYOUT_PHONE_PATTERN.test(input.payoutPhoneNumber)) {
+    throw new InvalidProfileUpdateError('Payout phone must be E.164 without the leading "+", e.g. "254712345678".');
   }
 }
 
@@ -80,6 +115,25 @@ class CreatorProfileService {
     });
 
     await publishEvent(profile.businessId, 'CreatorOnboardingCompleted', 'creatorProfile', uid, {});
+  }
+
+  /** § Creator Portal profile management — editing after onboarding, unlike `completeOnboarding` this can be called any number of times. */
+  async updateProfile(uid: string, input: UpdateProfileInput): Promise<void> {
+    const profile = await creatorRepository.findById(uid);
+    if (!profile) {
+      throw new CreatorNotFoundError(uid);
+    }
+    assertValidUpdate(input);
+
+    await creatorRepository.update(uid, {
+      bio: input.bio.trim(),
+      niche: input.niche.trim(),
+      followersRange: input.followersRange.trim(),
+      paymentPreference: input.paymentPreference,
+      payoutPhoneNumber: input.payoutPhoneNumber,
+      socialHandles: input.socialHandles,
+      updatedBy: uid,
+    });
   }
 }
 

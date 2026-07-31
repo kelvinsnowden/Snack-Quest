@@ -249,6 +249,15 @@ class WithdrawalService {
     return withdrawalRepository.listByBusiness(businessId, options);
   }
 
+  /** § Creator Portal withdrawals — a creator's own request history. */
+  async listWithdrawalsForOwner(
+    businessId: string,
+    ownerId: string,
+    options: { cursor?: string } = {},
+  ): Promise<{ withdrawals: { id: string; data: Withdrawal }[]; nextCursor: string | null }> {
+    return withdrawalRepository.listByOwner(businessId, ownerId, options);
+  }
+
   private async requirePending(businessId: string, withdrawalId: string, action: string): Promise<Withdrawal> {
     const withdrawal = await withdrawalRepository.findById(businessId, withdrawalId);
     if (!withdrawal) {

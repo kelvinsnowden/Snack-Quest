@@ -20,6 +20,8 @@ export interface CreatorProfile extends AuditFields {
   niche: string;
   followersRange: string;
   paymentPreference: PaymentPreference;
+  /** § Creator Portal payout details — a saved default M-Pesa number for withdrawal requests, so a creator doesn't retype it every time. Optional: a withdrawal request can still supply its own number when this is unset. */
+  payoutPhoneNumber: string | null;
   socialHandles: Record<string, string>;
   onboardingCompleted: boolean;
   status: CreatorStatus;

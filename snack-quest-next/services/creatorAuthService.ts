@@ -124,6 +124,7 @@ class CreatorAuthService {
       niche: '',
       followersRange: '',
       paymentPreference: 'mpesa',
+      payoutPhoneNumber: null,
       socialHandles: {},
       onboardingCompleted: false,
       status: 'pending',

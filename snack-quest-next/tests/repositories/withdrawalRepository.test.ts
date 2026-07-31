@@ -102,3 +102,16 @@ describe('withdrawalRepository.listByBusiness', () => {
     expect(paidOnly.withdrawals.map((w) => w.id)).toEqual([second]);
   });
 });
+
+describe('withdrawalRepository.listByOwner', () => {
+  it('lists only the given owner’s withdrawals within the business', async () => {
+    await seed({ ownerId: 'creator-1' });
+    await seed({ ownerId: 'creator-2' });
+    await seed({ businessId: OTHER_BUSINESS_ID, ownerId: 'creator-1' });
+
+    const { withdrawals } = await withdrawalRepository.listByOwner(BUSINESS_ID, 'creator-1');
+
+    expect(withdrawals).toHaveLength(1);
+    expect(withdrawals[0].data.ownerId).toBe('creator-1');
+  });
+});

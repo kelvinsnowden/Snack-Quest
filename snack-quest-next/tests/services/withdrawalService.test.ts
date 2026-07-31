@@ -142,6 +142,32 @@ describe('WithdrawalService.requestWithdrawal', () => {
   });
 });
 
+describe('WithdrawalService.listWithdrawalsForOwner', () => {
+  it('returns only the given owner’s own withdrawal history', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-2', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await withdrawalService.requestWithdrawal({
+      businessId: BUSINESS_ID,
+      ownerId: 'creator-1',
+      ownerType: 'creator',
+      amountKes: 100,
+      phoneNumber: '254712345678',
+    });
+    await withdrawalService.requestWithdrawal({
+      businessId: BUSINESS_ID,
+      ownerId: 'creator-2',
+      ownerType: 'creator',
+      amountKes: 100,
+      phoneNumber: '254712345678',
+    });
+
+    const { withdrawals } = await withdrawalService.listWithdrawalsForOwner(BUSINESS_ID, 'creator-1');
+
+    expect(withdrawals).toHaveLength(1);
+    expect(withdrawals[0].data.ownerId).toBe('creator-1');
+  });
+});
+
 describe('WithdrawalService.approveWithdrawal', () => {
   it('initiates a real B2C payout and stores the correlation ids', async () => {
     await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });

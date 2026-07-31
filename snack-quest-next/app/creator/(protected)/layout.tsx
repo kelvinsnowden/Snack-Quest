@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: '/creator/referrals', label: 'Referrals' },
   { href: '/creator/campaigns', label: 'Campaigns' },
   { href: '/creator/earnings', label: 'Earnings' },
+  { href: '/creator/withdrawals', label: 'Withdrawals' },
 ];
 
 /**

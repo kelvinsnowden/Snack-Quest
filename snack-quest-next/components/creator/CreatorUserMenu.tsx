@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { LogOut, UserCog } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -51,6 +52,12 @@ export function CreatorUserMenu({ displayName, email }: { displayName: string; e
           <span className="text-sm font-medium text-foreground">{displayName}</span>
           <span className="truncate text-xs font-normal text-muted-foreground">{email}</span>
         </DropdownMenuLabel>
+        <DropdownMenuItem asChild>
+          <Link href="/creator/profile">
+            <UserCog aria-hidden="true" />
+            Edit profile
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="danger" onSelect={handleLogout} disabled={isPending}>
           <LogOut aria-hidden="true" />

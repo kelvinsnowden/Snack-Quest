@@ -106,6 +106,37 @@ class WithdrawalRepository {
     });
   }
 
+  /** § Creator Portal withdrawals — a creator's own request history, newest first. */
+  async listByOwner(
+    businessId: string,
+    ownerId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ withdrawals: { id: string; data: Withdrawal }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 25;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('ownerId', '==', ownerId)
+      .orderBy('createdAt', 'desc')
+      .limit(pageSize + 1) as FirebaseFirestore.Query;
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      withdrawals: docs.map((doc) => ({ id: doc.id, data: doc.data() as Withdrawal })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
+
   async listByBusiness(
     businessId: string,
     options: { status?: WithdrawalStatus; limit?: number; cursor?: string } = {},

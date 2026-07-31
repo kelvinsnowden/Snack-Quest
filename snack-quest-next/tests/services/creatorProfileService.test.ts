@@ -4,6 +4,7 @@ import { creatorRepository } from '@/repositories/creatorRepository';
 import {
   creatorProfileService,
   InvalidOnboardingInputError,
+  InvalidProfileUpdateError,
   OnboardingAlreadyCompletedError,
 } from '@/services/creatorProfileService';
 import { CreatorNotFoundError } from '@/services/creatorDashboardService';
@@ -25,6 +26,7 @@ async function seedPendingCreator(overrides: Partial<Parameters<typeof creatorRe
     niche: '',
     followersRange: '',
     paymentPreference: 'mpesa',
+    payoutPhoneNumber: null,
     socialHandles: {},
     onboardingCompleted: false,
     status: 'pending',
@@ -114,5 +116,81 @@ describe('CreatorProfileService.completeOnboarding', () => {
         socialHandles: {},
       }),
     ).rejects.toBeInstanceOf(OnboardingAlreadyCompletedError);
+  });
+});
+
+describe('CreatorProfileService.updateProfile', () => {
+  it('throws for a uid with no creator profile', async () => {
+    await expect(
+      creatorProfileService.updateProfile('no-such-creator', {
+        bio: 'Bio',
+        niche: 'Food',
+        followersRange: '1k-5k',
+        paymentPreference: 'mpesa',
+        payoutPhoneNumber: null,
+        socialHandles: {},
+      }),
+    ).rejects.toBeInstanceOf(CreatorNotFoundError);
+  });
+
+  it('rejects an invalid payout phone number', async () => {
+    await seedPendingCreator({ onboardingCompleted: true });
+
+    await expect(
+      creatorProfileService.updateProfile(UID, {
+        bio: 'Bio',
+        niche: 'Food',
+        followersRange: '1k-5k',
+        paymentPreference: 'mpesa',
+        payoutPhoneNumber: '0712345678',
+        socialHandles: {},
+      }),
+    ).rejects.toBeInstanceOf(InvalidProfileUpdateError);
+  });
+
+  it('updates the profile fields, including a valid payout phone number', async () => {
+    await seedPendingCreator({ onboardingCompleted: true });
+
+    await creatorProfileService.updateProfile(UID, {
+      bio: 'Updated bio',
+      niche: 'Beauty',
+      followersRange: '20,000–100,000',
+      paymentPreference: 'mpesa',
+      payoutPhoneNumber: '254712345678',
+      socialHandles: { tiktok: '@amina.tt' },
+    });
+
+    const profile = await creatorRepository.findById(UID);
+    expect(profile).toMatchObject({
+      bio: 'Updated bio',
+      niche: 'Beauty',
+      followersRange: '20,000–100,000',
+      payoutPhoneNumber: '254712345678',
+      socialHandles: { tiktok: '@amina.tt' },
+    });
+  });
+
+  it('can be called more than once, unlike completeOnboarding', async () => {
+    await seedPendingCreator({ onboardingCompleted: true });
+
+    await creatorProfileService.updateProfile(UID, {
+      bio: 'First edit',
+      niche: 'Food',
+      followersRange: '1k-5k',
+      paymentPreference: 'mpesa',
+      payoutPhoneNumber: null,
+      socialHandles: {},
+    });
+    await creatorProfileService.updateProfile(UID, {
+      bio: 'Second edit',
+      niche: 'Food',
+      followersRange: '1k-5k',
+      paymentPreference: 'mpesa',
+      payoutPhoneNumber: null,
+      socialHandles: {},
+    });
+
+    const profile = await creatorRepository.findById(UID);
+    expect(profile?.bio).toBe('Second edit');
   });
 });

@@ -14,6 +14,7 @@ export async function seedCreator(uid: string, overrides: Partial<CreatorProfile
     niche: '',
     followersRange: '',
     paymentPreference: 'mpesa',
+    payoutPhoneNumber: null,
     socialHandles: {},
     onboardingCompleted: true,
     status: 'pending',
