@@ -52,6 +52,18 @@ class BusinessRepository {
         deletedAt: null,
       });
   }
+
+  /** § Admin: Settings — a partial edit to the tenant's own config (name, currency, WhatsApp routing, county coverage, admin alert number, status). */
+  async update(id: string, patch: Partial<BusinessInput>, actor: string): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(id)
+      .update({
+        ...patch,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor,
+      });
+  }
 }
 
 export const businessRepository = new BusinessRepository();

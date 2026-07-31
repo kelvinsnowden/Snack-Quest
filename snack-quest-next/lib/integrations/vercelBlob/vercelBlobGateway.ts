@@ -1,8 +1,8 @@
 import 'server-only';
 
-import { put, del, head, BlobNotFoundError } from '@vercel/blob';
+import { put, del, head, list, BlobNotFoundError } from '@vercel/blob';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
-import type { StorageGateway, StorageObjectMetadata } from '../types';
+import type { StorageGateway, StorageListPage, StorageObjectMetadata } from '../types';
 
 const GATEWAY_NAME = 'vercelBlob';
 
@@ -90,6 +90,27 @@ class VercelBlobGateway implements StorageGateway {
         pathname: result.pathname,
         contentType: result.contentType,
         size: result.size,
+      };
+    });
+  }
+
+  async listFiles(input: { prefix: string; cursor?: string; limit?: number }): Promise<StorageListPage> {
+    const token = this.requireToken();
+    return withCircuitBreaker(GATEWAY_NAME, async () => {
+      const result = await list({
+        prefix: input.prefix,
+        cursor: input.cursor,
+        limit: input.limit ?? 50,
+        token,
+      });
+      return {
+        objects: result.blobs.map((blob) => ({
+          url: blob.url,
+          pathname: blob.pathname,
+          size: blob.size,
+          uploadedAt: blob.uploadedAt.toISOString(),
+        })),
+        cursor: result.hasMore ? result.cursor ?? null : null,
       };
     });
   }

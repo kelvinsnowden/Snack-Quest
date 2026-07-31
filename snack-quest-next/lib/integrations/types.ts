@@ -314,6 +314,25 @@ export interface StorageObjectMetadata {
  * becomes part of the object's *path* for tenant organization, which
  * is a naming concern, not a credentials one.
  */
+/**
+ * What Vercel Blob's `list()` actually returns per object — deliberately
+ * NOT `StorageObjectMetadata`: `list()` never reports a content type (only
+ * `head()`/`put()` do), so claiming one here would be fabricated, not
+ * read from the provider. `uploadedAt` is real, `list()`-reported data
+ * `head()`/`uploadFile()` don't return.
+ */
+export interface StorageListObject {
+  url: string;
+  pathname: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface StorageListPage {
+  objects: StorageListObject[];
+  cursor: string | null;
+}
+
 export interface StorageGateway {
   uploadFile(input: {
     pathname: string;
@@ -324,4 +343,6 @@ export interface StorageGateway {
   }): Promise<StorageObjectMetadata>;
   deleteFile(url: string): Promise<void>;
   getMetadata(url: string): Promise<StorageObjectMetadata>;
+  /** Lists objects under a pathname prefix (§ Admin: Storage browser) — the pathname convention `services/storageService.ts` builds (`{directory}/{businessId}/...`) is what makes a prefix listing tenant- and directory-scoped. */
+  listFiles(input: { prefix: string; cursor?: string; limit?: number }): Promise<StorageListPage>;
 }

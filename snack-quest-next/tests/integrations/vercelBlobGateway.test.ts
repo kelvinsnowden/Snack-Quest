@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * exported functions directly is the right boundary here, not
  * reverse-engineering its wire protocol.
  */
-const { putMock, delMock, headMock, FakeBlobNotFoundError } = vi.hoisted(() => ({
+const { putMock, delMock, headMock, listMock, FakeBlobNotFoundError } = vi.hoisted(() => ({
   putMock: vi.fn(),
   delMock: vi.fn(),
   headMock: vi.fn(),
+  listMock: vi.fn(),
   FakeBlobNotFoundError: class FakeBlobNotFoundError extends Error {},
 }));
 
@@ -18,6 +19,7 @@ vi.mock('@vercel/blob', () => ({
   put: putMock,
   del: delMock,
   head: headMock,
+  list: listMock,
   BlobNotFoundError: FakeBlobNotFoundError,
 }));
 
@@ -33,6 +35,7 @@ describe('VercelBlobGateway', () => {
     putMock.mockReset();
     delMock.mockReset();
     headMock.mockReset();
+    listMock.mockReset();
   });
 
   afterEach(() => {
@@ -142,6 +145,49 @@ describe('VercelBlobGateway', () => {
       await expect(
         gateway.deleteFile('https://store.public.blob.vercel-storage.com/snacks/biz-1/photo.jpg'),
       ).rejects.toThrow(/network error/);
+    });
+  });
+
+  describe('listFiles', () => {
+    it('lists by prefix and maps blobs to StorageListObject', async () => {
+      const uploadedAt = new Date('2026-01-15T00:00:00.000Z');
+      listMock.mockResolvedValue({
+        blobs: [
+          {
+            url: 'https://store.public.blob.vercel-storage.com/snacks/biz-1/a.png',
+            pathname: 'snacks/biz-1/a.png',
+            size: 100,
+            uploadedAt,
+          },
+        ],
+        cursor: undefined,
+        hasMore: false,
+      });
+
+      const result = await gateway.listFiles({ prefix: 'snacks/biz-1/' });
+
+      expect(listMock).toHaveBeenCalledWith(
+        expect.objectContaining({ prefix: 'snacks/biz-1/', token: 'test-blob-token' }),
+      );
+      expect(result).toEqual({
+        objects: [
+          {
+            url: 'https://store.public.blob.vercel-storage.com/snacks/biz-1/a.png',
+            pathname: 'snacks/biz-1/a.png',
+            size: 100,
+            uploadedAt: uploadedAt.toISOString(),
+          },
+        ],
+        cursor: null,
+      });
+    });
+
+    it('returns a cursor only when there are more results', async () => {
+      listMock.mockResolvedValue({ blobs: [], cursor: 'next-page', hasMore: true });
+
+      const result = await gateway.listFiles({ prefix: 'snacks/biz-1/' });
+
+      expect(result.cursor).toBe('next-page');
     });
   });
 

@@ -1,6 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
 import { packageRepository, type PackageInput } from '@/repositories/packageRepository';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 interface UpdateProductBody {
   name?: unknown;
@@ -102,6 +103,15 @@ export async function PATCH(
   try {
     await productService.updateProduct(session.businessId, packageId, result.patch, session.uid);
     const updated = await packageRepository.findById(session.businessId, packageId);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'product.update',
+      entityType: 'package',
+      entityId: packageId,
+      before: existing as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+    });
     return Response.json({ product: updated });
   } catch (error) {
     return Response.json(

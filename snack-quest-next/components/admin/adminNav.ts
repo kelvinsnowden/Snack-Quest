@@ -4,10 +4,13 @@ import {
   BarChart3,
   Boxes,
   ClipboardList,
+  FolderOpen,
   LayoutDashboard,
   Megaphone,
   MessageCircle,
   Package,
+  ScrollText,
+  Settings,
   Share2,
   Truck,
   Users,
@@ -39,6 +42,9 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote },
   { href: '/admin/deliveries', label: 'Deliveries', icon: Truck },
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle },
+  { href: '/admin/storage', label: 'Storage', icon: FolderOpen },
+  { href: '/admin/audit-logs', label: 'Audit logs', icon: ScrollText },
+  { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
 /** `/admin` only matches its own page exactly; every other section also matches its own detail sub-routes (e.g. `/admin/orders/abc123`). */

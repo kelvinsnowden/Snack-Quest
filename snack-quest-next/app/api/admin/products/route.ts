@@ -1,5 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 interface CreateProductBody {
   name?: unknown;
@@ -68,20 +69,27 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(validationError, { status: 400 });
   }
 
-  const packageId = await productService.createProduct(
-    {
-      businessId: session.businessId,
-      name: (body.name as string).trim(),
-      description: (body.description as string).trim(),
-      priceKes: body.priceKes as number,
-      isActive: (body.isActive as boolean | undefined) ?? true,
-      imageUrl: (body.imageUrl as string | null | undefined) ?? null,
-      // Omitted entirely (not `undefined`) when unset — Firestore rejects an explicit `undefined` field value.
-      ...(typeof body.stockCount === 'number' ? { stockCount: body.stockCount } : {}),
-      ...(typeof body.lowStockThreshold === 'number' ? { lowStockThreshold: body.lowStockThreshold } : {}),
-    },
-    session.uid,
-  );
+  const productInput = {
+    businessId: session.businessId,
+    name: (body.name as string).trim(),
+    description: (body.description as string).trim(),
+    priceKes: body.priceKes as number,
+    isActive: (body.isActive as boolean | undefined) ?? true,
+    imageUrl: (body.imageUrl as string | null | undefined) ?? null,
+    // Omitted entirely (not `undefined`) when unset — Firestore rejects an explicit `undefined` field value.
+    ...(typeof body.stockCount === 'number' ? { stockCount: body.stockCount } : {}),
+    ...(typeof body.lowStockThreshold === 'number' ? { lowStockThreshold: body.lowStockThreshold } : {}),
+  };
+  const packageId = await productService.createProduct(productInput, session.uid);
+
+  await recordAuditLog(request, {
+    businessId: session.businessId,
+    actorId: session.uid,
+    action: 'product.create',
+    entityType: 'package',
+    entityId: packageId,
+    after: productInput,
+  });
 
   return Response.json({ packageId }, { status: 201 });
 }

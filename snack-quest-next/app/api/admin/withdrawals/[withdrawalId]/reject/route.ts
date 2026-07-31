@@ -4,6 +4,7 @@ import {
   WithdrawalNotFoundError,
   InvalidWithdrawalTransitionError,
 } from '@/services/withdrawalService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /** Rejects a pending withdrawal and refunds the reserved balance (§ Admin: Withdrawals). Requires a reason — this is a real financial decision an owner will see. */
 export async function POST(
@@ -31,6 +32,14 @@ export async function POST(
 
   try {
     await withdrawalService.rejectWithdrawal(session.businessId, withdrawalId, session.uid, reason.trim());
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'withdrawal.reject',
+      entityType: 'withdrawal',
+      entityId: withdrawalId,
+      after: { status: 'rejected', reason: reason.trim() },
+    });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof WithdrawalNotFoundError) {

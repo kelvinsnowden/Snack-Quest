@@ -4,6 +4,7 @@ import {
   WithdrawalNotFoundError,
   InvalidWithdrawalTransitionError,
 } from '@/services/withdrawalService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * Approves a pending withdrawal and immediately triggers the real
@@ -25,6 +26,14 @@ export async function POST(
 
   try {
     const status = await withdrawalService.approveWithdrawal(session.businessId, withdrawalId, session.uid);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'withdrawal.approve',
+      entityType: 'withdrawal',
+      entityId: withdrawalId,
+      after: { status },
+    });
     return Response.json({ status });
   } catch (error) {
     if (error instanceof WithdrawalNotFoundError) {

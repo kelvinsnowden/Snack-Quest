@@ -7,7 +7,7 @@ import {
   type StorageDirectory,
 } from '@/lib/storage/policies';
 import { StorageUploadError, StorageValidationError } from '@/lib/storage/errors';
-import type { StorageGateway } from '@/lib/integrations/types';
+import type { StorageGateway, StorageListPage } from '@/lib/integrations/types';
 
 /**
  * The single storage abstraction the rest of the app talks to (§
@@ -186,6 +186,19 @@ class StorageService {
   async generatePublicUrl(urlOrPathname: string): Promise<string> {
     const metadata = await this.gateway.getMetadata(urlOrPathname);
     return metadata.url;
+  }
+
+  /** § Admin: Storage browser — lists what's actually in a business's directory, scoped by the same `{directory}/{businessId}/` prefix `buildPathname()` uploads under. */
+  async listFiles(
+    businessId: string,
+    directory: StorageDirectory,
+    options: { cursor?: string; limit?: number } = {},
+  ): Promise<StorageListPage> {
+    return this.gateway.listFiles({
+      prefix: `${directory}/${businessId}/`,
+      cursor: options.cursor,
+      limit: options.limit,
+    });
   }
 }
 

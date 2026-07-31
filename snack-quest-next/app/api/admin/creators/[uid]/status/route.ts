@@ -1,5 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { creatorAdminService, CreatorNotFoundError, InvalidCreatorTransitionError } from '@/services/creatorAdminService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { CreatorStatus } from '@/types';
 
 const VALID_STATUSES: CreatorStatus[] = ['pending', 'active', 'suspended'];
@@ -30,6 +31,14 @@ export async function POST(
 
   try {
     await creatorAdminService.updateStatus(session.businessId, uid, status as CreatorStatus, session.uid);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'creator.status_update',
+      entityType: 'creatorProfile',
+      entityId: uid,
+      after: { status },
+    });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof CreatorNotFoundError) {

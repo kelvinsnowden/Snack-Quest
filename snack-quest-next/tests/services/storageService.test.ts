@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { StorageService } from '@/services/storageService';
 import { StorageUploadError, StorageValidationError } from '@/lib/storage/errors';
-import type { StorageGateway, StorageObjectMetadata } from '@/lib/integrations/types';
+import type { StorageGateway, StorageListPage, StorageObjectMetadata } from '@/lib/integrations/types';
 
 /** A minimal 4-byte PNG signature followed by junk — enough to pass the magic-byte sniff without being a real image. */
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -19,6 +19,7 @@ function fakeGateway(overrides: Partial<StorageGateway> = {}): StorageGateway {
     uploadFile: vi.fn().mockResolvedValue(defaultResult),
     deleteFile: vi.fn().mockResolvedValue(undefined),
     getMetadata: vi.fn().mockResolvedValue(defaultResult),
+    listFiles: vi.fn().mockResolvedValue({ objects: [], cursor: null } satisfies StorageListPage),
     ...overrides,
   };
 }
@@ -232,6 +233,34 @@ describe('StorageService.deleteFile', () => {
     await expect(
       service.deleteFile('https://store.public.blob.vercel-storage.com/snacks/biz-1/x.png'),
     ).rejects.toBeInstanceOf(StorageUploadError);
+  });
+});
+
+describe('StorageService.listFiles', () => {
+  it('lists scoped to the businessId + directory prefix the upload path uses', async () => {
+    const gateway = fakeGateway({
+      listFiles: vi.fn().mockResolvedValue({
+        objects: [
+          { url: 'https://x/snacks/biz-1/a.png', pathname: 'snacks/biz-1/a.png', size: 10, uploadedAt: '2026-01-15T00:00:00.000Z' },
+        ],
+        cursor: null,
+      } satisfies StorageListPage),
+    });
+    const service = new StorageService(gateway);
+
+    const result = await service.listFiles('biz-1', 'snacks');
+
+    expect(gateway.listFiles).toHaveBeenCalledWith({ prefix: 'snacks/biz-1/', cursor: undefined, limit: undefined });
+    expect(result.objects).toHaveLength(1);
+  });
+
+  it('passes cursor/limit through', async () => {
+    const gateway = fakeGateway();
+    const service = new StorageService(gateway);
+
+    await service.listFiles('biz-1', 'documents', { cursor: 'page-2', limit: 10 });
+
+    expect(gateway.listFiles).toHaveBeenCalledWith({ prefix: 'documents/biz-1/', cursor: 'page-2', limit: 10 });
   });
 });
 
