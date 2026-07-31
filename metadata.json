@@ -1,6 +1,0 @@
-{
-  "name": "Snack Quest Operating System",
-  "description": "Enterprise internal operating platform foundation for Snack Quest",
-  "requestFramePermissions": ["camera", "geolocation"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
