@@ -2,6 +2,7 @@ import 'server-only';
 
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { withWebhookSecret } from '@/lib/webhooks/webhookSecret';
+import { assertIntegrationEnabled } from '../shared/assertEnabled';
 import type { DarajaIntegrationSecret } from '@/types';
 
 /**
@@ -81,6 +82,7 @@ function toBaseUrl(secret: DarajaIntegrationSecret): string {
 
 export async function getDarajaConfig(businessId: string): Promise<DarajaConfig> {
   const secret = await businessIntegrationSecretRepository.get(businessId, 'daraja');
+  assertIntegrationEnabled(businessId, 'daraja', secret);
   return {
     consumerKey: secret.consumerKey,
     consumerSecret: secret.consumerSecret,
@@ -93,6 +95,7 @@ export async function getDarajaConfig(businessId: string): Promise<DarajaConfig>
 
 export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CConfig> {
   const secret = await businessIntegrationSecretRepository.get(businessId, 'daraja');
+  assertIntegrationEnabled(businessId, 'daraja', secret);
   if (!secret.b2cInitiatorName || !secret.b2cSecurityCredential) {
     throw new DarajaB2CNotConfiguredError(businessId);
   }
@@ -112,6 +115,7 @@ export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CC
 
 export async function getDarajaReversalConfig(businessId: string): Promise<DarajaReversalConfig> {
   const secret = await businessIntegrationSecretRepository.get(businessId, 'daraja');
+  assertIntegrationEnabled(businessId, 'daraja', secret);
   if (!secret.b2cInitiatorName || !secret.b2cSecurityCredential) {
     throw new DarajaReversalNotConfiguredError(businessId);
   }

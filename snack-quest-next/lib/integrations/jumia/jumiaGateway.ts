@@ -104,3 +104,21 @@ class JumiaGateway implements CourierGateway {
 }
 
 export const jumiaGateway: CourierGateway = new JumiaGateway();
+
+/**
+ * "Test Connection" (§ Integration Portal) — `GET {baseUrl}/merchants/{merchantId}`
+ * is a standard courier-API shape (fetch your own merchant profile),
+ * modeled the same honest, disclosed-but-unverified way as the rest of
+ * this Gateway (see the class-level doc comment). Read-only: never
+ * creates a shipment.
+ */
+export async function testJumiaConnection(businessId: string): Promise<void> {
+  const config = await getJumiaConfig(businessId);
+  const response = await fetch(`${config.baseUrl}/merchants/${config.merchantId}`, {
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Jumia connection test failed: ${response.status} ${body}`);
+  }
+}

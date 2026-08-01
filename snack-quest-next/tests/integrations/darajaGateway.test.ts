@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   darajaGateway,
   resetDarajaTokenCache,
+  testDarajaConnection,
 } from '@/lib/integrations/daraja/darajaGateway';
 import { IntegrationSecretNotFoundError } from '@/repositories/businessIntegrationSecretRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
@@ -536,5 +537,72 @@ describe('DarajaGateway.verifyReversalResult', () => {
     expect(() => darajaGateway.verifyReversalResult({ unexpected: true })).toThrow(
       /Malformed Daraja reversal result/,
     );
+  });
+});
+
+describe('testDarajaConnection', () => {
+  beforeEach(() => {
+    resetDarajaTokenCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves when Daraja accepts the OAuth credentials', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ access_token: 'tok-1', expires_in: '3599' }), { status: 200 }),
+      ),
+    );
+
+    await expect(testDarajaConnection(BUSINESS_ID)).resolves.toBeUndefined();
+  });
+
+  it('throws when Daraja rejects the OAuth credentials', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    // withRetry retries a thrown failure — a fresh Response per call,
+    // since a single Response instance's body can only be read once.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response('Bad credentials', { status: 401 }))));
+
+    await expect(testDarajaConnection(BUSINESS_ID)).rejects.toThrow(/Daraja OAuth failed/);
+  });
+
+  it('bypasses a cached token so the test always reflects the current credentials', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/oauth/v1/generate')) {
+        return Promise.resolve(new Response(JSON.stringify({ access_token: 'tok-1', expires_in: '3599' }), { status: 200 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ResponseCode: '0',
+            ResponseDescription: 'Success',
+            MerchantRequestID: 'm-1',
+            CheckoutRequestID: 'c-1',
+            CustomerMessage: 'Success',
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Prime the cache via a normal call, then test again — a second
+    // live OAuth request must still happen.
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 100,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'test',
+    });
+    await testDarajaConnection(BUSINESS_ID);
+
+    const oauthCalls = fetchMock.mock.calls.filter((call: unknown[]) => String(call[0]).includes('/oauth/v1/generate'));
+    expect(oauthCalls.length).toBe(2);
   });
 });

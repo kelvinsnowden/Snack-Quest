@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import { assertIntegrationEnabled } from '../shared/assertEnabled';
 
 export interface WhatchimpConfig {
   apiKey: string;
@@ -11,6 +12,7 @@ export interface WhatchimpConfig {
 
 export async function getWhatchimpConfig(businessId: string): Promise<WhatchimpConfig> {
   const secret = await businessIntegrationSecretRepository.get(businessId, 'whatchimp');
+  assertIntegrationEnabled(businessId, 'whatchimp', secret);
   return {
     apiKey: secret.apiKey,
     phoneNumberId: secret.phoneNumberId,

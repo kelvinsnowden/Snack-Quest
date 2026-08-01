@@ -30,9 +30,10 @@ export function resetDarajaTokenCache(): void {
 async function fetchAccessToken(
   businessId: string,
   config: Pick<DarajaConfig, 'consumerKey' | 'consumerSecret' | 'baseUrl'>,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<string> {
   const cached = tokenCache.get(businessId);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) {
     return cached.value;
   }
 
@@ -67,6 +68,18 @@ async function fetchAccessToken(
   };
   tokenCache.set(businessId, entry);
   return entry.value;
+}
+
+/**
+ * "Test Connection" (§ Integration Portal) — real, side-effect-free:
+ * the OAuth token fetch above is the one Daraja call with no
+ * transactional consequence, so this forces a fresh (non-cached)
+ * attempt and reports success/failure. Never initiates an STK push,
+ * B2C payout, or reversal — those all move real money.
+ */
+export async function testDarajaConnection(businessId: string): Promise<void> {
+  const config = await getDarajaConfig(businessId);
+  await fetchAccessToken(businessId, config, { forceRefresh: true });
 }
 
 function buildPassword(config: DarajaConfig, timestamp: string): string {

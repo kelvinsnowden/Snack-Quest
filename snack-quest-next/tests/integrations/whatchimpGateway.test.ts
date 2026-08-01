@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
+import { whatchimpGateway, testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { CatalogNotConfiguredError } from '@/lib/integrations/whatchimp/config';
 import { IntegrationSecretNotFoundError } from '@/repositories/businessIntegrationSecretRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
@@ -450,5 +450,29 @@ describe('WhatchimpGateway.sendCatalogMessage / assignHumanAgent / updateConvers
     expect(String(url)).toContain('/1234567890/conversations/254700000000/status');
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.status).toBe('resolved');
+  });
+});
+
+describe('testWhatchimpConnection', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves on a successful phone number lookup', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: '1234567890' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(testWhatchimpConnection(BUSINESS_ID)).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/1234567890');
+    expect((init as RequestInit).method).toBeUndefined(); // default GET, never mutates
+  });
+
+  it('throws on a failed lookup', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 })));
+
+    await expect(testWhatchimpConnection(BUSINESS_ID)).rejects.toThrow(/Whatchimp connection test failed/);
   });
 });

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import { assertIntegrationEnabled } from '../shared/assertEnabled';
 
 export interface MetaConfig {
   pixelId: string;
@@ -10,6 +11,7 @@ export interface MetaConfig {
 
 export async function getMetaConfig(businessId: string): Promise<MetaConfig> {
   const secret = await businessIntegrationSecretRepository.get(businessId, 'meta');
+  assertIntegrationEnabled(businessId, 'meta', secret);
   return {
     pixelId: secret.pixelId,
     accessToken: secret.accessToken,

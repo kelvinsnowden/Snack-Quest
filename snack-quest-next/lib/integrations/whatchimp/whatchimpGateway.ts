@@ -439,3 +439,23 @@ class WhatchimpGateway implements WhatsAppGateway, ProductCatalogGateway {
 }
 
 export const whatchimpGateway: WhatsAppGateway & ProductCatalogGateway = new WhatchimpGateway();
+
+/**
+ * "Test Connection" (§ Integration Portal) — `GET {baseUrl}/{phoneNumberId}`
+ * is the real, public, side-effect-free Meta Cloud API call for fetching
+ * a phone number's own metadata; every other real-endpoint method in
+ * this file is already modeled on the same real Meta Cloud API shape
+ * (see the class-level doc comment), so this extends that same
+ * disclosed, honest methodology rather than fabricating a new one. It
+ * never sends a message, so no customer or catalog is ever touched.
+ */
+export async function testWhatchimpConnection(businessId: string): Promise<void> {
+  const config = await getWhatchimpConfig(businessId);
+  const response = await fetch(`${config.baseUrl}/${config.phoneNumberId}`, {
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Whatchimp connection test failed: ${response.status} ${body}`);
+  }
+}

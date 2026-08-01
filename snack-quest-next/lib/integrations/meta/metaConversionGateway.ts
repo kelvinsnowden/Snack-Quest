@@ -70,3 +70,22 @@ class MetaConversionGateway implements ConversionGateway {
 }
 
 export const metaConversionGateway: ConversionGateway = new MetaConversionGateway();
+
+/**
+ * "Test Connection" (§ Integration Portal) — `GET /{pixel-id}?fields=id`
+ * is the real, public, documented Meta Graph API way to validate an
+ * access token against a specific Pixel ID with no side effects, unlike
+ * `sendEvent` above (which dispatches a real, permanent conversion
+ * event). Real API, unlike Whatchimp/Jumia's honest "modeled, not
+ * verified" caveat — see this file's own class-level comment.
+ */
+export async function testMetaConnection(businessId: string): Promise<void> {
+  const config = await getMetaConfig(businessId);
+  const response = await fetch(
+    `https://graph.facebook.com/${config.apiVersion}/${config.pixelId}?fields=id&access_token=${encodeURIComponent(config.accessToken)}`,
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Meta connection test failed: ${response.status} ${body}`);
+  }
+}

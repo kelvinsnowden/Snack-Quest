@@ -1,3 +1,4 @@
+import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 
 /**
@@ -48,7 +49,28 @@ export interface Business extends AuditFields {
  */
 export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta';
 
-export interface DarajaIntegrationSecret {
+/**
+ * Shared status/audit fields every per-tenant integration secret now
+ * carries (§ Integration Portal). `enabled` lets an admin pause an
+ * integration without deleting its credentials — every Gateway config
+ * module (each provider's `config.ts`) checks it and fails closed
+ * with a clear "integration disabled" error, the same discipline
+ * already used for "not configured yet". The `lastTest*` fields record
+ * the most recent "Test Connection" result so the portal can show a
+ * real status without re-testing on every page load; they're written
+ * only by `IntegrationSettingsService.testConnection()`, never by a
+ * Gateway call made on the customer's behalf. All optional so every
+ * integration seeded before this feature existed keeps working exactly
+ * as before (`enabled` absent reads as `true`).
+ */
+export interface IntegrationSecretMeta {
+  enabled?: boolean;
+  lastTestedAt?: Timestamp | null;
+  lastTestStatus?: 'success' | 'failure' | null;
+  lastTestError?: string | null;
+}
+
+export interface DarajaIntegrationSecret extends IntegrationSecretMeta {
   consumerKey: string;
   consumerSecret: string;
   shortcode: string;
@@ -85,7 +107,7 @@ export interface DarajaIntegrationSecret {
   webhookSecret?: string;
 }
 
-export interface WhatchimpIntegrationSecret {
+export interface WhatchimpIntegrationSecret extends IntegrationSecretMeta {
   apiKey: string;
   phoneNumberId: string;
   baseUrl?: string;
@@ -100,7 +122,7 @@ export interface WhatchimpIntegrationSecret {
   catalogId?: string;
 }
 
-export interface JumiaIntegrationSecret {
+export interface JumiaIntegrationSecret extends IntegrationSecretMeta {
   apiKey: string;
   merchantId: string;
   baseUrl?: string;
@@ -116,7 +138,7 @@ export interface JumiaIntegrationSecret {
   webhookSecret?: string;
 }
 
-export interface MetaIntegrationSecret {
+export interface MetaIntegrationSecret extends IntegrationSecretMeta {
   pixelId: string;
   accessToken: string;
   apiVersion?: string;
