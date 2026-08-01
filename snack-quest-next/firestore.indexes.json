@@ -389,6 +389,14 @@
         { "fieldPath": "businessId", "order": "ASCENDING" },
         { "fieldPath": "startedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "customerWallets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "balanceKes", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
