@@ -252,6 +252,107 @@ describe('DarajaGateway.initiateStkPush', () => {
   });
 });
 
+describe('DarajaGateway.queryStkStatus', () => {
+  beforeEach(() => {
+    resetDarajaTokenCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('queries the real M-Pesa Express Query endpoint and parses a successful result', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                ResponseCode: '0',
+                ResponseDescription: 'The service request has been accepted successfully',
+                MerchantRequestID: '22205-34066-1',
+                CheckoutRequestID: 'ws_CO_13012021093521236557',
+                ResultCode: '0',
+                ResultDesc: 'The service request is processed successfully.',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await darajaGateway.queryStkStatus({
+      businessId: BUSINESS_ID,
+      checkoutRequestId: 'ws_CO_13012021093521236557',
+    });
+
+    expect(result).toEqual({
+      merchantRequestId: '22205-34066-1',
+      checkoutRequestId: 'ws_CO_13012021093521236557',
+      responseCode: '0',
+      responseDescription: 'The service request has been accepted successfully',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+    });
+    const [, queryCall] = fetchMock.mock.calls;
+    expect(String(queryCall[0])).toContain('/mpesa/stkpushquery/v1/query');
+    const body = JSON.parse(String(queryCall[1].body));
+    expect(body).toMatchObject({
+      BusinessShortCode: '174379',
+      CheckoutRequestID: 'ws_CO_13012021093521236557',
+    });
+    expect(body.Password).toBeTruthy();
+    expect(body.Timestamp).toBeTruthy();
+  });
+
+  it('parses a definitive failure result (e.g. cancelled by user)', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                ResponseCode: '0',
+                ResponseDescription: 'The service request has been accepted successfully',
+                MerchantRequestID: '22205-34066-2',
+                CheckoutRequestID: 'ws_CO_cancelled',
+                ResultCode: '1032',
+                ResultDesc: 'Request cancelled by user.',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await darajaGateway.queryStkStatus({
+      businessId: BUSINESS_ID,
+      checkoutRequestId: 'ws_CO_cancelled',
+    });
+
+    expect(result.responseCode).toBe('0');
+    expect(result.resultCode).toBe(1032);
+  });
+
+  it('throws when the query request itself fails at the HTTP level', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(JSON.stringify({ errorMessage: 'Bad Request - Invalid CheckoutRequestID' }), { status: 400 }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      darajaGateway.queryStkStatus({ businessId: BUSINESS_ID, checkoutRequestId: 'not-a-real-id' }),
+    ).rejects.toThrow(/Daraja STK query failed/);
+  });
+});
+
 const B2C_SECRET = {
   ...SECRET,
   b2cInitiatorName: 'testapiuser',

@@ -106,6 +106,39 @@ class PaymentIntentRepository {
     return { intentId: intentRef.id, attemptId: attemptDoc.id };
   }
 
+  /**
+   * The most recent attempt for an intent, if it's still awaiting a
+   * result (§ Daraja Production Integration Verification Audit
+   * §2.4/§7 — the STK Push Query reconciliation sweep needs this
+   * attempt's `checkoutRequestId` to ask Daraja what happened to it).
+   * No filter/composite index needed: a single intent's `attempts`
+   * subcollection is a handful of documents at most (one per retried
+   * PAY reply), so ordering by `initiatedAt` alone — Firestore's
+   * automatic single-field index — and taking the newest is enough;
+   * `null` means either no attempts exist yet or the newest one
+   * already resolved (nothing to query).
+   */
+  async getPendingAttempt(
+    intentId: string,
+  ): Promise<{ attemptId: string; checkoutRequestId: string } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .doc(intentId)
+      .collection('attempts')
+      .orderBy('initiatedAt', 'desc')
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const latest = snapshot.docs[0];
+    const data = latest.data() as PaymentAttempt;
+    if (data.status !== 'initiated') {
+      return null;
+    }
+    return { attemptId: latest.id, checkoutRequestId: data.checkoutRequestId };
+  }
+
   async resolveAttempt(
     intentId: string,
     attemptId: string,

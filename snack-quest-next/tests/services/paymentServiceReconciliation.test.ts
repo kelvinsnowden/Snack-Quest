@@ -1,0 +1,210 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { adminFirestore } from '@/lib/firebase/admin';
+import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
+import { webhookEventRepository } from '@/repositories/webhookEventRepository';
+
+const { queryStkStatusMock } = vi.hoisted(() => ({ queryStkStatusMock: vi.fn() }));
+
+vi.mock('@/lib/integrations/daraja/darajaGateway', () => ({
+  darajaGateway: { queryStkStatus: queryStkStatusMock },
+}));
+
+import { paymentService } from '@/services/paymentService';
+
+const BUSINESS_ID = 'biz-stk-reconciliation-test';
+
+async function seedStuckIntent(): Promise<{ intentId: string; checkoutRequestId: string }> {
+  const intentId = await paymentIntentRepository.create({
+    businessId: BUSINESS_ID,
+    conversationId: 'conv-1',
+    conversationCheckoutSnapshotId: 'snapshot-1',
+    customerId: null,
+    phoneNumber: '254700000000',
+    amountKes: 2500,
+  });
+  const checkoutRequestId = `ws_CO_${intentId}`;
+  await paymentIntentRepository.addAttempt(intentId, {
+    checkoutRequestId,
+    merchantRequestId: `merchant_${intentId}`,
+    status: 'initiated',
+    resultCode: null,
+    resultDesc: null,
+    mpesaReceiptNumber: null,
+  });
+  await paymentIntentRepository.updateStatus(intentId, 'processing');
+  return { intentId, checkoutRequestId };
+}
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('paymentIntents'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('webhookEvents'));
+});
+
+describe('PaymentService.reconcileStuckIntents', () => {
+  it('ignores an intent that is not old enough to count as stuck yet', async () => {
+    await seedStuckIntent();
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, {
+      stuckAfterMs: 999_999_999,
+    });
+
+    expect(outcomes).toHaveLength(0);
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('auto-resolves a definitively failed payment and returns a failed callback result', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'The service request has been accepted successfully',
+      resultCode: 1032,
+      resultDesc: 'Request cancelled by user.',
+    });
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]).toMatchObject({
+      intentId,
+      checkoutRequestId,
+      outcome: 'confirmedFailed',
+      callbackResult: { status: 'failed', intentId, reason: 'Request cancelled by user.' },
+    });
+
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('failed');
+  });
+
+  it('never fabricates a receipt number for a confirmed success — flags for manual review instead', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'The service request has been accepted successfully',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+    });
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].outcome).toBe('needsManualReview');
+    expect(outcomes[0].callbackResult).toBeUndefined();
+    expect(outcomes[0].reviewReason).toMatch(/no M-Pesa receipt number/);
+
+    // Intent is left untouched (still 'processing') so a late real callback can still complete it.
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('processing');
+  });
+
+  it('does not re-notify on every sweep once a success-without-receipt is already flagged', async () => {
+    const { checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+    });
+
+    const first = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+    const second = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(0);
+  });
+
+  it('leaves the real callback path free to complete a payment its own idempotency flag never touched', async () => {
+    const { checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+    });
+
+    await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+
+    // The real callback's own idempotency slot (eventKind 'stk_callback', providerEventId ===
+    // the bare checkoutRequestId) must still be free — the reconciliation flag used a distinct id.
+    const idempotency = await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: checkoutRequestId,
+      payload: {},
+    });
+    expect(idempotency.isNew).toBe(true);
+  });
+
+  it('marks an intent expired once it has been inconclusive past the expiry ceiling', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '500.001.1001',
+      responseDescription: 'Transaction is being processed',
+      resultCode: 0,
+      resultDesc: '',
+    });
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, {
+      stuckAfterMs: 0,
+      expireAfterMs: 0,
+    });
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].outcome).toBe('needsManualReview');
+    expect(outcomes[0].reviewReason).toMatch(/expired/i);
+
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('expired');
+  });
+
+  it('leaves a genuinely inconclusive, not-yet-expired intent alone as stillPending', async () => {
+    await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId: 'irrelevant',
+      responseCode: '500.001.1001',
+      responseDescription: 'Transaction is being processed',
+      resultCode: 0,
+      resultDesc: '',
+    });
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, {
+      stuckAfterMs: 0,
+      expireAfterMs: 999_999_999,
+    });
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].outcome).toBe('stillPending');
+  });
+
+  it('skips an intent whose attempt already resolved (a real callback won the race)', async () => {
+    const { intentId } = await seedStuckIntent();
+    const pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    await paymentIntentRepository.resolveAttempt(intentId, pending!.attemptId, {
+      status: 'succeeded',
+      resultCode: 0,
+      resultDesc: 'ok',
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+    await paymentIntentRepository.updateStatus(intentId, 'succeeded');
+
+    // Force it back to 'processing' at the top-level status only (simulating a narrow race
+    // window) is unnecessary — listByStatus(['processing']) simply won't return it anymore,
+    // which is the real behavior being verified here.
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+
+    expect(outcomes).toHaveLength(0);
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+});

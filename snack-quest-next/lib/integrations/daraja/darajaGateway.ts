@@ -13,6 +13,7 @@ import type {
   ReversalResult,
   ReversalResultCallback,
   StkPushResult,
+  StkQueryResult,
 } from '../types';
 
 const GATEWAY_NAME = 'daraja';
@@ -230,6 +231,62 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
         : undefined,
       phoneNumber: succeeded ? String(findItem('PhoneNumber')) : undefined,
     };
+  }
+
+  /**
+   * M-Pesa Express Query (§ Daraja Production Integration Verification
+   * Audit §2.4/§7) — a fallback for a `CheckoutRequestID` whose real
+   * callback never arrived. Same request-signing as `initiateStkPush`
+   * (fresh timestamp + password each call, per Safaricom's own
+   * requirement), but unlike a push, a *query* has no side effect —
+   * safe to retry on a transient network failure, unlike every other
+   * money-moving method in this Gateway.
+   */
+  async queryStkStatus(input: {
+    businessId: string;
+    checkoutRequestId: string;
+  }): Promise<StkQueryResult> {
+    const config = await getDarajaConfig(input.businessId);
+    const accessToken = await fetchAccessToken(input.businessId, config);
+    const timestamp = timestampNow();
+    const password = buildPassword(config, timestamp);
+
+    return withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, () =>
+      withRetry(async () => {
+        const response = await fetch(
+          `${config.baseUrl}/mpesa/stkpushquery/v1/query`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              BusinessShortCode: config.shortcode,
+              Password: password,
+              Timestamp: timestamp,
+              CheckoutRequestID: input.checkoutRequestId,
+            }),
+          },
+        );
+
+        const data = (await response.json()) as Record<string, unknown>;
+        if (!response.ok) {
+          throw new Error(
+            `Daraja STK query failed: ${data.errorMessage ?? response.status}`,
+          );
+        }
+
+        return {
+          merchantRequestId: String(data.MerchantRequestID),
+          checkoutRequestId: String(data.CheckoutRequestID),
+          responseCode: String(data.ResponseCode),
+          responseDescription: String(data.ResponseDescription),
+          resultCode: Number(data.ResultCode),
+          resultDesc: String(data.ResultDesc),
+        };
+      }),
+    );
   }
 
   /**

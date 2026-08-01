@@ -36,6 +36,27 @@ export interface PaymentCallbackResult {
   phoneNumber?: string;
 }
 
+/**
+ * The M-Pesa Express Query ("STK Push Query") response — a status
+ * check for a `CheckoutRequestID` whose callback never arrived (§
+ * Daraja Production Integration Verification Audit §2.4/§7). Unlike
+ * `PaymentCallbackResult`, Safaricom's real query response (confirmed
+ * against the primary docs) carries no `CallbackMetadata` — no amount,
+ * no M-Pesa receipt number — even on success. `responseCode` is the
+ * *query request's own* submission status (e.g. "not yet processed,
+ * try again shortly" reads as a non-'0' responseCode here); `resultCode`
+ * is the underlying payment's actual result, only meaningful once
+ * `responseCode === '0'`.
+ */
+export interface StkQueryResult {
+  merchantRequestId: string;
+  checkoutRequestId: string;
+  responseCode: string;
+  responseDescription: string;
+  resultCode: number;
+  resultDesc: string;
+}
+
 export interface PaymentGateway {
   initiateStkPush(input: {
     businessId: string;
@@ -45,6 +66,7 @@ export interface PaymentGateway {
     transactionDesc: string;
   }): Promise<StkPushResult>;
   verifyCallback(payload: unknown): PaymentCallbackResult;
+  queryStkStatus(input: { businessId: string; checkoutRequestId: string }): Promise<StkQueryResult>;
 }
 
 /** The synchronous ack Safaricom returns the instant a B2C request is accepted for processing — not proof the money moved, just that the request was queued. */
