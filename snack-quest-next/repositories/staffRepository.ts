@@ -51,6 +51,22 @@ class StaffRepository {
         deletedAt: null,
       });
   }
+
+  /** § Staff Management — role/department edits, never `businessId` (a staff member never moves tenants). */
+  async update(uid: string, patch: Partial<Pick<StaffProfile, 'role' | 'department' | 'permissions'>>, actor: string): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(uid)
+      .update({ ...patch, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+  }
+
+  /** § Staff Management — soft delete, matching `findById`/`listByBusiness`'s existing `deletedAt` filter. The Auth account is separately disabled by the Service so a removed staffer truly can't sign in even with a valid ID token. */
+  async softDelete(uid: string, actor: string): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(uid)
+      .update({ deletedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+  }
 }
 
 export const staffRepository = new StaffRepository();

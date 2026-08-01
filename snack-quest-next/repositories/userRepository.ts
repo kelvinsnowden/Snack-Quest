@@ -50,6 +50,15 @@ class UserRepository {
       updatedBy: actor,
     });
   }
+
+  /** § Staff Management — soft delete alongside `staffRepository.softDelete`; `establishSession`/`verifySessionCookie` already reject a `deletedAt` user. */
+  async softDelete(uid: string, actor: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(uid).update({
+      deletedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor,
+    });
+  }
 }
 
 export const userRepository = new UserRepository();

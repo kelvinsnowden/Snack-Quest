@@ -111,6 +111,16 @@ const TEMPLATES = [
     version: 1,
     isActive: true,
   },
+  {
+    templateCode: 'staff_invited_email',
+    channel: 'email',
+    subject: "You've been added as staff on Snack Quest Admin",
+    bodyTemplate:
+      "Hi {{displayName}},\n\nA super admin has created a staff account for you on Snack Quest Admin, with the role of {{role}}.\n\nSet your password to sign in: {{resetLink}}\n\nThis link is single-use and will expire — if it does, ask a super admin to send you a new one from Admin > Staff.\n\n- Snack Quest",
+    requiredParams: ['displayName', 'role', 'resetLink'],
+    version: 1,
+    isActive: true,
+  },
 ];
 
 async function main() {

@@ -15,6 +15,7 @@ import {
   Settings,
   Share2,
   Truck,
+  UserCog,
   Users,
   Warehouse,
 } from 'lucide-react';
@@ -50,6 +51,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle },
   { href: '/admin/storage', label: 'Storage', icon: FolderOpen },
   { href: '/admin/audit-logs', label: 'Audit logs', icon: ScrollText },
+  { href: '/admin/staff', label: 'Staff', icon: UserCog },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
