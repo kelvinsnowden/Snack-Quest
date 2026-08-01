@@ -25,6 +25,12 @@ export interface UpsertDeliveryZoneRuleInput {
 }
 
 class DeliveryZoneRuleRepository {
+  /** § Fix pickup delivery fee revenue leak — every zone this business has a rule row for, priced or not. */
+  async listByBusiness(businessId: string): Promise<{ id: string; data: DeliveryZoneRule }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as DeliveryZoneRule }));
+  }
+
   async findFee(
     businessId: string,
     zone: string,

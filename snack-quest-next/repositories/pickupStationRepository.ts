@@ -19,6 +19,50 @@ class PickupStationRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as PickupStation }));
   }
 
+  /** § Fix pickup delivery fee revenue leak — every station regardless of `isActive`, so a reactivated station always carries the right fee. */
+  async listByBusiness(businessId: string): Promise<{ id: string; data: PickupStation }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as PickupStation }));
+  }
+
+  /**
+   * Propagates a zone's fee onto every station in it — `deliveryFeeKes`
+   * is deliberately denormalized onto each station for fast reads at
+   * checkout (types/pickupStation.ts), so a zone-level price change has
+   * to fan out here rather than living only on `deliveryZoneRules`.
+   * One `businessId`-scoped scan + in-memory filter, matching
+   * `search()`'s own precedent above for why that's the right call at
+   * today's scale — a 5-field composite index for this would be a real
+   * index to deploy for a write that happens rarely.
+   */
+  async batchSetDeliveryFeeForZone(
+    businessId: string,
+    key: { zone: string; shippingOrigin: string; packageCategory: string; courier: string },
+    feeKes: number,
+    actor: string,
+  ): Promise<number> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    const matches = snapshot.docs.filter((doc) => {
+      const data = doc.data() as PickupStation;
+      return (
+        data.zone === key.zone &&
+        data.shippingOrigin === key.shippingOrigin &&
+        data.packageCategory === key.packageCategory &&
+        data.courier === key.courier
+      );
+    });
+
+    const BATCH_LIMIT = 500;
+    for (let i = 0; i < matches.length; i += BATCH_LIMIT) {
+      const batch = adminFirestore.batch();
+      for (const doc of matches.slice(i, i + BATCH_LIMIT)) {
+        batch.update(doc.ref, { deliveryFeeKes: feeKes, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+      }
+      await batch.commit();
+    }
+    return matches.length;
+  }
+
   async findById(businessId: string, stationId: string): Promise<PickupStation | null> {
     const snapshot = await adminFirestore.collection(COLLECTION).doc(stationId).get();
     if (!snapshot.exists) {
