@@ -4,6 +4,7 @@ import {
   BarChart3,
   Boxes,
   ClipboardList,
+  ClipboardCheck,
   FolderOpen,
   LayoutDashboard,
   Megaphone,
@@ -15,6 +16,7 @@ import {
   Share2,
   Truck,
   Users,
+  Warehouse,
 } from 'lucide-react';
 
 /**
@@ -37,6 +39,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/orders', label: 'Orders', icon: ClipboardList },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/inventory', label: 'Inventory', icon: Boxes },
+  { href: '/admin/purchase-orders', label: 'Purchase orders', icon: ClipboardCheck },
+  { href: '/admin/suppliers', label: 'Suppliers', icon: Warehouse },
   { href: '/admin/customers', label: 'Customers', icon: Users },
   { href: '/admin/creators', label: 'Creators', icon: Megaphone },
   { href: '/admin/referrals', label: 'Referrals', icon: Share2 },

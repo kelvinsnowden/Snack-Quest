@@ -530,13 +530,29 @@ Services write into directly.
 Reuses the completeness audit's already-identified gap:
 `inventoryReservations` (owned jointly with Checkout, see §6) plus a
 `packages.isActive`/`availableCounties` check at listing time.
-Full stock-level inventory (raw snack ingredient counts, purchase
-orders) is explicitly **Phase 5 territory** per the original TDD's
-phasing (§23) — this document reserves the *collection names*
-(`snacks`, `snackBatches`, `purchaseOrders`, mirroring the current
-`Snack`/`SnackBatch`/`PurchaseOrder` types) now, per TDD §8's own
-stated principle of designing the whole schema up front, without
-scheduling the *work* until Phase 5.
+
+**Update (§ Inventory: batches, purchase orders, suppliers, movements,
+low-stock alerts, expiry, audit trail):** the original TDD's phasing
+(§23) marked full stock-level inventory as Phase 5 territory, and this
+document originally only reserved the collection names
+(`snacks`/`snackBatches`/`purchaseOrders`, mirroring the deleted legacy
+app's `Snack`/`SnackBatch`/`PurchaseOrder` types — see
+`docs/legacy-app-archive/`) without scheduling the work. That
+deferral is now closed: `suppliers`, `purchaseOrders`, and
+`inventoryBatches` (renamed from the reserved `snackBatches` — a
+batch here is a real received unit of a `packages` box, not a raw
+"snack" ingredient, which this codebase has never modeled) are real,
+built collections. `PurchaseOrderService.receivePurchaseOrder()` is
+the one place a purchase order becomes real stock: one
+`inventoryBatches` doc + one `inventoryMovements` entry per line item,
+plus that line item's `packages.stockCount` increment, atomically.
+`InventoryService.writeOffBatch()` is the counterpart for stock
+leaving via expiry or damage. No legacy field-level schema for
+`Snack`/`SnackBatch`/`PurchaseOrder` survived the app's deletion (see
+`docs/legacy-app-archive/README.md`), so this schema was designed
+fresh against this codebase's real domain (Kenyan snack-box
+e-commerce, `packages` as the sellable unit) rather than reconstructed
+from a spec that no longer exists.
 
 ### Services & Repositories
 
@@ -1500,7 +1516,7 @@ repeated here.
 | `discounts` | Commerce (§5) | New |
 | `countries` | Commerce (§5) | New |
 | `subscriptions` | Commerce (§5) | New, **schema reserved, not built** |
-| `snacks`, `snackBatches`, `purchaseOrders` | Commerce (§5) | New, **schema reserved for Phase 5** |
+| `suppliers`, `inventoryBatches`, `purchaseOrders` | Commerce (§5) | **Built** (§ Inventory: batches, purchase orders, suppliers, movements, low-stock alerts, expiry, audit trail) — promoted out of the Phase 5 deferral below; see that section's note |
 | `conversations` + `messages` subcollection | Conversation (§6) | New |
 | `conversationCheckoutSnapshots` | Conversation (§6) | New |
 | `paymentIntents` + `attempts` subcollection | Payment (§7) | New |
@@ -1835,8 +1851,13 @@ ranked by how much production risk it closes.
 16. Full multi-tenant infrastructure (§17.3's deferral list).
 17. `subscriptions` collection's actual subscription-commerce logic
     (schema reserved in §5, no `SubscriptionService` built).
-18. `snacks`/`snackBatches`/`purchaseOrders` real inventory/stock-level
-    tracking (schema reserved in §5 and §16 stage 16, Phase 5 per §20).
+18. ~~`snacks`/`snackBatches`/`purchaseOrders` real inventory/stock-level
+    tracking (schema reserved in §5 and §16 stage 16, Phase 5 per §20).~~
+    **Closed** — built as `suppliers`/`inventoryBatches`/`purchaseOrders`,
+    see §5's "Availability & Inventory" update. Batch-level FIFO
+    consumption at checkout time (a specific batch being decremented
+    by a specific sale, rather than the aggregate `packages.stockCount`)
+    remains a real, separate follow-up, not fabricated here.
 19. `PushGateway`/FCM push notifications (interface defined in §13,
     no implementation prioritized).
 20. County-coverage waitlist capability (mentioned in §16 stage 9 as a

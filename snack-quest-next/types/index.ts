@@ -28,3 +28,6 @@ export * from './delivery';
 export * from './inventoryMovement';
 export * from './marketingSpend';
 export * from './refund';
+export * from './supplier';
+export * from './purchaseOrder';
+export * from './inventoryBatch';
