@@ -67,7 +67,7 @@ class PaymentIntentRepository {
 
   async addAttempt(
     intentId: string,
-    attempt: Omit<PaymentAttempt, 'initiatedAt' | 'resolvedAt'>,
+    attempt: Omit<PaymentAttempt, 'initiatedAt' | 'resolvedAt' | 'queryAttemptCount'>,
   ): Promise<string> {
     const ref = await adminFirestore
       .collection(COLLECTION)
@@ -77,6 +77,7 @@ class PaymentIntentRepository {
         ...attempt,
         initiatedAt: FieldValue.serverTimestamp(),
         resolvedAt: null,
+        queryAttemptCount: 0,
       });
     return ref.id;
   }
@@ -120,7 +121,7 @@ class PaymentIntentRepository {
    */
   async getPendingAttempt(
     intentId: string,
-  ): Promise<{ attemptId: string; checkoutRequestId: string } | null> {
+  ): Promise<{ attemptId: string; checkoutRequestId: string; queryAttemptCount: number } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .doc(intentId)
@@ -136,7 +137,21 @@ class PaymentIntentRepository {
     if (data.status !== 'initiated') {
       return null;
     }
-    return { attemptId: latest.id, checkoutRequestId: data.checkoutRequestId };
+    return {
+      attemptId: latest.id,
+      checkoutRequestId: data.checkoutRequestId,
+      queryAttemptCount: data.queryAttemptCount ?? 0,
+    };
+  }
+
+  /** Bumps `queryAttemptCount` after each STK Push Query call the reconciliation sweep makes against this attempt — the sweep's own retry-limit counter (§ Daraja Production Integration Verification Audit §2.4/§7), separate from Daraja's own request/response cycle. */
+  async incrementQueryAttemptCount(intentId: string, attemptId: string): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(intentId)
+      .collection('attempts')
+      .doc(attemptId)
+      .update({ queryAttemptCount: FieldValue.increment(1) });
   }
 
   async resolveAttempt(

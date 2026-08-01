@@ -101,8 +101,8 @@ describe('PaymentService.reconcileStuckIntents', () => {
     expect(intent?.status).toBe('processing');
   });
 
-  it('does not re-notify on every sweep once a success-without-receipt is already flagged', async () => {
-    const { checkoutRequestId } = await seedStuckIntent();
+  it('does not re-query or re-notify on every sweep once a success-without-receipt is already flagged', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
     queryStkStatusMock.mockResolvedValue({
       merchantRequestId: 'merchant-1',
       checkoutRequestId,
@@ -113,10 +113,15 @@ describe('PaymentService.reconcileStuckIntents', () => {
     });
 
     const first = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
+    expect(queryStkStatusMock).toHaveBeenCalledTimes(1);
+
     const second = await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0 });
 
     expect(first).toHaveLength(1);
-    expect(second).toHaveLength(0);
+    expect(first[0].outcome).toBe('needsManualReview');
+    // Second sweep sees it's already flagged — skipped without a second Daraja call or a second notification.
+    expect(second).toEqual([{ intentId, checkoutRequestId, outcome: 'skipped' }]);
+    expect(queryStkStatusMock).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the real callback path free to complete a payment its own idempotency flag never touched', async () => {
@@ -186,6 +191,82 @@ describe('PaymentService.reconcileStuckIntents', () => {
 
     expect(outcomes).toHaveLength(1);
     expect(outcomes[0].outcome).toBe('stillPending');
+  });
+
+  it('increments queryAttemptCount on every genuine query, so the retry budget actually shrinks', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '500.001.1001',
+      responseDescription: 'Transaction is being processed',
+      resultCode: 0,
+      resultDesc: '',
+    });
+
+    await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0, expireAfterMs: 999_999_999 });
+    let pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    expect(pending?.queryAttemptCount).toBe(1);
+
+    await paymentService.reconcileStuckIntents(BUSINESS_ID, { stuckAfterMs: 0, expireAfterMs: 999_999_999 });
+    pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    expect(pending?.queryAttemptCount).toBe(2);
+  });
+
+  it('gives up after maxQueryAttempts inconclusive queries, even with a distant expiry ceiling', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '500.001.1001',
+      responseDescription: 'Transaction is being processed',
+      resultCode: 0,
+      resultDesc: '',
+    });
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, {
+      stuckAfterMs: 0,
+      expireAfterMs: 999_999_999,
+      maxQueryAttempts: 1,
+    });
+
+    expect(queryStkStatusMock).toHaveBeenCalledTimes(1);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].outcome).toBe('needsManualReview');
+    expect(outcomes[0].reviewReason).toMatch(/1 status checks/);
+
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('expired');
+  });
+
+  it('gives up on an already-exhausted attempt without querying Daraja again (recovers from a prior partial failure)', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    const pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    // Simulate a prior sweep run that queried up to the cap but crashed before
+    // marking the intent expired (e.g. the process died between the count
+    // increment and the status update) — the count is already at the ceiling
+    // while the intent is still 'processing'.
+    await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending!.attemptId);
+    await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending!.attemptId);
+
+    const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, {
+      stuckAfterMs: 0,
+      expireAfterMs: 999_999_999,
+      maxQueryAttempts: 2,
+    });
+
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([
+      {
+        intentId,
+        checkoutRequestId,
+        outcome: 'needsManualReview',
+        reviewReason: expect.stringContaining('queried 2 times'),
+      },
+    ]);
+
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('expired');
   });
 
   it('skips an intent whose attempt already resolved (a real callback won the race)', async () => {

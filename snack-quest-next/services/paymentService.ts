@@ -33,9 +33,33 @@ export interface CreateIntentInput {
   amountKes: number;
 }
 
-/** How long a `PaymentIntent` can sit in `'processing'` before the reconciliation sweep (§ Daraja Production Integration Verification Audit §2.4/§7) will even ask Daraja about it — long enough to cover a real customer's M-Pesa PIN-entry window, short enough to catch a lost callback quickly. */
-const DEFAULT_STUCK_AFTER_MS = 2 * 60 * 1000;
-/** Past this age with still no definitive answer from Daraja's own query API, stop polling and hand it to a human instead of polling forever. */
+/**
+ * How long a `PaymentIntent` can sit in `'processing'` before the
+ * reconciliation sweep (§ Daraja Production Integration Verification
+ * Audit §2.4/§7) will even ask Daraja about it. Safaricom's own DS
+ * timeout (ResultCode 1037) fires around 60–100s if the customer never
+ * responds to the PIN prompt, so querying earlier than that risks
+ * asking about a transaction that's still legitimately in progress —
+ * 60s is the deliberate default (the top of the 30–60s range this was
+ * scoped to), not the bottom, precisely to avoid that false alarm.
+ */
+const DEFAULT_STUCK_AFTER_MS = 60 * 1000;
+/**
+ * How many times the sweep will query a single attempt before giving
+ * up on it — the actual "sensible retry limit," independent of how
+ * long the sweep itself has been running. At the default 5-minute cron
+ * cadence, 5 attempts spans ~20 minutes past the initial 60s wait,
+ * long enough for Daraja's own processing to settle in every
+ * documented case, short enough that a payment isn't silently polled
+ * forever.
+ */
+const DEFAULT_MAX_QUERY_ATTEMPTS = 5;
+/**
+ * A time-based backstop *in addition to* the attempt cap above — covers
+ * the case where the cron itself runs less often than expected (a
+ * deploy issue, a paused schedule) rather than Daraja being slow.
+ * Whichever limit is hit first ends the polling loop.
+ */
 const DEFAULT_EXPIRE_AFTER_MS = 6 * 60 * 60 * 1000;
 
 export interface ReconciliationOutcome {
@@ -46,11 +70,14 @@ export interface ReconciliationOutcome {
    * safe to auto-resolve (a failure carries no financial data to get
    * wrong). `needsManualReview` — either Daraja confirmed *success* but
    * the query response carries no receipt/amount (§2.4 — never
-   * fabricate that), or the query stayed inconclusive past
-   * `expireAfterMs` and this intent is now `'expired'`. `stillPending` —
-   * too early to conclude anything; try again next sweep.
+   * fabricate that), or polling was exhausted (attempt cap or age
+   * ceiling, whichever came first) with still no definitive answer,
+   * and this intent is now `'expired'`. `stillPending` — too early, or
+   * still within the retry budget; try again next sweep. `skipped` —
+   * already flagged for manual review by an earlier sweep run; not
+   * re-queried at all.
    */
-  outcome: 'confirmedFailed' | 'needsManualReview' | 'stillPending';
+  outcome: 'confirmedFailed' | 'needsManualReview' | 'stillPending' | 'skipped';
   /** Only set for `confirmedFailed` — hand this to `ConversationService.handlePaymentResult`, exactly like a real callback would be. */
   callbackResult?: Extract<ProcessCallbackResult, { status: 'failed' }>;
   /** Only set for `needsManualReview` — human-readable, safe to forward straight into an admin notification. */
@@ -131,10 +158,11 @@ class PaymentService {
    */
   async reconcileStuckIntents(
     businessId: string,
-    options: { stuckAfterMs?: number; expireAfterMs?: number } = {},
+    options: { stuckAfterMs?: number; expireAfterMs?: number; maxQueryAttempts?: number } = {},
   ): Promise<ReconciliationOutcome[]> {
     const stuckAfterMs = options.stuckAfterMs ?? DEFAULT_STUCK_AFTER_MS;
     const expireAfterMs = options.expireAfterMs ?? DEFAULT_EXPIRE_AFTER_MS;
+    const maxQueryAttempts = options.maxQueryAttempts ?? DEFAULT_MAX_QUERY_ATTEMPTS;
     const now = Date.now();
 
     const processing = await paymentIntentRepository.listByStatus(businessId, ['processing']);
@@ -144,7 +172,7 @@ class PaymentService {
       const updatedAtMs = intent.updatedAt.toMillis();
       const ageMs = now - updatedAtMs;
       if (ageMs < stuckAfterMs) {
-        continue; // still within a normal PIN-entry window — not stuck yet
+        continue; // still within a normal PIN-entry window — not stuck yet, not even worth a query
       }
 
       const pending = await paymentIntentRepository.getPendingAttempt(intentId);
@@ -153,17 +181,48 @@ class PaymentService {
         continue;
       }
 
+      // Already confirmed succeeded by an earlier sweep run and flagged for
+      // manual review (§2.4) — don't ask Daraja the same question again; we
+      // already have our answer, we're just waiting on a receipt number,
+      // from either a human or a late real callback. No query, no re-notify.
+      const alreadyFlagged = await webhookEventRepository.exists(
+        businessId,
+        'daraja',
+        `${pending.checkoutRequestId}:query-confirmed-success`,
+      );
+      if (alreadyFlagged) {
+        outcomes.push({ intentId, checkoutRequestId: pending.checkoutRequestId, outcome: 'skipped' });
+        continue;
+      }
+
+      // The retry budget itself: once exhausted, stop querying and hand off
+      // to a human rather than polling indefinitely — this is the actual
+      // "sensible retry limit," counted per attempt, independent of the
+      // age-based backstop below.
+      if (pending.queryAttemptCount >= maxQueryAttempts) {
+        await paymentIntentRepository.updateStatus(intentId, 'expired');
+        outcomes.push({
+          intentId,
+          checkoutRequestId: pending.checkoutRequestId,
+          outcome: 'needsManualReview',
+          reviewReason: `Payment intent ${intentId} has been queried ${pending.queryAttemptCount} times with no definitive result from Daraja. Marked expired — needs manual investigation against the M-Pesa statement.`,
+        });
+        continue;
+      }
+
       const query = await darajaGateway.queryStkStatus({ businessId, checkoutRequestId: pending.checkoutRequestId });
+      await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending.attemptId);
+      const queryAttemptCount = pending.queryAttemptCount + 1;
 
       if (query.responseCode !== '0') {
         // Daraja's own query couldn't give a definitive answer yet (still processing on their side, or a transient error).
-        if (ageMs >= expireAfterMs) {
+        if (queryAttemptCount >= maxQueryAttempts || ageMs >= expireAfterMs) {
           await paymentIntentRepository.updateStatus(intentId, 'expired');
           outcomes.push({
             intentId,
             checkoutRequestId: pending.checkoutRequestId,
             outcome: 'needsManualReview',
-            reviewReason: `Payment intent ${intentId} has been stuck for over ${Math.round(expireAfterMs / 3_600_000)}h with no definitive result from Daraja, even via status query. Marked expired — needs manual investigation against the M-Pesa statement.`,
+            reviewReason: `Payment intent ${intentId} has been stuck for ${Math.round(ageMs / 60_000)} minutes across ${queryAttemptCount} status checks with no definitive result from Daraja. Marked expired — needs manual investigation against the M-Pesa statement.`,
           });
         } else {
           outcomes.push({ intentId, checkoutRequestId: pending.checkoutRequestId, outcome: 'stillPending' });
@@ -178,7 +237,7 @@ class PaymentService {
         // checkoutRequestId) so this never blocks the real callback's own
         // idempotency slot — if it still arrives with the actual receipt,
         // it must be free to process normally and complete the order.
-        const flag = await webhookEventRepository.recordIfNew({
+        await webhookEventRepository.recordIfNew({
           businessId,
           provider: 'daraja',
           eventKind: 'stk_query_reconciliation',
@@ -186,15 +245,12 @@ class PaymentService {
           payload: { source: 'stk_push_query', ...query },
           relatedEntityId: intentId,
         });
-        if (flag.isNew) {
-          outcomes.push({
-            intentId,
-            checkoutRequestId: pending.checkoutRequestId,
-            outcome: 'needsManualReview',
-            reviewReason: `Daraja confirms payment intent ${intentId} succeeded (checked via STK Push Query), but no callback ever arrived and the query response carries no M-Pesa receipt number. Confirm against the M-Pesa statement and resolve manually — the intent is left 'processing' so a late real callback can still complete it normally.`,
-          });
-        }
-        // else: already flagged by an earlier sweep run — don't notify again every 5 minutes.
+        outcomes.push({
+          intentId,
+          checkoutRequestId: pending.checkoutRequestId,
+          outcome: 'needsManualReview',
+          reviewReason: `Daraja confirms payment intent ${intentId} succeeded (checked via STK Push Query), but no callback ever arrived and the query response carries no M-Pesa receipt number. Confirm against the M-Pesa statement and resolve manually — the intent is left 'processing' so a late real callback can still complete it normally.`,
+        });
         continue;
       }
 
@@ -210,7 +266,7 @@ class PaymentService {
         relatedEntityId: intentId,
       });
       if (!idempotency.isNew) {
-        // A real callback (or a previous sweep run) already claimed this — don't reprocess.
+        // A real callback landed between this sweep's read and this write — it already won. Don't reprocess.
         continue;
       }
 

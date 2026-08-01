@@ -50,6 +50,7 @@ export async function GET(request: Request): Promise<Response> {
       confirmedFailed: outcomes.filter((o) => o.outcome === 'confirmedFailed').length,
       needsManualReview: outcomes.filter((o) => o.outcome === 'needsManualReview').length,
       stillPending: outcomes.filter((o) => o.outcome === 'stillPending').length,
+      skipped: outcomes.filter((o) => o.outcome === 'skipped').length,
     };
 
     await scheduledJobRunRepository.record({

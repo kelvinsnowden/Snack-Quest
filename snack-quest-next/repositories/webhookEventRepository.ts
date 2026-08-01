@@ -36,6 +36,12 @@ export interface RecordWebhookEventInput {
 }
 
 class WebhookEventRepository {
+  /** A read-only existence check, unlike `recordIfNew` which also claims the slot — for a caller that needs to know "has this already been recorded" without recording it themselves if not (§ Daraja Production Integration Verification Audit §2.4/§7's reconciliation sweep: skip re-querying Daraja for an event already flagged, without accidentally claiming a slot before it has anything real to record). */
+  async exists(businessId: string, provider: WebhookProvider, providerEventId: string): Promise<boolean> {
+    const snapshot = await adminFirestore.collection(COLLECTION).doc(docId(businessId, provider, providerEventId)).get();
+    return snapshot.exists;
+  }
+
   /**
    * Atomically records an inbound webhook exactly once, using
    * Firestore's `create()` (fails if the document already exists) as

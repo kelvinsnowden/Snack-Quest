@@ -86,6 +86,7 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
       confirmedFailed: 1,
       needsManualReview: 0,
       stillPending: 0,
+      skipped: 0,
     });
   });
 
@@ -145,7 +146,7 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
         businessId: 'snack-quest',
         jobName: 'reconcile-stk-payments',
         status: 'succeeded',
-        resultSummary: { checked: 3, confirmedFailed: 1, needsManualReview: 1, stillPending: 1 },
+        resultSummary: { checked: 3, confirmedFailed: 1, needsManualReview: 1, stillPending: 1, skipped: 0 },
         error: null,
       }),
     );
