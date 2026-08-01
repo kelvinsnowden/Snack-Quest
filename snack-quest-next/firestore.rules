@@ -347,6 +347,15 @@ service cloud.firestore {
       match /integrationSecrets/{provider} {
         allow read, write: if false;
       }
+
+      // featureFlags: tenant-scoped runtime switches (§ Phase 6).
+      // Not secret, so admin-readable — still server/Admin SDK-only to
+      // write, same as every other business-config mutation in this
+      // app (`FeatureFlagService`, via `app/api/admin/feature-flags`).
+      match /featureFlags/{key} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
     }
   }
 }

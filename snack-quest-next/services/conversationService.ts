@@ -14,6 +14,7 @@ import { referralService } from './referralService';
 import { deliveryService } from './deliveryService';
 import { adConversionService } from './adConversionService';
 import { walletService } from './walletService';
+import { featureFlagService } from './featureFlagService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import {
@@ -176,7 +177,10 @@ class ConversationService {
     // including their very first-ever message, without derailing
     // whatever they were doing (e.g. mid pickup-station search).
     const normalizedCommand = inboundMessage.text.trim().toUpperCase();
-    if (normalizedCommand === 'BALANCE' || normalizedCommand === 'WALLET') {
+    if (
+      (normalizedCommand === 'BALANCE' || normalizedCommand === 'WALLET') &&
+      (await featureFlagService.isEnabled(businessId, 'customer_balance_command'))
+    ) {
       return this.replyWithWalletBalance(businessId, conversationId, phoneNumber);
     }
 

@@ -10,6 +10,7 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { businessRepository } from '@/repositories/businessRepository';
 import { walletService } from '@/services/walletService';
+import { featureFlagService } from '@/services/featureFlagService';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
@@ -1037,5 +1038,31 @@ describe('customer loyalty / Quest wallet (§ Phase 4)', () => {
 
     const ordersSnapshot = await adminFirestore.collection('orders').get();
     expect(ordersSnapshot.docs[0].data().pricing.totalKes).toBe(2200);
+  });
+});
+
+describe('feature flags gate real behavior (§ Phase 6)', () => {
+  beforeEach(async () => {
+    await seedBusiness(SNACK_QUEST);
+    await seedPackages(SNACK_QUEST.businessId);
+  });
+
+  it('answers the BALANCE command by default, and stops once the flag is disabled', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+
+    // Two different phone numbers, each texting BALANCE as their
+    // very first-ever message — isolates the flag's effect from any
+    // existing-conversation state-machine step.
+    const enabledResult = await service.start(SNACK_QUEST.businessId, '254700000101', { text: 'BALANCE' });
+    expect(enabledResult.botReply).toContain("don't have any wallet credit yet");
+
+    await featureFlagService.setEnabled(SNACK_QUEST.businessId, 'customer_balance_command', false, 'staff-1');
+
+    const disabledResult = await service.start(SNACK_QUEST.businessId, '254700000102', { text: 'BALANCE' });
+    // With the command disabled, "BALANCE" is treated as ordinary free
+    // text on a brand-new conversation — falls through to the normal
+    // welcome message instead of a wallet-balance reply.
+    expect(disabledResult.botReply).not.toContain('wallet');
   });
 });

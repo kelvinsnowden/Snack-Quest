@@ -32,3 +32,4 @@ export * from './supplier';
 export * from './purchaseOrder';
 export * from './inventoryBatch';
 export * from './scheduledJobRun';
+export * from './featureFlag';

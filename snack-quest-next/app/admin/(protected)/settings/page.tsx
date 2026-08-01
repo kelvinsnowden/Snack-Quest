@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Plug, ChevronRight } from 'lucide-react';
+import { Plug, ChevronRight, ToggleLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessSettingsService } from '@/services/businessSettingsService';
 import { BusinessSettingsForm, DEFAULT_LOYALTY_CONFIG } from '@/components/admin/BusinessSettingsForm';
@@ -26,6 +26,19 @@ export default async function AdminSettingsPage() {
             <div>
               <p className="text-sm font-semibold text-foreground">Integrations</p>
               <p className="text-caption text-muted-foreground">Daraja, WhatsApp, Jumia, Meta, and more — credentials and connection status.</p>
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+        </Card>
+      </Link>
+
+      <Link href="/admin/settings/feature-flags">
+        <Card className="flex items-center justify-between gap-3 p-5 transition-colors hover:bg-border/20">
+          <div className="flex items-center gap-3">
+            <ToggleLeft className="size-5 text-primary" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Feature flags</p>
+              <p className="text-caption text-muted-foreground">Turn platform features on or off — takes effect immediately.</p>
             </div>
           </div>
           <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
