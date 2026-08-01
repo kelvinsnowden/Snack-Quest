@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Terms of service' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Terms of service',
+  description: 'The terms that cover ordering from Snack Quest and joining our Creator Program.',
+  path: '/terms',
+});
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

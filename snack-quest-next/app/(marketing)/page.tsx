@@ -9,10 +9,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { formatKes } from '@/lib/orders/format';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: 'Snack boxes on WhatsApp, delivered across Kenya',
-};
+  description:
+    'Order curated snack boxes on WhatsApp — no app, no account. Pay securely with M-Pesa, get door delivery in Nairobi or pickup nationwide.',
+  path: '/',
+});
 
 const VALUE_PROPS = [
   { icon: MessageCircle, title: 'Order on WhatsApp', description: 'No app to download — message us and we take it from there.' },
@@ -31,7 +35,7 @@ export default async function MarketingHomePage() {
     <div className="flex flex-col">
       <section className="border-b border-border bg-surface">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-24">
-          <div>
+          <div className="animate-fade-in">
             <p className="text-sm font-semibold tracking-wide text-primary uppercase">Snack boxes, made easy</p>
             <h1 className="mt-3 text-hero font-bold tracking-tight text-foreground">
               Order a snack box on WhatsApp. We handle the rest.
@@ -50,7 +54,7 @@ export default async function MarketingHomePage() {
               </Button>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid animate-slide-up grid-cols-2 gap-4">
             {VALUE_PROPS.map((prop) => (
               <Card key={prop.title} className="p-5">
                 <prop.icon className="size-6 text-primary" aria-hidden="true" />
@@ -79,7 +83,7 @@ export default async function MarketingHomePage() {
                 <Card className="h-full overflow-hidden p-0 transition-shadow group-hover:shadow-md">
                   <div className="relative aspect-[4/3] w-full bg-border/40">
                     {data.imageUrl ? (
-                      <Image src={data.imageUrl} alt={data.name} fill sizes="(min-width: 1024px) 33vw, 50vw" className="object-cover" unoptimized />
+                      <Image src={data.imageUrl} alt={data.name} fill sizes="(min-width: 1024px) 33vw, 50vw" className="object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-4xl">🍿</div>
                     )}

@@ -3,8 +3,13 @@ import type { Metadata } from 'next';
 import { Link2, Wallet, Trophy, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Creator Program' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Creator Program',
+  description: 'Join the Snack Quest Creator Program — share your referral link and earn real, instant commission on every order.',
+  path: '/creators',
+});
 
 const FEATURES = [
   {
@@ -28,7 +33,7 @@ export default function CreatorsPage() {
   return (
     <div className="flex flex-col">
       <section className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl animate-fade-in px-4 py-16 text-center sm:px-6 lg:px-8">
           <p className="text-sm font-semibold tracking-wide text-primary uppercase">Creator Program</p>
           <h1 className="mt-3 text-hero font-bold tracking-tight text-foreground">Earn by sharing snacks you already love</h1>
           <p className="mx-auto mt-4 max-w-2xl text-subtitle text-muted-foreground">

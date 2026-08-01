@@ -8,15 +8,22 @@ import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { formatKes } from '@/lib/orders/format';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 
 export async function generateMetadata({ params }: { params: Promise<{ packageId: string }> }): Promise<Metadata> {
   const { packageId } = await params;
   const businessId = getCurrentBusinessId();
   const box = await packageRepository.findById(businessId, packageId);
-  if (!box) {
+  if (!box || !box.isActive) {
     return { title: 'Box not found' };
   }
-  return { title: box.name, description: box.description };
+  return buildPageMetadata({
+    title: box.name,
+    description: box.description,
+    path: `/boxes/${packageId}`,
+    image: box.imageUrl ?? undefined,
+  });
 }
 
 export default async function BoxDetailPage({ params }: { params: Promise<{ packageId: string }> }) {
@@ -29,18 +36,35 @@ export default async function BoxDetailPage({ params }: { params: Promise<{ pack
   }
 
   const message = `Hi! I'd like to order the ${box.name} (${formatKes(box.priceKes)}).`;
+  const inStock = box.stockCount === undefined || box.stockCount > 0;
+  const productJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: box.name,
+    description: box.description,
+    ...(box.imageUrl ? { image: [box.imageUrl] } : {}),
+    url: `${getSiteUrl()}/boxes/${packageId}`,
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'KES',
+      price: box.priceKes,
+      availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+      url: `${getSiteUrl()}/boxes/${packageId}`,
+    },
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }} />
       <Link href="/boxes" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" aria-hidden="true" />
         All boxes
       </Link>
 
-      <div className="mt-6 grid gap-10 lg:grid-cols-2 lg:items-start">
+      <div className="mt-6 grid animate-fade-in gap-10 lg:grid-cols-2 lg:items-start">
         <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-border/40">
           {box.imageUrl ? (
-            <Image src={box.imageUrl} alt={box.name} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" unoptimized />
+            <Image src={box.imageUrl} alt={box.name} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" priority />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-8xl">🍿</div>
           )}

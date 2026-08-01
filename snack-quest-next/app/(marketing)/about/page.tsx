@@ -3,8 +3,13 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Our story' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Our story',
+  description: 'Why we built Snack Quest as a WhatsApp-first snack box service, and how our Creator Program works.',
+  path: '/about',
+});
 
 export default function AboutPage() {
   return (

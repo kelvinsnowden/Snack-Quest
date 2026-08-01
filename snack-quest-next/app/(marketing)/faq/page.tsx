@@ -1,8 +1,13 @@
 import type { Metadata } from 'next';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Frequently asked questions' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Frequently asked questions',
+  description: 'Answers to the most common questions about ordering, paying, delivery, and the Creator Program.',
+  path: '/faq',
+});
 
 const FAQS = [
   {
@@ -42,9 +47,19 @@ const FAQS = [
 
 export default async function FaqPage() {
   const business = await getCurrentBusiness();
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQS.map((faq) => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+    })),
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       <h1 className="text-page-title font-bold tracking-tight text-foreground">Frequently asked questions</h1>
       <p className="mt-3 text-subtitle text-muted-foreground">Can&apos;t find what you&apos;re looking for? Just message us.</p>
 

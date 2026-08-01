@@ -3,8 +3,14 @@ import { MessageCircle, Package, Truck, Smartphone, CheckCircle2 } from 'lucide-
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { Card } from '@/components/ui/card';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'How it works' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'How it works',
+  description:
+    'The five real steps from your first WhatsApp message to delivery — pick a box, choose delivery or pickup, pay with M-Pesa, and get packed and delivered.',
+  path: '/how-it-works',
+});
 
 const STEPS = [
   {

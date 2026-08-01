@@ -4,8 +4,13 @@ import { MessageCircle, HelpCircle } from 'lucide-react';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { Card } from '@/components/ui/card';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Contact us' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Contact us',
+  description: 'Reach Snack Quest on WhatsApp for orders, delivery updates, or questions.',
+  path: '/contact',
+});
 
 export default async function ContactPage() {
   const business = await getCurrentBusiness();

@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Privacy policy' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Privacy policy',
+  description: 'How Snack Quest collects, uses, and protects your personal data across WhatsApp ordering, the website, and the Creator Program.',
+  path: '/privacy',
+});
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

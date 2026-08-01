@@ -7,8 +7,13 @@ import { packageRepository } from '@/repositories/packageRepository';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatKes } from '@/lib/orders/format';
+import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
-export const metadata: Metadata = { title: 'Our boxes' };
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Our boxes',
+  description: 'Browse every Snack Quest box available right now, priced in KES. Message us on WhatsApp to order.',
+  path: '/boxes',
+});
 
 export default async function BoxesPage() {
   const businessId = getCurrentBusinessId();
@@ -34,7 +39,7 @@ export default async function BoxesPage() {
               <Card className="h-full overflow-hidden p-0 transition-shadow group-hover:shadow-md">
                 <div className="relative aspect-[4/3] w-full bg-border/40">
                   {data.imageUrl ? (
-                    <Image src={data.imageUrl} alt={data.name} fill sizes="(min-width: 1024px) 33vw, 50vw" className="object-cover" unoptimized />
+                    <Image src={data.imageUrl} alt={data.name} fill sizes="(min-width: 1024px) 33vw, 50vw" className="object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-4xl">🍿</div>
                   )}

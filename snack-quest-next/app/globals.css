@@ -296,3 +296,20 @@ body {
     animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 }
+
+/*
+ * Accessibility: anyone with `prefers-reduced-motion: reduce` set at the
+ * OS level gets every animation/transition finished instantly instead of
+ * played — applies platform-wide (fade/scale/slide utilities above,
+ * plus ordinary `transition-*` utilities like Button's hover states).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
