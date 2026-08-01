@@ -221,11 +221,6 @@
       ]
     },
     {
-      "collectionGroup": "attempts",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [{ "fieldPath": "checkoutRequestId", "order": "ASCENDING" }]
-    },
-    {
       "collectionGroup": "creatorProfiles",
       "queryScope": "COLLECTION",
       "fields": [
@@ -364,5 +359,11 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "attempts",
+      "fieldPath": "checkoutRequestId",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
+    }
+  ]
 }
