@@ -292,19 +292,6 @@ export interface ConversionGateway {
   }): Promise<void>;
 }
 
-export interface EmailGateway {
-  send(input: {
-    businessId: string;
-    to: string;
-    templateCode: string;
-    params: Record<string, string>;
-  }): Promise<void>;
-}
-
-export interface SmsGateway {
-  send(input: { businessId: string; phone: string; message: string }): Promise<void>;
-}
-
 export interface PushGateway {
   send(input: {
     businessId: string;
@@ -386,4 +373,31 @@ export interface StorageGateway {
   getMetadata(url: string): Promise<StorageObjectMetadata>;
   /** Lists objects under a pathname prefix (§ Admin: Storage browser) — the pathname convention `services/storageService.ts` builds (`{directory}/{businessId}/...`) is what makes a prefix listing tenant- and directory-scoped. */
   listFiles(input: { prefix: string; cursor?: string; limit?: number }): Promise<StorageListPage>;
+}
+
+/**
+ * Email and SMS (§ Notification breadth, PLATFORM_ARCHITECTURE_V2.md
+ * §10/§13) — like `StorageGateway` above, deliberately no `businessId`
+ * parameter: a SendGrid/Africa's Talking account is platform
+ * infrastructure with one credential per deployment, not a per-tenant
+ * one a business owner configures themselves (unlike Daraja/Whatchimp,
+ * which are literally that business's own paybill/WhatsApp number).
+ * `NotificationService` is still the only caller — these interfaces
+ * exist so the concrete provider (`SendGridGateway`,
+ * `AfricasTalkingGateway`) stays swappable without touching it.
+ */
+export interface EmailSendResult {
+  providerMessageId: string;
+}
+
+export interface EmailGateway {
+  send(input: { to: string; subject: string; body: string }): Promise<EmailSendResult>;
+}
+
+export interface SmsSendResult {
+  providerMessageId: string;
+}
+
+export interface SmsGateway {
+  send(input: { to: string; body: string }): Promise<SmsSendResult>;
 }

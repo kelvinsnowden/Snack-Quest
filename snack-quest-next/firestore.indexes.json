@@ -1,6 +1,15 @@
 {
   "indexes": [
     {
+      "collectionGroup": "outboundMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "retryCount", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "campaigns",
       "queryScope": "COLLECTION",
       "fields": [
