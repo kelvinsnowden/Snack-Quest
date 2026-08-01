@@ -147,6 +147,30 @@ class WebhookEventRepository {
     };
   }
 
+  /**
+   * Every failed webhook regardless of `eventKind` (§ Phase 5:
+   * Observability) — `listUnmatchedPayments()` above is deliberately
+   * scoped to `stk_callback` for the reconciliation workflow; this is
+   * the broader "did any inbound webhook fail" signal for the
+   * Operations dashboard. In-memory filter over a `businessId`-scoped
+   * scan, same discipline as `domainEventRepository.listRecentFailures()` —
+   * avoids a second composite index for a low-frequency admin read.
+   */
+  async listFailed(businessId: string, limit = 50): Promise<{ id: string; data: WebhookEvent }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .orderBy('receivedAt', 'desc')
+      .limit(500)
+      .get();
+
+    const failures = snapshot.docs
+      .map((doc) => ({ id: doc.id, data: doc.data() as WebhookEvent }))
+      .filter((event) => event.data.status === 'failed');
+
+    return failures.slice(0, limit);
+  }
+
   /** A staff member's acknowledgment that they've investigated an unmatched payment outside this system (e.g. against M-Pesa's own statements) — see `WebhookEvent.resolvedBy`'s own comment for why this is distinct from `status`. */
   async markResolved(
     businessId: string,

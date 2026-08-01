@@ -1,5 +1,8 @@
 import { notificationService } from '@/services/notificationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
+
+const JOB_NAME = 'retry-notifications';
 
 /**
  * The retry sweep's real trigger (§ Notification breadth,
@@ -27,6 +30,28 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const businessId = getCurrentBusinessId();
-  const result = await notificationService.retrySweep(businessId);
-  return Response.json({ ok: true, ...result });
+  const startedAtMs = Date.now();
+
+  try {
+    const result = await notificationService.retrySweep(businessId);
+    await scheduledJobRunRepository.record({
+      businessId,
+      jobName: JOB_NAME,
+      status: 'succeeded',
+      durationMs: Date.now() - startedAtMs,
+      resultSummary: result,
+      error: null,
+    });
+    return Response.json({ ok: true, ...result });
+  } catch (error) {
+    await scheduledJobRunRepository.record({
+      businessId,
+      jobName: JOB_NAME,
+      status: 'failed',
+      durationMs: Date.now() - startedAtMs,
+      resultSummary: null,
+      error: error instanceof Error ? error.message : 'unknown error',
+    });
+    throw error;
+  }
 }

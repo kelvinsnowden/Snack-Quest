@@ -31,3 +31,4 @@ export * from './refund';
 export * from './supplier';
 export * from './purchaseOrder';
 export * from './inventoryBatch';
+export * from './scheduledJobRun';

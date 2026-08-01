@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { retrySweepMock } = vi.hoisted(() => ({ retrySweepMock: vi.fn() }));
+const { retrySweepMock, recordMock } = vi.hoisted(() => ({ retrySweepMock: vi.fn(), recordMock: vi.fn() }));
 
 vi.mock('@/services/notificationService', () => ({
   notificationService: { retrySweep: retrySweepMock },
+}));
+
+vi.mock('@/repositories/scheduledJobRunRepository', () => ({
+  scheduledJobRunRepository: { record: recordMock },
 }));
 
 import { GET } from '@/app/api/cron/retry-notifications/route';
@@ -74,5 +78,47 @@ describe('GET /api/cron/retry-notifications', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, attempted: 3 });
     expect(retrySweepMock).toHaveBeenCalledWith('snack-quest');
+  });
+
+  it('records a succeeded scheduled job run (§ Phase 5: Observability)', async () => {
+    retrySweepMock.mockResolvedValue({ attempted: 2 });
+
+    await GET(
+      new Request('http://localhost/api/cron/retry-notifications', {
+        headers: { authorization: 'Bearer test-cron-secret' },
+      }),
+    );
+
+    expect(recordMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: 'snack-quest',
+        jobName: 'retry-notifications',
+        status: 'succeeded',
+        resultSummary: { attempted: 2 },
+        error: null,
+      }),
+    );
+  });
+
+  it('records a failed scheduled job run and rethrows when the sweep itself throws', async () => {
+    retrySweepMock.mockRejectedValue(new Error('Firestore unavailable'));
+
+    await expect(
+      GET(
+        new Request('http://localhost/api/cron/retry-notifications', {
+          headers: { authorization: 'Bearer test-cron-secret' },
+        }),
+      ),
+    ).rejects.toThrow('Firestore unavailable');
+
+    expect(recordMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: 'snack-quest',
+        jobName: 'retry-notifications',
+        status: 'failed',
+        resultSummary: null,
+        error: 'Firestore unavailable',
+      }),
+    );
   });
 });

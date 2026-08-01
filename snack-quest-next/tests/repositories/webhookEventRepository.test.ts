@@ -224,3 +224,43 @@ describe('webhookEventRepository.markResolved', () => {
     );
   });
 });
+
+describe('webhookEventRepository.listFailed', () => {
+  it('returns failures across every eventKind, not just stk_callback', async () => {
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'b2c_result',
+      providerEventId: 'b2c-failed',
+      payload: {},
+    });
+    await webhookEventRepository.markFailed(BUSINESS_ID, 'daraja', 'b2c-failed', 'B2C timeout');
+
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'jumia',
+      eventKind: 'tracking_update',
+      providerEventId: 'tracking-ok',
+      payload: {},
+    });
+    await webhookEventRepository.markProcessed(BUSINESS_ID, 'jumia', 'tracking-ok');
+
+    const failures = await webhookEventRepository.listFailed(BUSINESS_ID);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].data).toMatchObject({ eventKind: 'b2c_result', error: 'B2C timeout' });
+  });
+
+  it('never leaks another business\'s failures', async () => {
+    await webhookEventRepository.recordIfNew({
+      businessId: OTHER_BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: 'other-biz-fail',
+      payload: {},
+    });
+    await webhookEventRepository.markFailed(OTHER_BUSINESS_ID, 'daraja', 'other-biz-fail', 'unmatched');
+
+    const failures = await webhookEventRepository.listFailed(BUSINESS_ID);
+    expect(failures).toHaveLength(0);
+  });
+});

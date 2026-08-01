@@ -281,6 +281,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // scheduledJobRuns: Vercel Cron run history (§ Phase 5:
+    // Observability) — same admin-visible/server-write-only discipline
+    // as domainEvents above.
+    match /scheduledJobRuns/{runId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // shipments: fulfillment record, distinct from orders.status (§12).
     // Admin-only for now — no customer-facing web read of shipment
     // status exists yet (tracking updates go out over WhatsApp).

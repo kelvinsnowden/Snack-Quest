@@ -29,6 +29,27 @@ class PaymentIntentRepository {
     return ref.id;
   }
 
+  /** Recent failed/expired intents for a business, newest first — the Operations dashboard's payment-failures tile (§ Phase 5). */
+  async listByStatus(
+    businessId: string,
+    statuses: PaymentIntentStatus[],
+    limit = 50,
+  ): Promise<{ id: string; data: PaymentIntent }[]> {
+    const statusSet = new Set(statuses);
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .orderBy('updatedAt', 'desc')
+      .limit(500)
+      .get();
+
+    const matches = snapshot.docs
+      .map((doc) => ({ id: doc.id, data: doc.data() as PaymentIntent }))
+      .filter((intent) => statusSet.has(intent.data.status));
+
+    return matches.slice(0, limit);
+  }
+
   async findById(intentId: string): Promise<PaymentIntent | null> {
     const snapshot = await adminFirestore.collection(COLLECTION).doc(intentId).get();
     if (!snapshot.exists) {
