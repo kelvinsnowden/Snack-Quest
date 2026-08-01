@@ -53,3 +53,61 @@ describe('shipmentRepository.listByBusiness', () => {
     expect(manualOnly.shipments.map((s) => s.id)).toEqual([first]);
   });
 });
+
+describe('shipmentRepository defaults', () => {
+  it('creates with an empty trackingEvents array and a null deliveredAt', async () => {
+    const id = await shipmentRepository.create(shipmentInput(), 'created');
+
+    const found = await shipmentRepository.findById(BUSINESS_ID, id);
+    expect(found?.trackingEvents).toEqual([]);
+    expect(found?.deliveredAt).toBeNull();
+  });
+});
+
+describe('shipmentRepository.updateStatus', () => {
+  it('stamps deliveredAt only when the new status is delivered', async () => {
+    const id = await shipmentRepository.create(shipmentInput(), 'created');
+
+    await shipmentRepository.updateStatus(id, 'in_transit');
+    expect((await shipmentRepository.findById(BUSINESS_ID, id))?.deliveredAt).toBeNull();
+
+    await shipmentRepository.updateStatus(id, 'delivered');
+    expect((await shipmentRepository.findById(BUSINESS_ID, id))?.deliveredAt).not.toBeNull();
+  });
+});
+
+describe('shipmentRepository.findByCourierShipmentRef', () => {
+  it('finds a shipment by its courier reference, scoped to the business', async () => {
+    const id = await shipmentRepository.create(shipmentInput({ courierShipmentRef: 'JUMIA-REF-1' }), 'created');
+
+    const found = await shipmentRepository.findByCourierShipmentRef(BUSINESS_ID, 'JUMIA-REF-1');
+    expect(found?.id).toBe(id);
+
+    expect(await shipmentRepository.findByCourierShipmentRef(OTHER_BUSINESS_ID, 'JUMIA-REF-1')).toBeNull();
+    expect(await shipmentRepository.findByCourierShipmentRef(BUSINESS_ID, 'no-such-ref')).toBeNull();
+  });
+});
+
+describe('shipmentRepository.recordTrackingUpdate', () => {
+  it('always appends the raw event, and only transitions status when nextStatus is given', async () => {
+    const id = await shipmentRepository.create(shipmentInput(), 'created');
+
+    await shipmentRepository.recordTrackingUpdate(id, {
+      event: { status: 'warehouse_scan', description: null, occurredAt: new Date('2026-01-01T00:00:00Z') },
+    });
+    let found = await shipmentRepository.findById(BUSINESS_ID, id);
+    expect(found?.status).toBe('created');
+    expect(found?.trackingEvents).toHaveLength(1);
+    expect(found?.trackingEvents[0].status).toBe('warehouse_scan');
+    expect(found?.deliveredAt).toBeNull();
+
+    await shipmentRepository.recordTrackingUpdate(id, {
+      event: { status: 'delivered', description: null, occurredAt: new Date('2026-01-02T00:00:00Z') },
+      nextStatus: 'delivered',
+    });
+    found = await shipmentRepository.findById(BUSINESS_ID, id);
+    expect(found?.status).toBe('delivered');
+    expect(found?.trackingEvents).toHaveLength(2);
+    expect(found?.deliveredAt).not.toBeNull();
+  });
+});

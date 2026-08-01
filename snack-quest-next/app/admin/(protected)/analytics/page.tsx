@@ -17,11 +17,12 @@ export default async function AdminAnalyticsPage() {
   const session = await requireStaffSession();
   const month = currentMonth();
 
-  const [revenue, funnel, topCreators, cac] = await Promise.all([
+  const [revenue, funnel, topCreators, cac, delivery] = await Promise.all([
     businessAnalyticsService.getRevenueOverview(session.businessId, 30),
     businessAnalyticsService.getFunnel(session.businessId),
     businessAnalyticsService.getTopCreators(session.businessId),
     businessAnalyticsService.getCac(session.businessId, month),
+    businessAnalyticsService.getDeliveryPerformance(session.businessId),
   ]);
 
   return (
@@ -96,6 +97,46 @@ export default async function AdminAnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {delivery.totalShipments > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Delivery performance</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-6">
+            <div className="grid gap-4 sm:grid-cols-4">
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Shipments</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{delivery.totalShipments}</p>
+              </div>
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Delivered</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{delivery.deliveredCount}</p>
+              </div>
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Failed</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{delivery.failedCount}</p>
+              </div>
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Median delivery time</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                  {delivery.medianDeliveryHours !== null ? `${delivery.medianDeliveryHours}h` : '—'}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {delivery.statusBreakdown.map((status) => (
+                <span
+                  key={status.status}
+                  className="rounded-full border border-border bg-border/20 px-3 py-1 text-xs font-medium text-foreground"
+                >
+                  {status.label}: {status.count}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {topCreators.length > 0 ? (
         <Card>

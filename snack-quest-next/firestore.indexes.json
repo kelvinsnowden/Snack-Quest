@@ -295,6 +295,14 @@
       ]
     },
     {
+      "collectionGroup": "shipments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "courierShipmentRef", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "inventoryMovements",
       "queryScope": "COLLECTION",
       "fields": [

@@ -84,7 +84,7 @@ export default async function AdminDeliveriesPage({
                 {shipments.map(({ id, data }) => (
                   <tr key={id} className="border-b border-border last:border-0 hover:bg-border/20">
                     <td className="px-4 py-3">
-                      <Link href={`/admin/orders/${data.orderId}`} className="block">
+                      <Link href={`/admin/deliveries/${id}`} className="block">
                         <span className="font-medium text-foreground">{data.recipientName}</span>
                         <span className="block text-caption text-muted-foreground tabular-nums">{data.recipientPhone}</span>
                       </Link>

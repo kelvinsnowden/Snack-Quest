@@ -18,7 +18,8 @@
     "seed:packages": "node scripts/seedPackages.mjs",
     "seed:pickup-stations": "node scripts/seedPickupStations.mjs",
     "seed:notification-templates": "node scripts/seedNotificationTemplates.mjs",
-    "secure:daraja-webhook": "node scripts/setDarajaWebhookSecret.mjs"
+    "secure:daraja-webhook": "node scripts/setDarajaWebhookSecret.mjs",
+    "secure:jumia-webhook": "node scripts/setJumiaWebhookSecret.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",

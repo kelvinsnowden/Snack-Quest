@@ -27,7 +27,37 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('referralAttributions'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('marketingSpendEntries'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('shipments'));
 });
+
+function seedShipment(overrides: {
+  businessId?: string;
+  status: 'pending' | 'pending_manual_booking' | 'created' | 'in_transit' | 'delivered' | 'failed';
+  method?: 'door' | 'pickup';
+  createdAtMillis?: number;
+  deliveredAtMillis?: number | null;
+}) {
+  return adminFirestore.collection('shipments').add({
+    businessId: overrides.businessId ?? BUSINESS_ID,
+    orderId: 'order-1',
+    method: overrides.method ?? 'door',
+    provider: 'jumia',
+    courierShipmentRef: null,
+    trackingUrl: null,
+    status: overrides.status,
+    recipientName: 'Jane',
+    recipientPhone: '254700000000',
+    county: 'Nairobi',
+    addressText: null,
+    trackingEvents: [],
+    deliveredAt:
+      overrides.deliveredAtMillis !== undefined && overrides.deliveredAtMillis !== null
+        ? Timestamp.fromMillis(overrides.deliveredAtMillis)
+        : null,
+    createdAt: Timestamp.fromMillis(overrides.createdAtMillis ?? Date.now()),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
 
 describe('BusinessAnalyticsService.getRevenueOverview', () => {
   it('sums only revenue-counting statuses within the window, excluding cancelled/refund_requested and older orders', async () => {
@@ -151,5 +181,54 @@ describe('BusinessAnalyticsService.getCac / setMarketingSpend', () => {
     expect(cac.spendKes).toBe(5000);
     expect(cac.newCustomers).toBe(1);
     expect(cac.cacKes).toBe(5000);
+  });
+});
+
+describe('BusinessAnalyticsService.getDeliveryPerformance', () => {
+  it('returns zeroed-out defaults with no shipments', async () => {
+    const result = await businessAnalyticsService.getDeliveryPerformance(BUSINESS_ID);
+    expect(result).toEqual({
+      totalShipments: 0,
+      statusBreakdown: [],
+      methodBreakdown: [],
+      deliveredCount: 0,
+      failedCount: 0,
+      medianDeliveryHours: null,
+    });
+  });
+
+  it('breaks down by status and method, scoped to the business', async () => {
+    const now = Date.now();
+    await seedShipment({ status: 'delivered', method: 'door', createdAtMillis: now, deliveredAtMillis: now + 5 * 60 * 60 * 1000 });
+    await seedShipment({ status: 'in_transit', method: 'pickup', createdAtMillis: now });
+    await seedShipment({ status: 'failed', method: 'door', createdAtMillis: now });
+    await seedShipment({ businessId: OTHER_BUSINESS_ID, status: 'delivered', createdAtMillis: now, deliveredAtMillis: now });
+
+    const result = await businessAnalyticsService.getDeliveryPerformance(BUSINESS_ID);
+
+    expect(result.totalShipments).toBe(3);
+    expect(result.deliveredCount).toBe(1);
+    expect(result.failedCount).toBe(1);
+    expect(result.statusBreakdown).toEqual(
+      expect.arrayContaining([
+        { status: 'delivered', label: 'Delivered', count: 1 },
+        { status: 'in_transit', label: 'In transit', count: 1 },
+        { status: 'failed', label: 'Failed', count: 1 },
+      ]),
+    );
+    expect(result.methodBreakdown).toEqual(expect.arrayContaining([{ method: 'door', count: 2 }, { method: 'pickup', count: 1 }]));
+  });
+
+  it('computes the median delivery time in hours across delivered shipments only', async () => {
+    const now = Date.now();
+    await seedShipment({ status: 'delivered', createdAtMillis: now, deliveredAtMillis: now + 2 * 60 * 60 * 1000 });
+    await seedShipment({ status: 'delivered', createdAtMillis: now, deliveredAtMillis: now + 4 * 60 * 60 * 1000 });
+    await seedShipment({ status: 'delivered', createdAtMillis: now, deliveredAtMillis: now + 12 * 60 * 60 * 1000 });
+    // Not delivered — must not contribute to the median.
+    await seedShipment({ status: 'in_transit', createdAtMillis: now });
+
+    const result = await businessAnalyticsService.getDeliveryPerformance(BUSINESS_ID);
+
+    expect(result.medianDeliveryHours).toBe(4);
   });
 });

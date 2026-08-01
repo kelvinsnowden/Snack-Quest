@@ -5,8 +5,10 @@ import { conversationRepository } from '@/repositories/conversationRepository';
 import { referralAttributionRepository } from '@/repositories/referralAttributionRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { marketingSpendRepository } from '@/repositories/marketingSpendRepository';
+import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { toMillis } from '@/lib/firestoreTimestamp';
-import type { Order } from '@/types';
+import { SHIPMENT_STATUS_LABELS } from '@/lib/delivery/transitions';
+import type { Order, ShipmentStatus } from '@/types';
 
 /**
  * Real analytics, all derived on demand from the same collections the
@@ -27,6 +29,7 @@ import type { Order } from '@/types';
 const REVENUE_ORDER_LIMIT = 1000;
 const FUNNEL_CONVERSATION_LIMIT = 500;
 const COMMISSION_ATTRIBUTION_LIMIT = 500;
+const SHIPMENT_ANALYTICS_LIMIT = 500;
 
 // Orders that represent real, kept revenue — excludes pending (not
 // yet a completed sale), cancelled, and refund_requested (money that
@@ -63,6 +66,27 @@ export interface CacResult {
   spendKes: number | null;
   newCustomers: number;
   cacKes: number | null;
+}
+
+export interface DeliveryStatusCount {
+  status: ShipmentStatus;
+  label: string;
+  count: number;
+}
+
+export interface DeliveryMethodCount {
+  method: string;
+  count: number;
+}
+
+export interface DeliveryPerformance {
+  totalShipments: number;
+  statusBreakdown: DeliveryStatusCount[];
+  methodBreakdown: DeliveryMethodCount[];
+  deliveredCount: number;
+  failedCount: number;
+  /** Median hours from shipment creation to delivery, across delivered shipments in this scan window — median rather than mean since one very slow (or very fast) delivery shouldn't dominate the figure. Null until at least one shipment has actually been delivered. */
+  medianDeliveryHours: number | null;
 }
 
 class BusinessAnalyticsService {
@@ -179,6 +203,53 @@ class BusinessAnalyticsService {
 
   async setMarketingSpend(businessId: string, month: string, amountKes: number, actor: string): Promise<void> {
     await marketingSpendRepository.set(businessId, month, amountKes, actor);
+  }
+
+  /**
+   * Real delivery performance (§ Logistics: wire tracking webhook
+   * consumption), computed from `shipments` the same way every other
+   * metric here is — a bounded scan, not a separate pipeline.
+   * `medianDeliveryHours` is only as complete as the shipments that
+   * have actually reached `delivered` (via either the tracking
+   * webhook or a manual override) — a shipment still `in_transit`
+   * contributes to `statusBreakdown` but not to the delivery-time
+   * figure, since it has no real `deliveredAt` yet.
+   */
+  async getDeliveryPerformance(businessId: string): Promise<DeliveryPerformance> {
+    const { shipments } = await shipmentRepository.listByBusiness(businessId, { limit: SHIPMENT_ANALYTICS_LIMIT });
+
+    const statusCounts = new Map<ShipmentStatus, number>();
+    const methodCounts = new Map<string, number>();
+    const deliveryHours: number[] = [];
+
+    for (const { data } of shipments) {
+      statusCounts.set(data.status, (statusCounts.get(data.status) ?? 0) + 1);
+      methodCounts.set(data.method, (methodCounts.get(data.method) ?? 0) + 1);
+
+      if (data.status === 'delivered' && data.deliveredAt) {
+        const hours = (toMillis(data.deliveredAt) - toMillis(data.createdAt)) / (60 * 60 * 1000);
+        if (hours >= 0) {
+          deliveryHours.push(hours);
+        }
+      }
+    }
+
+    deliveryHours.sort((a, b) => a - b);
+    const medianDeliveryHours =
+      deliveryHours.length > 0 ? Math.round(deliveryHours[Math.floor(deliveryHours.length / 2)]) : null;
+
+    return {
+      totalShipments: shipments.length,
+      statusBreakdown: Array.from(statusCounts.entries()).map(([status, count]) => ({
+        status,
+        label: SHIPMENT_STATUS_LABELS[status],
+        count,
+      })),
+      methodBreakdown: Array.from(methodCounts.entries()).map(([method, count]) => ({ method, count })),
+      deliveredCount: statusCounts.get('delivered') ?? 0,
+      failedCount: statusCounts.get('failed') ?? 0,
+      medianDeliveryHours,
+    };
   }
 }
 

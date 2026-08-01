@@ -23,7 +23,7 @@ export type WebhookEventStatus = 'received' | 'processed' | 'failed';
  * payment attempt" without also catching an unrelated B2C/reversal
  * failure that happens to have no `relatedEntityId` either.
  */
-export type WebhookEventKind = 'stk_callback' | 'b2c_result' | 'reversal_result' | 'inbound_message';
+export type WebhookEventKind = 'stk_callback' | 'b2c_result' | 'reversal_result' | 'inbound_message' | 'tracking_update';
 
 export interface WebhookEvent {
   businessId: string;

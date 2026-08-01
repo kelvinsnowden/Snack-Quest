@@ -1,12 +1,12 @@
 import 'server-only';
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { Shipment, ShipmentStatus } from '@/types';
+import type { Shipment, ShipmentStatus, ShipmentTrackingEvent } from '@/types';
 
 const COLLECTION = 'shipments';
 
-export type ShipmentInput = Omit<Shipment, 'status' | 'createdAt' | 'updatedAt'>;
+export type ShipmentInput = Omit<Shipment, 'status' | 'createdAt' | 'updatedAt' | 'trackingEvents' | 'deliveredAt'>;
 
 class ShipmentRepository {
   async create(input: ShipmentInput, status: ShipmentStatus): Promise<string> {
@@ -14,28 +14,77 @@ class ShipmentRepository {
     const ref = await adminFirestore.collection(COLLECTION).add({
       ...input,
       status,
+      trackingEvents: [],
+      deliveredAt: null,
       createdAt: now,
       updatedAt: now,
     });
     return ref.id;
   }
 
+  /** `deliveredAt` is stamped automatically the moment `status` becomes `delivered` — real for both the manual-override path and the tracking-webhook path, never set any other way. */
   async updateStatus(
     shipmentId: string,
     status: ShipmentStatus,
     extra: Partial<Pick<Shipment, 'courierShipmentRef' | 'trackingUrl'>> = {},
   ): Promise<void> {
-    await adminFirestore.collection(COLLECTION).doc(shipmentId).update({
-      status,
-      ...extra,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(shipmentId)
+      .update({
+        status,
+        ...extra,
+        ...(status === 'delivered' ? { deliveredAt: FieldValue.serverTimestamp() } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+  }
+
+  /**
+   * The tracking-webhook write (§ Logistics: wire tracking webhook
+   * consumption) — always appends the raw event to `trackingEvents`
+   * for a full audit trail, and additionally transitions `status`
+   * (stamping `deliveredAt` too, same as `updateStatus`) only when the
+   * caller resolved a valid next status to move to.
+   */
+  async recordTrackingUpdate(
+    shipmentId: string,
+    input: { event: Omit<ShipmentTrackingEvent, 'occurredAt'> & { occurredAt: Date }; nextStatus?: ShipmentStatus },
+  ): Promise<void> {
+    const event: ShipmentTrackingEvent = {
+      status: input.event.status,
+      description: input.event.description,
+      occurredAt: Timestamp.fromDate(input.event.occurredAt) as unknown as ShipmentTrackingEvent['occurredAt'],
+    };
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(shipmentId)
+      .update({
+        trackingEvents: FieldValue.arrayUnion(event),
+        ...(input.nextStatus ? { status: input.nextStatus } : {}),
+        ...(input.nextStatus === 'delivered' ? { deliveredAt: FieldValue.serverTimestamp() } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
   }
 
   async findByOrderId(orderId: string): Promise<{ id: string; data: Shipment } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('orderId', '==', orderId)
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() as Shipment };
+  }
+
+  /** The tracking webhook's lookup — resolves the courier's own shipment reference (from the webhook payload) back to the real shipment, scoped to the business the webhook URL is registered under. */
+  async findByCourierShipmentRef(businessId: string, courierShipmentRef: string): Promise<{ id: string; data: Shipment } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('courierShipmentRef', '==', courierShipmentRef)
       .limit(1)
       .get();
     if (snapshot.empty) {
