@@ -2098,3 +2098,35 @@ the same reason as §22.1.
 
 ---
 
+## 23. Operational Readiness — Secret Management & Disaster Recovery (Phases 8–9)
+
+**Secret management (Phase 8).** Field-level envelope encryption
+(`lib/secrets/secretCipher.ts`, AES-256-GCM, keyed by
+`SECRET_ENCRYPTION_KEY`) already existed from the Integration Portal
+work (§13); Phase 8 closed the remaining gap, which was operational
+visibility, not encryption itself — an admin previously had no way to
+tell whether their credentials were actually encrypted at rest, or
+whether this deployment even has the key configured, without a
+developer inspecting environment variables or raw Firestore documents.
+`businessIntegrationSecretRepository.isEncryptedAtRest()` and
+`integrationSettingsService.encryptionConfigured()` now surface this
+directly in **Admin → Settings → Integrations**, per-provider and
+platform-wide.
+
+**Disaster recovery (Phase 9).** See
+`snack-quest-next/docs/DISASTER_RECOVERY.md` for the full runbook. The
+short version: code and deployments are safe (Git + Vercel rollback);
+Firestore delete protection is now enabled (free, zero downside); but
+**Firestore has no automated backup today** because that requires
+upgrading the `snack-quest-os` project from Firestore's free (Spark)
+plan to Blaze — a billing decision for the business owner, not
+something this session's deployment credential should make
+unilaterally. Two manual export scripts
+(`npm run backup:export`, `npm run backup:export-auth-users`) exist as
+a zero-cost stopgap in the meantime. This is the single largest
+production-readiness gap remaining on the platform; closing it is a
+five-minute console action once the business owner decides to enable
+billing (documented step-by-step in the runbook's §6).
+
+---
+

@@ -41,6 +41,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# disaster-recovery backups (§ Disaster recovery) — real customer/financial
+# data and, for auth-users exports, password hashes. Never committed.
+/backups/
+
 # firebase emulator
 .firebase/
 firebase-debug.log
