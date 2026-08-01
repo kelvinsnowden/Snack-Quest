@@ -4,6 +4,7 @@ import {
   businessIntegrationSecretRepository,
   IntegrationSecretNotFoundError,
 } from '@/repositories/businessIntegrationSecretRepository';
+import { isEncryptionConfigured } from '@/lib/secrets/secretCipher';
 import { getIntegrationFieldManifest, getRequiredFieldKeys, type IntegrationFieldSpec } from '@/lib/integrations/fieldManifest';
 import { testDarajaConnection } from '@/lib/integrations/daraja/darajaGateway';
 import { testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
@@ -48,6 +49,8 @@ export interface IntegrationSummary {
   lastTestStatus: 'success' | 'failure' | null;
   lastTestError: string | null;
   fields: IntegrationFieldView[];
+  /** Whether this provider's stored secret fields are encrypted at rest right now. `null` when nothing secret is configured yet (nothing to encrypt). See `businessIntegrationSecretRepository.isEncryptedAtRest`. */
+  secretsEncryptedAtRest: boolean | null;
 }
 
 const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta'];
@@ -108,7 +111,11 @@ function computeStatus(
   return 'connected';
 }
 
-function toSummary(provider: IntegrationProvider, secret: Record<string, unknown> | null): IntegrationSummary {
+function toSummary(
+  provider: IntegrationProvider,
+  secret: Record<string, unknown> | null,
+  secretsEncryptedAtRest: boolean | null,
+): IntegrationSummary {
   const manifest = getIntegrationFieldManifest(provider);
   return {
     provider,
@@ -118,6 +125,7 @@ function toSummary(provider: IntegrationProvider, secret: Record<string, unknown
     lastTestStatus: (secret?.lastTestStatus as 'success' | 'failure' | null | undefined) ?? null,
     lastTestError: (secret?.lastTestError as string | null | undefined) ?? null,
     fields: manifest.map((spec) => fieldView(spec, secret)),
+    secretsEncryptedAtRest,
   };
 }
 
@@ -135,17 +143,28 @@ function assertKnownProvider(provider: string): asserts provider is IntegrationP
 }
 
 class IntegrationSettingsService {
+  /** Whether this deployment has `SECRET_ENCRYPTION_KEY` set at all — independent of any one business's data, exposed for the portal's platform-wide banner. */
+  encryptionConfigured(): boolean {
+    return isEncryptionConfigured();
+  }
+
   async listSummaries(businessId: string): Promise<IntegrationSummary[]> {
-    const secrets = await Promise.all(
-      PROVIDERS.map((provider) => businessIntegrationSecretRepository.find(businessId, provider)),
+    const [secrets, encryptedFlags] = await Promise.all([
+      Promise.all(PROVIDERS.map((provider) => businessIntegrationSecretRepository.find(businessId, provider))),
+      Promise.all(PROVIDERS.map((provider) => businessIntegrationSecretRepository.isEncryptedAtRest(businessId, provider))),
+    ]);
+    return PROVIDERS.map((provider, i) =>
+      toSummary(provider, secrets[i] as Record<string, unknown> | null, encryptedFlags[i]),
     );
-    return PROVIDERS.map((provider, i) => toSummary(provider, secrets[i] as Record<string, unknown> | null));
   }
 
   async getSummary(businessId: string, provider: string): Promise<IntegrationSummary> {
     assertKnownProvider(provider);
-    const secret = await businessIntegrationSecretRepository.find(businessId, provider);
-    return toSummary(provider, secret as Record<string, unknown> | null);
+    const [secret, encryptedAtRest] = await Promise.all([
+      businessIntegrationSecretRepository.find(businessId, provider),
+      businessIntegrationSecretRepository.isEncryptedAtRest(businessId, provider),
+    ]);
+    return toSummary(provider, secret as Record<string, unknown> | null, encryptedAtRest);
   }
 
   /**

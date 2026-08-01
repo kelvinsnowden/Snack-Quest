@@ -91,4 +91,39 @@ describe('businessIntegrationSecretRepository', () => {
     const found = await businessIntegrationSecretRepository.get(BUSINESS_ID, 'meta');
     expect(found.accessToken).toBe('plaintext-token');
   });
+
+  describe('isEncryptedAtRest', () => {
+    it('returns null when nothing is configured for that provider yet', async () => {
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'jumia')).toBeNull();
+    });
+
+    it('returns false when a secret is stored without an encryption key configured', async () => {
+      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+        apiKey: 'plain-key',
+        merchantId: 'merchant-1',
+      });
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'jumia')).toBe(false);
+    });
+
+    it('returns true once the secret is saved with an encryption key configured', async () => {
+      process.env.SECRET_ENCRYPTION_KEY = TEST_KEY;
+      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+        apiKey: 'encrypted-key',
+        merchantId: 'merchant-1',
+      });
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'jumia')).toBe(true);
+    });
+
+    it('flips back to false for a provider whose secret predates the key, until it is re-saved', async () => {
+      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', {
+        pixelId: 'pixel-1',
+        accessToken: 'plaintext-token',
+      });
+      process.env.SECRET_ENCRYPTION_KEY = TEST_KEY;
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'meta')).toBe(false);
+
+      await businessIntegrationSecretRepository.update(BUSINESS_ID, 'meta', { accessToken: 'plaintext-token' });
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'meta')).toBe(true);
+    });
+  });
 });

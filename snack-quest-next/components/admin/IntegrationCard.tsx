@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Lock, LockOpen } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -84,6 +84,22 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
             <XCircle className="size-3.5 text-danger" aria-hidden="true" />
           )}
           Last tested {new Date(integration.lastTestedAt).toLocaleString()}
+        </p>
+      ) : null}
+
+      {integration.secretsEncryptedAtRest !== null ? (
+        <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
+          {integration.secretsEncryptedAtRest ? (
+            <>
+              <Lock className="size-3.5 text-success" aria-hidden="true" />
+              Credentials encrypted at rest
+            </>
+          ) : (
+            <>
+              <LockOpen className="size-3.5 text-warning" aria-hidden="true" />
+              Credentials stored unencrypted at rest
+            </>
+          )}
         </p>
       ) : null}
 

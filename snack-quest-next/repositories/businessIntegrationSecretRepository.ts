@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { decryptSecret, encryptSecret } from '@/lib/secrets/secretCipher';
+import { decryptSecret, encryptSecret, isEncryptedSecret } from '@/lib/secrets/secretCipher';
 import { getSecretFieldKeys } from '@/lib/integrations/fieldManifest';
 import type { IntegrationProvider, IntegrationSecretMap } from '@/types';
 
@@ -105,6 +105,40 @@ class BusinessIntegrationSecretRepository {
       .collection('integrationSecrets')
       .doc(provider)
       .set({ ...encrypted, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  /**
+   * Whether every currently-stored secret field for this provider is
+   * actually encrypted at rest right now (§ Secret management
+   * abstraction) — reads the raw, undecrypted document, unlike `get`/
+   * `find`. Returns `null` when nothing is configured yet or the
+   * provider has no secret-flagged fields (nothing to encrypt), so
+   * callers can distinguish "not applicable" from "not yet encrypted".
+   * A `false` here after `SECRET_ENCRYPTION_KEY` is set is expected and
+   * not an error — see `lib/secrets/secretCipher.ts`'s doc comment on
+   * why rotating/enabling the key requires no migration step: values
+   * re-encrypt themselves the next time they're saved through the
+   * portal.
+   */
+  async isEncryptedAtRest<P extends IntegrationProvider>(businessId: string, provider: P): Promise<boolean | null> {
+    const snapshot = await adminFirestore
+      .collection('businesses')
+      .doc(businessId)
+      .collection('integrationSecrets')
+      .doc(provider)
+      .get();
+    if (!snapshot.exists) {
+      return null;
+    }
+    const data = snapshot.data() as Record<string, unknown>;
+    const secretKeys = getSecretFieldKeys(provider);
+    const configuredValues = secretKeys
+      .map((key) => data[key])
+      .filter((value): value is string => typeof value === 'string' && value.length > 0);
+    if (configuredValues.length === 0) {
+      return null;
+    }
+    return configuredValues.every(isEncryptedSecret);
   }
 
   /** Records a "Test Connection" outcome (§ Integration Portal) — its own method, not `update`, since `lastTestedAt` needs a real server timestamp rather than a client-supplied value. */

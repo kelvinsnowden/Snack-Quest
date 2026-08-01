@@ -69,6 +69,41 @@ describe('IntegrationSettingsService.listSummaries', () => {
       UnknownIntegrationProviderError,
     );
   });
+
+  it('reports secretsEncryptedAtRest as null when unconfigured, false when plaintext, true once encrypted', async () => {
+    const unconfigured = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+    expect(unconfigured.secretsEncryptedAtRest).toBeNull();
+
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+      apiKey: 'plain-key',
+      merchantId: 'merchant-1',
+    });
+    const plaintext = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+    expect(plaintext.secretsEncryptedAtRest).toBe(false);
+
+    process.env.SECRET_ENCRYPTION_KEY = 'c'.repeat(64);
+    try {
+      await businessIntegrationSecretRepository.update(BUSINESS_ID, 'jumia', { apiKey: 'plain-key' });
+      const encrypted = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+      expect(encrypted.secretsEncryptedAtRest).toBe(true);
+    } finally {
+      delete process.env.SECRET_ENCRYPTION_KEY;
+    }
+  });
+});
+
+describe('IntegrationSettingsService.encryptionConfigured', () => {
+  afterEach(() => {
+    delete process.env.SECRET_ENCRYPTION_KEY;
+  });
+
+  it('reflects whether SECRET_ENCRYPTION_KEY is set in this environment', () => {
+    delete process.env.SECRET_ENCRYPTION_KEY;
+    expect(integrationSettingsService.encryptionConfigured()).toBe(false);
+
+    process.env.SECRET_ENCRYPTION_KEY = 'd'.repeat(64);
+    expect(integrationSettingsService.encryptionConfigured()).toBe(true);
+  });
 });
 
 describe('IntegrationSettingsService.updateSecret', () => {

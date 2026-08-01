@@ -66,4 +66,18 @@ describe('secretCipher', () => {
 
     expect(() => encryptSecret('value')).toThrow(/64-character hex string/);
   });
+
+  describe('isEncryptionConfigured', () => {
+    it('is false when no key is set', async () => {
+      delete process.env.SECRET_ENCRYPTION_KEY;
+      const { isEncryptionConfigured } = await import('@/lib/secrets/secretCipher');
+      expect(isEncryptionConfigured()).toBe(false);
+    });
+
+    it('is true once a valid key is set', async () => {
+      process.env.SECRET_ENCRYPTION_KEY = TEST_KEY;
+      const { isEncryptionConfigured } = await import('@/lib/secrets/secretCipher');
+      expect(isEncryptionConfigured()).toBe(true);
+    });
+  });
 });

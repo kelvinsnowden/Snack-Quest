@@ -90,3 +90,8 @@ export function decryptSecret(stored: string): string {
 export function isEncryptedSecret(stored: string): boolean {
   return stored.startsWith(ENC_PREFIX);
 }
+
+/** Whether this deployment has `SECRET_ENCRYPTION_KEY` set — the Integration Portal surfaces this so a non-developer operator can see, without reading environment variables directly, whether secrets are being encrypted at rest. */
+export function isEncryptionConfigured(): boolean {
+  return loadKey() !== null;
+}

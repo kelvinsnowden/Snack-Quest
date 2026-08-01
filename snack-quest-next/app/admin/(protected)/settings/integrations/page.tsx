@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeft, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Lock, LockOpen } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { integrationSettingsService } from '@/services/integrationSettingsService';
@@ -62,6 +62,7 @@ export default async function AdminIntegrationsPage() {
   }
 
   const integrations = await integrationSettingsService.listSummaries(session.businessId);
+  const encryptionConfigured = integrationSettingsService.encryptionConfigured();
 
   return (
     <div className="flex max-w-5xl flex-col gap-6">
@@ -75,6 +76,24 @@ export default async function AdminIntegrationsPage() {
           Manage every external service this business connects to — credentials are stored per business and take effect immediately, no redeploy needed.
         </p>
       </div>
+
+      <Card className={`flex items-start gap-3 p-4 ${encryptionConfigured ? '' : 'border-warning/50 bg-warning/5'}`}>
+        {encryptionConfigured ? (
+          <Lock className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+        ) : (
+          <LockOpen className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+        )}
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {encryptionConfigured ? 'Credential encryption at rest is on for this deployment.' : 'Credential encryption at rest is off for this deployment.'}
+          </p>
+          <p className="mt-0.5 text-caption text-muted-foreground">
+            {encryptionConfigured
+              ? 'New and re-saved integration credentials are encrypted (AES-256-GCM) before being stored. Any card below still marked "unencrypted" was saved before this was turned on — open Configure and save it again to encrypt it.'
+              : 'Integration credentials below are stored as plain text in the database. Ask whoever manages this deployment to set the SECRET_ENCRYPTION_KEY environment variable (see .env.local.example) — every credential saved after that is encrypted automatically, no code changes needed.'}
+          </p>
+        </div>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {integrations.map((integration) => (
