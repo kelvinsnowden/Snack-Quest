@@ -13,6 +13,7 @@ import { orderService } from './orderService';
 import { referralService } from './referralService';
 import { deliveryService } from './deliveryService';
 import { adConversionService } from './adConversionService';
+import { walletService } from './walletService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import {
@@ -169,6 +170,16 @@ class ConversationService {
       return { conversationId, botReply: null };
     }
 
+    // A global command, checked ahead of the state machine and never
+    // consuming a turn of it (§ Phase 4: Customer loyalty / Quest
+    // system) — a customer can ask their balance from any step,
+    // including their very first-ever message, without derailing
+    // whatever they were doing (e.g. mid pickup-station search).
+    const normalizedCommand = inboundMessage.text.trim().toUpperCase();
+    if (normalizedCommand === 'BALANCE' || normalizedCommand === 'WALLET') {
+      return this.replyWithWalletBalance(businessId, conversationId, phoneNumber);
+    }
+
     if (isNewConversation) {
       return this.sendWelcome(businessId, conversationId, phoneNumber);
     }
@@ -191,6 +202,21 @@ class ConversationService {
     const availablePackages = await getAvailablePackages(businessId);
     const { nextStep, botReply } = startConversationMessages(availablePackages);
     await conversationRepository.updateStep(conversationId, nextStep);
+    await this.reply(businessId, conversationId, phoneNumber, botReply);
+    return { conversationId, botReply };
+  }
+
+  /** Answers the BALANCE/WALLET global command — never touches `currentStep`/`stateBlob`, so it can't derail whatever the customer was mid-way through. */
+  private async replyWithWalletBalance(
+    businessId: string,
+    conversationId: string,
+    phoneNumber: string,
+  ): Promise<ConversationTurnResult> {
+    const { balanceKes } = await walletService.getBalance(businessId, phoneNumber);
+    const botReply =
+      balanceKes > 0
+        ? `Your Snack Quest wallet balance is KES ${balanceKes}. It's automatically applied to your next order.`
+        : "You don't have any wallet credit yet. You'll earn some after your first order — keep an eye out!";
     await this.reply(businessId, conversationId, phoneNumber, botReply);
     return { conversationId, botReply };
   }
@@ -324,14 +350,25 @@ class ConversationService {
       referralCode?: string;
     },
     delivery: DeliveryDetails,
-  ): Promise<{ snapshotId: string; totalKes: number }> {
+  ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number }> {
     const referral = common.referralCode
       ? await referralService.validateCode(businessId, common.referralCode)
       : null;
 
     const subtotalKes = common.priceKes;
     const discountKes = referral?.discountKes ?? 0;
-    const totalKes = subtotalKes - discountKes + delivery.feeKes;
+    // Wallet credit is applied on top of any referral discount, capped
+    // at what's left of the order after it — never below zero, and
+    // never more than the customer's actual available balance (§
+    // Phase 4: Customer loyalty / Quest system). Only reserved here;
+    // the real debit happens in `completeOrder()`, once payment for
+    // this reduced amount has actually succeeded.
+    const walletCreditAppliedKes = await walletService.redeemableAmount(
+      businessId,
+      phoneNumber,
+      Math.max(subtotalKes - discountKes, 0),
+    );
+    const totalKes = subtotalKes - discountKes - walletCreditAppliedKes + delivery.feeKes;
 
     const snapshotId = await conversationCheckoutSnapshotRepository.create({
       businessId,
@@ -349,6 +386,7 @@ class ConversationService {
       referralCommissionKes: referral?.commissionKes ?? 0,
       subtotalKes,
       discountKes,
+      walletCreditAppliedKes,
       deliveryFeeKes: delivery.feeKes,
       totalKes,
     });
@@ -365,7 +403,7 @@ class ConversationService {
       { conversationId, totalKes },
     );
 
-    return { snapshotId, totalKes };
+    return { snapshotId, totalKes, walletCreditAppliedKes };
   }
 
   /**
@@ -476,7 +514,7 @@ class ConversationService {
           trackingUrl: null,
         };
 
-    const { snapshotId, totalKes } = await this.freezeSnapshot(
+    const { snapshotId, totalKes, walletCreditAppliedKes } = await this.freezeSnapshot(
       businessId,
       conversationId,
       phoneNumber,
@@ -491,6 +529,15 @@ class ConversationService {
       },
       delivery,
     );
+
+    if (walletCreditAppliedKes > 0) {
+      await this.reply(
+        businessId,
+        conversationId,
+        phoneNumber,
+        `🎉 KES ${walletCreditAppliedKes} wallet credit applied — your total is now KES ${totalKes}.`,
+      );
+    }
 
     const intentId = await paymentService.createIntent({
       businessId,
@@ -751,6 +798,32 @@ class ConversationService {
       }
     }
 
+    // Wallet redemption + milestone bonus (§ Phase 4: Customer loyalty
+    // / Quest system) — both best-effort, same discipline as the
+    // referral commission above: a paid, confirmed order is never
+    // undone by a wallet-write failure.
+    if (snapshot.walletCreditAppliedKes > 0) {
+      try {
+        await walletService.redeemAtCheckout(businessId, phoneNumber, snapshot.walletCreditAppliedKes, orderId);
+      } catch (error) {
+        await publishEvent(businessId, 'WalletRedemptionFailed', 'order', orderId, {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
+    }
+    let milestoneAwardKes = 0;
+    try {
+      const paidOrderCount = await walletService.countPaidOrders(businessId, phoneNumber);
+      const milestone = await walletService.awardMilestoneIfEligible(businessId, phoneNumber, orderId, paidOrderCount);
+      if (milestone.awarded) {
+        milestoneAwardKes = milestone.amountKes;
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'WalletMilestoneAwardFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
     try {
       await deliveryService.createShipmentForOrder(businessId, orderId, {
         customerName: snapshot.customerName,
@@ -801,7 +874,10 @@ class ConversationService {
         ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
         : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
-    await this.reply(businessId, result.conversationId, phoneNumber, confirmationMessage);
+    const milestoneMessage =
+      milestoneAwardKes > 0 ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.` : '';
+
+    await this.reply(businessId, result.conversationId, phoneNumber, `${confirmationMessage}${milestoneMessage}`);
   }
 
   /** Pauses automatic bot replies — an agent has taken over this thread (§6). */

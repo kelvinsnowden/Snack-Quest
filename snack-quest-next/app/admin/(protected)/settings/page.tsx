@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Plug, ChevronRight } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessSettingsService } from '@/services/businessSettingsService';
-import { BusinessSettingsForm } from '@/components/admin/BusinessSettingsForm';
+import { BusinessSettingsForm, DEFAULT_LOYALTY_CONFIG } from '@/components/admin/BusinessSettingsForm';
 import { Card } from '@/components/ui/card';
 
 export const metadata: Metadata = { title: 'Settings' };
@@ -41,6 +41,7 @@ export default async function AdminSettingsPage() {
           adminWhatsappPhone: business.adminWhatsappPhone,
           whatsappCustomerNumber: business.whatsappCustomerNumber,
           status: business.status,
+          loyaltyConfig: business.loyaltyConfig ?? DEFAULT_LOYALTY_CONFIG,
         }}
       />
     </div>

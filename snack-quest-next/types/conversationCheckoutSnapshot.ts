@@ -43,6 +43,8 @@ export interface ConversationCheckoutSnapshot {
   referralCommissionKes: number;
   subtotalKes: number;
   discountKes: number;
+  /** Wallet credit auto-applied at freeze time (§ Phase 4: Customer loyalty / Quest system), capped at `subtotalKes - discountKes`. Debited from the customer's wallet only once the order actually completes — see `ConversationService.completeOrder()`. */
+  walletCreditAppliedKes: number;
   deliveryFeeKes: number;
   totalKes: number;
   status: ConversationCheckoutSnapshotStatus;

@@ -4,9 +4,11 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { customerService } from '@/services/customerService';
+import { walletService } from '@/services/walletService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
-import { formatDate, formatKes } from '@/lib/orders/format';
+import { CustomerWalletCard } from '@/components/admin/CustomerWalletCard';
+import { formatDate, formatDateTime, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Customer detail' };
 
@@ -19,7 +21,11 @@ export default async function AdminCustomerDetailPage({
   const { phoneNumber: encodedPhoneNumber } = await params;
   const phoneNumber = decodeURIComponent(encodedPhoneNumber);
 
-  const { summary, orders } = await customerService.getCustomerOrders(session.businessId, phoneNumber);
+  const [{ summary, orders }, walletBalance, walletLedger] = await Promise.all([
+    customerService.getCustomerOrders(session.businessId, phoneNumber),
+    walletService.getBalance(session.businessId, phoneNumber),
+    walletService.getLedger(session.businessId, phoneNumber),
+  ]);
   if (!summary) {
     notFound();
   }
@@ -60,6 +66,20 @@ export default async function AdminCustomerDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <CustomerWalletCard
+        phoneNumber={summary.phoneNumber}
+        balanceKes={walletBalance.balanceKes}
+        lifetimeCreditsEarnedKes={walletBalance.lifetimeCreditsEarnedKes}
+        ledger={walletLedger.map(({ id, data }) => ({
+          id,
+          type: data.type,
+          amountKes: data.amountKes,
+          balanceAfterKes: data.balanceAfterKes,
+          note: data.note,
+          createdAt: formatDateTime(data.createdAt),
+        }))}
+      />
 
       <Card>
         <CardHeader>

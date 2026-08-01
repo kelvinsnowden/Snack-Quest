@@ -75,7 +75,7 @@ service cloud.firestore {
 
       // earningsLedger: the immutable source of truth behind
       // availableCashKes/lifetimeEarningsKes above — server-written
-      // only, same discipline as walletTransactions.
+      // only, same discipline as customerWallets' ledger.
       match /earningsLedger/{entryId} {
         allow read: if isOwner(uid) || isAdmin();
         allow write: if false;
@@ -126,10 +126,22 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only — RefundService is the only writer
     }
 
-    match /walletTransactions/{transactionId} {
-      allow read: if isAdmin() ||
-                     (isSignedIn() && resource.data.customerId == request.auth.uid);
-      allow write: if false; // ledger is server/Cloud-Function-written only, ever
+    // customerWallets: the Quest wallet balance + ledger (§ Phase 4:
+    // Customer loyalty / Quest system) — keyed by phone number, not a
+    // Firebase Auth uid, because almost every real customer has no
+    // Auth account at all (see `types/customerWallet.ts`). No
+    // client-side identity exists to grant self-access against, so
+    // this stays admin-read/server-write-only, same discipline as
+    // `earningsLedger` above, until a real Auth-based customer
+    // identity exists to revisit this against.
+    match /customerWallets/{walletId} {
+      allow read: if isAdmin();
+      allow write: if false; // WalletService (Admin SDK) only, always
+
+      match /ledger/{entryId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
     }
 
     // orders: nested per the multi-delivery-method redesign
@@ -147,16 +159,6 @@ service cloud.firestore {
                         get(/databases/$(database)/documents/orders/$(orderId)).data.customer.customerId == request.auth.uid);
         allow write: if false;
       }
-    }
-
-    match /questSubmissions/{submissionId} {
-      allow read: if isAdmin() ||
-                     (hasRole('customer') && resource.data.customerId == request.auth.uid);
-      allow create: if hasRole('customer') &&
-                       request.resource.data.customerId == request.auth.uid &&
-                       request.resource.data.status == 'pending';
-      allow update: if isAdmin();
-      allow delete: if false;
     }
 
     match /notifications/{notificationId} {
@@ -296,7 +298,7 @@ service cloud.firestore {
     }
 
     // referralAttributions: the ledger proving why a commission was
-    // paid (§8) — server-written only, same discipline as walletTransactions.
+    // paid (§8) — server-written only, same discipline as customerWallets' ledger.
     match /referralAttributions/{attributionId} {
       allow read: if isAdmin() ||
                      (isSignedIn() && resource.data.creatorId == request.auth.uid);

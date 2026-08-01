@@ -33,6 +33,7 @@ const EDITABLE_FIELDS = [
   'adminWhatsappPhone',
   'whatsappCustomerNumber',
   'status',
+  'loyaltyConfig',
 ] as const;
 
 function pickPatch(body: Record<string, unknown>): BusinessSettingsPatch {

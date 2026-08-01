@@ -353,6 +353,117 @@ match /customerProfiles/{uid} {
 }
 ```
 
+### 3.5 Customer loyalty / Quest system — Phase 4 implementation (supersedes the wallet plan above)
+
+**This section documents what was actually built**, and corrects §3's
+earlier plan where reality diverged from it. The Production Readiness
+Closure Sprint's Phase 4 instruction was explicit: the WhatsApp-first
+pivot deleted the web Customer Portal that would have hosted a
+"Quest Center," and the loyalty *concept* — `types/questSubmission.ts`,
+`types/walletTransaction.ts`, `customerProfile.walletBalanceKes` /
+`lifetimeCreditsEarnedKes` — was left as dead, never-written schema.
+The instruction was explicit not to resurrect an unnecessary web
+portal, and to design the smallest solution that preserves the
+original business vision, WhatsApp-first.
+
+**The identity problem that invalidated §3's original plan.** §3 above
+designed `customerProfiles/{uid}` as the loyalty system's home,
+keyed by Firebase Auth uid. By the time Phase 4 was reached,
+`services/customerService.ts` (§ Admin: Customers) had already
+established, with hard evidence, that this was never going to work:
+*nothing in this codebase ever writes to `customerProfiles`*. The
+real, common Snack Quest customer is a guest WhatsApp shopper
+identified only by phone number — `OrderCustomer.customerId` is
+nullable specifically because it's null for nearly every real order.
+A wallet keyed by an Auth uid that customers don't have would be a
+feature that could never actually pay out. This is a deliberate,
+evidence-based correction of §3's plan, not a silent contradiction of
+it.
+
+**The decision: `customerWallets/{businessId}:{phoneNumber}`,** not
+`customerProfiles.walletBalanceKes`. Same identity Conversations and
+Orders already use. `types/customerWallet.ts` (a cached, incrementally
+maintained balance) and `types/walletLedgerEntry.ts` (the append-only
+source of truth it's derived from, under a `ledger` subcollection) —
+the exact same balance/ledger split TDD §4 already uses for
+`creatorProfiles.availableCashKes` / `earningsLedger`. Firestore rules
+are admin-read/server-write-only (no client identity exists to grant
+customer self-access against, unlike the aspirational
+`customerProfiles` rule above — this can be revisited if real
+Auth-based customer accounts ever exist). `customerProfile.ts`'s
+`walletBalanceKes` / `lifetimeCreditsEarnedKes` fields are left in
+place (superseded, documented, not deleted) since the wider question
+of whether `customerProfiles` gets built or removed outright is a
+separate, unresolved decision.
+
+**`questSubmission.ts` (proof-based quests) was deleted, not built.**
+The Production Readiness Audit's own effort estimate for "Quest
+Credits" was "WalletService + ledger + 2–3 conversation steps + admin
+view" — it never described a photo-proof submission-and-moderation
+workflow, and building one would mean either resurrecting exactly the
+web moderation UI the sprint said not to build, or a substantial new
+WhatsApp-media-ingestion capability (downloading and storing customer
+photos via the WhatsApp Business API) with no corresponding business
+case in either the audit or the original blueprint beyond the
+generic word "Quest." Milestone-based, automatic bonuses (below)
+deliver the same repeat-purchase incentive the audit actually asked
+for, with no customer-submitted content, no moderation queue, and no
+new storage surface. `types/questSubmission.ts` is removed outright —
+it referenced a `quests` collection that never existed either, so
+there was nothing partially built to preserve.
+
+**What was built, entirely WhatsApp-first, no new web surface for the
+customer:**
+
+- **Automatic milestone bonuses.** `Business.loyaltyConfig`
+  (`enabled`, `firstOrderBonusKes`, `repeatOrderIntervalCount`,
+  `repeatOrderBonusKes`) — admin-editable at Admin ▸ Settings, runtime
+  effective immediately, no rebuild. Deliberately opt-in with **no
+  guessed default bonus amount**: unlike a delivery fee (where `null`
+  safely means "not chargeable yet"), a wallet bonus is the business
+  paying real money out, so a default here would mean auto-crediting
+  customers with an amount the owner never approved — the same
+  no-fabricated-financial-data discipline `deliveryZoneRules.feeKes`
+  already established (§ Fix pickup delivery fee revenue leak).
+  `WalletService.awardMilestoneIfEligible()` fires from
+  `ConversationService.completeOrder()`, the same synchronous,
+  best-effort hook `ReferralService.awardCommission()` already uses —
+  a wallet-write failure never undoes a paid, confirmed order.
+- **Auto-applied checkout redemption.** An existing wallet balance is
+  applied as a discount the moment `ConversationService.freezeSnapshot()`
+  computes a quote — on top of any referral discount, capped at what's
+  left of the order, and capped at the customer's real balance. The
+  customer is told in-conversation ("🎉 KES X wallet credit applied —
+  your total is now KES Y") before the M-Pesa STK push goes out, so
+  the reduced amount is never a silent surprise. The actual debit only
+  happens once payment has actually succeeded
+  (`WalletService.redeemAtCheckout()` in `completeOrder()`) — never at
+  quote time, so an abandoned or failed payment never loses a
+  customer's credit. Redemption works even while `loyaltyConfig` is
+  disabled: turning off *future earning* must never freeze money a
+  customer already has.
+- **`BALANCE` / `WALLET` as a global WhatsApp command.** Checked in
+  `ConversationService.start()` ahead of the state machine, for any
+  signed-in-or-not customer, at any point in any conversation
+  (including their very first-ever message) — deliberately never
+  consumes a turn of the state machine or touches `currentStep` /
+  `stateBlob`, so asking for a balance can never derail whatever the
+  customer was mid-way through (e.g. a pickup-station search).
+- **Admin ▸ Customers ▸ [phone number] ▸ Quest wallet.** Balance,
+  lifetime earned, and the full ledger, plus a manual "Adjust balance"
+  action (credit or debit with a required note) for goodwill credits
+  or correcting mistakes — the one non-WhatsApp surface this phase
+  adds, and it's staff-only, not customer-facing, so it doesn't
+  reintroduce the customer web portal the sprint said not to build.
+
+**What was deliberately not built.** Customer-to-customer referral
+(a customer's own shareable code, separate from the Creator Program's
+`referralLinks`) — real business value, but a materially bigger
+feature (a second referral-attribution system, parallel to §8's) than
+"the smallest solution that preserves the original business vision"
+calls for. Left as a named, undone idea for a future phase, not
+silently dropped.
+
 ---
 
 ## 4. Creator Domain

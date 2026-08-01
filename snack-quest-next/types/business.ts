@@ -36,6 +36,27 @@ export interface Business extends AuditFields {
    */
   whatsappCustomerNumber: string | null;
   status: BusinessStatus;
+  /**
+   * Customer loyalty / Quest system config (§ Phase 4) — absent or
+   * `enabled: false` means no automatic wallet credit is ever awarded.
+   * Deliberately opt-in with no guessed default bonus amounts: unlike
+   * a delivery fee (where `null` safely means "not chargeable yet"),
+   * a wallet bonus is the business paying real money out, so a
+   * default here would mean auto-crediting customers with an amount
+   * the owner never approved. An existing wallet balance stays fully
+   * redeemable at checkout even while this is disabled — only new
+   * earning stops.
+   */
+  loyaltyConfig?: LoyaltyConfig;
+}
+
+export interface LoyaltyConfig {
+  enabled: boolean;
+  /** Wallet credit for a customer's first-ever paid order. */
+  firstOrderBonusKes: number;
+  /** Award `repeatOrderBonusKes` every `repeatOrderIntervalCount`-th paid order (the 5th, 10th, 15th, ... for an interval of 5). */
+  repeatOrderIntervalCount: number;
+  repeatOrderBonusKes: number;
 }
 
 /**

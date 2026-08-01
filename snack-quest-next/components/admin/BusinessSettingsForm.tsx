@@ -8,6 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 
+export interface LoyaltyConfigFormValues {
+  enabled: boolean;
+  firstOrderBonusKes: number;
+  repeatOrderIntervalCount: number;
+  repeatOrderBonusKes: number;
+}
+
 export interface BusinessSettingsFormValues {
   name: string;
   currency: string;
@@ -16,7 +23,15 @@ export interface BusinessSettingsFormValues {
   adminWhatsappPhone: string | null;
   whatsappCustomerNumber: string | null;
   status: 'active' | 'suspended';
+  loyaltyConfig: LoyaltyConfigFormValues;
 }
+
+export const DEFAULT_LOYALTY_CONFIG: LoyaltyConfigFormValues = {
+  enabled: false,
+  firstOrderBonusKes: 0,
+  repeatOrderIntervalCount: 5,
+  repeatOrderBonusKes: 0,
+};
 
 export function BusinessSettingsForm({ initialValues }: { initialValues: BusinessSettingsFormValues }) {
   const router = useRouter();
@@ -63,6 +78,14 @@ export function BusinessSettingsForm({ initialValues }: { initialValues: Busines
       setError('Customer WhatsApp number must be E.164 without "+", e.g. 254712345678.');
       return;
     }
+    if (
+      values.loyaltyConfig.firstOrderBonusKes < 0 ||
+      values.loyaltyConfig.repeatOrderBonusKes < 0 ||
+      values.loyaltyConfig.repeatOrderIntervalCount < 0
+    ) {
+      setError('Loyalty amounts and interval cannot be negative.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -77,6 +100,7 @@ export function BusinessSettingsForm({ initialValues }: { initialValues: Busines
           adminWhatsappPhone: trimmedPhone || null,
           whatsappCustomerNumber: trimmedCustomerNumber || null,
           status: values.status,
+          loyaltyConfig: values.loyaltyConfig,
         }),
       });
 
@@ -184,6 +208,76 @@ export function BusinessSettingsForm({ initialValues }: { initialValues: Busines
               checked={values.status === 'active'}
               onCheckedChange={(checked) => setValues((v) => ({ ...v, status: checked ? 'active' : 'suspended' }))}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-5 pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Customer loyalty / Quest wallet</p>
+              <p className="text-caption text-muted-foreground">
+                Automatic wallet credit for repeat customers, applied at their next WhatsApp checkout. No amount is
+                credited unless you set one below.
+              </p>
+            </div>
+            <Switch
+              checked={values.loyaltyConfig.enabled}
+              onCheckedChange={(checked) =>
+                setValues((v) => ({ ...v, loyaltyConfig: { ...v.loyaltyConfig, enabled: checked } }))
+              }
+            />
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="firstOrderBonusKes">Welcome bonus (KES)</Label>
+              <Input
+                id="firstOrderBonusKes"
+                type="number"
+                min={0}
+                value={values.loyaltyConfig.firstOrderBonusKes}
+                onChange={(event) =>
+                  setValues((v) => ({
+                    ...v,
+                    loyaltyConfig: { ...v.loyaltyConfig, firstOrderBonusKes: Number(event.target.value) },
+                  }))
+                }
+              />
+              <p className="text-caption text-muted-foreground">Credited after a customer&apos;s first paid order.</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="repeatOrderIntervalCount">Repeat order interval</Label>
+              <Input
+                id="repeatOrderIntervalCount"
+                type="number"
+                min={0}
+                value={values.loyaltyConfig.repeatOrderIntervalCount}
+                onChange={(event) =>
+                  setValues((v) => ({
+                    ...v,
+                    loyaltyConfig: { ...v.loyaltyConfig, repeatOrderIntervalCount: Number(event.target.value) },
+                  }))
+                }
+              />
+              <p className="text-caption text-muted-foreground">e.g. 5 credits the 5th, 10th, 15th order.</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="repeatOrderBonusKes">Repeat order bonus (KES)</Label>
+              <Input
+                id="repeatOrderBonusKes"
+                type="number"
+                min={0}
+                value={values.loyaltyConfig.repeatOrderBonusKes}
+                onChange={(event) =>
+                  setValues((v) => ({
+                    ...v,
+                    loyaltyConfig: { ...v.loyaltyConfig, repeatOrderBonusKes: Number(event.target.value) },
+                  }))
+                }
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -139,37 +139,66 @@ describe('withdrawals security rules', () => {
   });
 });
 
-describe('walletTransactions security rules', () => {
-  it('blocks any client write, even by the transaction owner', async () => {
+describe('customerWallets security rules (§ Phase 4: Customer loyalty / Quest system)', () => {
+  const WALLET_ID = 'biz-1:254712345678';
+
+  it('blocks any client write, even from an admin', async () => {
     const ctx = testEnv.authenticatedContext(CREATOR_UID, {
-      roles: ['customer'],
+      roles: ['admin'],
     });
     await assertFails(
-      setDoc(doc(ctx.firestore(), 'walletTransactions', 'tx-1'), {
-        customerId: CREATOR_UID,
-        amount: 100,
-        balanceAfter: 100,
-        transactionType: 'credit',
-        note: 'test',
+      setDoc(doc(ctx.firestore(), 'customerWallets', WALLET_ID), {
+        businessId: 'biz-1',
+        phoneNumber: '254712345678',
+        balanceKes: 100,
+        lifetimeCreditsEarnedKes: 100,
       }),
     );
   });
 
-  it('lets the owning customer read their own ledger entry', async () => {
+  it('blocks a signed-in customer from reading a wallet — no client identity exists to grant self-access against', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), 'walletTransactions', 'tx-1'), {
-        customerId: CREATOR_UID,
-        amount: 100,
-        balanceAfter: 100,
-        transactionType: 'credit',
-        note: 'test',
+      await setDoc(doc(context.firestore(), 'customerWallets', WALLET_ID), {
+        businessId: 'biz-1',
+        phoneNumber: '254712345678',
+        balanceKes: 100,
+        lifetimeCreditsEarnedKes: 100,
       });
     });
     const ctx = testEnv.authenticatedContext(CREATOR_UID, {
       roles: ['customer'],
     });
-    await assertSucceeds(
-      getDoc(doc(ctx.firestore(), 'walletTransactions', 'tx-1')),
+    await assertFails(getDoc(doc(ctx.firestore(), 'customerWallets', WALLET_ID)));
+  });
+
+  it('lets an admin read a wallet', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'customerWallets', WALLET_ID), {
+        businessId: 'biz-1',
+        phoneNumber: '254712345678',
+        balanceKes: 100,
+        lifetimeCreditsEarnedKes: 100,
+      });
+    });
+    const ctx = testEnv.authenticatedContext(CREATOR_UID, {
+      roles: ['admin'],
+    });
+    await assertSucceeds(getDoc(doc(ctx.firestore(), 'customerWallets', WALLET_ID)));
+  });
+
+  it("blocks any client write to a wallet's ledger, even from an admin", async () => {
+    const ctx = testEnv.authenticatedContext(CREATOR_UID, {
+      roles: ['admin'],
+    });
+    await assertFails(
+      setDoc(doc(ctx.firestore(), 'customerWallets', WALLET_ID, 'ledger', 'entry-1'), {
+        type: 'admin_adjustment',
+        amountKes: 100,
+        balanceAfterKes: 100,
+        note: 'test',
+        orderId: null,
+        createdBy: CREATOR_UID,
+      }),
     );
   });
 });

@@ -112,4 +112,33 @@ describe('BusinessSettingsService.updateSettings', () => {
       businessSettingsService.updateSettings('missing', { name: 'X' }, 'staff-1'),
     ).rejects.toBeInstanceOf(BusinessNotFoundError);
   });
+
+  it('saves a valid loyaltyConfig', async () => {
+    const { after } = await businessSettingsService.updateSettings(
+      BUSINESS_ID,
+      { loyaltyConfig: { enabled: true, firstOrderBonusKes: 100, repeatOrderIntervalCount: 5, repeatOrderBonusKes: 50 } },
+      'staff-1',
+    );
+    expect(after.loyaltyConfig).toEqual({ enabled: true, firstOrderBonusKes: 100, repeatOrderIntervalCount: 5, repeatOrderBonusKes: 50 });
+  });
+
+  it('rejects a negative loyaltyConfig bonus amount', async () => {
+    await expect(
+      businessSettingsService.updateSettings(
+        BUSINESS_ID,
+        { loyaltyConfig: { enabled: true, firstOrderBonusKes: -1, repeatOrderIntervalCount: 5, repeatOrderBonusKes: 50 } },
+        'staff-1',
+      ),
+    ).rejects.toBeInstanceOf(BusinessSettingsValidationError);
+  });
+
+  it('rejects a non-integer loyaltyConfig interval', async () => {
+    await expect(
+      businessSettingsService.updateSettings(
+        BUSINESS_ID,
+        { loyaltyConfig: { enabled: true, firstOrderBonusKes: 100, repeatOrderIntervalCount: 2.5, repeatOrderBonusKes: 50 } },
+        'staff-1',
+      ),
+    ).rejects.toBeInstanceOf(BusinessSettingsValidationError);
+  });
 });

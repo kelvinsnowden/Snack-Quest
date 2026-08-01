@@ -9,6 +9,7 @@ import { packageRepository } from '@/repositories/packageRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { businessRepository } from '@/repositories/businessRepository';
+import { walletService } from '@/services/walletService';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
@@ -273,6 +274,7 @@ async function cleanCollections() {
     'creatorProfiles',
     'outboundGatewayCalls',
     'pickupStations',
+    'customerWallets',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
@@ -956,5 +958,84 @@ describe('platform proof: a second, independent tenant', () => {
     expect(sqGateway.sent.some((m) => m.phone === RIVAL_SNACKS.adminWhatsappPhone)).toBe(false);
     expect(rivalGateway.sent.some((m) => m.phone === RIVAL_SNACKS.adminWhatsappPhone)).toBe(true);
     expect(rivalGateway.sent.some((m) => m.phone === SNACK_QUEST.adminWhatsappPhone)).toBe(false);
+  });
+});
+
+describe('customer loyalty / Quest wallet (§ Phase 4)', () => {
+  beforeEach(async () => {
+    await seedBusiness(SNACK_QUEST);
+    await seedPackages(SNACK_QUEST.businessId);
+    await seedFreePickupStation(SNACK_QUEST.businessId);
+  });
+
+  it("awards a welcome bonus on a customer's first paid order and discloses it in the confirmation message", async () => {
+    await businessRepository.update(
+      SNACK_QUEST.businessId,
+      { loyaltyConfig: { enabled: true, firstOrderBonusKes: 100, repeatOrderIntervalCount: 5, repeatOrderBonusKes: 50 } },
+      'test',
+    );
+
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+
+    await walkToConfirmation(service, SNACK_QUEST.businessId);
+    const conversation = await conversationRepository.findActiveByPhoneNumber(SNACK_QUEST.businessId, PHONE);
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, 2500),
+    );
+    expect(callback.status).toBe('succeeded');
+    await service.handlePaymentResult(callback);
+
+    const balance = await walletService.getBalance(SNACK_QUEST.businessId, PHONE);
+    expect(balance).toEqual({ balanceKes: 100, lifetimeCreditsEarnedKes: 100 });
+
+    const ledger = await walletService.getLedger(SNACK_QUEST.businessId, PHONE);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].data).toMatchObject({ type: 'milestone_bonus', amountKes: 100, balanceAfterKes: 100 });
+
+    expect(gateway.sent.at(-1)?.text).toContain('You just earned KES 100 wallet credit');
+    expect(conversation).not.toBeNull();
+  });
+
+  it('auto-applies an existing wallet balance as a checkout discount, and only debits it once payment actually succeeds', async () => {
+    // No loyaltyConfig set — proves redemption of an existing balance
+    // works independently of whether new earning is enabled.
+    await walletService.adjust(SNACK_QUEST.businessId, PHONE, 300, 'pre-seeded test balance', 'system');
+
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+
+    await walkToConfirmation(service, SNACK_QUEST.businessId);
+
+    const conversation = await conversationRepository.findActiveByPhoneNumber(SNACK_QUEST.businessId, PHONE);
+    const snapshotId = conversation!.conversation.conversationCheckoutSnapshotId!;
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(snapshotId);
+    expect(snapshot?.walletCreditAppliedKes).toBe(300);
+    expect(snapshot?.totalKes).toBe(2200); // 2500 Starter Box - 300 wallet credit, free pickup
+
+    expect(gateway.sent.some((m) => m.text.includes('KES 300 wallet credit applied — your total is now KES 2200'))).toBe(true);
+
+    // Balance is NOT touched until payment actually succeeds.
+    expect((await walletService.getBalance(SNACK_QUEST.businessId, PHONE)).balanceKes).toBe(300);
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, 2200),
+    );
+    expect(callback.status).toBe('succeeded');
+    await service.handlePaymentResult(callback);
+
+    const balanceAfter = await walletService.getBalance(SNACK_QUEST.businessId, PHONE);
+    expect(balanceAfter.balanceKes).toBe(0);
+
+    const ledger = await walletService.getLedger(SNACK_QUEST.businessId, PHONE);
+    const redemption = ledger.find((entry) => entry.data.type === 'checkout_redemption');
+    expect(redemption?.data).toMatchObject({ amountKes: -300, balanceAfterKes: 0 });
+
+    const ordersSnapshot = await adminFirestore.collection('orders').get();
+    expect(ordersSnapshot.docs[0].data().pricing.totalKes).toBe(2200);
   });
 });

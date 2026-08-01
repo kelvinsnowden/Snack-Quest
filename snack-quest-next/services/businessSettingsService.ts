@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { businessRepository, type BusinessInput } from '@/repositories/businessRepository';
-import type { Business, BusinessStatus } from '@/types';
+import type { Business, BusinessStatus, LoyaltyConfig } from '@/types';
 
 export class BusinessNotFoundError extends Error {
   constructor(businessId: string) {
@@ -24,7 +24,14 @@ const STATUSES: BusinessStatus[] = ['active', 'suspended'];
 export type BusinessSettingsPatch = Partial<
   Pick<
     BusinessInput,
-    'name' | 'currency' | 'whatsappPhoneNumberId' | 'countyCoverage' | 'adminWhatsappPhone' | 'whatsappCustomerNumber' | 'status'
+    | 'name'
+    | 'currency'
+    | 'whatsappPhoneNumberId'
+    | 'countyCoverage'
+    | 'adminWhatsappPhone'
+    | 'whatsappCustomerNumber'
+    | 'status'
+    | 'loyaltyConfig'
   >
 >;
 
@@ -87,6 +94,24 @@ class BusinessSettingsService {
     }
     if (patch.status !== undefined && !STATUSES.includes(patch.status)) {
       throw new BusinessSettingsValidationError(`"status" must be one of: ${STATUSES.join(', ')}.`);
+    }
+    if (patch.loyaltyConfig !== undefined) {
+      this.validateLoyaltyConfig(patch.loyaltyConfig);
+    }
+  }
+
+  private validateLoyaltyConfig(config: LoyaltyConfig): void {
+    if (typeof config.enabled !== 'boolean') {
+      throw new BusinessSettingsValidationError('"loyaltyConfig.enabled" must be a boolean.');
+    }
+    if (!Number.isFinite(config.firstOrderBonusKes) || config.firstOrderBonusKes < 0) {
+      throw new BusinessSettingsValidationError('"loyaltyConfig.firstOrderBonusKes" must be a non-negative number.');
+    }
+    if (!Number.isInteger(config.repeatOrderIntervalCount) || config.repeatOrderIntervalCount < 0) {
+      throw new BusinessSettingsValidationError('"loyaltyConfig.repeatOrderIntervalCount" must be a non-negative whole number.');
+    }
+    if (!Number.isFinite(config.repeatOrderBonusKes) || config.repeatOrderBonusKes < 0) {
+      throw new BusinessSettingsValidationError('"loyaltyConfig.repeatOrderBonusKes" must be a non-negative number.');
     }
   }
 }
