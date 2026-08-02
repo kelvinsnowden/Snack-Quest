@@ -19,6 +19,17 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // firebase-admin/auth statically imports jwks-rsa, which depends on
+  // jose@6 (pure ESM — "type": "module"). firebase-admin is already on
+  // Next's default serverExternalPackages list, but that alone doesn't
+  // stop Turbopack's production Lambda bundle from also trying to
+  // statically bundle jwks-rsa/jose, which fails at runtime with
+  // `ERR_REQUIRE_ESM` the moment any route imports firebase-admin/auth
+  // (i.e. nearly every route, via lib/firebase/admin.ts) — confirmed
+  // live in production via Vercel's runtime error reporting. Explicitly
+  // externalizing the whole chain forces real Node.js require()/import()
+  // at runtime instead, where ESM/CJS interop actually works correctly.
+  serverExternalPackages: ['firebase-admin', 'jwks-rsa', 'jose'],
   images: {
     // Every uploaded image (snack/box photos, storage browser) lives in
     // Vercel Blob (services/storageService.ts) at
