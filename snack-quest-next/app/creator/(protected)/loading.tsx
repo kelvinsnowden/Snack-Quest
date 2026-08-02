@@ -1,60 +1,52 @@
 import { Skeleton } from '@/components/ui/skeleton';
 import { PortalCard } from '@/components/creator/design/PortalCard';
-import { StatTile } from '@/components/creator/design/StatTile';
 
 /**
- * Dashboard loading state (§ Creator Portal premium rebuild).
- *
- * A route-level `loading.tsx` rather than a spinner inside the page:
- * Next streams this instantly while the Firestore read runs, so the
- * shell, navigation and header stay interactive and the screen never
- * blanks between navigations.
- *
- * The skeleton mirrors the real layout element for element — same
- * heading width, same two-column stat grid, same card order — because
- * a skeleton that does not match what replaces it causes the layout
- * shift skeletons exist to avoid.
+ * Mirrors the dashboard element for element — greeting, balance hero,
+ * quick-action row, commission list — so the swap to real content
+ * shifts nothing. The hero placeholder carries the real card's height
+ * and radius rather than a generic block, since it is the tallest
+ * thing on the screen and any mismatch there moves everything below.
  */
 export default function CreatorHomeLoading() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
       <header>
-        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="mt-2 h-8 w-40" />
         <div className="mt-3 flex gap-2">
           <Skeleton className="h-6 w-20 rounded-full" />
           <Skeleton className="h-6 w-24 rounded-full" />
         </div>
       </header>
 
-      <section>
-        <Skeleton className="h-6 w-40" />
-        <div className="mt-4 grid grid-cols-2 gap-3 md:gap-4">
-          <StatTile.Loading />
-          <StatTile.Loading />
-        </div>
-      </section>
+      <Skeleton className="h-[15rem] w-full rounded-2xl md:h-[17rem]" />
 
-      <section>
-        <Skeleton className="h-6 w-44" />
-        <PortalCard className="mt-4">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="mt-3 h-4 w-full max-w-md" />
-        </PortalCard>
-      </section>
-
-      <section>
-        <Skeleton className="h-6 w-28" />
-        <PortalCard className="mt-4">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="mt-2 h-5 w-32" />
-            </div>
-            <div>
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="mt-2 h-5 w-28" />
-            </div>
+      <div className="grid grid-cols-4 gap-2 md:gap-3">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="flex min-h-[5rem] flex-col items-center justify-center gap-2 py-3"
+          >
+            <Skeleton className="size-11 rounded-full" />
+            <Skeleton className="h-3 w-12" />
           </div>
+        ))}
+      </div>
+
+      <section>
+        <Skeleton className="h-6 w-48" />
+        <PortalCard className="mt-4 flex flex-col gap-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="size-10 shrink-0 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="mt-2 h-3 w-24" />
+              </div>
+              <Skeleton className="h-4 w-16 shrink-0" />
+            </div>
+          ))}
         </PortalCard>
       </section>
     </div>
