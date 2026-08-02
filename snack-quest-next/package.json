@@ -48,6 +48,11 @@
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "^5.10.0"
+    }
+  },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
     "@tailwindcss/postcss": "^4",
