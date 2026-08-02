@@ -19,6 +19,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // firebase-admin/auth → jwks-rsa → jose@6, which is pure ESM with no
+  // CJS export at all. Kept explicit (firebase-admin alone is already on
+  // Next's default list) so the whole chain is loaded by Node itself
+  // rather than inlined into the server bundle — Node's own require()
+  // has handled require(ESM) since 22.12, which is what makes this work.
+  // See the `--webpack` note on the build script in package.json for why
+  // the bundler choice matters here.
+  serverExternalPackages: ['firebase-admin', 'jwks-rsa', 'jose'],
   images: {
     // Every uploaded image (snack/box photos, storage browser) lives in
     // Vercel Blob (services/storageService.ts) at
