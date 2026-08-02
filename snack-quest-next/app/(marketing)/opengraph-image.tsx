@@ -4,6 +4,15 @@ import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 export const alt = 'Snack Quest — Snack boxes on WhatsApp';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
+/**
+ * Metadata route files don't inherit `dynamic` from a parent layout
+ * (they're separate route handlers, not page segments — same reason
+ * app/sitemap.ts sets its own). Without this, Next.js statically
+ * prerenders this at build time, which means every build — including
+ * Vercel Preview builds without production Firestore credentials —
+ * needs real Firebase Admin env vars just to generate an OG image.
+ */
+export const dynamic = 'force-dynamic';
 
 export default async function Image() {
   const business = await getCurrentBusiness();
