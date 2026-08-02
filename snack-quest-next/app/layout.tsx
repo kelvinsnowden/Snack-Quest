@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Bagel_Fat_One } from 'next/font/google';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import './globals.css';
 
@@ -10,6 +10,19 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
+
+/**
+ * The home page's display face (§ jungle-adventure landing page rebuild)
+ * — a single chunky weight, additive alongside Geist so the rest of the
+ * platform (Admin, Warehouse, Finance, Creator Portal) is unaffected.
+ * Exposed as `--font-display`, consumed only by the marketing home
+ * page's own heading styles.
+ */
+const displayFont = Bagel_Fat_One({
+  variable: '--font-bagel-fat-one',
+  weight: '400',
   subsets: ['latin'],
 });
 
@@ -43,7 +56,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${displayFont.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">{children}</body>
     </html>

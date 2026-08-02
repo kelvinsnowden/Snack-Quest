@@ -178,6 +178,22 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /*
+   * Home page accents (§ jungle-adventure landing page rebuild) — the
+   * brand's existing --color-primary/--color-secondary ALREADY are this
+   * design's orange/purple (#ff7a00 / #6c3bff, confirmed identical), so
+   * only the two genuinely new accents are added here: lime and a
+   * deeper purple for the final-CTA section's dark background. Scoped
+   * to the home page's own sections only, same additive discipline as
+   * the Creator Portal's --color-creator-* block above.
+   */
+  --color-home-lime: #c8ff00;
+  --color-home-purple-deep: #38137f;
+  --color-home-orange-glow: #ff9633;
+
+  --font-display: var(--font-bagel-fat-one), 'Titan One', ui-sans-serif, system-ui, sans-serif;
+  --font-signature: Georgia, 'Times New Roman', serif;
 }
 
 body {
@@ -294,6 +310,82 @@ body {
 
   .animate-slide-up {
     animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+/*
+ * Home page motion (§ jungle-adventure landing page rebuild) — scoped,
+ * additive utilities alongside the trio above. Distinct names (not a
+ * reuse of animate-fade-in/slide-up) because the home page's reveal is
+ * a slower, larger-distance effect (700ms / 32px) than the existing
+ * short UI-chrome transitions (200ms / 4-12px) — reusing those classes
+ * for both would mean picking one timing and compromising the other.
+ */
+@layer utilities {
+  @keyframes floatSlow {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-14px) rotate(3deg);
+    }
+  }
+
+  @keyframes floatSlower {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-20px) rotate(-4deg);
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 rgb(255 122 0 / 0.6),
+        0 20px 60px -15px rgb(255 122 0 / 0.5);
+    }
+    50% {
+      box-shadow:
+        0 0 0 20px rgb(255 122 0 / 0),
+        0 20px 60px -15px rgb(255 122 0 / 0.5);
+    }
+  }
+
+  .animate-float-slow {
+    animation: floatSlow 6s ease-in-out infinite;
+  }
+
+  .animate-float-slower {
+    animation: floatSlower 8s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulseGlow 2.4s ease-in-out infinite;
+  }
+
+  /*
+   * Reveal-on-scroll wrapper state (components/marketing/home/Reveal.tsx)
+   * — starts hidden/offset so JS can toggle `.reveal-visible` once an
+   * IntersectionObserver fires; server-rendered markup stays fully
+   * visible without JS (see Reveal's own doc comment) since this class
+   * is only applied client-side after mount.
+   */
+  .reveal-hidden {
+    opacity: 0;
+    transform: translateY(32px);
+    transition:
+      opacity 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
+      transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .reveal-visible {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

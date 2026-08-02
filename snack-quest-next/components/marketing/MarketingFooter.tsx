@@ -40,7 +40,7 @@ const FOOTER_SECTIONS = [
 
 export function MarketingFooter({ businessName }: { businessName: string }) {
   return (
-    <footer className="border-t border-border bg-surface">
+    <footer className="border-t border-border bg-surface pb-20 md:pb-0">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
           <div className="lg:col-span-1">
