@@ -3,8 +3,8 @@ import { Boxes, Check } from 'lucide-react';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { Badge } from '@/components/ui/badge';
 import { formatKes } from '@/lib/orders/format';
-import { Reveal } from './Reveal';
-import { PRIMARY_CTA_CLASS } from './styles';
+import { Reveal } from '../design/Reveal';
+import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 import type { Package } from '@/types';
 
 const ACCENTS = [

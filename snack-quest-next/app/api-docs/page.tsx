@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { KeyRound, Radio, ShieldCheck, Webhook } from 'lucide-react';
-import { Reveal } from '@/components/marketing/home/Reveal';
+import { Reveal } from '@/components/marketing/design/Reveal';
+import { PageShell } from '@/components/marketing/design/PageShell';
+import { PageHero } from '@/components/marketing/design/PageHero';
+import { SectionHeading } from '@/components/marketing/design/SectionHeading';
+import { SurfaceCard } from '@/components/marketing/design/SurfaceCard';
 
 /**
  * Integration documentation, served at `api.snackquests.shop` (§
@@ -22,9 +26,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const CARD_CLASS =
-  'rounded-xl border border-border bg-surface p-6 shadow-sm transition-shadow duration-300 hover:shadow-md';
-
 const METHOD_CLASS =
   'rounded-full bg-primary/10 px-2.5 py-1 font-mono text-caption font-bold tracking-wide text-primary uppercase';
 
@@ -44,7 +45,7 @@ function Endpoint({
   responses: { code: string; meaning: string }[];
 }) {
   return (
-    <article className={CARD_CLASS}>
+    <SurfaceCard as="article">
       <div className="flex flex-wrap items-center gap-3">
         <span className={METHOD_CLASS}>{method}</span>
         <code className="text-small text-foreground font-mono break-all">
@@ -117,7 +118,7 @@ function Endpoint({
           </li>
         ))}
       </ul>
-    </article>
+    </SurfaceCard>
   );
 }
 
@@ -155,35 +156,16 @@ const WEBHOOKS = [
 
 export default function ApiDocsPage() {
   return (
-    <div className="bg-background relative min-h-screen overflow-hidden">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        <div className="bg-primary/15 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
-        <div className="bg-secondary/15 absolute top-40 -right-32 size-[420px] rounded-full blur-3xl" />
-      </div>
+    <PageShell>
+      <PageHero
+        eyebrow="Snack Quest API"
+        eyebrowIcon={Radio}
+        title="Integration"
+        accent="reference."
+        subtitle="Everything a partner integration needs to start a checkout, confirm payment, and receive delivery updates. All requests and responses are JSON over HTTPS."
+      />
 
-      <div className="relative mx-auto max-w-4xl px-5 py-20 md:px-10 md:py-28">
-        <Reveal>
-          <div className="border-foreground/10 text-caption text-foreground/70 inline-flex items-center gap-2 rounded-full border bg-white/70 px-4 py-1.5 font-semibold tracking-wide uppercase backdrop-blur-sm">
-            <Radio className="text-primary size-3.5" aria-hidden="true" />
-            Snack Quest API
-          </div>
-        </Reveal>
-
-        <Reveal delayMs={120}>
-          <h1 className="font-display mt-6 text-[clamp(2.25rem,6vw,3.5rem)] leading-[0.95] font-normal tracking-tight text-balance uppercase">
-            <span className="text-foreground">Integration </span>
-            <span className="text-primary">reference.</span>
-          </h1>
-        </Reveal>
-
-        <Reveal delayMs={200}>
-          <p className="text-subtitle text-foreground/75 mt-6 max-w-2xl">
-            Everything a partner integration needs to start a checkout, confirm
-            payment, and receive delivery updates. All requests and responses
-            are JSON over HTTPS.
-          </p>
-        </Reveal>
-
+      <div>
         <Reveal delayMs={260}>
           <div className="border-border bg-surface-raised mt-8 rounded-xl border p-5">
             <h2 className="text-caption text-muted-foreground font-bold tracking-wide uppercase">
@@ -202,20 +184,11 @@ export default function ApiDocsPage() {
         </Reveal>
 
         <section className="mt-16" aria-labelledby="authentication">
-          <Reveal>
-            <h2
-              id="authentication"
-              className="font-display text-section-title flex items-center gap-3 font-normal tracking-tight uppercase"
-            >
-              <ShieldCheck
-                className="text-secondary size-6"
-                aria-hidden="true"
-              />
-              Authentication
-            </h2>
-          </Reveal>
+          <SectionHeading id="authentication" icon={ShieldCheck}>
+            Authentication
+          </SectionHeading>
           <Reveal delayMs={120}>
-            <div className={`${CARD_CLASS} mt-6`}>
+            <SurfaceCard className="mt-6">
               <dl className="flex flex-col gap-5">
                 <div>
                   <dt className="text-small text-foreground font-mono font-semibold">
@@ -249,19 +222,12 @@ export default function ApiDocsPage() {
                   </dd>
                 </div>
               </dl>
-            </div>
+            </SurfaceCard>
           </Reveal>
         </section>
 
         <section className="mt-16" aria-labelledby="checkout">
-          <Reveal>
-            <h2
-              id="checkout"
-              className="font-display text-section-title font-normal tracking-tight uppercase"
-            >
-              Checkout
-            </h2>
-          </Reveal>
+          <SectionHeading id="checkout">Checkout</SectionHeading>
           <div className="mt-6 flex flex-col gap-6">
             <Reveal delayMs={80}>
               <Endpoint
@@ -366,15 +332,9 @@ export default function ApiDocsPage() {
         </section>
 
         <section className="mt-16" aria-labelledby="webhooks">
-          <Reveal>
-            <h2
-              id="webhooks"
-              className="font-display text-section-title flex items-center gap-3 font-normal tracking-tight uppercase"
-            >
-              <Webhook className="text-secondary size-6" aria-hidden="true" />
-              Webhooks
-            </h2>
-          </Reveal>
+          <SectionHeading id="webhooks" icon={Webhook}>
+            Webhooks
+          </SectionHeading>
           <Reveal delayMs={120}>
             <p className="text-body text-muted-foreground mt-4 max-w-2xl">
               Endpoints Snack Quest exposes for providers to call. Every handler
@@ -383,7 +343,7 @@ export default function ApiDocsPage() {
             </p>
           </Reveal>
           <Reveal delayMs={180}>
-            <div className={`${CARD_CLASS} mt-6 overflow-x-auto`}>
+            <SurfaceCard className="mt-6 overflow-x-auto">
               <table className="text-small w-full min-w-[36rem] border-collapse text-left">
                 <thead>
                   <tr className="border-border border-b">
@@ -411,7 +371,7 @@ export default function ApiDocsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </SurfaceCard>
           </Reveal>
         </section>
 
@@ -427,6 +387,6 @@ export default function ApiDocsPage() {
           </p>
         </footer>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -369,7 +369,7 @@ body {
   }
 
   /*
-   * Reveal-on-scroll wrapper state (components/marketing/home/Reveal.tsx)
+   * Reveal-on-scroll wrapper state (components/marketing/design/Reveal.tsx)
    * — starts hidden/offset so JS can toggle `.reveal-visible` once an
    * IntersectionObserver fires; server-rendered markup stays fully
    * visible without JS (see Reveal's own doc comment) since this class

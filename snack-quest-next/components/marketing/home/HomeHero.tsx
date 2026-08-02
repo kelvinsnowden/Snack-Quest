@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { ArrowRight, Clock, MapPin, Truck } from 'lucide-react';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { Button } from '@/components/ui/button';
-import { Reveal } from './Reveal';
-import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from './styles';
+import { Reveal } from '../design/Reveal';
+import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
 /**
  * Deliberately no hero photograph (§ jungle-adventure landing page

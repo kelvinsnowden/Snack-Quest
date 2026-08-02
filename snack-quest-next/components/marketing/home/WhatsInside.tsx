@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { Reveal } from './Reveal';
+import { Reveal } from '../design/Reveal';
 
 const CATEGORY_PILLS: Array<{ emoji: string; label: string; position: string; float: 'animate-float-slow' | 'animate-float-slower' }> = [
   { emoji: '🍫', label: 'Chocolate', position: 'top-4 left-4 md:top-10 md:left-8', float: 'animate-float-slow' },

@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import { Activity, CheckCircle2, XCircle } from 'lucide-react';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { Reveal } from '@/components/marketing/home/Reveal';
+import { Reveal } from '@/components/marketing/design/Reveal';
+import { PageShell } from '@/components/marketing/design/PageShell';
+import { PageHero } from '@/components/marketing/design/PageHero';
+import { SectionHeading } from '@/components/marketing/design/SectionHeading';
+import { SurfaceCard } from '@/components/marketing/design/SurfaceCard';
 
 /**
  * Service status, served at `status.snackquests.shop` (§ Proper
@@ -85,57 +89,29 @@ export default async function StatusPage() {
   const allOperational = firestore.ok;
 
   return (
-    <div className="bg-background relative min-h-screen overflow-hidden">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        <div className="bg-primary/15 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
-        <div className="bg-secondary/15 absolute top-40 -right-32 size-[420px] rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto max-w-3xl px-5 py-20 md:px-10 md:py-28">
-        <Reveal>
-          <div className="border-foreground/10 text-caption text-foreground/70 inline-flex items-center gap-2 rounded-full border bg-white/70 px-4 py-1.5 font-semibold tracking-wide uppercase backdrop-blur-sm">
-            <Activity className="text-primary size-3.5" aria-hidden="true" />
-            Snack Quest Status
-          </div>
-        </Reveal>
-
-        <Reveal delayMs={120}>
-          <h1 className="font-display mt-6 text-[clamp(2.25rem,6vw,3.5rem)] leading-[0.95] font-normal tracking-tight text-balance uppercase">
-            {allOperational ? (
-              <>
-                <span className="text-foreground">All systems </span>
-                <span className="text-primary">operational.</span>
-              </>
-            ) : (
-              <>
-                <span className="text-foreground">Service </span>
-                <span className="text-danger">disruption.</span>
-              </>
-            )}
-          </h1>
-        </Reveal>
-
-        <Reveal delayMs={200}>
-          <p className="text-subtitle text-foreground/75 mt-6">
+    <PageShell width="narrow">
+      <PageHero
+        eyebrow="Snack Quest Status"
+        eyebrowIcon={Activity}
+        title={allOperational ? 'All systems' : 'Service'}
+        accent={allOperational ? 'operational.' : 'disruption.'}
+        accentTone={allOperational ? 'primary' : 'danger'}
+        subtitle={
+          <>
             Checked live on page load.{' '}
             <time dateTime={checkedAt} className="text-foreground/60">
               {checkedAt}
             </time>
-          </p>
-        </Reveal>
+          </>
+        }
+      />
 
+      <div>
         <section className="mt-14" aria-labelledby="components">
-          <Reveal>
-            <h2
-              id="components"
-              className="font-display text-section-title font-normal tracking-tight uppercase"
-            >
-              Components
-            </h2>
-          </Reveal>
+          <SectionHeading id="components">Components</SectionHeading>
 
           <Reveal delayMs={120}>
-            <div className="border-border bg-surface mt-6 rounded-xl border p-6 shadow-sm">
+            <SurfaceCard className="mt-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-card-title text-foreground font-semibold">
@@ -167,19 +143,12 @@ export default async function StatusPage() {
                   </dd>
                 </div>
               </dl>
-            </div>
+            </SurfaceCard>
           </Reveal>
         </section>
 
         <section className="mt-14" aria-labelledby="deployment">
-          <Reveal>
-            <h2
-              id="deployment"
-              className="font-display text-section-title font-normal tracking-tight uppercase"
-            >
-              Deployment
-            </h2>
-          </Reveal>
+          <SectionHeading id="deployment">Deployment</SectionHeading>
           <Reveal delayMs={120}>
             <dl className="border-border bg-border mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border sm:grid-cols-4">
               {deployment.map((item) => (
@@ -208,6 +177,6 @@ export default async function StatusPage() {
           </p>
         </footer>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -2,8 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Compass, Globe2, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Reveal } from './Reveal';
-import { PRIMARY_CTA_CLASS } from './styles';
+import { Reveal } from '../design/Reveal';
+import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
 const STORY_PARAGRAPHS = [
   'I never planned to start a snack company.',

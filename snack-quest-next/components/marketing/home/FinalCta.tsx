@@ -1,6 +1,6 @@
 import { Compass } from 'lucide-react';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
-import { Reveal } from './Reveal';
+import { Reveal } from '../design/Reveal';
 
 export function FinalCta({ whatsappCustomerNumber }: { whatsappCustomerNumber: string | null }) {
   return (

@@ -40,7 +40,11 @@ export function Reveal({
   as?: 'div' | 'li';
 }) {
   const ref = useRef<HTMLDivElement & HTMLLIElement>(null);
-  const hydrated = useSyncExternalStore(subscribeNever, isObserverSupported, isObserverSupportedOnServer);
+  const hydrated = useSyncExternalStore(
+    subscribeNever,
+    isObserverSupported,
+    isObserverSupportedOnServer,
+  );
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

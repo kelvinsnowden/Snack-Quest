@@ -10,8 +10,8 @@ import {
   TreePine,
 } from 'lucide-react';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
-import { Reveal } from './Reveal';
-import { PRIMARY_CTA_CLASS } from './styles';
+import { Reveal } from '../design/Reveal';
+import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
 const OCCASIONS: Array<{ label: string; emoji: string; icon: typeof Cake; accent: 'primary' | 'secondary' | 'home-lime' }> = [
   { label: 'Birthdays', emoji: '🎂', icon: Cake, accent: 'primary' },
