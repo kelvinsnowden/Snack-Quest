@@ -1389,7 +1389,7 @@ Firestore.*
 |---|---|---|---|
 | Firebase Auth | Identity | Unused (dead code) | Primary auth provider, §6 |
 | Firestore | Data | Unused (dead code) | Primary data store, §8, accessed only via Repositories (§4) |
-| Firebase Storage | Media (campaign proof, avatars) | Unused; **cannot be enabled on the current Firebase project without upgrading to the Blaze (pay-as-you-go) billing plan** — a Firestore/Auth-only Spark-plan project does not expose Cloud Storage for Firebase at all, confirmed against the actual `snack-quest-8c354` project during Phase 0 | Direct client upload with Storage security rules mirroring Firestore's owner model; server generates signed URLs where needed. Until the Blaze upgrade happens, all file-upload call sites go through a `StorageRepository` interface (§4) with a stub implementation that fails closed with a typed, catchable error — see the note below the table |
+| Firebase Storage | Media (campaign proof, avatars) | Unused; **cannot be enabled on the current Firebase project without upgrading to the Blaze (pay-as-you-go) billing plan** — a Firestore/Auth-only Spark-plan project does not expose Cloud Storage for Firebase at all, confirmed against the actual `snack-quest-8c354` project during Phase 0 (that project has since been superseded — production now runs on `snack-quest-os`) | Direct client upload with Storage security rules mirroring Firestore's owner model; server generates signed URLs where needed. Until the Blaze upgrade happens, all file-upload call sites go through a `StorageRepository` interface (§4) with a stub implementation that fails closed with a typed, catchable error — see the note below the table |
 | Firebase Cloud Functions | Background/triggered work | Unused | Only where necessary — Firestore triggers, scheduled jobs, webhooks, async event processing (§11 has the full strategy and event catalog) |
 | Email (SendGrid) | Transactional email | Configured in `.env.example`, unclear if actually wired | Email verification / password reset custom templates, order confirmations, campaign review notifications — dispatched asynchronously via `NotificationService` (§4, §11) |
 | Payments (M-Pesa Daraja) | STK push, B2C payout | Simulated/sandboxed per `ARCHITECTURAL_BLUEPRINT.md` §15 | Same simulation approach preserved short-term; production Daraja credentials are a business/ops decision outside this document's scope |
@@ -1402,8 +1402,10 @@ Firestore.*
 | Search (future) | — | Not present, not needed today | See §19 |
 | Feature flags | — | Not present | See §20 |
 
-**On the Storage/Blaze-plan gap (added during Phase 0):** the `snack-quest-8c354`
-project is currently on the Spark (free) plan, and Firebase does not let
+**On the Storage/Blaze-plan gap (added during Phase 0):** the Phase 0 project
+(`snack-quest-8c354` — since superseded; production now runs on
+`snack-quest-os`, which is likewise on Spark, so this gap is unchanged)
+was on the Spark (free) plan, and Firebase does not let
 Cloud Storage be provisioned on Spark at all — enabling it requires a
 billing-account upgrade to Blaze, which is a business/ops decision, not
 a technical one, so it isn't made unilaterally here. Firestore and

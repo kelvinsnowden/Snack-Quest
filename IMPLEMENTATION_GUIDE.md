@@ -597,6 +597,8 @@ one (TDD §17).
   §2, principle 8).
 - Cloud Storage for Firebase cannot be provisioned on a Spark (free)
   plan project — confirmed against `snack-quest-8c354` during Phase 0.
+  That project has since been superseded: production now runs on
+  `snack-quest-os` (also Spark), so the constraint is unchanged.
   This is a billing-account upgrade decision for a human to make, not
   something to work around. Any feature needing file upload must go
   through `repositories/storageRepository.ts`'s `StorageRepository`
