@@ -1,36 +1,15 @@
 import type { Metadata } from 'next';
-import { MousePointerClick, Target, Trophy } from 'lucide-react';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CREATOR_TIER_LABELS } from '@/lib/creators/tier';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
+import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
+import { PortalCard } from '@/components/creator/design/PortalCard';
+import { StatTile } from '@/components/creator/design/StatTile';
 
 export const metadata: Metadata = { title: 'Leaderboard' };
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-function StatCard({ label, value, icon: Icon }: StatCardProps) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-4 p-6">
-        <div>
-          <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">{value}</p>
-        </div>
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon className="size-5" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 /**
  * A creator's performance metrics + the business leaderboard
@@ -49,51 +28,63 @@ export default async function CreatorLeaderboardPage() {
     creatorDashboardService.getLeaderboard(session.businessId, session.uid),
   ]);
 
-  const clickThroughRate = profile.totalClicks > 0 ? (profile.totalConversions / profile.totalClicks) * 100 : null;
-  const averageCommission = profile.totalConversions > 0 ? profile.lifetimeEarningsKes / profile.totalConversions : null;
+  const clickThroughRate =
+    profile.totalClicks > 0
+      ? (profile.totalConversions / profile.totalClicks) * 100
+      : null;
+  const averageCommission =
+    profile.totalConversions > 0
+      ? profile.lifetimeEarningsKes / profile.totalConversions
+      : null;
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Leaderboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your performance and how you rank among active creators.</p>
-      </div>
+    <div className="mx-auto flex max-w-4xl flex-col gap-8">
+      <PortalPageHeader
+        title="Leaderboard"
+        description="Your performance and how you rank among active creators."
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4">
+        <StatTile
           label="Click-through rate"
-          value={clickThroughRate === null ? '—' : `${clickThroughRate.toFixed(1)}%`}
-          icon={Target}
+          value={
+            clickThroughRate === null ? '—' : `${clickThroughRate.toFixed(1)}%`
+          }
         />
-        <StatCard
+        <StatTile
           label="Avg. commission / order"
-          value={averageCommission === null ? '—' : formatKes(Math.round(averageCommission))}
-          icon={MousePointerClick}
+          value={
+            averageCommission === null
+              ? '—'
+              : formatKes(Math.round(averageCommission))
+          }
         />
-        <StatCard
+        <StatTile
           label="Your rank"
-          value={leaderboard.myRank === null ? 'Not ranked' : `#${leaderboard.myRank} of ${leaderboard.totalActiveCreators}`}
-          icon={Trophy}
+          value={
+            leaderboard.myRank === null
+              ? 'Not ranked'
+              : `#${leaderboard.myRank} of ${leaderboard.totalActiveCreators}`
+          }
         />
       </div>
 
       {leaderboard.myRank === null ? (
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            Rankings only include active creators. Once an admin approves your account, you&apos;ll appear here.
-          </CardContent>
-        </Card>
+        <PortalCard className="text-muted-foreground text-sm">
+          Rankings only include active creators. Once an admin approves your
+          account, you&apos;ll appear here.
+        </PortalCard>
       ) : null}
 
       {leaderboard.top.length === 0 ? (
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">No active creators to rank yet.</CardContent>
-        </Card>
+        <PortalCard className="text-muted-foreground text-sm">
+          No active creators to rank yet.
+        </PortalCard>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+        <div className="border-border bg-surface overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-caption font-medium tracking-wide text-muted-foreground uppercase">
+              <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
                 <th className="px-4 py-3">Rank</th>
                 <th className="px-4 py-3">Creator</th>
                 <th className="px-4 py-3">Tier</th>
@@ -105,18 +96,31 @@ export default async function CreatorLeaderboardPage() {
               {leaderboard.top.map((entry, index) => (
                 <tr
                   key={entry.uid}
-                  className={cn('border-b border-border last:border-0', entry.uid === session.uid && 'bg-primary/5')}
+                  className={cn(
+                    'border-border border-b last:border-0',
+                    entry.uid === session.uid && 'bg-primary/5',
+                  )}
                 >
-                  <td className="px-4 py-3 tabular-nums text-muted-foreground">#{index + 1}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">
+                  <td className="text-muted-foreground px-4 py-3 tabular-nums">
+                    #{index + 1}
+                  </td>
+                  <td className="text-foreground px-4 py-3 font-medium">
                     {entry.displayName}
-                    {entry.uid === session.uid ? <span className="ml-2 text-xs text-primary">(you)</span> : null}
+                    {entry.uid === session.uid ? (
+                      <span className="text-primary ml-2 text-xs">(you)</span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant="outline">{CREATOR_TIER_LABELS[entry.tier]}</Badge>
+                    <Badge variant="outline">
+                      {CREATOR_TIER_LABELS[entry.tier]}
+                    </Badge>
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-foreground">{entry.totalConversions.toLocaleString()}</td>
-                  <td className="px-4 py-3 font-medium tabular-nums text-foreground">{formatKes(entry.lifetimeEarningsKes)}</td>
+                  <td className="text-foreground px-4 py-3 tabular-nums">
+                    {entry.totalConversions.toLocaleString()}
+                  </td>
+                  <td className="text-foreground px-4 py-3 font-medium tabular-nums">
+                    {formatKes(entry.lifetimeEarningsKes)}
+                  </td>
                 </tr>
               ))}
             </tbody>

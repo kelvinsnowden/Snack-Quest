@@ -1,35 +1,14 @@
 import type { Metadata } from 'next';
-import { Clock, ShoppingBag, Wallet } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { referralService } from '@/services/referralService';
-import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDate, formatKes } from '@/lib/orders/format';
+import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
+import { StatTile } from '@/components/creator/design/StatTile';
 
 export const metadata: Metadata = { title: 'Earnings' };
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-function StatCard({ label, value, icon: Icon }: StatCardProps) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-4 p-6">
-        <div>
-          <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">{value}</p>
-        </div>
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon className="size-5" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 /**
  * A creator's earnings statement (§ Creator Portal commission views).
@@ -50,16 +29,25 @@ export default async function CreatorEarningsPage() {
   ]);
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Earnings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your balance and every commission behind it.</p>
-      </div>
+    <div className="mx-auto flex max-w-4xl flex-col gap-8">
+      <PortalPageHeader
+        title="Earnings"
+        description="Your balance and every commission behind it."
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Available" value={formatKes(profile.availableCashKes)} icon={Wallet} />
-        <StatCard label="Pending" value={formatKes(profile.pendingEarningsKes)} icon={Clock} />
-        <StatCard label="Lifetime earned" value={formatKes(profile.lifetimeEarningsKes)} icon={ShoppingBag} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4">
+        <StatTile
+          label="Available"
+          value={formatKes(profile.availableCashKes)}
+        />
+        <StatTile
+          label="Pending"
+          value={formatKes(profile.pendingEarningsKes)}
+        />
+        <StatTile
+          label="Lifetime earned"
+          value={formatKes(profile.lifetimeEarningsKes)}
+        />
       </div>
 
       {attributions.length === 0 ? (
@@ -69,10 +57,10 @@ export default async function CreatorEarningsPage() {
           description="Share your referral link — commissions land here the moment a customer orders with your code."
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+        <div className="border-border bg-surface overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-caption font-medium tracking-wide text-muted-foreground uppercase">
+              <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Order</th>
                 <th className="px-4 py-3">Customer discount</th>
@@ -81,11 +69,19 @@ export default async function CreatorEarningsPage() {
             </thead>
             <tbody>
               {attributions.map(({ id, data }) => (
-                <tr key={id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 text-muted-foreground tabular-nums">{formatDate(data.createdAt)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{data.orderId}</td>
-                  <td className="px-4 py-3 tabular-nums text-foreground">{formatKes(data.discountKes)}</td>
-                  <td className="px-4 py-3 font-medium tabular-nums text-foreground">{formatKes(data.commissionKes)}</td>
+                <tr key={id} className="border-border border-b last:border-0">
+                  <td className="text-muted-foreground px-4 py-3 tabular-nums">
+                    {formatDate(data.createdAt)}
+                  </td>
+                  <td className="text-muted-foreground px-4 py-3 font-mono text-xs">
+                    {data.orderId}
+                  </td>
+                  <td className="text-foreground px-4 py-3 tabular-nums">
+                    {formatKes(data.discountKes)}
+                  </td>
+                  <td className="text-foreground px-4 py-3 font-medium tabular-nums">
+                    {formatKes(data.commissionKes)}
+                  </td>
                 </tr>
               ))}
             </tbody>

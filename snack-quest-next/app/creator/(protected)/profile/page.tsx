@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
-import { Card, CardContent } from '@/components/ui/card';
 import { ProfileForm } from '@/components/creator/ProfileForm';
+import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
+import { PortalCard } from '@/components/creator/design/PortalCard';
 
 export const metadata: Metadata = { title: 'Profile' };
 
@@ -12,25 +13,23 @@ export default async function CreatorProfilePage() {
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
-      <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Profile</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Keep your details current — brands see this when reviewing campaigns.</p>
-      </div>
+      <PortalPageHeader
+        title="Profile"
+        description="Keep your details current — brands see this when reviewing campaigns."
+      />
 
-      <Card>
-        <CardContent className="pt-6">
-          <ProfileForm
-            initialValues={{
-              bio: profile.bio,
-              niche: profile.niche,
-              followersRange: profile.followersRange,
-              paymentPreference: profile.paymentPreference,
-              payoutPhoneNumber: profile.payoutPhoneNumber,
-              socialHandles: profile.socialHandles,
-            }}
-          />
-        </CardContent>
-      </Card>
+      <PortalCard>
+        <ProfileForm
+          initialValues={{
+            bio: profile.bio,
+            niche: profile.niche,
+            followersRange: profile.followersRange,
+            paymentPreference: profile.paymentPreference,
+            payoutPhoneNumber: profile.payoutPhoneNumber,
+            socialHandles: profile.socialHandles,
+          }}
+        />
+      </PortalCard>
     </div>
   );
 }
