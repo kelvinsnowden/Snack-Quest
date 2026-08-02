@@ -3,10 +3,8 @@ import Link from 'next/link';
 import {
   ArrowRight,
   Banknote,
-  Clock,
   Link2,
   Megaphone,
-  ShieldAlert,
   ShoppingBag,
   Trophy,
 } from 'lucide-react';
@@ -48,10 +46,13 @@ const QUICK_ACTIONS = [
  * statement is one tap away on Earnings, and duplicating it here would
  * make two screens that do the same job badly.
  *
- * Suspended and pending-review remain first-class states rather than
- * banners above a dashboard that assumes success: a pending creator
- * cannot withdraw, so the balance card says so instead of offering a
- * button that would fail.
+ * Suspended and pending-review are no longer separate banners above
+ * the balance — NextStepCard already says the same thing with the
+ * right next action attached, and a banner plus a next-step card
+ * telling a pending creator the same fact twice was the redundant-copy
+ * problem, not a second state to preserve. The header's status badge
+ * remains the at-a-glance signal; the balance card's `canWithdraw`
+ * still disables the withdraw CTA for anyone without full access.
  */
 export default async function CreatorHomePage() {
   const session = await requireCreatorSession();
@@ -94,48 +95,6 @@ export default async function CreatorHomePage() {
           </Badge>
         </div>
       </header>
-
-      {accessLevel === 'suspended' ? (
-        <PortalCard className="border-danger/30 bg-danger/5">
-          <div className="flex gap-3">
-            <ShieldAlert
-              className="text-danger mt-0.5 size-5 shrink-0"
-              aria-hidden="true"
-            />
-            <div>
-              <h2 className="text-foreground font-semibold">
-                Your account is suspended
-              </h2>
-              <p className="text-small text-muted-foreground mt-1">
-                Your referral code and earnings history are preserved, but new
-                referrals won&apos;t earn commission while suspended. Contact
-                support if you think this is a mistake.
-              </p>
-            </div>
-          </div>
-        </PortalCard>
-      ) : null}
-
-      {accessLevel === 'limited' && profile.status === 'pending' ? (
-        <PortalCard className="border-warning/30 bg-warning/5">
-          <div className="flex gap-3">
-            <Clock
-              className="text-warning mt-0.5 size-5 shrink-0"
-              aria-hidden="true"
-            />
-            <div>
-              <h2 className="text-foreground font-semibold">
-                Your profile is under review
-              </h2>
-              <p className="text-small text-muted-foreground mt-1">
-                You&apos;ll be able to start sharing your referral code as soon
-                as an admin approves your account. We usually review within a
-                working day.
-              </p>
-            </div>
-          </div>
-        </PortalCard>
-      ) : null}
 
       <BalanceCard
         availableKes={profile.availableCashKes}
