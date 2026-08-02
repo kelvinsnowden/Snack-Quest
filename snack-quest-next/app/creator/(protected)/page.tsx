@@ -19,7 +19,9 @@ import { BalanceCard } from '@/components/creator/design/BalanceCard';
 import { PortalCard } from '@/components/creator/design/PortalCard';
 import { PortalSection } from '@/components/creator/design/PortalSection';
 import { QuickActionRow } from '@/components/creator/design/QuickActionRow';
+import { NextStepCard } from '@/components/creator/design/NextStepCard';
 import { CREATOR_TIER_LABELS } from '@/lib/creators/tier';
+import { resolveNextStep } from '@/lib/creator/nextStep';
 import { formatDate, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Home' };
@@ -53,13 +55,26 @@ const QUICK_ACTIONS = [
  */
 export default async function CreatorHomePage() {
   const session = await requireCreatorSession();
-  const [{ profile, accessLevel }, { attributions }] = await Promise.all([
-    creatorDashboardService.getDashboard(session.uid),
-    referralService.listCommissionsForCreator(session.businessId, session.uid),
-  ]);
+  const [{ profile, accessLevel }, { attributions }, { links }] =
+    await Promise.all([
+      creatorDashboardService.getDashboard(session.uid),
+      referralService.listCommissionsForCreator(
+        session.businessId,
+        session.uid,
+      ),
+      referralService.listLinksForCreator(session.businessId, session.uid),
+    ]);
 
   const firstName = session.displayName.split(' ')[0];
   const recent = attributions.slice(0, 5);
+  const nextStep = resolveNextStep({
+    accessLevel,
+    status: profile.status,
+    linkCount: links.length,
+    totalClicks: profile.totalClicks,
+    totalConversions: profile.totalConversions,
+    availableCashKes: profile.availableCashKes,
+  });
   const conversionRate =
     profile.totalClicks > 0
       ? (profile.totalConversions / profile.totalClicks) * 100
@@ -129,6 +144,8 @@ export default async function CreatorHomePage() {
         referralCode={profile.referralCode}
         canWithdraw={accessLevel === 'full'}
       />
+
+      <NextStepCard step={nextStep} />
 
       <QuickActionRow actions={QUICK_ACTIONS} />
 
