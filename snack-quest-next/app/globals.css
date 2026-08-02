@@ -1,0 +1,407 @@
+@import 'tailwindcss';
+
+/*
+ * Platform-wide semantic design tokens (Snack Quest Design System —
+ * see the `design-system` skill). Primitive brand colors -> semantic
+ * roles -> the components in components/ui/* consume only the
+ * semantic `--color-*` Tailwind tokens below, never a raw hex value.
+ * This is the token set every surface built from here on (Admin,
+ * Warehouse, Finance, Agent workspace, eventually the public site)
+ * draws from; the pre-existing `--color-creator-*` block further down
+ * remains a separate, additive set the Creator Portal specifically
+ * uses and is untouched.
+ *
+ * Root-level variables are prefixed `--sq-*` (not `--color-*`)
+ * deliberately: `@theme inline` below maps each one to the Tailwind
+ * token of the same semantic name, and giving the source variable a
+ * distinct name avoids a same-name self-reference between the two.
+ */
+:root {
+  /* Primitives */
+  --sq-primitive-orange: #ff7a00;
+  --sq-primitive-purple: #6c3bff;
+  --sq-primitive-cream: #fff8ee;
+  --sq-primitive-charcoal: #1f1f1f;
+
+  /* Semantic — light mode (default) */
+  --sq-background: var(--sq-primitive-cream);
+  --sq-foreground: var(--sq-primitive-charcoal);
+  --sq-surface: #ffffff;
+  --sq-surface-raised: #ffffff;
+  --sq-border: #e7dfd0;
+  --sq-muted: #756e5f;
+  --sq-muted-foreground: #756e5f;
+
+  --sq-primary: var(--sq-primitive-orange);
+  --sq-primary-foreground: #ffffff;
+  --sq-secondary: var(--sq-primitive-purple);
+  --sq-secondary-foreground: #ffffff;
+
+  --sq-success: #1f8a5c;
+  --sq-success-foreground: #ffffff;
+  --sq-warning: #b9790a;
+  --sq-warning-foreground: #ffffff;
+  --sq-danger: #d1483c;
+  --sq-danger-foreground: #ffffff;
+  --sq-info: #2f78c4;
+  --sq-info-foreground: #ffffff;
+
+  --sq-shadow-sm: 0 1px 2px 0 rgb(31 31 31 / 0.06);
+  --sq-shadow-md: 0 12px 32px -12px rgb(31 31 31 / 0.18);
+  --sq-shadow-lg: 0 24px 64px -20px rgb(31 31 31 / 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sq-background: #17140f;
+    --sq-foreground: #f7f3ea;
+    --sq-surface: #211d16;
+    --sq-surface-raised: #29241b;
+    --sq-border: #38311f;
+    --sq-muted: #a89d87;
+    --sq-muted-foreground: #a89d87;
+
+    --sq-primary: #ff8f24;
+    --sq-primary-foreground: #1f1105;
+    --sq-secondary: #8a63ff;
+    --sq-secondary-foreground: #ffffff;
+
+    --sq-success: #3ba873;
+    --sq-success-foreground: #0d2117;
+    --sq-warning: #d99a2b;
+    --sq-warning-foreground: #241a05;
+    --sq-danger: #e2685c;
+    --sq-danger-foreground: #250a07;
+    --sq-info: #5a9ce0;
+    --sq-info-foreground: #061626;
+
+    --sq-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --sq-shadow-md: 0 12px 32px -12px rgb(0 0 0 / 0.5);
+    --sq-shadow-lg: 0 24px 64px -20px rgb(0 0 0 / 0.6);
+  }
+}
+
+/* The theme toggle stamps data-theme on <html>, and must win over the OS media query in both directions. */
+:root[data-theme='dark'] {
+  --sq-background: #17140f;
+  --sq-foreground: #f7f3ea;
+  --sq-surface: #211d16;
+  --sq-surface-raised: #29241b;
+  --sq-border: #38311f;
+  --sq-muted: #a89d87;
+  --sq-muted-foreground: #a89d87;
+  --sq-primary: #ff8f24;
+  --sq-primary-foreground: #1f1105;
+  --sq-secondary: #8a63ff;
+  --sq-secondary-foreground: #ffffff;
+  --sq-success: #3ba873;
+  --sq-success-foreground: #0d2117;
+  --sq-warning: #d99a2b;
+  --sq-warning-foreground: #241a05;
+  --sq-danger: #e2685c;
+  --sq-danger-foreground: #250a07;
+  --sq-info: #5a9ce0;
+  --sq-info-foreground: #061626;
+}
+:root[data-theme='light'] {
+  --sq-background: var(--sq-primitive-cream);
+  --sq-foreground: var(--sq-primitive-charcoal);
+  --sq-surface: #ffffff;
+  --sq-surface-raised: #ffffff;
+  --sq-border: #e7dfd0;
+  --sq-muted: #756e5f;
+  --sq-muted-foreground: #756e5f;
+  --sq-primary: var(--sq-primitive-orange);
+  --sq-primary-foreground: #ffffff;
+  --sq-secondary: var(--sq-primitive-purple);
+  --sq-secondary-foreground: #ffffff;
+  --sq-success: #1f8a5c;
+  --sq-success-foreground: #ffffff;
+  --sq-warning: #b9790a;
+  --sq-warning-foreground: #ffffff;
+  --sq-danger: #d1483c;
+  --sq-danger-foreground: #ffffff;
+  --sq-info: #2f78c4;
+  --sq-info-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--sq-background);
+  --color-foreground: var(--sq-foreground);
+  --color-surface: var(--sq-surface);
+  --color-surface-raised: var(--sq-surface-raised);
+  --color-border: var(--sq-border);
+  --color-muted: var(--sq-muted);
+  --color-muted-foreground: var(--sq-muted-foreground);
+  --color-primary: var(--sq-primary);
+  --color-primary-foreground: var(--sq-primary-foreground);
+  --color-secondary: var(--sq-secondary);
+  --color-secondary-foreground: var(--sq-secondary-foreground);
+  --color-success: var(--sq-success);
+  --color-success-foreground: var(--sq-success-foreground);
+  --color-warning: var(--sq-warning);
+  --color-warning-foreground: var(--sq-warning-foreground);
+  --color-danger: var(--sq-danger);
+  --color-danger-foreground: var(--sq-danger-foreground);
+  --color-info: var(--sq-info);
+  --color-info-foreground: var(--sq-info-foreground);
+
+  --shadow-sm: var(--sq-shadow-sm);
+  --shadow-md: var(--sq-shadow-md);
+  --shadow-lg: var(--sq-shadow-lg);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+
+  /* Type scale — design-system skill: Display Hero 72 / Hero 56 / Page Title 48 / Section Title 36 / Card Title 24 / Subtitle 20 / Body 16 / Small 14 / Caption 12 */
+  --text-display-hero: 4.5rem;
+  --text-display-hero--line-height: 1.05;
+  --text-hero: 3.5rem;
+  --text-hero--line-height: 1.08;
+  --text-page-title: 3rem;
+  --text-page-title--line-height: 1.1;
+  --text-section-title: 2.25rem;
+  --text-section-title--line-height: 1.15;
+  --text-card-title: 1.5rem;
+  --text-card-title--line-height: 1.25;
+  --text-subtitle: 1.25rem;
+  --text-subtitle--line-height: 1.35;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.45;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.35;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /*
+   * Home page accents (§ jungle-adventure landing page rebuild) — the
+   * brand's existing --color-primary/--color-secondary ALREADY are this
+   * design's orange/purple (#ff7a00 / #6c3bff, confirmed identical), so
+   * only the two genuinely new accents are added here: lime and a
+   * deeper purple for the final-CTA section's dark background. Scoped
+   * to the home page's own sections only, same additive discipline as
+   * the Creator Portal's --color-creator-* block above.
+   */
+  --color-home-lime: #c8ff00;
+  --color-home-purple-deep: #38137f;
+  --color-home-orange-glow: #ff9633;
+
+  --font-display: var(--font-bagel-fat-one), 'Titan One', ui-sans-serif, system-ui, sans-serif;
+  --font-signature: Georgia, 'Times New Roman', serif;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/*
+ * The app toggles a `.dark` class on <html> to control theme, but
+ * Tailwind v4's `dark:` variant defaults to the `prefers-color-scheme`
+ * media query. Without this, every `dark:` utility is inert whenever the
+ * OS/browser reports light mode. Ported from the current Vite app's
+ * src/index.css (found during this session's Creator Portal work).
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Creator Portal design tokens, ported verbatim from src/index.css.
+ * Prefixed/additive only (creator-*) so other portals' styling is
+ * unaffected while the Creator Portal consumes a single consistent
+ * token set instead of ad-hoc hex values per component.
+ */
+@theme {
+  --color-creator-canvas: #0b0b0d;
+  --color-creator-surface: #17171a;
+  --color-creator-surface-hover: #1f1f23;
+  --color-creator-surface-raised: #1c1c20;
+  --color-creator-border: #27272b;
+  --color-creator-border-strong: #38383d;
+
+  --color-creator-ink: #f7f7f5;
+  --color-creator-ink-muted: #a6a6ad;
+  --color-creator-ink-faint: #6b6b72;
+
+  --color-creator-brand: #ff7a00;
+  --color-creator-brand-strong: #e56a00;
+  --color-creator-brand-soft: #ffb066;
+  --color-creator-brand-ink: #1f1105;
+
+  --color-creator-accent: #6c3bff;
+  --color-creator-highlight: #c8ff00;
+
+  --color-creator-success: #2fbe7a;
+  --color-creator-warning: #ff7a00;
+  --color-creator-danger: #ff5a5f;
+  --color-creator-info: #4ea1ff;
+
+  --radius-creator-control: 12px;
+  --radius-creator-card: 16px;
+  --radius-creator-card-lg: 24px;
+
+  --text-creator-caption: 0.75rem;
+  --text-creator-caption--line-height: 1.35;
+  --text-creator-body: 1rem;
+  --text-creator-body--line-height: 1.5;
+  --text-creator-subtitle: 1.25rem;
+  --text-creator-subtitle--line-height: 1.3;
+  --text-creator-card-title: 1.5rem;
+  --text-creator-card-title--line-height: 1.25;
+  --text-creator-section-title: 2.25rem;
+  --text-creator-section-title--line-height: 1.15;
+  --text-creator-page-title: 3rem;
+  --text-creator-page-title--line-height: 1.1;
+
+  --shadow-creator-soft: 0 16px 40px -16px rgb(0 0 0 / 0.45);
+}
+
+/*
+ * Animation utilities used by the ported UI primitives (Modal, Drawer,
+ * ToastContainer, CommandPalette) — ported verbatim from src/index.css.
+ */
+@layer utilities {
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleUp {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-scale-up {
+    animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+/*
+ * Home page motion (§ jungle-adventure landing page rebuild) — scoped,
+ * additive utilities alongside the trio above. Distinct names (not a
+ * reuse of animate-fade-in/slide-up) because the home page's reveal is
+ * a slower, larger-distance effect (700ms / 32px) than the existing
+ * short UI-chrome transitions (200ms / 4-12px) — reusing those classes
+ * for both would mean picking one timing and compromising the other.
+ */
+@layer utilities {
+  @keyframes floatSlow {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-14px) rotate(3deg);
+    }
+  }
+
+  @keyframes floatSlower {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-20px) rotate(-4deg);
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 rgb(255 122 0 / 0.6),
+        0 20px 60px -15px rgb(255 122 0 / 0.5);
+    }
+    50% {
+      box-shadow:
+        0 0 0 20px rgb(255 122 0 / 0),
+        0 20px 60px -15px rgb(255 122 0 / 0.5);
+    }
+  }
+
+  .animate-float-slow {
+    animation: floatSlow 6s ease-in-out infinite;
+  }
+
+  .animate-float-slower {
+    animation: floatSlower 8s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulseGlow 2.4s ease-in-out infinite;
+  }
+
+  /*
+   * Reveal-on-scroll wrapper state (components/marketing/home/Reveal.tsx)
+   * — starts hidden/offset so JS can toggle `.reveal-visible` once an
+   * IntersectionObserver fires; server-rendered markup stays fully
+   * visible without JS (see Reveal's own doc comment) since this class
+   * is only applied client-side after mount.
+   */
+  .reveal-hidden {
+    opacity: 0;
+    transform: translateY(32px);
+    transition:
+      opacity 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
+      transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .reveal-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * Accessibility: anyone with `prefers-reduced-motion: reduce` set at the
+ * OS level gets every animation/transition finished instantly instead of
+ * played — applies platform-wide (fade/scale/slide utilities above,
+ * plus ordinary `transition-*` utilities like Button's hover states).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

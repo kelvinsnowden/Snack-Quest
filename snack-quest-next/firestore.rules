@@ -1,0 +1,361 @@
+rules_version = '2';
+
+// Full ruleset from TECHNICAL_DESIGN_DOCUMENT.md §9. Deny by default,
+// grant explicitly — every rule below is additive to an implicit
+// `allow read, write: if false;` base.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function hasRole(role) {
+      return isSignedIn() && role in request.auth.token.roles;
+    }
+    function isAdmin() {
+      return hasRole('admin') || hasRole('super_admin');
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isNotDeleted() {
+      return resource.data.deletedAt == null;
+    }
+    // NOT enforced yet, deliberately — see the note below.
+    function belongsToBusiness(businessId) {
+      return isSignedIn() && businessId == request.auth.token.businessId;
+    }
+
+    // Multi-tenancy note (platform architecture direction): every
+    // document that should belong to exactly one business now carries
+    // a `businessId` field, and every Service scopes its queries and
+    // writes by it (see repositories/*). What these rules do NOT yet
+    // do is enforce `businessId` on admin/owner *reads* — `isAdmin()`
+    // below is still a platform-wide role, not scoped to one tenant,
+    // because no mechanism exists yet to put a `businessId` custom
+    // claim on a staff account (that's real, separate auth/onboarding
+    // work). Wiring `belongsToBusiness()` into `isAdmin()` before that
+    // claim-issuing mechanism exists would just lock today's real
+    // Snack Quest admins out of their own data — a regression, not a
+    // security improvement. This is the honest state of Open Question
+    // 6 in PLATFORM_ARCHITECTURE_V2.md §21: data model and Services
+    // are tenant-aware now; Security Rule tenant isolation is the
+    // next, explicitly-tracked step, gated on staff-claim issuance.
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      // A self-registering customer may only ever grant themselves the
+      // 'customer' role — staff/creator roles are never client-writable,
+      // since `roles` here is the exact array copied onto the Auth custom
+      // claim that Security Rules and route guards trust everywhere else
+      // (§ Admin auth foundation). Anyone provisioning a staff or creator
+      // account does so with the Admin SDK, which bypasses these rules
+      // entirely, so this restriction only closes the client-write path.
+      allow create: if isOwner(uid) &&
+                       request.resource.data.roles == ['customer'];
+      allow update: if isAdmin() ||
+                       (isOwner(uid) &&
+                        !request.resource.data.diff(resource.data)
+                          .affectedKeys()
+                          .hasAny(['roles']));
+      allow delete: if false; // soft delete only, via server
+    }
+
+    match /creatorProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if false; // server-created at sign-up (see §8 automation)
+      allow update: if (isOwner(uid) &&
+                          // creators may edit their own profile fields,
+                          // but never the financial fields directly
+                          !request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasAny(['availableCashKes','pendingEarningsKes',
+                                     'lifetimeEarningsKes','status'])) || isAdmin();
+      allow delete: if false;
+
+      // earningsLedger: the immutable source of truth behind
+      // availableCashKes/lifetimeEarningsKes above — server-written
+      // only, same discipline as customerWallets' ledger.
+      match /earningsLedger/{entryId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+      }
+    }
+
+    match /customerProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow update: if (isOwner(uid) &&
+                          !request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasAny(['walletBalanceKes','lifetimeCreditsEarnedKes'])) || isAdmin();
+      allow create, delete: if false;
+    }
+
+    match /staffProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if hasRole('super_admin'); // only super admins manage staff
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if isSignedIn() && resource.data.status == 'active' || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /campaignSubmissions/{submissionId} {
+      allow read: if isAdmin() ||
+                     (hasRole('creator') && resource.data.creatorId == request.auth.uid);
+      allow create: if hasRole('creator') &&
+                       request.resource.data.creatorId == request.auth.uid &&
+                       request.resource.data.status == 'pending'; // cannot self-approve
+      allow update: if isAdmin(); // status transitions are admin/server-only
+      allow delete: if false;
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       request.resource.data.ownerId == request.auth.uid &&
+                       request.resource.data.status == 'pending';
+      allow update: if isAdmin(); // approve/reject/pay is admin/server-only
+      allow delete: if false;
+    }
+
+    match /refunds/{refundId} {
+      allow read: if isAdmin();
+      allow write: if false; // Admin SDK only — RefundService is the only writer
+    }
+
+    // customerWallets: the Quest wallet balance + ledger (§ Phase 4:
+    // Customer loyalty / Quest system) — keyed by phone number, not a
+    // Firebase Auth uid, because almost every real customer has no
+    // Auth account at all (see `types/customerWallet.ts`). No
+    // client-side identity exists to grant self-access against, so
+    // this stays admin-read/server-write-only, same discipline as
+    // `earningsLedger` above, until a real Auth-based customer
+    // identity exists to revisit this against.
+    match /customerWallets/{walletId} {
+      allow read: if isAdmin();
+      allow write: if false; // WalletService (Admin SDK) only, always
+
+      match /ledger/{entryId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // orders: nested per the multi-delivery-method redesign
+    // (product/customer/delivery/payment/pricing) — `customerId` now
+    // lives at `customer.customerId`, not the document root.
+    match /orders/{orderId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.customer.customerId == request.auth.uid);
+      allow create: if false; // orders created via Route Handler (payment validation)
+      allow update: if isAdmin();
+
+      match /items/{itemId} {
+        allow read: if isAdmin() ||
+                       (isSignedIn() &&
+                        get(/databases/$(database)/documents/orders/$(orderId)).data.customer.customerId == request.auth.uid);
+        allow write: if false;
+      }
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.recipientId == request.auth.uid);
+      allow update: if isSignedIn() &&
+                       resource.data.recipientId == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false; // server-written only
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Function / Admin SDK only, immutable
+    }
+
+    // webhookEvents: the shared inbound idempotency ledger for every
+    // provider webhook (Daraja, Whatchimp, Jumia) — PLATFORM_ARCHITECTURE_V2.md
+    // §7/§13/§15. No client ever reads or writes this; it exists purely
+    // for server-side handlers to check before processing a callback.
+    match /webhookEvents/{eventId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+
+    // outboundGatewayCalls: outbound idempotency for Gateway calls with
+    // side effects (§13). Same server-only discipline as webhookEvents,
+    // just for the opposite direction.
+    match /outboundGatewayCalls/{callId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+
+    // conversations: the transactional surface (§6). Most Snack Quest
+    // customers never have a Firebase Auth account at all (WhatsApp is
+    // the identity), so in practice almost every read of this
+    // collection is server-side (Admin SDK, bypasses rules) — this
+    // rule only matters for the minority of customers who ARE
+    // identified AND later sign in (e.g. via a future Quest Center),
+    // letting them see their own conversation history.
+    match /conversations/{conversationId} {
+      allow read: if isSignedIn() && resource.data.customerId == request.auth.uid;
+      allow write: if false; // ConversationService (Admin SDK) only, always
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() &&
+                       get(/databases/$(database)/documents/conversations/$(conversationId)).data.customerId == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
+    // packages: public product catalog for the conversation's box
+    // presentation step (§5) — same public-read/admin-write shape as
+    // campaigns' active-only rule.
+    match /packages/{packageId} {
+      allow read: if resource.data.isActive == true || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // inventoryMovements: the stock-adjustment audit trail (§ Admin:
+    // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
+    // is the sole writer, always inside the same transaction as the
+    // packages.stockCount update it records).
+    match /inventoryMovements/{movementId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // suppliers, purchaseOrders, inventoryBatches (§ Inventory: batches,
+    // purchase orders, suppliers, movements, low-stock alerts, expiry,
+    // audit trail) — same admin-read/Admin-SDK-only-write discipline as
+    // inventoryMovements above; SupplierService/PurchaseOrderService/
+    // InventoryService are the sole writers.
+    match /suppliers/{supplierId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /purchaseOrders/{purchaseOrderId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /inventoryBatches/{batchId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // marketingSpendEntries: manually-entered monthly ad spend, the
+    // input § Admin: Analytics computes CAC from — admin-only, same
+    // Admin-SDK-only-write discipline as everything else here.
+    match /marketingSpendEntries/{entryId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // conversationCheckoutSnapshots: server-only, same reasoning as
+    // conversations — the frozen pre-payment snapshot has no client
+    // reader in the WhatsApp-first flow.
+    match /conversationCheckoutSnapshots/{snapshotId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // paymentIntents: a signed-in customer may read their own intent's
+    // status; every transition is server-verified (§7).
+    match /paymentIntents/{intentId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.customerId == request.auth.uid);
+      allow write: if false;
+
+      match /attempts/{attemptId} {
+        allow read: if isAdmin() ||
+                       (isSignedIn() &&
+                        get(/databases/$(database)/documents/paymentIntents/$(intentId)).data.customerId == request.auth.uid);
+        allow write: if false;
+      }
+    }
+
+    // domainEvents: internal event log (§14) — admin-visible for
+    // debugging, never client-written.
+    match /domainEvents/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // scheduledJobRuns: Vercel Cron run history (§ Phase 5:
+    // Observability) — same admin-visible/server-write-only discipline
+    // as domainEvents above.
+    match /scheduledJobRuns/{runId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // shipments: fulfillment record, distinct from orders.status (§12).
+    // Admin-only for now — no customer-facing web read of shipment
+    // status exists yet (tracking updates go out over WhatsApp).
+    match /shipments/{shipmentId} {
+      allow read: if isAdmin();
+      allow write: if false; // DeliveryService (Admin SDK) only
+    }
+
+    // referralLinks: a creator's own referral code (§8) — the owning
+    // creator can see their own link, never anyone else's.
+    match /referralLinks/{linkId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow write: if isAdmin(); // creator onboarding creates these server-side
+    }
+
+    // referralAttributions: the ledger proving why a commission was
+    // paid (§8) — server-written only, same discipline as customerWallets' ledger.
+    match /referralAttributions/{attributionId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.creatorId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // pickupStations: Jumia's pickup-station catalog, imported wholesale
+    // from the authoritative dataset (§ Jumia pickup station integration).
+    // Same public-read/admin-write shape as packages — a customer's
+    // station search reads through the server (ConversationService,
+    // Admin SDK), but nothing here is sensitive, so the pattern still
+    // holds for any future direct client read.
+    match /pickupStations/{stationId} {
+      allow read: if resource.data.isActive == true || isAdmin();
+      allow write: if isAdmin(); // seed script / Admin SDK only in practice
+    }
+
+    // deliveryZoneRules: per-zone Jumia pricing. Admin-only — this is
+    // the flat delivery fee a customer's total is computed from, never
+    // a client-writable value.
+    match /deliveryZoneRules/{ruleId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin(); // seed script / Admin SDK only in practice
+    }
+
+    // businesses: the tenant profile itself. Admin-only for now (same
+    // caveat as belongsToBusiness() above — not yet scoped to "your
+    // own business's admin" because that claim doesn't exist yet).
+    match /businesses/{businessId} {
+      allow read: if isAdmin();
+      allow write: if false; // provisioned via seed script / Admin SDK only
+
+      // integrationSecrets: provider credentials (Daraja, Whatchimp,
+      // Jumia, Meta) — the single most sensitive collection in the
+      // schema. Unconditional deny, no admin exception, ever. Every
+      // Gateway config module reads this via the Admin SDK, which
+      // bypasses rules entirely — there is no legitimate client read.
+      match /integrationSecrets/{provider} {
+        allow read, write: if false;
+      }
+
+      // featureFlags: tenant-scoped runtime switches (§ Phase 6).
+      // Not secret, so admin-readable — still server/Admin SDK-only to
+      // write, same as every other business-config mutation in this
+      // app (`FeatureFlagService`, via `app/api/admin/feature-flags`).
+      match /featureFlags/{key} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+  }
+}

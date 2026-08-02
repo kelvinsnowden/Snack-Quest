@@ -1,0 +1,14 @@
+{
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/cron/retry-notifications",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-stk-payments",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
