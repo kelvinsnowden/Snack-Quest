@@ -4,10 +4,13 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   // The parent Snack-Quest repo also has a package-lock.json, which makes
   // Next.js misdetect the workspace root. Pin it explicitly to this
-  // project's own directory.
+  // project's own directory — both knobs need to agree (Turbopack's dev/
+  // build root and the output file tracing root used for the production
+  // bundle) or the build logs a "must have the same value" warning.
   turbopack: {
     root: path.join(__dirname),
   },
+  outputFileTracingRoot: path.join(__dirname),
   images: {
     // Every uploaded image (snack/box photos, storage browser) lives in
     // Vercel Blob (services/storageService.ts) at
