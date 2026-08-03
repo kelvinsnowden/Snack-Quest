@@ -6,7 +6,6 @@ import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { HomeHero } from '@/components/marketing/home/HomeHero';
 import { FounderStory } from '@/components/marketing/home/FounderStory';
 import { WhatsInside } from '@/components/marketing/home/WhatsInside';
-import { GiftIt } from '@/components/marketing/home/GiftIt';
 import { TheRoute } from '@/components/marketing/home/TheRoute';
 import { PickYourBox } from '@/components/marketing/home/PickYourBox';
 import { FinalCta } from '@/components/marketing/home/FinalCta';
@@ -36,7 +35,6 @@ export default async function MarketingHomePage() {
         founderImageUrl={homepageContent?.founderImageUrl ?? null}
       />
       <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
-      <GiftIt />
       <TheRoute />
       <PickYourBox packages={featured} />
       <FinalCta />

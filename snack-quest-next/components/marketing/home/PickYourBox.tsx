@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { Boxes, Check } from 'lucide-react';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
@@ -84,7 +85,7 @@ export function PickYourBox({
           return (
             <Reveal key={pkg.id} delayMs={index * 120}>
               <div
-                className={`relative flex h-full flex-col overflow-hidden rounded-[28px] border bg-gradient-to-br p-6 transition-all duration-400 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-2 hover:shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)] md:p-9 ${accent.wash} ${accent.border} ${
+                className={`relative flex h-full flex-col overflow-hidden rounded-[28px] border bg-gradient-to-br transition-all duration-400 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-2 hover:shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)] ${accent.wash} ${accent.border} ${
                   isEmphasized
                     ? 'md:scale-[1.02] md:shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]'
                     : ''
@@ -96,66 +97,84 @@ export function PickYourBox({
                 />
 
                 {isEmphasized ? (
-                  <Badge className="bg-home-lime text-foreground absolute top-4 right-4 rotate-3 shadow-sm md:top-5 md:right-5">
+                  <Badge className="bg-home-lime text-foreground absolute top-4 right-4 z-10 rotate-3 shadow-sm md:top-5 md:right-5">
                     ★ Best Seller
                   </Badge>
                 ) : null}
 
-                <div className="relative flex items-center gap-2">
-                  <Boxes
-                    className={`size-5 ${accent.icon}`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                  <span className="text-caption text-foreground/60 font-bold tracking-wide uppercase">
-                    {index === 0
-                      ? 'Start your quest'
-                      : isEmphasized
-                        ? 'Most explorers pick this'
-                        : 'For serious explorers'}
-                  </span>
+                <div className="relative aspect-[16/10] w-full overflow-hidden bg-border/40">
+                  {pkg.data.imageUrl ? (
+                    <Image
+                      src={pkg.data.imageUrl}
+                      alt={pkg.data.name}
+                      fill
+                      sizes="(min-width: 768px) 33vw, 100vw"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-5xl">
+                      🍿
+                    </div>
+                  )}
                 </div>
 
-                <h3 className="font-display relative mt-4 text-2xl leading-[1.1] font-normal uppercase md:mt-6 md:text-4xl">
-                  {pkg.data.name}
-                </h3>
-                <p className="text-foreground relative mt-3 text-2xl font-bold md:mt-4 md:text-4xl">
-                  {formatKes(pkg.data.priceKes)}
-                </p>
-                {pkg.data.description ? (
-                  <p className="text-small text-foreground/70 relative mt-1">
-                    {pkg.data.description}
+                <div className="relative flex flex-1 flex-col p-6 md:p-9">
+                  <div className="flex items-center gap-2">
+                    <Boxes
+                      className={`size-5 ${accent.icon}`}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                    />
+                    <span className="text-caption text-foreground/60 font-bold tracking-wide uppercase">
+                      {index === 0
+                        ? 'Start your quest'
+                        : isEmphasized
+                          ? 'Most explorers pick this'
+                          : 'For serious explorers'}
+                    </span>
+                  </div>
+
+                  <h3 className="font-display mt-4 text-2xl leading-[1.1] font-normal uppercase md:mt-6 md:text-4xl">
+                    {pkg.data.name}
+                  </h3>
+                  <p className="text-foreground mt-3 text-2xl font-bold md:mt-4 md:text-4xl">
+                    {formatKes(pkg.data.priceKes)}
                   </p>
-                ) : null}
+                  {pkg.data.description ? (
+                    <p className="text-small text-foreground/70 mt-1">
+                      {pkg.data.description}
+                    </p>
+                  ) : null}
 
-                <ul className="relative mt-4 flex flex-1 flex-col gap-2 md:mt-7 md:gap-3">
-                  {TRUST_LINES.map((line) => (
-                    <li
-                      key={line}
-                      className="text-small text-foreground/80 flex items-start gap-2.5"
-                    >
-                      <span
-                        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full ${accent.checkBg}`}
+                  <ul className="mt-4 flex flex-1 flex-col gap-2 md:mt-7 md:gap-3">
+                    {TRUST_LINES.map((line) => (
+                      <li
+                        key={line}
+                        className="text-small text-foreground/80 flex items-start gap-2.5"
                       >
-                        <Check
-                          className={`size-2.5 ${accent.checkFg}`}
-                          strokeWidth={3}
-                          aria-hidden="true"
-                        />
-                      </span>
-                      {line}
-                    </li>
-                  ))}
-                </ul>
+                        <span
+                          className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full ${accent.checkBg}`}
+                        >
+                          <Check
+                            className={`size-2.5 ${accent.checkFg}`}
+                            strokeWidth={3}
+                            aria-hidden="true"
+                          />
+                        </span>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
 
-                <div className="relative mt-6 md:mt-9">
-                  <WhatsAppOrderButton
-                    message={`Hi! I'd like to order the ${pkg.data.name}.`}
-                    size="lg"
-                    className={`w-full justify-center md:w-auto ${PRIMARY_CTA_CLASS}`}
-                  >
-                    Order the {pkg.data.name}
-                  </WhatsAppOrderButton>
+                  <div className="mt-6 md:mt-9">
+                    <WhatsAppOrderButton
+                      message={`Hi! I'd like to order the ${pkg.data.name}.`}
+                      size="lg"
+                      className={`w-full justify-center md:w-auto ${PRIMARY_CTA_CLASS}`}
+                    >
+                      Order the {pkg.data.name}
+                    </WhatsAppOrderButton>
+                  </div>
                 </div>
               </div>
             </Reveal>
