@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { HomeHero } from '@/components/marketing/home/HomeHero';
@@ -19,26 +20,22 @@ export const metadata: Metadata = buildPageMetadata({
   path: '/',
 });
 
-/**
- * Real, uploaded photography for the two photo-led sections below —
- * `null` until the business uploads them (Admin > Storage), in which
- * case FounderStory/WhatsInside render an on-brand illustrated panel
- * instead of a fabricated stand-in. Swap these to real Blob URLs the
- * moment the files land; no other change needed.
- */
-const FOUNDER_IMAGE_URL: string | null = null;
-const WHATS_INSIDE_PHOTO_URL: string | null = null;
-
 export default async function MarketingHomePage() {
   const businessId = getCurrentBusinessId();
-  const packages = await packageRepository.listActive(businessId);
+  const [business, packages] = await Promise.all([
+    getCurrentBusiness(),
+    packageRepository.listActive(businessId),
+  ]);
   const featured = packages.slice(0, 3);
+  const homepageContent = business?.homepageContent;
 
   return (
     <div className="flex flex-col overflow-x-hidden">
       <HomeHero />
-      <FounderStory founderImageUrl={FOUNDER_IMAGE_URL} />
-      <WhatsInside photoUrl={WHATS_INSIDE_PHOTO_URL} />
+      <FounderStory
+        founderImageUrl={homepageContent?.founderImageUrl ?? null}
+      />
+      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
       <GiftIt />
       <TheRoute />
       <PickYourBox packages={featured} />

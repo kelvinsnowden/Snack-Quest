@@ -48,6 +48,21 @@ export interface Business extends AuditFields {
    * earning stops.
    */
   loyaltyConfig?: LoyaltyConfig;
+  /**
+   * The homepage's photo-led sections (§ Homepage CMS) — `null` until
+   * uploaded, in which case FounderStory/WhatsInside render an
+   * on-brand illustrated panel instead of a fabricated photo. Uses the
+   * same Vercel Blob upload path as product images
+   * (`services/storageService.ts`, `directory: 'marketing'`), edited
+   * from Admin > Settings > Homepage content — no code change needed
+   * to swap either photo.
+   */
+  homepageContent?: HomepageContent;
+}
+
+export interface HomepageContent {
+  founderImageUrl: string | null;
+  whatsInsidePhotoUrl: string | null;
 }
 
 export interface LoyaltyConfig {

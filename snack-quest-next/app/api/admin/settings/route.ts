@@ -15,7 +15,9 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const business = await businessSettingsService.getSettings(session.businessId);
+    const business = await businessSettingsService.getSettings(
+      session.businessId,
+    );
     return Response.json({ business });
   } catch (error) {
     if (error instanceof BusinessNotFoundError) {
@@ -34,6 +36,7 @@ const EDITABLE_FIELDS = [
   'whatsappCustomerNumber',
   'status',
   'loyaltyConfig',
+  'homepageContent',
 ] as const;
 
 function pickPatch(body: Record<string, unknown>): BusinessSettingsPatch {
@@ -62,11 +65,18 @@ export async function PATCH(request: Request): Promise<Response> {
 
   const patch = pickPatch((body ?? {}) as Record<string, unknown>);
   if (Object.keys(patch).length === 0) {
-    return Response.json({ error: 'No editable fields provided.' }, { status: 400 });
+    return Response.json(
+      { error: 'No editable fields provided.' },
+      { status: 400 },
+    );
   }
 
   try {
-    const { before, after } = await businessSettingsService.updateSettings(session.businessId, patch, session.uid);
+    const { before, after } = await businessSettingsService.updateSettings(
+      session.businessId,
+      patch,
+      session.uid,
+    );
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
@@ -85,7 +95,10 @@ export async function PATCH(request: Request): Promise<Response> {
       return Response.json({ error: error.message }, { status: 400 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not update settings' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Could not update settings',
+      },
       { status: 400 },
     );
   }

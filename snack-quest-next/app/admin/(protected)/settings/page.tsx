@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Plug, ChevronRight, ToggleLeft } from 'lucide-react';
+import {
+  Plug,
+  ChevronRight,
+  ToggleLeft,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessSettingsService } from '@/services/businessSettingsService';
 import {
@@ -60,6 +65,27 @@ export default async function AdminSettingsPage() {
               </p>
               <p className="text-caption text-muted-foreground">
                 Turn platform features on or off — takes effect immediately.
+              </p>
+            </div>
+          </div>
+          <ChevronRight
+            className="text-muted-foreground size-4"
+            aria-hidden="true"
+          />
+        </Card>
+      </Link>
+
+      <Link href="/admin/settings/homepage">
+        <Card className="hover:bg-border/20 flex items-center justify-between gap-3 p-5 transition-colors">
+          <div className="flex items-center gap-3">
+            <ImageIcon className="text-primary size-5" aria-hidden="true" />
+            <div>
+              <p className="text-foreground text-sm font-semibold">
+                Homepage content
+              </p>
+              <p className="text-caption text-muted-foreground">
+                The founder portrait and snack flat-lay photos shown on the
+                homepage.
               </p>
             </div>
           </div>
