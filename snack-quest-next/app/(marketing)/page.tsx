@@ -31,10 +31,10 @@ export default async function MarketingHomePage() {
   return (
     <div className="flex flex-col overflow-x-hidden">
       <HomeHero />
+      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
       <FounderStory
         founderImageUrl={homepageContent?.founderImageUrl ?? null}
       />
-      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
       <PickYourBox packages={featured} />
       <TheRoute />
       <FinalCta />
