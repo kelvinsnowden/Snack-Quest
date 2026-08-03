@@ -145,6 +145,9 @@ export function PickYourBox({
                       {pkg.data.description}
                     </p>
                   ) : null}
+                  <p className="text-small text-foreground/60 mt-1">
+                    All snacks have passed the taste test. I have tasted each of them.
+                  </p>
 
                   <ul className="mt-4 flex flex-1 flex-col gap-2 md:mt-7 md:gap-3">
                     {TRUST_LINES.map((line) => (

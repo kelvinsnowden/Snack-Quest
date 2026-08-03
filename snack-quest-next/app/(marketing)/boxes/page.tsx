@@ -30,7 +30,7 @@ export default async function BoxesPage() {
 
       {packages.length === 0 ? (
         <div className="mt-10">
-          <EmptyState icon={PackageSearch} title="No boxes available right now" description="Check back soon — we're restocking." />
+          <EmptyState icon={PackageSearch} title="No boxes available right now" description="Check back soon, we're restocking." />
         </div>
       ) : (
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -47,6 +47,9 @@ export default async function BoxesPage() {
                 <CardContent className="p-5">
                   <p className="text-card-title font-semibold text-foreground">{data.name}</p>
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{data.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    All snacks have passed the taste test. I have tasted each of them.
+                  </p>
                   <p className="mt-3 text-lg font-semibold text-foreground">{formatKes(data.priceKes)}</p>
                 </CardContent>
               </Card>

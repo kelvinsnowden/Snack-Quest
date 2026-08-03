@@ -10,7 +10,7 @@ const STORY_PARAGRAPHS = [
   "Working alongside my Chinese colleagues introduced me to a world of snacks I'd never seen before. Every time they handed me something new, I had no idea what to expect.",
   'Sometimes the flavours completely surprised me.',
   'Sometimes they became instant favourites.',
-  'That feeling of discovering something unexpected was exciting — and I realised so many people have never experienced it.',
+  'That feeling of discovering something unexpected was exciting and I realized it would be nice to offer the same experience to someone else.',
 ];
 
 /**
@@ -88,7 +88,7 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
               <p className="font-semibold text-foreground">That&apos;s why I created Snack Quest.</p>
               <p>
                 Today, every snack that makes it into a Snack Quest box has been personally tasted and carefully
-                selected — because I want every customer to experience that same excitement, curiosity and
+                selected, because I want every customer to experience that same excitement, curiosity and
                 unforgettable sense of discovery.
               </p>
             </div>
@@ -96,7 +96,7 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
 
           <Reveal delayMs={220}>
             <div className="mt-8">
-              <p className="font-signature text-3xl text-secondary italic md:text-4xl">— Kelvin</p>
+              <p className="font-signature text-3xl text-secondary italic md:text-4xl">Kelvin</p>
               <p className="mt-1 text-caption font-semibold tracking-[0.25em] text-foreground/60 uppercase">
                 Founder, Snack Quest
               </p>

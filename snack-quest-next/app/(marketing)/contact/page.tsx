@@ -20,8 +20,7 @@ export default async function ContactPage() {
         Contact us
       </h1>
       <p className="text-subtitle text-muted-foreground mt-3">
-        We keep every conversation — orders, questions, and issues — in one
-        place: WhatsApp.
+        We keep every order, question, and issue in one place: WhatsApp.
       </p>
 
       <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -32,7 +31,7 @@ export default async function ContactPage() {
               Message us on WhatsApp
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
-              The fastest way to reach us — for orders, delivery updates, or
+              The fastest way to reach us, for orders, delivery updates, or
               anything else.
             </p>
           </div>
@@ -51,7 +50,7 @@ export default async function ContactPage() {
               Have a quick question?
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
-              Check our FAQ first — it covers delivery, payment, and order
+              Check our FAQ first, it covers delivery, payment, and order
               changes.
             </p>
           </div>

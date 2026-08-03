@@ -12,7 +12,7 @@ const CHECKPOINTS: Checkpoint[] = [
   {
     emoji: '🧭',
     title: 'Choose Your Box',
-    body: 'Starter, Deluxe, or Premium. Pick your size — takes about 30 seconds.',
+    body: 'Starter, Deluxe, or Premium. Pick your size, takes about 30 seconds.',
   },
   {
     emoji: '📦',

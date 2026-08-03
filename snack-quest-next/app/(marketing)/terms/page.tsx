@@ -34,7 +34,7 @@ export default async function TermsPage() {
           <ul className="ml-4 list-disc space-y-1">
             <li>An order is confirmed once you reply PAY and complete the M-Pesa payment prompt we send.</li>
             <li>Prices are shown in Kenyan Shillings (KES) and may change without notice for future orders.</li>
-            <li>We reserve the right to decline or cancel an order — for example, if a box is out of stock — and will refund any payment already made.</li>
+            <li>We reserve the right to decline or cancel an order, for example if a box is out of stock, and will refund any payment already made.</li>
           </ul>
         </Section>
 
@@ -63,7 +63,7 @@ export default async function TermsPage() {
 
         <Section title="Creator Program">
           <ul className="ml-4 list-disc space-y-1">
-            <li>Creators earn commission on orders genuinely attributed to their own referral link — manipulating clicks, self-referring in bad faith, or fraudulent activity may result in forfeited commission and removal from the program.</li>
+            <li>Creators earn commission on orders genuinely attributed to their own referral link. Manipulating clicks, self-referring in bad faith, or fraudulent activity may result in forfeited commission and removal from the program.</li>
             <li>Commission balances can be withdrawn to a valid M-Pesa number, subject to the minimum balance shown in your creator dashboard at the time.</li>
             <li>We may suspend or remove a creator account for violating these terms or for suspected fraud.</li>
           </ul>

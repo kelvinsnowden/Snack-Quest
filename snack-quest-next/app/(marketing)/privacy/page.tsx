@@ -34,11 +34,11 @@ export default async function PrivacyPage() {
           <p>When you order or message us on WhatsApp, we collect:</p>
           <ul className="ml-4 list-disc space-y-1">
             <li>Your name, phone number, and delivery address or chosen pickup station.</li>
-            <li>Order details — the box(es) you chose, price, and delivery method.</li>
-            <li>Payment confirmation details from M-Pesa (via Safaricom&apos;s Daraja API) — we never see or store your M-Pesa PIN.</li>
+            <li>Order details: the box(es) you chose, price, and delivery method.</li>
+            <li>Payment confirmation details from M-Pesa (via Safaricom&apos;s Daraja API). We never see or store your M-Pesa PIN.</li>
             <li>Your WhatsApp messages with us, so we can respond and keep a record of your order.</li>
           </ul>
-          <p>If you join the Creator Program, we also collect your referral activity — link clicks, orders attributed to your link, and commission earned.</p>
+          <p>If you join the Creator Program, we also collect your referral activity: link clicks, orders attributed to your link, and commission earned.</p>
         </Section>
 
         <Section title="How we use it">
@@ -55,7 +55,7 @@ export default async function PrivacyPage() {
           <p>We share the minimum information needed to fulfil your order with:</p>
           <ul className="ml-4 list-disc space-y-1">
             <li>Safaricom, to process M-Pesa payments.</li>
-            <li>Our courier partners, to deliver your order — your name, phone number, and delivery address only.</li>
+            <li>Our courier partners, to deliver your order: your name, phone number, and delivery address only.</li>
             <li>Our WhatsApp Business API provider, to send and receive messages.</li>
           </ul>
           <p>We do not sell your personal data to anyone.</p>

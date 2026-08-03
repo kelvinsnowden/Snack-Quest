@@ -7,7 +7,7 @@ import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Creator Program',
-  description: 'Join the Snack Quest Creator Program — share your referral link and earn real, instant commission on every order.',
+  description: 'Join the Snack Quest Creator Program: share your referral link and earn real, instant commission on every order.',
   path: '/creators',
 });
 
@@ -15,12 +15,12 @@ const FEATURES = [
   {
     icon: Link2,
     title: 'Your own referral link',
-    description: 'Every creator gets a unique link. Share it however you like — every real click and order is tracked automatically.',
+    description: 'Every creator gets a unique link. Share it however you like, every real click and order is tracked automatically.',
   },
   {
     icon: Wallet,
     title: 'Real, instant commission',
-    description: 'When someone orders through your link, your commission is credited to your balance right away — not weeks later.',
+    description: 'When someone orders through your link, your commission is credited to your balance right away, not weeks later.',
   },
   {
     icon: Trophy,
@@ -37,7 +37,7 @@ export default function CreatorsPage() {
           <p className="text-sm font-semibold tracking-wide text-primary uppercase">Creator Program</p>
           <h1 className="mt-3 text-hero font-bold tracking-tight text-foreground">Earn by sharing snacks you already love</h1>
           <p className="mx-auto mt-4 max-w-2xl text-subtitle text-muted-foreground">
-            If you already talk about food, snacks, or good deals online, turn that into real income — no minimum
+            If you already talk about food, snacks, or good deals online, turn that into real income. No minimum
             following, no upfront cost.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">

@@ -13,9 +13,9 @@ import { MobileStickyBar } from '@/components/marketing/home/MobileStickyBar';
 import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhatsAppBubble';
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Snack Quest — Kenya's Mystery Snack Adventure",
+  title: "Snack Quest, Kenya's Mystery Snack Adventure",
   description:
-    'Hand-picked mystery snacks from Japan, Korea, China & Thailand — delivered across Kenya in 24–48 hours. Order on WhatsApp in 2 minutes.',
+    'Hand-picked mystery snacks from Japan, Korea, China & Thailand, delivered across Kenya in 24–48 hours. Order on WhatsApp in 2 minutes.',
   path: '/',
 });
 
@@ -35,8 +35,8 @@ export default async function MarketingHomePage() {
         founderImageUrl={homepageContent?.founderImageUrl ?? null}
       />
       <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
-      <TheRoute />
       <PickYourBox packages={featured} />
+      <TheRoute />
       <FinalCta />
 
       <MobileStickyBar />

@@ -104,13 +104,16 @@ export default async function BoxDetailPage({
           <p className="text-subtitle text-muted-foreground mt-4">
             {box.description}
           </p>
+          <p className="text-muted-foreground mt-2 text-sm">
+            All snacks have passed the taste test. I have tasted each of them.
+          </p>
 
           <div className="mt-8">
             <WhatsAppOrderButton message={message} />
           </div>
 
           <p className="text-muted-foreground mt-4 text-sm">
-            Door delivery in Nairobi or pickup station nationwide — we&apos;ll
+            Door delivery in Nairobi or pickup station nationwide, we&apos;ll
             confirm delivery options once you message us.
           </p>
         </div>

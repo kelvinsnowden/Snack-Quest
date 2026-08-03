@@ -24,19 +24,19 @@ const PARAGRAPHS = [
     everyone we knew was already living on WhatsApp.
   </>,
   <>
-    So we built the thing we actually wanted — a way to order a real, curated
+    So we built the thing we actually wanted: a way to order a real, curated
     box of snacks the same way you&apos;d message a friend. No app. No password
     to forget. Just a chat, a box, and M-Pesa.
   </>,
   <>
     Every box we send out is packed by our own warehouse team, from suppliers we
-    work with directly — not drop-shipped, not outsourced. When something goes
+    work with directly, not drop-shipped, not outsourced. When something goes
     wrong, a real person on our team sorts it out, on the same WhatsApp thread
     you ordered from.
   </>,
   <>
     As we&apos;ve grown, we&apos;ve leaned on the people who already talk about
-    snacks online — our{' '}
+    snacks online, our{' '}
     <Link
       href="/creators"
       className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"

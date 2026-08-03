@@ -3,7 +3,7 @@ import path from 'node:path';
 import { ImageResponse } from 'next/og';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 
-export const alt = 'Snack Quest — Snack boxes on WhatsApp';
+export const alt = 'Snack Quest, Snack boxes on WhatsApp';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 /**
