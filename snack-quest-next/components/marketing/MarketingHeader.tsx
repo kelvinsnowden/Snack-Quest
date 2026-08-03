@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { WhatsAppOrderButton } from './WhatsAppOrderButton';
+import { useActiveBoxName } from './design/ActiveBoxContext';
 import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
@@ -19,6 +20,10 @@ const NAV_LINKS = [
 export function MarketingHeader({ businessName }: { businessName: string }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const activeBoxName = useActiveBoxName();
+  const orderMessage = activeBoxName
+    ? `Hi! I'd like to order the ${activeBoxName}.`
+    : "Hi! I'd like to order a Snack Quest box.";
 
   return (
     <header className="border-border bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
@@ -51,7 +56,7 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
 
         <div className="hidden lg:block">
           <WhatsAppOrderButton
-            message="Hi! I'd like to order a Snack Quest box."
+            message={orderMessage}
             size="sm"
           />
         </div>
@@ -96,7 +101,7 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
           </ul>
           <div className="mt-3">
             <WhatsAppOrderButton
-              message="Hi! I'd like to order a Snack Quest box."
+              message={orderMessage}
               className="w-full"
             />
           </div>

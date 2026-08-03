@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { packageRepository } from '@/repositories/packageRepository';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { SetActiveBoxName } from '@/components/marketing/design/ActiveBoxContext';
 import { formatKes } from '@/lib/orders/format';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
@@ -68,6 +69,7 @@ export default async function BoxDetailPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
+      <SetActiveBoxName name={box.name} />
       <Link
         href="/boxes"
         className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
