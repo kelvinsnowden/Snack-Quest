@@ -21,7 +21,6 @@ function currentYear(): number {
 const FOOTER_LINKS = [
   { href: '/boxes', label: 'Boxes' },
   { href: '/how-it-works', label: 'How it works' },
-  { href: '/about', label: 'Our story' },
   { href: '/creators', label: 'Creator program' },
   { href: '/creator/register', label: 'Become a creator' },
   { href: '/creator/login', label: 'Creator sign in' },

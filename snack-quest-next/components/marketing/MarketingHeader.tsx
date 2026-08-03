@@ -13,7 +13,6 @@ const NAV_LINKS = [
   { href: '/how-it-works', label: 'How it works' },
   { href: '/creators', label: 'Creator program' },
   { href: '/faq', label: 'FAQ' },
-  { href: '/about', label: 'Our story' },
   { href: '/contact', label: 'Contact' },
 ];
 
