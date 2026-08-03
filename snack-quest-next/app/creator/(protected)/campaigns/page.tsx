@@ -7,31 +7,15 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { SubmitDeliverableDialog } from '@/components/creator/SubmitDeliverableDialog';
 import { SubmissionStatusBadge } from '@/components/creator/SubmissionStatusBadge';
 import { formatDate, formatKes } from '@/lib/orders/format';
+import {
+  CLOSING_SOON_WINDOW_DAYS,
+  daysUntilDeadline,
+  isVideoAsset,
+  urgencyLabel,
+} from '@/lib/creator/campaignPresentation';
 import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
 
 export const metadata: Metadata = { title: 'Campaigns' };
-
-const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm'];
-
-function isVideoAsset(url: string): boolean {
-  const path = url.split('?')[0].toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => path.endsWith(ext));
-}
-
-/** Days until a Firestore deadline Timestamp resolves, or `null` if unset. Only used to flag campaigns actually closing soon — a deadline months out isn't "urgent". */
-function daysUntilDeadline(value: unknown): number | null {
-  const timestamp = value as { toDate?: () => Date } | undefined;
-  const date = timestamp?.toDate ? timestamp.toDate() : null;
-  if (!date) return null;
-  const msPerDay = 1000 * 60 * 60 * 24;
-  return Math.ceil((date.getTime() - Date.now()) / msPerDay);
-}
-
-function urgencyLabel(daysLeft: number): string {
-  if (daysLeft <= 0) return 'Ends today';
-  if (daysLeft === 1) return '1 day left';
-  return `${daysLeft} days left`;
-}
 
 export default async function CreatorCampaignsPage() {
   const session = await requireCreatorSession();
@@ -58,7 +42,7 @@ export default async function CreatorCampaignsPage() {
           {campaigns.map(({ id, data }) => {
             const isVideo = data.assetsUrl ? isVideoAsset(data.assetsUrl) : false;
             const daysLeft = daysUntilDeadline(data.deadline);
-            const isClosingSoon = daysLeft !== null && daysLeft <= 7;
+            const isClosingSoon = daysLeft !== null && daysLeft <= CLOSING_SOON_WINDOW_DAYS;
             return (
               <li
                 key={id}

@@ -4,11 +4,11 @@ import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { withdrawalService } from '@/services/withdrawalService';
 import { EmptyState } from '@/components/ui/empty-state';
-import { WithdrawalStatusBadge } from '@/components/admin/WithdrawalStatusBadge';
 import { RequestWithdrawalDialog } from '@/components/creator/RequestWithdrawalDialog';
-import { formatDate, formatKes } from '@/lib/orders/format';
+import { formatDate, formatKes, toIsoString } from '@/lib/orders/format';
 import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
 import { PortalCard } from '@/components/creator/design/PortalCard';
+import { WithdrawalsHistoryList } from '@/components/creator/WithdrawalsHistoryList';
 
 export const metadata: Metadata = { title: 'Withdrawals' };
 
@@ -48,29 +48,16 @@ export default async function CreatorWithdrawalsPage() {
           description="Request a withdrawal once you have earnings available."
         />
       ) : (
-        <ul className="border-border divide-border bg-surface divide-y overflow-hidden rounded-lg border">
-          {withdrawals.map(({ id, data }) => (
-            <li key={id} className="flex items-center gap-3 p-4">
-              <span
-                aria-hidden="true"
-                className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-full"
-              >
-                <Wallet className="size-[18px]" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-foreground truncate font-medium tabular-nums">
-                  {formatKes(data.amountKes)}
-                </p>
-                <p className="text-muted-foreground text-sm tabular-nums">
-                  {formatDate(data.createdAt)} · {data.phoneNumber}
-                </p>
-              </div>
-              <div className="shrink-0">
-                <WithdrawalStatusBadge status={data.status} />
-              </div>
-            </li>
-          ))}
-        </ul>
+        <WithdrawalsHistoryList
+          rows={withdrawals.map(({ id, data }) => ({
+            id,
+            amountKes: data.amountKes,
+            phoneNumber: data.phoneNumber,
+            status: data.status,
+            createdAtIso: toIsoString(data.createdAt),
+            createdAtDisplay: formatDate(data.createdAt),
+          }))}
+        />
       )}
     </div>
   );

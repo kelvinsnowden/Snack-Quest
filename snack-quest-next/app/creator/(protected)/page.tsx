@@ -1,35 +1,25 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Banknote,
-  Link2,
-  Megaphone,
-  ShoppingBag,
-  Trophy,
-} from 'lucide-react';
+import { ArrowRight, Banknote, Link2, Megaphone, ShoppingBag, Trophy } from 'lucide-react';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { referralService } from '@/services/referralService';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { CreatorStatusBadge } from '@/components/admin/CreatorStatusBadge';
-import { BalanceCard } from '@/components/creator/design/BalanceCard';
+import { campaignService } from '@/services/campaignService';
+import { PortalHero } from '@/components/creator/design/PortalHero';
 import { PortalCard } from '@/components/creator/design/PortalCard';
 import { PortalSection } from '@/components/creator/design/PortalSection';
 import { QuickActionRow } from '@/components/creator/design/QuickActionRow';
 import { NextStepCard } from '@/components/creator/design/NextStepCard';
+import {
+  CampaignCarousel,
+  FeaturedCampaignBanner,
+} from '@/components/creator/design/CampaignShowcase';
+import { CREATOR_STATUS_LABELS } from '@/lib/creators/transitions';
 import { CREATOR_TIER_LABELS } from '@/lib/creators/tier';
 import { resolveNextStep } from '@/lib/creator/nextStep';
 import { formatDate, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Home' };
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
-}
 
 /** Nairobi is the only timezone this product operates in. */
 function timeOfDayGreeting(): string {
@@ -71,13 +61,19 @@ const QUICK_ACTIONS = [
  * the balance — NextStepCard already says the same thing with the
  * right next action attached, and a banner plus a next-step card
  * telling a pending creator the same fact twice was the redundant-copy
- * problem, not a second state to preserve. The header's status badge
- * remains the at-a-glance signal; the balance card's `canWithdraw`
- * still disables the withdraw CTA for anyone without full access.
+ * problem, not a second state to preserve. The hero's own status pill
+ * remains the at-a-glance signal; `canWithdraw` still disables the
+ * withdraw CTA for anyone without full access.
+ *
+ * Campaign discovery (a featured pick plus a horizontal carousel) sits
+ * between the quick actions and the performance stats — reference-
+ * image quality pass. It's entirely optional: both pieces render
+ * nothing when there are no active campaigns, since an empty promo
+ * banner would be worse than no banner at all.
  */
 export default async function CreatorHomePage() {
   const session = await requireCreatorSession();
-  const [{ profile, accessLevel }, { attributions }, { links }] =
+  const [{ profile, accessLevel }, { attributions }, { links }, campaigns] =
     await Promise.all([
       creatorDashboardService.getDashboard(session.uid),
       referralService.listCommissionsForCreator(
@@ -85,9 +81,9 @@ export default async function CreatorHomePage() {
         session.uid,
       ),
       referralService.listLinksForCreator(session.businessId, session.uid),
+      campaignService.listActiveCampaigns(session.businessId),
     ]);
 
-  const firstName = session.displayName.split(' ')[0];
   const recent = attributions.slice(0, 5);
   const nextStep = resolveNextStep({
     accessLevel,
@@ -104,26 +100,12 @@ export default async function CreatorHomePage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
-      <header className="flex items-start gap-3">
-        <Avatar className="size-12 shrink-0">
-          {session.photoURL ? <AvatarImage src={session.photoURL} alt="" /> : null}
-          <AvatarFallback>{initials(session.displayName)}</AvatarFallback>
-        </Avatar>
-        <div>
-          <p className="text-muted-foreground text-sm">{timeOfDayGreeting()}</p>
-          <h1 className="text-foreground mt-1 text-[1.75rem] leading-tight font-semibold tracking-tight md:text-[2rem]">
-            {firstName}
-          </h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <CreatorStatusBadge status={profile.status} />
-            <Badge variant="outline">
-              {CREATOR_TIER_LABELS[profile.tier]} tier
-            </Badge>
-          </div>
-        </div>
-      </header>
-
-      <BalanceCard
+      <PortalHero
+        displayName={session.displayName}
+        photoURL={session.photoURL}
+        greeting={timeOfDayGreeting()}
+        statusLabel={CREATOR_STATUS_LABELS[profile.status]}
+        tierLabel={`${CREATOR_TIER_LABELS[profile.tier]} tier`}
         availableKes={profile.availableCashKes}
         pendingKes={profile.pendingEarningsKes}
         lifetimeKes={profile.lifetimeEarningsKes}
@@ -134,6 +116,13 @@ export default async function CreatorHomePage() {
       <NextStepCard step={nextStep} />
 
       <QuickActionRow actions={QUICK_ACTIONS} />
+
+      {campaigns.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          <FeaturedCampaignBanner campaigns={campaigns} />
+          <CampaignCarousel campaigns={campaigns} />
+        </div>
+      ) : null}
 
       <PortalSection id="performance" title="How you're performing">
         <PortalCard>
@@ -204,7 +193,7 @@ export default async function CreatorHomePage() {
           <PortalCard className="text-center">
             <span
               aria-hidden="true"
-              className="bg-muted text-muted-foreground mx-auto flex size-11 items-center justify-center rounded-full"
+              className="bg-muted-foreground/10 text-muted-foreground mx-auto flex size-11 items-center justify-center rounded-full"
             >
               <ShoppingBag className="size-5" />
             </span>

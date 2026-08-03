@@ -4,6 +4,7 @@ import { forwardRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Check,
   Home,
   Link2,
   Megaphone,
@@ -111,7 +112,49 @@ export function PortalSideRail() {
   );
 }
 
-export function PortalTabBar() {
+/**
+ * Raised center action (§ Creator Portal premium rebuild, reference-
+ * image quality pass) — the reference apps both put a single elevated
+ * circular button in the middle of the tab bar for the one action
+ * worth reaching from anywhere. For this portal that's sharing the
+ * referral link: it's the one thing a creator does over and over, and
+ * every other entry point to it (Referrals page, dashboard) is at
+ * least one tap deeper. `shareUrl` is `null` only in the moment before
+ * a referral link exists, which registration provisions automatically
+ * — the button just disables rather than pretending to work.
+ */
+function ShareLinkFab({ shareUrl }: { shareUrl: string | null }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onClick() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API can be unavailable (insecure context, permission denied) — the shortcut just does nothing rather than erroring.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!shareUrl}
+      aria-label={copied ? 'Referral link copied' : 'Copy your referral link'}
+      className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background absolute -top-5 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full shadow-[0_12px_24px_-8px_rgb(255_122_0/0.55)] transition-transform duration-150 ease-out hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-50 active:translate-y-0"
+    >
+      {copied ? (
+        <Check className="size-6" aria-hidden="true" />
+      ) : (
+        <Link2 className="size-6" aria-hidden="true" />
+      )}
+    </button>
+  );
+}
+
+export function PortalTabBar({ shareUrl }: { shareUrl: string | null }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const secondaryActive = SECONDARY_NAV.some((item) =>
@@ -125,6 +168,7 @@ export function PortalTabBar() {
       // targets is not sitting under the system gesture bar.
       className="border-border bg-surface/95 fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
     >
+      <ShareLinkFab shareUrl={shareUrl} />
       {PRIMARY_NAV.map((item) => {
         const active = isActiveNavPath(pathname, item.href);
         return (

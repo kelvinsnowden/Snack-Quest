@@ -11,6 +11,13 @@ export function formatDate(value: unknown): string {
   return date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/** ISO string for a Firestore Timestamp — the shape a Client Component date needs, since a Timestamp itself can't cross that boundary as a prop. Empty string when unset, never a guessed date. */
+export function toIsoString(value: unknown): string {
+  const timestamp = value as { toDate?: () => Date } | undefined;
+  const date = timestamp?.toDate ? timestamp.toDate() : null;
+  return date ? date.toISOString() : '';
+}
+
 export function formatDateTime(value: unknown): string {
   const timestamp = value as { toDate?: () => Date } | undefined;
   const date = timestamp?.toDate ? timestamp.toDate() : null;

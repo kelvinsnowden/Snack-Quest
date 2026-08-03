@@ -111,7 +111,7 @@ export default async function CreatorLeaderboardPage() {
                   aria-hidden="true"
                   className={cn(
                     'flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums',
-                    RANK_ACCENT[rank] ?? 'bg-muted text-muted-foreground',
+                    RANK_ACCENT[rank] ?? 'bg-muted-foreground/10 text-muted-foreground',
                   )}
                 >
                   {rank}

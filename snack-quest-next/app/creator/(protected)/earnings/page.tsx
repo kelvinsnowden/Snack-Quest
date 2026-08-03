@@ -4,9 +4,10 @@ import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { referralService } from '@/services/referralService';
 import { EmptyState } from '@/components/ui/empty-state';
-import { formatDate, formatKes } from '@/lib/orders/format';
+import { formatDate, formatKes, toIsoString } from '@/lib/orders/format';
 import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
 import { StatTile } from '@/components/creator/design/StatTile';
+import { EarningsHistoryList } from '@/components/creator/EarningsHistoryList';
 
 export const metadata: Metadata = { title: 'Earnings' };
 
@@ -57,30 +58,16 @@ export default async function CreatorEarningsPage() {
           description="Share your referral link — commissions land here the moment a customer orders with your code."
         />
       ) : (
-        <ul className="border-border divide-border bg-surface divide-y overflow-hidden rounded-lg border">
-          {attributions.map(({ id, data }) => (
-            <li key={id} className="flex items-center gap-3 p-4">
-              <span
-                aria-hidden="true"
-                className="bg-success/10 text-success flex size-10 shrink-0 items-center justify-center rounded-full"
-              >
-                <ShoppingBag className="size-[18px]" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-foreground truncate font-medium">
-                  Order {data.orderId}
-                </p>
-                <p className="text-muted-foreground text-sm tabular-nums">
-                  {formatDate(data.createdAt)} · {formatKes(data.discountKes)}{' '}
-                  discount given
-                </p>
-              </div>
-              <p className="text-success shrink-0 font-semibold tabular-nums">
-                +{formatKes(data.commissionKes)}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <EarningsHistoryList
+          rows={attributions.map(({ id, data }) => ({
+            id,
+            orderId: data.orderId,
+            createdAtIso: toIsoString(data.createdAt),
+            createdAtDisplay: formatDate(data.createdAt),
+            discountKes: data.discountKes,
+            commissionKes: data.commissionKes,
+          }))}
+        />
       )}
     </div>
   );

@@ -39,7 +39,7 @@ export default function CreatorPortalError({
       <PortalCard className="text-center">
         <div
           aria-hidden="true"
-          className="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-full"
+          className="bg-muted-foreground/10 text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-full"
         >
           {offline ? (
             <WifiOff className="size-6" />
