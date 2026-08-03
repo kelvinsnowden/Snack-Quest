@@ -39,7 +39,7 @@ const ACCENTS = [
 const TRUST_LINES = [
   'Hand-picked and quality-checked before it ships',
   'Packed and dispatched within 24 hours',
-  'M-Pesa secure checkout on WhatsApp',
+  'M-Pesa checkout on WhatsApp',
 ];
 
 /**
