@@ -15,19 +15,19 @@ export const metadata: Metadata = buildPageMetadata({
 
 export default async function ContactPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
-      <h1 className="text-page-title text-foreground font-bold tracking-tight">
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
+      <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-page-title">
         Contact us
       </h1>
-      <p className="text-subtitle text-muted-foreground mt-3">
+      <p className="mt-2 text-sm text-muted-foreground sm:mt-3 sm:text-subtitle">
         We keep every order, question, and issue in one place: WhatsApp.
       </p>
 
-      <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="flex flex-col gap-4 p-6">
-          <MessageCircle className="text-primary size-8" aria-hidden="true" />
+      <div className="mt-6 grid gap-4 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+        <Card className="flex flex-col gap-3 p-5 sm:gap-4 sm:p-6">
+          <MessageCircle className="text-primary size-7 sm:size-8" aria-hidden="true" />
           <div>
-            <p className="text-card-title text-foreground font-semibold">
+            <p className="text-base font-semibold text-foreground sm:text-card-title">
               Message us on WhatsApp
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -43,10 +43,10 @@ export default async function ContactPage() {
           </WhatsAppOrderButton>
         </Card>
 
-        <Card className="flex flex-col gap-4 p-6">
-          <HelpCircle className="text-primary size-8" aria-hidden="true" />
+        <Card className="flex flex-col gap-3 p-5 sm:gap-4 sm:p-6">
+          <HelpCircle className="text-primary size-7 sm:size-8" aria-hidden="true" />
           <div>
-            <p className="text-card-title text-foreground font-semibold">
+            <p className="text-base font-semibold text-foreground sm:text-card-title">
               Have a quick question?
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -62,10 +62,10 @@ export default async function ContactPage() {
           </Link>
         </Card>
 
-        <Card className="flex flex-col gap-4 p-6">
-          <Share2 className="text-primary size-8" aria-hidden="true" />
+        <Card className="flex flex-col gap-3 p-5 sm:gap-4 sm:p-6">
+          <Share2 className="text-primary size-7 sm:size-8" aria-hidden="true" />
           <div>
-            <p className="text-card-title text-foreground font-semibold">
+            <p className="text-base font-semibold text-foreground sm:text-card-title">
               Follow us
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
