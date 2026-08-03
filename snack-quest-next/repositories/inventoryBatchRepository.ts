@@ -17,7 +17,9 @@ export class InventoryBatchNotFoundError extends Error {
 
 export class InsufficientBatchQuantityError extends Error {
   constructor(batchId: string, attempted: number, available: number) {
-    super(`Cannot remove ${attempted} units from batch ${batchId} — only ${available} remaining`);
+    super(
+      `Cannot remove ${attempted} units from batch ${batchId} — only ${available} remaining`,
+    );
     this.name = 'InsufficientBatchQuantityError';
   }
 }
@@ -30,7 +32,11 @@ export class InsufficientBatchQuantityError extends Error {
  * so the caller can use its id for the movement's `batchId` in the
  * same transaction.
  */
-export function createInTransaction(tx: Transaction, input: InventoryBatchInput, actor: string): string {
+export function createInTransaction(
+  tx: Transaction,
+  input: InventoryBatchInput,
+  actor: string,
+): string {
   const ref = adminFirestore.collection(COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
   tx.set(ref, {
@@ -67,7 +73,11 @@ export async function writeOffInTransaction(
     throw new InventoryBatchNotFoundError(batchId);
   }
   if (quantity > data.quantityRemaining) {
-    throw new InsufficientBatchQuantityError(batchId, quantity, data.quantityRemaining);
+    throw new InsufficientBatchQuantityError(
+      batchId,
+      quantity,
+      data.quantityRemaining,
+    );
   }
   const remaining = data.quantityRemaining - quantity;
   tx.update(ref, {
@@ -80,8 +90,14 @@ export async function writeOffInTransaction(
 }
 
 class InventoryBatchRepository {
-  async findById(businessId: string, batchId: string): Promise<InventoryBatch | null> {
-    const snapshot = await adminFirestore.collection(COLLECTION).doc(batchId).get();
+  async findById(
+    businessId: string,
+    batchId: string,
+  ): Promise<InventoryBatch | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .doc(batchId)
+      .get();
     if (!snapshot.exists) {
       return null;
     }
@@ -90,7 +106,11 @@ class InventoryBatchRepository {
   }
 
   /** Newest first — a product's received-batch history. */
-  async listByPackage(businessId: string, packageId: string, limit = 25): Promise<{ id: string; data: InventoryBatch }[]> {
+  async listByPackage(
+    businessId: string,
+    packageId: string,
+    limit = 25,
+  ): Promise<{ id: string; data: InventoryBatch }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
@@ -98,7 +118,10 @@ class InventoryBatchRepository {
       .orderBy('createdAt', 'desc')
       .limit(limit)
       .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as InventoryBatch }));
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      data: doc.data() as InventoryBatch,
+    }));
   }
 
   /**
@@ -106,7 +129,11 @@ class InventoryBatchRepository {
    * expiring-soon), soonest first. A batch with no `expiresAt` never
    * appears here — there is nothing to alert on.
    */
-  async listExpiringSoon(businessId: string, withinDays: number, limit = 50): Promise<{ id: string; data: InventoryBatch }[]> {
+  async listExpiringSoon(
+    businessId: string,
+    withinDays: number,
+    limit = 50,
+  ): Promise<{ id: string; data: InventoryBatch }[]> {
     const cutoff = new Date(Date.now() + withinDays * 24 * 60 * 60 * 1000);
     const snapshot = await adminFirestore
       .collection(COLLECTION)
@@ -116,19 +143,57 @@ class InventoryBatchRepository {
       .orderBy('expiresAt', 'asc')
       .limit(limit)
       .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as InventoryBatch }));
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      data: doc.data() as InventoryBatch,
+    }));
   }
 
-  /** Every active batch, oldest received first — the default "Batches" view. */
-  async listActive(businessId: string, limit = 100): Promise<{ id: string; data: InventoryBatch }[]> {
-    const snapshot = await adminFirestore
+  /**
+   * Every active batch, oldest received first — the default "Batches"
+   * view. Cursor-paginated the same way as `orderRepository.listByBusiness`
+   * and `purchaseOrderRepository.listByBusiness`: once a business has
+   * received more than a page's worth of purchase orders, older
+   * batches used to fall off the end of a bare `.limit()` with no way
+   * to reach them — `hasMore`/`nextCursor` here is what the page uses
+   * to render a real "Load more" instead of silently truncating.
+   */
+  async listActive(
+    businessId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{
+    batches: { id: string; data: InventoryBatch }[];
+    nextCursor: string | null;
+  }> {
+    const pageSize = options.limit ?? 50;
+    let query = adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
       .where('status', '==', 'active')
       .orderBy('receivedAt', 'asc')
-      .limit(limit)
-      .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as InventoryBatch }));
+      .limit(pageSize + 1) as FirebaseFirestore.Query;
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore
+        .collection(COLLECTION)
+        .doc(options.cursor)
+        .get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      batches: docs.map((doc) => ({
+        id: doc.id,
+        data: doc.data() as InventoryBatch,
+      })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
   }
 }
 

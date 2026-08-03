@@ -4,12 +4,17 @@ import Link from 'next/link';
 import { FileText, FolderOpen } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { storageService } from '@/services/storageService';
-import { STORAGE_DIRECTORIES, isStorageDirectory, type StorageDirectory } from '@/lib/storage/policies';
+import {
+  STORAGE_DIRECTORIES,
+  isStorageDirectory,
+  type StorageDirectory,
+} from '@/lib/storage/policies';
 import { formatBytes } from '@/lib/storage/format';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StorageObjectActions } from '@/components/admin/StorageObjectActions';
+import { StorageUploadButton } from '@/components/admin/StorageUploadButton';
 
 export const metadata: Metadata = { title: 'Storage' };
 
@@ -37,15 +42,29 @@ export default async function AdminStoragePage({
 }) {
   const session = await requireStaffSession();
   const { directory: rawDirectory, cursor } = await searchParams;
-  const directory: StorageDirectory = isStorageDirectory(rawDirectory ?? '') ? (rawDirectory as StorageDirectory) : 'snacks';
+  const directory: StorageDirectory = isStorageDirectory(rawDirectory ?? '')
+    ? (rawDirectory as StorageDirectory)
+    : 'snacks';
 
-  const { objects, cursor: nextCursor } = await storageService.listFiles(session.businessId, directory, { cursor });
+  const { objects, cursor: nextCursor } = await storageService.listFiles(
+    session.businessId,
+    directory,
+    { cursor },
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Storage</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Browse what&apos;s actually uploaded to this business&apos;s Vercel Blob storage.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-page-title text-foreground font-bold tracking-tight">
+            Storage
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Upload and browse what&apos;s stored in this business&apos;s Vercel
+            Blob storage.
+          </p>
+        </div>
+        <StorageUploadButton directory={directory} />
       </div>
 
       <Card className="flex flex-wrap gap-2 p-4">
@@ -54,7 +73,9 @@ export default async function AdminStoragePage({
             key={value}
             href={`/admin/storage?directory=${value}`}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              directory === value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
+              directory === value
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-border/40'
             }`}
           >
             {DIRECTORY_LABELS[value]}
@@ -63,24 +84,43 @@ export default async function AdminStoragePage({
       </Card>
 
       {objects.length === 0 ? (
-        <EmptyState icon={FolderOpen} title="No files here yet" description={`Nothing has been uploaded to "${DIRECTORY_LABELS[directory]}" for this business yet.`} />
+        <EmptyState
+          icon={FolderOpen}
+          title="No files here yet"
+          description={`Nothing has been uploaded to "${DIRECTORY_LABELS[directory]}" for this business yet.`}
+        />
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {objects.map((object) => (
-            <Card key={object.pathname} className="flex flex-col gap-2 overflow-hidden p-0">
-              <div className="relative flex aspect-square items-center justify-center bg-border/10 text-muted-foreground">
+            <Card
+              key={object.pathname}
+              className="flex flex-col gap-2 overflow-hidden p-0"
+            >
+              <div className="bg-border/10 text-muted-foreground relative flex aspect-square items-center justify-center">
                 {looksLikeImage(object.pathname) ? (
-                  <Image src={object.url} alt="" fill sizes="200px" className="object-cover" unoptimized />
+                  <Image
+                    src={object.url}
+                    alt=""
+                    fill
+                    sizes="200px"
+                    className="object-cover"
+                    unoptimized
+                  />
                 ) : (
                   <FileText className="size-8" aria-hidden="true" />
                 )}
               </div>
               <div className="flex items-center justify-between gap-2 px-3 pb-3">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-foreground" title={object.pathname}>
+                  <p
+                    className="text-foreground truncate text-xs font-medium"
+                    title={object.pathname}
+                  >
                     {object.pathname.split('/').pop()}
                   </p>
-                  <p className="text-caption text-muted-foreground">{formatBytes(object.size)}</p>
+                  <p className="text-caption text-muted-foreground">
+                    {formatBytes(object.size)}
+                  </p>
                 </div>
                 <StorageObjectActions url={object.url} directory={directory} />
               </div>
@@ -92,7 +132,11 @@ export default async function AdminStoragePage({
       {nextCursor ? (
         <div className="flex justify-center">
           <Button asChild variant="outline">
-            <Link href={`/admin/storage?directory=${directory}&cursor=${nextCursor}`}>Load more</Link>
+            <Link
+              href={`/admin/storage?directory=${directory}&cursor=${nextCursor}`}
+            >
+              Load more
+            </Link>
           </Button>
         </div>
       ) : null}
