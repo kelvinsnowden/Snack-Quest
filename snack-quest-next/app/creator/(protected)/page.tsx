@@ -24,6 +24,20 @@ import { formatDate, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Home' };
 
+/** Nairobi is the only timezone this product operates in. */
+function timeOfDayGreeting(): string {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: 'Africa/Nairobi',
+    }).format(new Date()),
+  );
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 const QUICK_ACTIONS = [
   { href: '/creator/referrals', label: 'Links', icon: Link2 },
   { href: '/creator/earnings', label: 'Earnings', icon: Banknote },
@@ -84,7 +98,7 @@ export default async function CreatorHomePage() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
       <header>
-        <p className="text-muted-foreground text-sm">Welcome back</p>
+        <p className="text-muted-foreground text-sm">{timeOfDayGreeting()}</p>
         <h1 className="text-foreground mt-1 text-[1.75rem] leading-tight font-semibold tracking-tight md:text-[2rem]">
           {firstName}
         </h1>

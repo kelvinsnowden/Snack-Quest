@@ -57,36 +57,30 @@ export default async function CreatorEarningsPage() {
           description="Share your referral link — commissions land here the moment a customer orders with your code."
         />
       ) : (
-        <div className="border-border bg-surface overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Order</th>
-                <th className="px-4 py-3">Customer discount</th>
-                <th className="px-4 py-3">Your commission</th>
-              </tr>
-            </thead>
-            <tbody>
-              {attributions.map(({ id, data }) => (
-                <tr key={id} className="border-border border-b last:border-0">
-                  <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                    {formatDate(data.createdAt)}
-                  </td>
-                  <td className="text-muted-foreground px-4 py-3 font-mono text-xs">
-                    {data.orderId}
-                  </td>
-                  <td className="text-foreground px-4 py-3 tabular-nums">
-                    {formatKes(data.discountKes)}
-                  </td>
-                  <td className="text-foreground px-4 py-3 font-medium tabular-nums">
-                    {formatKes(data.commissionKes)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="border-border divide-border bg-surface divide-y overflow-hidden rounded-lg border">
+          {attributions.map(({ id, data }) => (
+            <li key={id} className="flex items-center gap-3 p-4">
+              <span
+                aria-hidden="true"
+                className="bg-success/10 text-success flex size-10 shrink-0 items-center justify-center rounded-full"
+              >
+                <ShoppingBag className="size-[18px]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-foreground truncate font-medium">
+                  Order {data.orderId}
+                </p>
+                <p className="text-muted-foreground text-sm tabular-nums">
+                  {formatDate(data.createdAt)} · {formatKes(data.discountKes)}{' '}
+                  discount given
+                </p>
+              </div>
+              <p className="text-success shrink-0 font-semibold tabular-nums">
+                +{formatKes(data.commissionKes)}
+              </p>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

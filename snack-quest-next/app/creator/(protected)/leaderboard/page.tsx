@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +9,19 @@ import { cn } from '@/lib/utils';
 import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
 import { PortalCard } from '@/components/creator/design/PortalCard';
 import { StatTile } from '@/components/creator/design/StatTile';
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
+/** Top 3 by real rank position get a medal accent — nothing about tier, just where they placed today. */
+const RANK_ACCENT: Record<number, string> = {
+  1: 'bg-[#F5C518] text-[#4a3800]',
+  2: 'bg-[#C6CBD4] text-[#3a3d42]',
+  3: 'bg-[#D99A5B] text-[#4a2e12]',
+};
 
 export const metadata: Metadata = { title: 'Leaderboard' };
 
@@ -81,51 +95,57 @@ export default async function CreatorLeaderboardPage() {
           No active creators to rank yet.
         </PortalCard>
       ) : (
-        <div className="border-border bg-surface overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
-                <th className="px-4 py-3">Rank</th>
-                <th className="px-4 py-3">Creator</th>
-                <th className="px-4 py-3">Tier</th>
-                <th className="px-4 py-3">Conversions</th>
-                <th className="px-4 py-3">Lifetime earned</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaderboard.top.map((entry, index) => (
-                <tr
-                  key={entry.uid}
+        <ul className="border-border divide-border bg-surface divide-y overflow-hidden rounded-lg border">
+          {leaderboard.top.map((entry, index) => {
+            const rank = index + 1;
+            const isYou = entry.uid === session.uid;
+            return (
+              <li
+                key={entry.uid}
+                className={cn(
+                  'flex items-center gap-3 p-4',
+                  isYou && 'bg-primary/5',
+                )}
+              >
+                <span
+                  aria-hidden="true"
                   className={cn(
-                    'border-border border-b last:border-0',
-                    entry.uid === session.uid && 'bg-primary/5',
+                    'flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums',
+                    RANK_ACCENT[rank] ?? 'bg-muted text-muted-foreground',
                   )}
                 >
-                  <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                    #{index + 1}
-                  </td>
-                  <td className="text-foreground px-4 py-3 font-medium">
-                    {entry.displayName}
-                    {entry.uid === session.uid ? (
-                      <span className="text-primary ml-2 text-xs">(you)</span>
+                  {rank}
+                </span>
+                <Avatar className="size-9 shrink-0">
+                  <AvatarFallback>{initials(entry.displayName)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-baseline gap-1.5">
+                    <span className="text-foreground truncate font-medium">
+                      {entry.displayName}
+                    </span>
+                    {isYou ? (
+                      <span className="text-primary shrink-0 text-xs font-normal">
+                        (you)
+                      </span>
                     ) : null}
-                  </td>
-                  <td className="px-4 py-3">
+                  </p>
+                  <div className="mt-0.5 flex items-center gap-2">
                     <Badge variant="outline">
                       {CREATOR_TIER_LABELS[entry.tier]}
                     </Badge>
-                  </td>
-                  <td className="text-foreground px-4 py-3 tabular-nums">
-                    {entry.totalConversions.toLocaleString()}
-                  </td>
-                  <td className="text-foreground px-4 py-3 font-medium tabular-nums">
-                    {formatKes(entry.lifetimeEarningsKes)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {entry.totalConversions.toLocaleString()} conversions
+                    </span>
+                  </div>
+                </div>
+                <p className="text-foreground shrink-0 font-semibold tabular-nums">
+                  {formatKes(entry.lifetimeEarningsKes)}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

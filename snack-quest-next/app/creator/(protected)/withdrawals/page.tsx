@@ -48,36 +48,29 @@ export default async function CreatorWithdrawalsPage() {
           description="Request a withdrawal once you have earnings available."
         />
       ) : (
-        <div className="border-border bg-surface overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
-                <th className="px-4 py-3">Requested</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">M-Pesa number</th>
-                <th className="px-4 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {withdrawals.map(({ id, data }) => (
-                <tr key={id} className="border-border border-b last:border-0">
-                  <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                    {formatDate(data.createdAt)}
-                  </td>
-                  <td className="text-foreground px-4 py-3 font-medium tabular-nums">
-                    {formatKes(data.amountKes)}
-                  </td>
-                  <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                    {data.phoneNumber}
-                  </td>
-                  <td className="px-4 py-3">
-                    <WithdrawalStatusBadge status={data.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="border-border divide-border bg-surface divide-y overflow-hidden rounded-lg border">
+          {withdrawals.map(({ id, data }) => (
+            <li key={id} className="flex items-center gap-3 p-4">
+              <span
+                aria-hidden="true"
+                className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-full"
+              >
+                <Wallet className="size-[18px]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-foreground truncate font-medium tabular-nums">
+                  {formatKes(data.amountKes)}
+                </p>
+                <p className="text-muted-foreground text-sm tabular-nums">
+                  {formatDate(data.createdAt)} · {data.phoneNumber}
+                </p>
+              </div>
+              <div className="shrink-0">
+                <WithdrawalStatusBadge status={data.status} />
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

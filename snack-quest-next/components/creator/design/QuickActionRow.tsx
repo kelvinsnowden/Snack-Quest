@@ -34,7 +34,7 @@ export function QuickActionRow({ actions }: { actions: QuickAction[] }) {
             >
               <span
                 aria-hidden="true"
-                className="border-border bg-surface text-foreground flex size-11 items-center justify-center rounded-full border"
+                className="bg-secondary/10 text-secondary flex size-11 items-center justify-center rounded-full"
               >
                 <action.icon className="size-5" strokeWidth={2} />
               </span>
