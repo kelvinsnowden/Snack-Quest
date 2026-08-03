@@ -2,6 +2,7 @@ import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { MarketingHeader } from '@/components/marketing/MarketingHeader';
 import { MarketingFooter } from '@/components/marketing/MarketingFooter';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
 
 /**
  * Every marketing page reads live data (active boxes, the business's
@@ -12,10 +13,13 @@ import { getSiteUrl } from '@/lib/seo/siteUrl';
  */
 export const dynamic = 'force-dynamic';
 
-export default async function MarketingLayout({ children }: { children: React.ReactNode }) {
+export default async function MarketingLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const business = await getCurrentBusiness();
   const businessName = business?.name ?? 'Snack Quest';
-  const whatsappCustomerNumber = business?.whatsappCustomerNumber ?? null;
   const siteUrl = getSiteUrl();
 
   const organizationJsonLd = {
@@ -23,21 +27,28 @@ export default async function MarketingLayout({ children }: { children: React.Re
     '@type': 'Organization',
     name: businessName,
     url: siteUrl,
-    ...(whatsappCustomerNumber
-      ? { contactPoint: [{ '@type': 'ContactPoint', telephone: `+${whatsappCustomerNumber}`, contactType: 'customer service' }] }
-      : {}),
+    contactPoint: [
+      {
+        '@type': 'ContactPoint',
+        telephone: `+${WHATSAPP_CTA_NUMBER}`,
+        contactType: 'customer service',
+      },
+    ],
   };
 
   return (
     <div className="flex min-h-full flex-col">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+        className="focus:bg-primary focus:text-primary-foreground sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-4 focus:py-2 focus:text-sm focus:font-medium"
       >
         Skip to content
       </a>
-      <MarketingHeader businessName={businessName} whatsappCustomerNumber={whatsappCustomerNumber} />
+      <MarketingHeader businessName={businessName} />
       <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
         {children}
       </main>

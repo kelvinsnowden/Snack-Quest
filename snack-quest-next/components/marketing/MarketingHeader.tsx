@@ -16,24 +16,24 @@ const NAV_LINKS = [
   { href: '/contact', label: 'Contact' },
 ];
 
-export function MarketingHeader({
-  businessName,
-  whatsappCustomerNumber,
-}: {
-  businessName: string;
-  whatsappCustomerNumber: string | null;
-}) {
+export function MarketingHeader({ businessName }: { businessName: string }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+    <header className="border-border bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
-          <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+        <Link
+          href="/"
+          className="flex items-center gap-2"
+          onClick={() => setMobileOpen(false)}
+        >
+          <span className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-xl text-sm font-bold">
             SQ
           </span>
-          <span className="text-base font-bold tracking-tight text-foreground">{businessName}</span>
+          <span className="text-foreground text-base font-bold tracking-tight">
+            {businessName}
+          </span>
         </Link>
 
         <nav className="hidden items-center gap-6 lg:flex" aria-label="Primary">
@@ -42,7 +42,7 @@ export function MarketingHeader({
               key={link.href}
               href={link.href}
               className={cn(
-                'text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
+                'text-muted-foreground hover:text-foreground text-sm font-medium transition-colors',
                 pathname === link.href && 'text-foreground',
               )}
             >
@@ -52,23 +52,34 @@ export function MarketingHeader({
         </nav>
 
         <div className="hidden lg:block">
-          <WhatsAppOrderButton whatsappCustomerNumber={whatsappCustomerNumber} message="Hi! I'd like to order a Snack Quest box." size="sm" />
+          <WhatsAppOrderButton
+            message="Hi! I'd like to order a Snack Quest box."
+            size="sm"
+          />
         </div>
 
         <button
           type="button"
-          className="inline-flex size-10 items-center justify-center rounded-md text-foreground lg:hidden"
+          className="text-foreground inline-flex size-10 items-center justify-center rounded-md lg:hidden"
           onClick={() => setMobileOpen((open) => !open)}
           aria-expanded={mobileOpen}
           aria-controls="mobile-nav"
           aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
         >
-          {mobileOpen ? <X className="size-6" aria-hidden="true" /> : <Menu className="size-6" aria-hidden="true" />}
+          {mobileOpen ? (
+            <X className="size-6" aria-hidden="true" />
+          ) : (
+            <Menu className="size-6" aria-hidden="true" />
+          )}
         </button>
       </div>
 
       {mobileOpen ? (
-        <nav id="mobile-nav" aria-label="Primary" className="border-t border-border bg-background px-4 py-4 lg:hidden">
+        <nav
+          id="mobile-nav"
+          aria-label="Primary"
+          className="border-border bg-background border-t px-4 py-4 lg:hidden"
+        >
           <ul className="flex flex-col gap-1">
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
@@ -76,7 +87,7 @@ export function MarketingHeader({
                   href={link.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    'block rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-border/30 hover:text-foreground',
+                    'text-muted-foreground hover:bg-border/30 hover:text-foreground block rounded-md px-3 py-2.5 text-sm font-medium',
                     pathname === link.href && 'text-foreground',
                   )}
                 >
@@ -87,7 +98,6 @@ export function MarketingHeader({
           </ul>
           <div className="mt-3">
             <WhatsAppOrderButton
-              whatsappCustomerNumber={whatsappCustomerNumber}
               message="Hi! I'd like to order a Snack Quest box."
               className="w-full"
             />

@@ -8,29 +8,29 @@ import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
  * FloatingWhatsAppBubble's own comment). Plain server component: two
  * anchors, no client state needed.
  */
-export function MobileStickyBar({ whatsappCustomerNumber }: { whatsappCustomerNumber: string | null }) {
-  if (!whatsappCustomerNumber) {
-    return null;
-  }
-
+export function MobileStickyBar() {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-foreground/10 bg-white/95 backdrop-blur-sm md:hidden">
+    <div className="border-foreground/10 fixed inset-x-0 bottom-0 z-50 border-t bg-white/95 backdrop-blur-sm md:hidden">
       <div
         className="flex items-center gap-2 px-3 pt-2.5"
-        style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom))' }}
+        style={{
+          paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom))',
+        }}
       >
         <Link
           href="#boxes"
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-foreground/15 bg-white px-3 py-2.5 text-small font-semibold text-foreground"
+          className="border-foreground/15 text-small text-foreground inline-flex shrink-0 items-center gap-1 rounded-full border bg-white px-3 py-2.5 font-semibold"
         >
-          <Boxes className="size-4 text-secondary" aria-hidden="true" />
+          <Boxes className="text-secondary size-4" aria-hidden="true" />
           Pick a box
         </Link>
         <a
-          href={buildWhatsAppOrderUrl(whatsappCustomerNumber, "Hi! I'd like to order a Snack Quest box.")}
+          href={buildWhatsAppOrderUrl(
+            "Hi! I'd like to order a Snack Quest box.",
+          )}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-small font-semibold text-white shadow-[0_20px_60px_-15px_rgb(255_122_0/0.5)]"
+          className="bg-primary text-small flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 font-semibold text-white shadow-[0_20px_60px_-15px_rgb(255_122_0/0.5)]"
         >
           <MessageCircle className="size-4" aria-hidden="true" />
           Order on WhatsApp

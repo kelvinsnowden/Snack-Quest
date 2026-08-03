@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Compass,
 } from 'lucide-react';
-import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { PageShell } from '@/components/marketing/design/PageShell';
 import { PageHero } from '@/components/marketing/design/PageHero';
@@ -56,8 +55,6 @@ const STEPS = [
 ];
 
 export default async function HowItWorksPage() {
-  const business = await getCurrentBusiness();
-
   return (
     <PageShell>
       <PageHero
@@ -96,10 +93,7 @@ export default async function HowItWorksPage() {
 
       <Reveal delayMs={120}>
         <div className="mt-14">
-          <WhatsAppOrderButton
-            whatsappCustomerNumber={business?.whatsappCustomerNumber ?? null}
-            message="Hi! I'd like to place an order."
-          />
+          <WhatsAppOrderButton message="Hi! I'd like to place an order." />
         </div>
       </Reveal>
     </PageShell>

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { HomeHero } from '@/components/marketing/home/HomeHero';
@@ -32,25 +31,21 @@ const WHATS_INSIDE_PHOTO_URL: string | null = null;
 
 export default async function MarketingHomePage() {
   const businessId = getCurrentBusinessId();
-  const [business, packages] = await Promise.all([
-    getCurrentBusiness(),
-    packageRepository.listActive(businessId),
-  ]);
+  const packages = await packageRepository.listActive(businessId);
   const featured = packages.slice(0, 3);
-  const whatsappCustomerNumber = business?.whatsappCustomerNumber ?? null;
 
   return (
     <div className="flex flex-col overflow-x-hidden">
-      <HomeHero whatsappCustomerNumber={whatsappCustomerNumber} />
+      <HomeHero />
       <FounderStory founderImageUrl={FOUNDER_IMAGE_URL} />
       <WhatsInside photoUrl={WHATS_INSIDE_PHOTO_URL} />
-      <GiftIt whatsappCustomerNumber={whatsappCustomerNumber} />
+      <GiftIt />
       <TheRoute />
-      <PickYourBox packages={featured} whatsappCustomerNumber={whatsappCustomerNumber} />
-      <FinalCta whatsappCustomerNumber={whatsappCustomerNumber} />
+      <PickYourBox packages={featured} />
+      <FinalCta />
 
-      <MobileStickyBar whatsappCustomerNumber={whatsappCustomerNumber} />
-      <FloatingWhatsAppBubble whatsappCustomerNumber={whatsappCustomerNumber} />
+      <MobileStickyBar />
+      <FloatingWhatsAppBubble />
     </div>
   );
 }

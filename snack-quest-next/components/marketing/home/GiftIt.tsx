@@ -54,11 +54,7 @@ const REASONS = [
   },
 ];
 
-export function GiftIt({
-  whatsappCustomerNumber,
-}: {
-  whatsappCustomerNumber: string | null;
-}) {
+export function GiftIt() {
   return (
     <section
       className="bg-white px-5 py-24 md:px-10 md:py-36"
@@ -85,7 +81,6 @@ export function GiftIt({
           <Reveal delayMs={160}>
             <div className="mt-10">
               <WhatsAppOrderButton
-                whatsappCustomerNumber={whatsappCustomerNumber}
                 message="Hi! I'd like to send a Snack Quest box as a gift."
                 size="lg"
                 className={PRIMARY_CTA_CLASS}
