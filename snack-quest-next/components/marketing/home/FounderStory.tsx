@@ -5,12 +5,24 @@ import { Button } from '@/components/ui/button';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
-const STORY_PARAGRAPHS = [
-  'I never planned to start a snack company.',
-  "Working alongside my Chinese colleagues introduced me to a world of snacks I'd never seen before. Every time they handed me something new, I had no idea what to expect.",
-  'Sometimes the flavours completely surprised me.',
-  'Sometimes they became instant favourites.',
-  'That feeling of discovering something unexpected was exciting and I realized it would be nice to offer the same experience to someone else.',
+/**
+ * `beat: true` marks the short declarative lines that were already
+ * the story's own rhythm — "Sometimes the flavours completely
+ * surprised me." reads as a beat, the sentence explaining *why*
+ * doesn't. Rendering beats larger/bolder is derived from the copy
+ * itself (line length), not an arbitrary style choice: a reader
+ * skimming just the beats still gets the whole arc.
+ */
+const STORY_BEATS: { text: string; beat?: boolean }[] = [
+  { text: 'I never planned to start a snack company.', beat: true },
+  {
+    text: "Working alongside my Chinese colleagues introduced me to a world of snacks I'd never seen before. Every time they handed me something new, I had no idea what to expect.",
+  },
+  { text: 'Sometimes the flavours completely surprised me.', beat: true },
+  { text: 'Sometimes they became instant favourites.', beat: true },
+  {
+    text: 'That feeling of discovering something unexpected was exciting and I realized it would be nice to offer the same experience to someone else.',
+  },
 ];
 
 /**
@@ -84,13 +96,33 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
               </h2>
             </Reveal>
 
-            <Reveal delayMs={120}>
-              <div className="mt-7 flex max-w-[520px] flex-col gap-4 text-[15px] leading-[1.65] text-foreground/80 md:text-lg">
-                {STORY_PARAGRAPHS.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
-                <p className="font-semibold text-foreground">That&apos;s why I created Snack Quest.</p>
-                <p>
+            {/* A left rail rather than uniform paragraphs stacked flat —
+                it gives seven sentences a visible "this is one thread"
+                shape instead of reading as an undifferentiated block,
+                and each line reveals on its own short stagger as it
+                scrolls in rather than dumping the whole story at once. */}
+            <div className="border-primary/20 mt-7 flex max-w-[460px] flex-col gap-4 border-l-2 pl-5">
+              {STORY_BEATS.map(({ text, beat }, index) => (
+                <Reveal key={text} delayMs={index * 70}>
+                  <p
+                    className={
+                      beat
+                        ? 'text-foreground text-lg leading-snug font-semibold md:text-xl'
+                        : 'text-foreground/70 text-[15px] leading-[1.65] md:text-base'
+                    }
+                  >
+                    {text}
+                  </p>
+                </Reveal>
+              ))}
+            </div>
+
+            <Reveal delayMs={STORY_BEATS.length * 70 + 40}>
+              <div className="border-border mt-7 max-w-[460px] border-t pt-6">
+                <p className="text-foreground text-lg font-semibold md:text-xl">
+                  That&apos;s why I created Snack Quest.
+                </p>
+                <p className="text-foreground/70 mt-3 text-[15px] leading-[1.65] md:text-base">
                   Today, every snack that makes it into a Snack Quest box has been personally tasted and carefully
                   selected, because I want every customer to experience that same excitement, curiosity and
                   unforgettable sense of discovery.
@@ -98,7 +130,7 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
               </div>
             </Reveal>
 
-            <Reveal delayMs={220}>
+            <Reveal delayMs={STORY_BEATS.length * 70 + 120}>
               <div className="mt-8">
                 <p className="font-signature text-3xl text-secondary italic md:text-4xl">Kelvin</p>
                 <p className="mt-1 text-caption font-semibold tracking-[0.25em] text-foreground/60 uppercase">
@@ -107,7 +139,7 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
               </div>
             </Reveal>
 
-            <Reveal delayMs={340}>
+            <Reveal delayMs={STORY_BEATS.length * 70 + 200}>
               <Button asChild size="lg" className={`mt-8 ${PRIMARY_CTA_CLASS}`}>
                 <Link href="#boxes">
                   <Rocket className="size-5" aria-hidden="true" />
