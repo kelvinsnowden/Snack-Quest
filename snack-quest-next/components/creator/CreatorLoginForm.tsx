@@ -9,6 +9,8 @@ import { clientAuth } from '@/lib/firebase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PasswordInput } from '@/components/creator/PasswordInput';
+import { rememberCreator, useRememberedCreator } from '@/lib/creator/rememberedIdentity';
 
 /**
  * Real creator sign-in (§ Creator Portal auth) — same pattern as
@@ -21,7 +23,12 @@ import { Label } from '@/components/ui/label';
 export function CreatorLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState('');
+  const remembered = useRememberedCreator();
+  const [emailInput, setEmailInput] = useState('');
+  // Prefill from a remembered prior login on this device — a plain
+  // derived fallback rather than seeding state in an effect, so
+  // nothing ever overwrites what someone's actually typed.
+  const email = emailInput || remembered?.email || '';
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +55,13 @@ export function CreatorLoginForm() {
         return;
       }
 
+      const data = (await response.json().catch(() => ({}))) as {
+        session?: { displayName?: string };
+      };
+      if (data.session?.displayName) {
+        rememberCreator({ displayName: data.session.displayName, email });
+      }
+
       const destination = searchParams.get('next') || '/creator';
       router.replace(destination);
       router.refresh();
@@ -68,7 +82,7 @@ export function CreatorLoginForm() {
           autoComplete="username"
           required
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => setEmailInput(event.target.value)}
           placeholder="you@example.com"
           disabled={submitting}
         />
@@ -76,10 +90,9 @@ export function CreatorLoginForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Password</Label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
           required
           value={password}

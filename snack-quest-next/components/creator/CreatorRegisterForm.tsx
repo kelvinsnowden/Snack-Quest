@@ -9,6 +9,8 @@ import { clientAuth } from '@/lib/firebase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PasswordInput } from '@/components/creator/PasswordInput';
+import { rememberCreator } from '@/lib/creator/rememberedIdentity';
 
 const FIREBASE_AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/email-already-in-use': 'An account with that email already exists. Sign in instead.',
@@ -62,6 +64,7 @@ export function CreatorRegisterForm() {
         return;
       }
 
+      rememberCreator({ displayName, email });
       router.replace('/creator/onboarding');
       router.refresh();
     } catch (caught) {
@@ -105,10 +108,9 @@ export function CreatorRegisterForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Password</Label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={6}
@@ -121,10 +123,9 @@ export function CreatorRegisterForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="confirmPassword">Confirm password</Label>
-        <Input
+        <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           required
           minLength={6}

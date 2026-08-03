@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Clock, Eye, EyeOff, Sparkles, TrendingUp } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 /**
@@ -37,6 +37,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
  * their balance while someone glances at their screen is worried
  * about the one number that reads as "how much cash do I have right
  * now", not the supporting stats.
+ *
+ * Pending/Lifetime moved from a plain label-over-number `dl` to icon-
+ * tagged pill chips (reference-image quality pass) — a clock for
+ * "still processing", a trend arrow for "accumulated over time". Real
+ * semantics, not decoration: a creator scanning past the headline
+ * figure gets the icon as a second, faster read of what each number
+ * means before the label registers.
  */
 export function PortalHero({
   displayName,
@@ -141,22 +148,38 @@ export function PortalHero({
           </span>
         </div>
 
-        <dl className="mt-8 flex flex-wrap gap-x-10 gap-y-4">
-          <div>
-            <dt className="text-caption font-medium tracking-wide text-white/60 uppercase">
-              Pending
-            </dt>
-            <dd className="mt-1 font-semibold tabular-nums">
-              {format(pendingKes)}
-            </dd>
+        <dl className="mt-7 flex flex-wrap gap-2">
+          <div className="flex items-center gap-2 rounded-xl bg-white/10 py-2 pr-4 pl-2.5">
+            <span
+              aria-hidden="true"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/15"
+            >
+              <Clock className="size-3.5" />
+            </span>
+            <div>
+              <dt className="text-[0.625rem] leading-none font-medium tracking-wide text-white/60 uppercase">
+                Pending
+              </dt>
+              <dd className="mt-1 text-sm leading-none font-semibold tabular-nums">
+                {format(pendingKes)}
+              </dd>
+            </div>
           </div>
-          <div>
-            <dt className="text-caption font-medium tracking-wide text-white/60 uppercase">
-              Lifetime earned
-            </dt>
-            <dd className="text-home-lime mt-1 font-semibold tabular-nums">
-              {format(lifetimeKes)}
-            </dd>
+          <div className="flex items-center gap-2 rounded-xl bg-white/10 py-2 pr-4 pl-2.5">
+            <span
+              aria-hidden="true"
+              className="bg-home-lime/20 text-home-lime flex size-7 shrink-0 items-center justify-center rounded-full"
+            >
+              <TrendingUp className="size-3.5" />
+            </span>
+            <div>
+              <dt className="text-[0.625rem] leading-none font-medium tracking-wide text-white/60 uppercase">
+                Lifetime earned
+              </dt>
+              <dd className="text-home-lime mt-1 text-sm leading-none font-semibold tabular-nums">
+                {format(lifetimeKes)}
+              </dd>
+            </div>
           </div>
         </dl>
 
