@@ -35,44 +35,44 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
 
         <div className="mt-6 grid items-center gap-10 md:mt-10 md:grid-cols-2 md:gap-20">
           <Reveal>
-            <div className="relative mx-auto w-full max-w-[400px]">
+            <div className="relative mx-auto w-full max-w-[200px]">
               <div
                 aria-hidden="true"
-                className="absolute -inset-6 rounded-[40px] bg-gradient-to-br from-primary/25 via-home-lime/20 to-secondary/25 blur-2xl"
+                className="absolute -inset-3 rounded-[24px] bg-gradient-to-br from-primary/25 via-home-lime/20 to-secondary/25 blur-2xl"
               />
-              <div className="relative aspect-[4/5] overflow-hidden rounded-[32px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-[20px] shadow-[0_20px_50px_-20px_rgb(31_31_31/0.3)]">
                 {founderImageUrl ? (
                   <Image
                     src={founderImageUrl}
                     alt="Kelvin, founder of Snack Quest, holding a mystery box."
                     fill
-                    sizes="(min-width: 400px) 400px, 100vw"
+                    sizes="(min-width: 200px) 200px, 100vw"
                     className="object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-secondary via-secondary to-home-purple-deep text-center text-white">
-                    <span className="flex size-16 items-center justify-center rounded-full bg-white/10">
-                      <Compass className="size-8 text-home-lime" aria-hidden="true" />
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-secondary via-secondary to-home-purple-deep text-center text-white">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-white/10">
+                      <Compass className="size-4 text-home-lime" aria-hidden="true" />
                     </span>
-                    <p className="max-w-[220px] px-6 text-caption font-semibold tracking-wide text-white/70 uppercase">
+                    <p className="px-4 text-[10px] leading-tight font-semibold tracking-wide text-white/70 uppercase">
                       Founder portrait coming soon
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="absolute top-6 -right-4 hidden items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-caption font-semibold text-secondary shadow-sm md:flex">
-                <Globe2 className="size-3.5" aria-hidden="true" />
+              <div className="absolute top-3 -right-2 hidden items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-secondary shadow-sm md:flex">
+                <Globe2 className="size-2.5" aria-hidden="true" />
                 Curated worldwide
               </div>
               <div
                 aria-hidden="true"
-                className="absolute top-[-20px] left-[-20px] hidden -rotate-[10deg] items-center rounded-lg border-2 border-primary/70 bg-background/95 px-3 py-1.5 text-caption font-bold tracking-wide text-primary uppercase shadow-sm md:flex"
+                className="absolute top-[-10px] left-[-10px] hidden -rotate-[10deg] items-center rounded-md border border-primary/70 bg-background/95 px-2 py-1 text-[10px] font-bold tracking-wide text-primary uppercase shadow-sm md:flex"
               >
                 ✈ Nairobi · Founder
               </div>
-              <div className="absolute -right-5 -bottom-5 flex size-16 animate-float-slow items-center justify-center rounded-full bg-foreground shadow-[0_20px_60px_-15px_rgb(255_122_0/0.5)]">
-                <Compass className="size-7 text-home-lime" aria-hidden="true" />
+              <div className="absolute -right-2.5 -bottom-2.5 flex size-9 animate-float-slow items-center justify-center rounded-full bg-foreground shadow-[0_12px_30px_-10px_rgb(255_122_0/0.5)]">
+                <Compass className="size-4 text-home-lime" aria-hidden="true" />
               </div>
             </div>
           </Reveal>
