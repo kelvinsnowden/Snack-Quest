@@ -66,6 +66,7 @@ export interface CreatorSession {
   uid: string;
   email: string;
   displayName: string;
+  photoURL: string | null;
   businessId: string;
   status: CreatorStatus;
   onboardingCompleted: boolean;
@@ -84,6 +85,7 @@ function toSession(
     uid,
     email: user.email,
     displayName: user.displayName,
+    photoURL: user.photoURL,
     businessId: profile.businessId,
     status: profile.status,
     onboardingCompleted: profile.onboardingCompleted,
@@ -205,6 +207,7 @@ class CreatorAuthService {
         uid: decoded.uid,
         email: existingUser?.email ?? decoded.email ?? '',
         displayName: existingUser?.displayName ?? trimmedName,
+        photoURL: existingUser?.photoURL ?? null,
         businessId,
         status: 'pending',
         onboardingCompleted: false,

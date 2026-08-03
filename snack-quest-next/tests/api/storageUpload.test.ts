@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { uploadFileMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({
+const { uploadFileMock, verifyStaffSessionFromRequestMock, verifyCreatorSessionFromRequestMock } = vi.hoisted(() => ({
   uploadFileMock: vi.fn(),
   verifyStaffSessionFromRequestMock: vi.fn(),
+  verifyCreatorSessionFromRequestMock: vi.fn(),
 }));
 
 vi.mock('@/services/storageService', () => ({
@@ -11,6 +12,10 @@ vi.mock('@/services/storageService', () => ({
 
 vi.mock('@/lib/auth/session', () => ({
   verifyStaffSessionFromRequest: verifyStaffSessionFromRequestMock,
+}));
+
+vi.mock('@/lib/auth/creatorSession', () => ({
+  verifyCreatorSessionFromRequest: verifyCreatorSessionFromRequestMock,
 }));
 
 import { POST } from '@/app/api/storage/upload/route';
@@ -40,9 +45,14 @@ function multipartRequest(fields: Record<string, string | Blob>): Request {
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 describe('POST /api/storage/upload', () => {
-  it('401s without a valid staff session', async () => {
+  it('401s without a valid staff or creator session', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(null);
+    verifyCreatorSessionFromRequestMock.mockResolvedValue(null);
     const file = new File([new Uint8Array([1])], 'x.png', { type: 'image/png' });
     const response = await POST(multipartRequest({ file, directory: 'snacks' }));
     expect(response.status).toBe(401);
@@ -102,5 +112,43 @@ describe('POST /api/storage/upload', () => {
     const file = new File([new Uint8Array([1])], 'x.png', { type: 'image/png' });
     const response = await POST(multipartRequest({ file, directory: 'snacks' }));
     expect(response.status).toBe(502);
+  });
+
+  const CREATOR_SESSION = {
+    uid: 'creator-1',
+    email: 'creator@example.com',
+    displayName: 'Creator',
+    photoURL: null,
+    businessId: 'biz-1',
+    status: 'active',
+    onboardingCompleted: true,
+  };
+
+  it('uploads a creator-authenticated file to the "creators" directory, scoped to the creator session businessId', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(null);
+    verifyCreatorSessionFromRequestMock.mockResolvedValue(CREATOR_SESSION);
+    uploadFileMock.mockResolvedValue({
+      url: 'https://store.public.blob.vercel-storage.com/creators/biz-1/avatar.png',
+      pathname: 'creators/biz-1/avatar.png',
+      contentType: 'image/png',
+      size: 4,
+    });
+
+    const file = new File([new Uint8Array([1, 2, 3, 4])], 'avatar.png', { type: 'image/png' });
+    const response = await POST(multipartRequest({ file, directory: 'creators' }));
+
+    expect(response.status).toBe(201);
+    expect(uploadFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: 'biz-1', directory: 'creators' }),
+    );
+  });
+
+  it('403s a creator session trying to upload outside the "creators" directory', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(null);
+    verifyCreatorSessionFromRequestMock.mockResolvedValue(CREATOR_SESSION);
+    const file = new File([new Uint8Array([1])], 'x.png', { type: 'image/png' });
+    const response = await POST(multipartRequest({ file, directory: 'snacks' }));
+    expect(response.status).toBe(403);
+    expect(uploadFileMock).not.toHaveBeenCalled();
   });
 });

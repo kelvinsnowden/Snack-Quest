@@ -48,6 +48,7 @@ function resolveAccessLevel(
 export interface LeaderboardEntry {
   uid: string;
   displayName: string;
+  photoURL: string | null;
   tier: CreatorProfile['tier'];
   lifetimeEarningsKes: number;
   totalConversions: number;
@@ -86,13 +87,17 @@ class CreatorDashboardService {
     ]);
 
     const withIdentity = await Promise.all(
-      top.map(async ({ id, data }) => ({
-        uid: id,
-        displayName: (await userRepository.findById(id))?.displayName ?? 'Unknown creator',
-        tier: data.tier,
-        lifetimeEarningsKes: data.lifetimeEarningsKes,
-        totalConversions: data.totalConversions,
-      })),
+      top.map(async ({ id, data }) => {
+        const user = await userRepository.findById(id);
+        return {
+          uid: id,
+          displayName: user?.displayName ?? 'Unknown creator',
+          photoURL: user?.photoURL ?? null,
+          tier: data.tier,
+          lifetimeEarningsKes: data.lifetimeEarningsKes,
+          totalConversions: data.totalConversions,
+        };
+      }),
     );
 
     let myRank: number | null = null;

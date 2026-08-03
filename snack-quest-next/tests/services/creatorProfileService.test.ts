@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { creatorRepository } from '@/repositories/creatorRepository';
+import { userRepository } from '@/repositories/userRepository';
 import {
   creatorProfileService,
   InvalidOnboardingInputError,
@@ -199,5 +200,42 @@ describe('CreatorProfileService.updateProfile', () => {
 
     const profile = await creatorRepository.findById(UID);
     expect(profile?.bio).toBe('Second edit');
+  });
+});
+
+describe('CreatorProfileService.updatePhoto', () => {
+  it('throws for a uid with no creator profile', async () => {
+    await expect(
+      creatorProfileService.updatePhoto('no-such-creator', 'https://example.com/a.png'),
+    ).rejects.toBeInstanceOf(CreatorNotFoundError);
+  });
+
+  it('rejects a blank string', async () => {
+    await seedPendingCreator({ onboardingCompleted: true });
+    await userRepository.create(UID, { email: 'creator@example.com', roles: ['creator'], displayName: 'Creator', photoURL: null }, UID);
+
+    await expect(creatorProfileService.updatePhoto(UID, '   ')).rejects.toBeInstanceOf(
+      InvalidProfileUpdateError,
+    );
+  });
+
+  it('sets the photo on the users doc, not the creatorProfiles doc', async () => {
+    await seedPendingCreator({ onboardingCompleted: true });
+    await userRepository.create(UID, { email: 'creator@example.com', roles: ['creator'], displayName: 'Creator', photoURL: null }, UID);
+
+    await creatorProfileService.updatePhoto(UID, 'https://example.com/a.png');
+
+    const user = await userRepository.findById(UID);
+    expect(user?.photoURL).toBe('https://example.com/a.png');
+  });
+
+  it('clears the photo with null', async () => {
+    await seedPendingCreator({ onboardingCompleted: true });
+    await userRepository.create(UID, { email: 'creator@example.com', roles: ['creator'], displayName: 'Creator', photoURL: 'https://example.com/a.png' }, UID);
+
+    await creatorProfileService.updatePhoto(UID, null);
+
+    const user = await userRepository.findById(UID);
+    expect(user?.photoURL).toBeNull();
   });
 });

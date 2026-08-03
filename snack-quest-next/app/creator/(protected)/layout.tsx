@@ -63,6 +63,7 @@ export default async function CreatorProtectedLayout({
           <CreatorUserMenu
             displayName={session.displayName}
             email={session.email}
+            photoURL={session.photoURL}
           />
         </header>
 

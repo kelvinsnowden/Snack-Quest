@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { Badge } from '@/components/ui/badge';
@@ -117,6 +117,7 @@ export default async function CreatorLeaderboardPage() {
                   {rank}
                 </span>
                 <Avatar className="size-9 shrink-0">
+                  {entry.photoURL ? <AvatarImage src={entry.photoURL} alt="" /> : null}
                   <AvatarFallback>{initials(entry.displayName)}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">

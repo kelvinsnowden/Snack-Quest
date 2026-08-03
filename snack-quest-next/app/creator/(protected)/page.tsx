@@ -12,6 +12,7 @@ import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { referralService } from '@/services/referralService';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { CreatorStatusBadge } from '@/components/admin/CreatorStatusBadge';
 import { BalanceCard } from '@/components/creator/design/BalanceCard';
 import { PortalCard } from '@/components/creator/design/PortalCard';
@@ -23,6 +24,12 @@ import { resolveNextStep } from '@/lib/creator/nextStep';
 import { formatDate, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Home' };
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
 
 /** Nairobi is the only timezone this product operates in. */
 function timeOfDayGreeting(): string {
@@ -97,16 +104,22 @@ export default async function CreatorHomePage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
-      <header>
-        <p className="text-muted-foreground text-sm">{timeOfDayGreeting()}</p>
-        <h1 className="text-foreground mt-1 text-[1.75rem] leading-tight font-semibold tracking-tight md:text-[2rem]">
-          {firstName}
-        </h1>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <CreatorStatusBadge status={profile.status} />
-          <Badge variant="outline">
-            {CREATOR_TIER_LABELS[profile.tier]} tier
-          </Badge>
+      <header className="flex items-start gap-3">
+        <Avatar className="size-12 shrink-0">
+          {session.photoURL ? <AvatarImage src={session.photoURL} alt="" /> : null}
+          <AvatarFallback>{initials(session.displayName)}</AvatarFallback>
+        </Avatar>
+        <div>
+          <p className="text-muted-foreground text-sm">{timeOfDayGreeting()}</p>
+          <h1 className="text-foreground mt-1 text-[1.75rem] leading-tight font-semibold tracking-tight md:text-[2rem]">
+            {firstName}
+          </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <CreatorStatusBadge status={profile.status} />
+            <Badge variant="outline">
+              {CREATOR_TIER_LABELS[profile.tier]} tier
+            </Badge>
+          </div>
         </div>
       </header>
 

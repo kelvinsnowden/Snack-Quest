@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { creatorRepository } from '@/repositories/creatorRepository';
+import { userRepository } from '@/repositories/userRepository';
 import { CreatorNotFoundError } from '@/services/creatorDashboardService';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { PaymentPreference } from '@/types';
@@ -134,6 +135,27 @@ class CreatorProfileService {
       socialHandles: input.socialHandles,
       updatedBy: uid,
     });
+  }
+
+  /**
+   * § Creator Portal profile photos — lives on `users/{uid}`, not
+   * `creatorProfiles/{uid}`, since a photo is identity (shared across
+   * every role a uid might hold) rather than a creator-specific
+   * business field. `photoURL` itself is never trusted from the
+   * client as arbitrary text: it's always the URL `storageService`
+   * just returned from an actual upload to this creator's own
+   * `creators/{businessId}/` prefix.
+   */
+  async updatePhoto(uid: string, photoURL: string | null): Promise<void> {
+    const profile = await creatorRepository.findById(uid);
+    if (!profile) {
+      throw new CreatorNotFoundError(uid);
+    }
+    if (photoURL !== null && !photoURL.trim()) {
+      throw new InvalidProfileUpdateError('photoURL must be a non-empty string or null');
+    }
+
+    await userRepository.updatePhoto(uid, photoURL, uid);
   }
 }
 

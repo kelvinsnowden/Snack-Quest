@@ -2,6 +2,7 @@ import { storageService } from '@/services/storageService';
 import { StorageUploadError, StorageValidationError } from '@/lib/storage/errors';
 import { STORAGE_DIRECTORIES, isStorageDirectory } from '@/lib/storage/policies';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
+import { verifyCreatorSessionFromRequest } from '@/lib/auth/creatorSession';
 
 /**
  * The real upload wire for `services/storageService.ts` (§ Vercel
@@ -12,17 +13,18 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
  * owns that write, same Repository/Service boundary as everywhere
  * else.
  *
- * Staff-session gated (§ Admin: Products & Packages — the first real
- * caller of this route): `businessId` is taken from the verified
- * session, never from the request body, so a caller can never upload
- * into another tenant's storage path by supplying a different id.
- * Creator-facing uploads will need their own auth path once the
- * Creator Portal has real sessions (§ Creator Portal) — not added here
- * speculatively.
+ * Staff- or creator-session gated: `businessId` is taken from
+ * whichever verified session made the request, never from the request
+ * body, so a caller can never upload into another tenant's storage
+ * path by supplying a different id. A creator-authenticated request is
+ * additionally pinned to the `creators` directory — the only one this
+ * route lets a non-staff caller write into.
  */
 export async function POST(request: Request): Promise<Response> {
-  const session = await verifyStaffSessionFromRequest(request);
-  if (!session) {
+  const staffSession = await verifyStaffSessionFromRequest(request);
+  const creatorSession = staffSession ? null : await verifyCreatorSessionFromRequest(request);
+  const businessId = staffSession?.businessId ?? creatorSession?.businessId;
+  if (!businessId) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -45,12 +47,18 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
+  if (creatorSession && directory !== 'creators') {
+    return Response.json(
+      { error: 'Creators can only upload to the "creators" directory.' },
+      { status: 403 },
+    );
+  }
 
   const data = Buffer.from(await file.arrayBuffer());
 
   try {
     const uploaded = await storageService.uploadFile({
-      businessId: session.businessId,
+      businessId,
       directory,
       filename: file.name,
       data,

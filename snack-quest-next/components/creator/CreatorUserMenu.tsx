@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogOut, UserCog } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +20,15 @@ function initials(name: string): string {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
-export function CreatorUserMenu({ displayName, email }: { displayName: string; email: string }) {
+export function CreatorUserMenu({
+  displayName,
+  email,
+  photoURL,
+}: {
+  displayName: string;
+  email: string;
+  photoURL: string | null;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -43,6 +51,7 @@ export function CreatorUserMenu({ displayName, email }: { displayName: string; e
           aria-label={`Account menu for ${displayName}`}
         >
           <Avatar>
+            {photoURL ? <AvatarImage src={photoURL} alt="" /> : null}
             <AvatarFallback>{initials(displayName)}</AvatarFallback>
           </Avatar>
         </button>

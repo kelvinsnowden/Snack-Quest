@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CreatorStatusBadge } from '@/components/admin/CreatorStatusBadge';
+import { AvatarUpload } from '@/components/creator/AvatarUpload';
 import { ProfileForm } from '@/components/creator/ProfileForm';
 import { PortalPageHeader } from '@/components/creator/design/PortalPageHeader';
 import { PortalCard } from '@/components/creator/design/PortalCard';
@@ -28,11 +28,7 @@ export default async function CreatorProfilePage() {
       />
 
       <PortalCard className="flex flex-col items-center gap-3 text-center">
-        <Avatar className="size-16">
-          <AvatarFallback className="text-lg">
-            {initials(session.displayName)}
-          </AvatarFallback>
-        </Avatar>
+        <AvatarUpload photoURL={session.photoURL} initials={initials(session.displayName)} />
         <div>
           <p className="text-foreground text-lg font-semibold">
             {session.displayName}
