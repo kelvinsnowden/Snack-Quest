@@ -12,7 +12,9 @@ import { CreatorNotFoundError } from '@/services/creatorDashboardService';
 const UID = 'creator-onboarding-test';
 const BUSINESS_ID = 'biz-onboarding-test';
 
-async function seedPendingCreator(overrides: Partial<Parameters<typeof creatorRepository.create>[1]> = {}) {
+async function seedPendingCreator(
+  overrides: Partial<Parameters<typeof creatorRepository.create>[1]> = {},
+) {
   await creatorRepository.create(UID, {
     businessId: BUSINESS_ID,
     referralCode: 'TEST1234',
@@ -20,6 +22,7 @@ async function seedPendingCreator(overrides: Partial<Parameters<typeof creatorRe
     availableCashKes: 0,
     pendingEarningsKes: 0,
     lifetimeEarningsKes: 0,
+    commissionRateKes: 500,
     totalClicks: 0,
     totalConversions: 0,
     bio: '',
@@ -36,8 +39,12 @@ async function seedPendingCreator(overrides: Partial<Parameters<typeof creatorRe
 }
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
-  await adminFirestore.recursiveDelete(adminFirestore.collection('domainEvents'));
+  await adminFirestore.recursiveDelete(
+    adminFirestore.collection('creatorProfiles'),
+  );
+  await adminFirestore.recursiveDelete(
+    adminFirestore.collection('domainEvents'),
+  );
 });
 
 describe('CreatorProfileService.completeOnboarding', () => {

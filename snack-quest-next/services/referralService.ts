@@ -4,7 +4,6 @@ import { adminFirestore } from '@/lib/firebase/admin';
 import {
   referralLinkRepository,
   incrementConversionCountInTransaction as incrementLinkConversionInTransaction,
-  type ReferralLinkInput,
 } from '@/repositories/referralLinkRepository';
 import {
   createInTransaction as createAttributionInTransaction,
@@ -48,20 +47,6 @@ export class ReferralLinkNotFoundError extends Error {
   }
 }
 
-export class DuplicateReferralCodeError extends Error {
-  constructor(code: string) {
-    super(`Referral code "${code}" is already in use`);
-    this.name = 'DuplicateReferralCodeError';
-  }
-}
-
-export class CreatorNotEligibleError extends Error {
-  constructor(creatorId: string) {
-    super(`${creatorId} is not an active creator for this business`);
-    this.name = 'CreatorNotEligibleError';
-  }
-}
-
 export interface ReferralLinkListItem {
   id: string;
   data: ReferralLink;
@@ -76,7 +61,10 @@ export interface CommissionListItem {
 
 class ReferralService {
   /** Returns null for an invalid/inactive/unknown code — never blocks the purchase. */
-  async validateCode(businessId: string, code: string): Promise<ValidatedReferral | null> {
+  async validateCode(
+    businessId: string,
+    code: string,
+  ): Promise<ValidatedReferral | null> {
     const match = await referralLinkRepository.findByCode(businessId, code);
     if (!match) {
       return null;
@@ -118,63 +106,37 @@ class ReferralService {
       incrementCreatorConversionInTransaction(tx, input.ownerId);
     });
 
-    await publishEvent(input.businessId, 'ReferralAwarded', 'order', input.orderId, {
-      referralLinkId: input.referralLinkId,
-      creatorId: input.ownerId,
-      commissionKes: input.commissionKes,
-    });
+    await publishEvent(
+      input.businessId,
+      'ReferralAwarded',
+      'order',
+      input.orderId,
+      {
+        referralLinkId: input.referralLinkId,
+        creatorId: input.ownerId,
+        commissionKes: input.commissionKes,
+      },
+    );
   }
 
-  async createLink(
-    input: Omit<ReferralLinkInput, 'code' | 'clickCount' | 'conversionCount'> & { code: string },
-    actor: string,
-  ): Promise<string> {
-    const creator = await creatorRepository.findById(input.ownerId);
-    if (!creator || creator.businessId !== input.businessId) {
-      throw new CreatorNotEligibleError(input.ownerId);
-    }
-
-    const code = input.code.trim().toUpperCase();
-    await this.assertCodeAvailable(input.businessId, code);
-
-    return referralLinkRepository.create({ ...input, code, clickCount: 0, conversionCount: 0 }, actor);
-  }
-
-  /** § Creator Portal referral links — a creator toggling their own link, never someone else's; reuses `ReferralLinkNotFoundError` for "not yours" too, so ownership isn't leaked by the error shape. */
-  async setActiveForOwner(
+  /**
+   * Admin: Referrals oversight only (§ referral system overhaul) —
+   * every creator's one permanent link is created automatically at
+   * registration and never editable afterward; the only lever left
+   * here is pausing/resuming it (e.g. suspected fraud), never
+   * changing its code, discount, or commission.
+   */
+  async setActive(
     businessId: string,
-    ownerId: string,
     linkId: string,
     isActive: boolean,
-    actor: string,
-  ): Promise<void> {
-    const existing = await referralLinkRepository.findById(businessId, linkId);
-    if (!existing || existing.ownerId !== ownerId) {
-      throw new ReferralLinkNotFoundError(linkId);
-    }
-    await referralLinkRepository.update(linkId, { isActive }, actor);
-  }
-
-  async updateLink(
-    businessId: string,
-    linkId: string,
-    patch: Partial<ReferralLinkInput>,
     actor: string,
   ): Promise<void> {
     const existing = await referralLinkRepository.findById(businessId, linkId);
     if (!existing) {
       throw new ReferralLinkNotFoundError(linkId);
     }
-
-    const normalizedPatch = { ...patch };
-    if (normalizedPatch.code !== undefined) {
-      normalizedPatch.code = normalizedPatch.code.trim().toUpperCase();
-      if (normalizedPatch.code !== existing.code) {
-        await this.assertCodeAvailable(businessId, normalizedPatch.code);
-      }
-    }
-
-    await referralLinkRepository.update(linkId, normalizedPatch, actor);
+    await referralLinkRepository.update(linkId, { isActive }, actor);
   }
 
   /** § Creator Portal referral links — a creator's own links, no identity join needed since they're already the owner. */
@@ -182,7 +144,10 @@ class ReferralService {
     businessId: string,
     ownerId: string,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ links: { id: string; data: ReferralLink }[]; nextCursor: string | null }> {
+  ): Promise<{
+    links: { id: string; data: ReferralLink }[];
+    nextCursor: string | null;
+  }> {
     return referralLinkRepository.listByOwner(businessId, ownerId, options);
   }
 
@@ -191,8 +156,15 @@ class ReferralService {
     businessId: string,
     creatorId: string,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ attributions: { id: string; data: ReferralAttribution }[]; nextCursor: string | null }> {
-    return referralAttributionRepository.listByCreator(businessId, creatorId, options);
+  ): Promise<{
+    attributions: { id: string; data: ReferralAttribution }[];
+    nextCursor: string | null;
+  }> {
+    return referralAttributionRepository.listByCreator(
+      businessId,
+      creatorId,
+      options,
+    );
   }
 
   /**
@@ -200,8 +172,14 @@ class ReferralService {
    * null) for an unknown or inactive code so the redirect route can
    * fall back gracefully rather than error a customer's tap.
    */
-  async recordClick(businessId: string, code: string): Promise<ReferralLink | null> {
-    const match = await referralLinkRepository.findByCode(businessId, code.trim().toUpperCase());
+  async recordClick(
+    businessId: string,
+    code: string,
+  ): Promise<ReferralLink | null> {
+    const match = await referralLinkRepository.findByCode(
+      businessId,
+      code.trim().toUpperCase(),
+    );
     if (!match) {
       return null;
     }
@@ -217,9 +195,16 @@ class ReferralService {
     businessId: string,
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ links: ReferralLinkListItem[]; nextCursor: string | null }> {
-    const { links, nextCursor } = await referralLinkRepository.listByBusiness(businessId, options);
+    const { links, nextCursor } = await referralLinkRepository.listByBusiness(
+      businessId,
+      options,
+    );
     const withOwner = await Promise.all(
-      links.map(async ({ id, data }) => ({ id, data, owner: await userRepository.findById(data.ownerId) })),
+      links.map(async ({ id, data }) => ({
+        id,
+        data,
+        owner: await userRepository.findById(data.ownerId),
+      })),
     );
     return { links: withOwner, nextCursor };
   }
@@ -229,7 +214,8 @@ class ReferralService {
     businessId: string,
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ commissions: CommissionListItem[]; nextCursor: string | null }> {
-    const { attributions, nextCursor } = await referralAttributionRepository.listByBusiness(businessId, options);
+    const { attributions, nextCursor } =
+      await referralAttributionRepository.listByBusiness(businessId, options);
     const withCreator = await Promise.all(
       attributions.map(async ({ id, data }) => ({
         id,
@@ -238,12 +224,6 @@ class ReferralService {
       })),
     );
     return { commissions: withCreator, nextCursor };
-  }
-
-  private async assertCodeAvailable(businessId: string, code: string): Promise<void> {
-    if (await referralLinkRepository.existsByCode(businessId, code)) {
-      throw new DuplicateReferralCodeError(code);
-    }
   }
 }
 

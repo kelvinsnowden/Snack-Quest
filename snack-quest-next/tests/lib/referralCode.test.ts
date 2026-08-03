@@ -6,7 +6,9 @@ import { generateUniqueReferralCode } from '@/lib/creators/referralCode';
 const BUSINESS_ID = 'biz-referral-code-test';
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
+  await adminFirestore.recursiveDelete(
+    adminFirestore.collection('creatorProfiles'),
+  );
 });
 
 async function seedCreatorWithCode(uid: string, referralCode: string) {
@@ -17,6 +19,7 @@ async function seedCreatorWithCode(uid: string, referralCode: string) {
     availableCashKes: 0,
     pendingEarningsKes: 0,
     lifetimeEarningsKes: 0,
+    commissionRateKes: 500,
     totalClicks: 0,
     totalConversions: 0,
     bio: '',
@@ -63,6 +66,7 @@ describe('generateUniqueReferralCode', () => {
       availableCashKes: 0,
       pendingEarningsKes: 0,
       lifetimeEarningsKes: 0,
+      commissionRateKes: 500,
       totalClicks: 0,
       totalConversions: 0,
       bio: '',
@@ -76,6 +80,11 @@ describe('generateUniqueReferralCode', () => {
       schemaVersion: 1,
     });
 
-    expect(await creatorRepository.existsByReferralCode('a-different-business', code)).toBe(true);
+    expect(
+      await creatorRepository.existsByReferralCode(
+        'a-different-business',
+        code,
+      ),
+    ).toBe(true);
   });
 });

@@ -10,10 +10,20 @@ export interface CreatorProfile extends AuditFields {
   referralCode: string;
   tier: CreatorTier;
   // Financial fields — client-writable only by the server (rules §9
-  // block direct client writes to these three via diff().affectedKeys()).
+  // block direct client writes to these via diff().affectedKeys()).
   availableCashKes: number;
   pendingEarningsKes: number;
   lifetimeEarningsKes: number;
+  /**
+   * The commission this creator earns per successful referral, in
+   * KES (§ referral system overhaul) — locked in at registration from
+   * their real registration order and never recalculated afterward,
+   * so an early creator keeps their rate even after the platform has
+   * long since moved past the first-50 threshold. See
+   * `lib/creators/referralEconomics.ts` for the tier constants this
+   * is resolved from.
+   */
+  commissionRateKes: number;
   totalClicks: number;
   totalConversions: number;
   bio: string;

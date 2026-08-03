@@ -9,8 +9,32 @@ const COLLECTION = 'referralLinks';
 export type ReferralLinkInput = Omit<ReferralLink, keyof AuditFields>;
 
 /** The conversion side of a referral link's counters (§ Creator Portal referral links) — incremented in the same transaction as `ReferralService.awardCommission()`'s other writes. */
-export function incrementConversionCountInTransaction(tx: Transaction, linkId: string): void {
-  tx.update(adminFirestore.collection(COLLECTION).doc(linkId), { conversionCount: FieldValue.increment(1) });
+export function incrementConversionCountInTransaction(
+  tx: Transaction,
+  linkId: string,
+): void {
+  tx.update(adminFirestore.collection(COLLECTION).doc(linkId), {
+    conversionCount: FieldValue.increment(1),
+  });
+}
+
+/** Same shape as `ReferralLinkRepository.create()`, but as part of the caller's transaction (§ referral system overhaul) — used by `CreatorAuthService.register()` so a creator's one permanent link is created atomically with their profile, never leaving a profile with no link or a link with no profile. */
+export function createInTransaction(
+  tx: Transaction,
+  input: ReferralLinkInput,
+  actor: string,
+): string {
+  const ref = adminFirestore.collection(COLLECTION).doc();
+  const now = FieldValue.serverTimestamp();
+  tx.set(ref, {
+    ...input,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: actor,
+    updatedBy: actor,
+    deletedAt: null,
+  });
+  return ref.id;
 }
 
 class ReferralLinkRepository {
@@ -52,7 +76,10 @@ class ReferralLinkRepository {
     businessId: string,
     ownerId: string,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ links: { id: string; data: ReferralLink }[]; nextCursor: string | null }> {
+  ): Promise<{
+    links: { id: string; data: ReferralLink }[];
+    nextCursor: string | null;
+  }> {
     const pageSize = options.limit ?? 25;
     let query = adminFirestore
       .collection(COLLECTION)
@@ -62,7 +89,10 @@ class ReferralLinkRepository {
       .limit(pageSize + 1) as FirebaseFirestore.Query;
 
     if (options.cursor) {
-      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      const cursorDoc = await adminFirestore
+        .collection(COLLECTION)
+        .doc(options.cursor)
+        .get();
       if (cursorDoc.exists) {
         query = query.startAfter(cursorDoc);
       }
@@ -73,18 +103,30 @@ class ReferralLinkRepository {
     const hasMore = snapshot.docs.length > pageSize;
 
     return {
-      links: docs.map((doc) => ({ id: doc.id, data: doc.data() as ReferralLink })),
+      links: docs.map((doc) => ({
+        id: doc.id,
+        data: doc.data() as ReferralLink,
+      })),
       nextCursor: hasMore ? docs[docs.length - 1].id : null,
     };
   }
 
   /** § app/r/[code]/route.ts — a real click-through, outside any larger transaction. */
   async incrementClickCount(linkId: string): Promise<void> {
-    await adminFirestore.collection(COLLECTION).doc(linkId).update({ clickCount: FieldValue.increment(1) });
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(linkId)
+      .update({ clickCount: FieldValue.increment(1) });
   }
 
-  async findById(businessId: string, linkId: string): Promise<ReferralLink | null> {
-    const snapshot = await adminFirestore.collection(COLLECTION).doc(linkId).get();
+  async findById(
+    businessId: string,
+    linkId: string,
+  ): Promise<ReferralLink | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .doc(linkId)
+      .get();
     if (!snapshot.exists) {
       return null;
     }
@@ -105,19 +147,29 @@ class ReferralLinkRepository {
     return ref.id;
   }
 
-  async update(linkId: string, patch: Partial<ReferralLinkInput>, actor: string): Promise<void> {
-    await adminFirestore.collection(COLLECTION).doc(linkId).update({
-      ...patch,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: actor,
-    });
+  async update(
+    linkId: string,
+    patch: Partial<ReferralLinkInput>,
+    actor: string,
+  ): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(linkId)
+      .update({
+        ...patch,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor,
+      });
   }
 
   /** Admin: Referrals (§ Admin: Referrals) — every link for the business, newest first. */
   async listByBusiness(
     businessId: string,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ links: { id: string; data: ReferralLink }[]; nextCursor: string | null }> {
+  ): Promise<{
+    links: { id: string; data: ReferralLink }[];
+    nextCursor: string | null;
+  }> {
     const pageSize = options.limit ?? 25;
     let query = adminFirestore
       .collection(COLLECTION)
@@ -126,7 +178,10 @@ class ReferralLinkRepository {
       .limit(pageSize + 1) as FirebaseFirestore.Query;
 
     if (options.cursor) {
-      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      const cursorDoc = await adminFirestore
+        .collection(COLLECTION)
+        .doc(options.cursor)
+        .get();
       if (cursorDoc.exists) {
         query = query.startAfter(cursorDoc);
       }
@@ -137,7 +192,10 @@ class ReferralLinkRepository {
     const hasMore = snapshot.docs.length > pageSize;
 
     return {
-      links: docs.map((doc) => ({ id: doc.id, data: doc.data() as ReferralLink })),
+      links: docs.map((doc) => ({
+        id: doc.id,
+        data: doc.data() as ReferralLink,
+      })),
       nextCursor: hasMore ? docs[docs.length - 1].id : null,
     };
   }

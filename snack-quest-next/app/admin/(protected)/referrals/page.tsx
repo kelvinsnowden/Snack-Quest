@@ -3,14 +3,9 @@ import Link from 'next/link';
 import { Megaphone, ReceiptText } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { referralService } from '@/services/referralService';
-import { creatorAdminService } from '@/services/creatorAdminService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import {
-  CreateReferralLinkDialog,
-  type EligibleCreator,
-} from '@/components/admin/CreateReferralLinkDialog';
 import { ReferralLinkActiveToggle } from '@/components/admin/ReferralLinkActiveToggle';
 import { formatDate, formatKes } from '@/lib/orders/format';
 
@@ -27,20 +22,12 @@ export default async function AdminReferralsPage({
   const [
     { links, nextCursor: nextLinksCursor },
     { commissions, nextCursor: nextCommissionsCursor },
-    { creators: activeCreators },
   ] = await Promise.all([
     referralService.listLinks(session.businessId, { cursor: linksCursor }),
     referralService.listCommissions(session.businessId, {
       cursor: commissionsCursor,
     }),
-    creatorAdminService.listCreators(session.businessId, { status: 'active' }),
   ]);
-
-  const eligibleCreators: EligibleCreator[] = activeCreators.map((c) => ({
-    uid: c.uid,
-    displayName: c.user?.displayName ?? 'Unknown',
-    email: c.user?.email ?? c.uid,
-  }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,16 +36,17 @@ export default async function AdminReferralsPage({
           Referrals
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Referral links creators share, and the commissions they&apos;ve
-          earned. Commissions are credited automatically the moment an order
-          uses a valid code — this is oversight, not an approval queue.
+          Every creator gets one permanent referral link automatically at
+          registration — a fixed KES 250 customer discount and a commission
+          locked in by their real registration order. Commissions are credited
+          automatically the moment an order uses a valid code; the only lever
+          here is pausing a link, e.g. for suspected fraud.
         </p>
       </div>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardHeader>
           <CardTitle>Referral links</CardTitle>
-          <CreateReferralLinkDialog creators={eligibleCreators} />
         </CardHeader>
         <CardContent className="p-0">
           {links.length === 0 ? (
@@ -66,11 +54,7 @@ export default async function AdminReferralsPage({
               <EmptyState
                 icon={Megaphone}
                 title="No referral links yet"
-                description={
-                  eligibleCreators.length === 0
-                    ? 'Approve a creator first, then create their first referral link here.'
-                    : 'Create a code for one of your active creators to start tracking referrals.'
-                }
+                description="A link is provisioned automatically the moment a creator registers — none have registered yet."
               />
             </div>
           ) : (

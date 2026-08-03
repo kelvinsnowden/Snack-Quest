@@ -26,6 +26,7 @@ const seedProfile = {
   availableCashKes: 1000,
   pendingEarningsKes: 0,
   lifetimeEarningsKes: 1000,
+  commissionRateKes: 500,
   status: 'active',
   onboardingCompleted: true,
   bio: '',
@@ -116,6 +117,17 @@ describe('creatorProfiles security rules', () => {
     await assertFails(
       updateDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID), {
         availableCashKes: 999999,
+      }),
+    );
+  });
+
+  it('blocks a creator from writing to their own commissionRateKes', async () => {
+    const ctx = testEnv.authenticatedContext(CREATOR_UID, {
+      roles: ['creator'],
+    });
+    await assertFails(
+      updateDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID), {
+        commissionRateKes: 999999,
       }),
     );
   });

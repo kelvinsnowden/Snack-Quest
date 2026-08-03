@@ -1,11 +1,20 @@
 import 'server-only';
 
-import { adminAuth } from '@/lib/firebase/admin';
+import { adminAuth, adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
-import { creatorRepository } from '@/repositories/creatorRepository';
+import {
+  creatorRepository,
+  claimNextRegistrationNumberInTransaction,
+  createInTransaction as createCreatorProfileInTransaction,
+} from '@/repositories/creatorRepository';
+import { createInTransaction as createReferralLinkInTransaction } from '@/repositories/referralLinkRepository';
 import { generateUniqueReferralCode } from '@/lib/creators/referralCode';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { publishEvent } from '@/lib/events/eventBus';
+import {
+  REFERRAL_DISCOUNT_KES,
+  resolveCommissionRateKes,
+} from '@/lib/creators/referralEconomics';
 import type { CreatorStatus, User } from '@/types';
 
 /**
@@ -62,7 +71,15 @@ export interface CreatorSession {
   onboardingCompleted: boolean;
 }
 
-function toSession(uid: string, user: User, profile: { businessId: string; status: CreatorStatus; onboardingCompleted: boolean }): CreatorSession {
+function toSession(
+  uid: string,
+  user: User,
+  profile: {
+    businessId: string;
+    status: CreatorStatus;
+    onboardingCompleted: boolean;
+  },
+): CreatorSession {
   return {
     uid,
     email: user.email,
@@ -74,7 +91,10 @@ function toSession(uid: string, user: User, profile: { businessId: string; statu
 }
 
 class CreatorAuthService {
-  async register(idToken: string, displayName: string): Promise<{ cookie: string; maxAgeMs: number; session: CreatorSession }> {
+  async register(
+    idToken: string,
+    displayName: string,
+  ): Promise<{ cookie: string; maxAgeMs: number; session: CreatorSession }> {
     const trimmedName = displayName.trim();
     if (!trimmedName) {
       throw new InvalidCreatorRegistrationError('Display name is required');
@@ -110,31 +130,73 @@ class CreatorAuthService {
       );
     }
 
-    const referralCode = await generateUniqueReferralCode(businessId, trimmedName);
-    await creatorRepository.create(decoded.uid, {
+    // The referral code is generated up front (a bounded uniqueness
+    // retry loop of its own, see generateUniqueReferralCode's doc
+    // comment) so it's ready to double as the code of the one
+    // permanent referral link created inside the transaction below —
+    // every creator gets exactly one, auto-generated, never creator-
+    // or admin-editable (§ referral system overhaul).
+    const referralCode = await generateUniqueReferralCode(
       businessId,
-      referralCode,
-      tier: 'bronze',
-      availableCashKes: 0,
-      pendingEarningsKes: 0,
-      lifetimeEarningsKes: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      bio: '',
-      niche: '',
-      followersRange: '',
-      paymentPreference: 'mpesa',
-      payoutPhoneNumber: null,
-      socialHandles: {},
-      onboardingCompleted: false,
-      status: 'pending',
-      schemaVersion: 1,
+      trimmedName,
+    );
+
+    await adminFirestore.runTransaction(async (tx) => {
+      const registrationNumber = await claimNextRegistrationNumberInTransaction(
+        tx,
+        businessId,
+      );
+      const commissionRateKes = resolveCommissionRateKes(registrationNumber);
+
+      createCreatorProfileInTransaction(tx, decoded.uid, {
+        businessId,
+        referralCode,
+        tier: 'bronze',
+        availableCashKes: 0,
+        pendingEarningsKes: 0,
+        lifetimeEarningsKes: 0,
+        commissionRateKes,
+        totalClicks: 0,
+        totalConversions: 0,
+        bio: '',
+        niche: '',
+        followersRange: '',
+        paymentPreference: 'mpesa',
+        payoutPhoneNumber: null,
+        socialHandles: {},
+        onboardingCompleted: false,
+        status: 'pending',
+        schemaVersion: 1,
+      });
+
+      createReferralLinkInTransaction(
+        tx,
+        {
+          businessId,
+          code: referralCode,
+          ownerId: decoded.uid,
+          discountKes: REFERRAL_DISCOUNT_KES,
+          commissionKes: commissionRateKes,
+          isActive: true,
+          clickCount: 0,
+          conversionCount: 0,
+        },
+        decoded.uid,
+      );
     });
 
     await adminAuth.setCustomUserClaims(decoded.uid, { roles, businessId });
-    await publishEvent(businessId, 'CreatorRegistered', 'creatorProfile', decoded.uid, { referralCode });
+    await publishEvent(
+      businessId,
+      'CreatorRegistered',
+      'creatorProfile',
+      decoded.uid,
+      { referralCode },
+    );
 
-    const cookie = await adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
+    const cookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: SESSION_MAX_AGE_MS,
+    });
 
     return {
       cookie,
@@ -150,7 +212,9 @@ class CreatorAuthService {
     };
   }
 
-  async login(idToken: string): Promise<{ cookie: string; maxAgeMs: number; session: CreatorSession }> {
+  async login(
+    idToken: string,
+  ): Promise<{ cookie: string; maxAgeMs: number; session: CreatorSession }> {
     const decoded = await adminAuth.verifyIdToken(idToken);
     const [user, profile] = await Promise.all([
       userRepository.findById(decoded.uid),
@@ -161,8 +225,13 @@ class CreatorAuthService {
       throw new CreatorNotProvisionedError(decoded.uid);
     }
 
-    await adminAuth.setCustomUserClaims(decoded.uid, { roles: user.roles, businessId: profile.businessId });
-    const cookie = await adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
+    await adminAuth.setCustomUserClaims(decoded.uid, {
+      roles: user.roles,
+      businessId: profile.businessId,
+    });
+    const cookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: SESSION_MAX_AGE_MS,
+    });
 
     return {
       cookie,

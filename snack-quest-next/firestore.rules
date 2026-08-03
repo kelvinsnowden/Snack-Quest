@@ -70,7 +70,8 @@ service cloud.firestore {
                           !request.resource.data.diff(resource.data)
                             .affectedKeys()
                             .hasAny(['availableCashKes','pendingEarningsKes',
-                                     'lifetimeEarningsKes','status'])) || isAdmin();
+                                     'lifetimeEarningsKes','status',
+                                     'commissionRateKes'])) || isAdmin();
       allow delete: if false;
 
       // earningsLedger: the immutable source of truth behind

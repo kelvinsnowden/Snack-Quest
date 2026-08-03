@@ -1,15 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const { createLinkMock, updateLinkMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({
-  createLinkMock: vi.fn(),
-  updateLinkMock: vi.fn(),
+const { setActiveMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({
+  setActiveMock: vi.fn(),
   verifyStaffSessionFromRequestMock: vi.fn(),
 }));
 
 vi.mock('@/services/referralService', () => ({
-  referralService: { createLink: createLinkMock, updateLink: updateLinkMock },
-  DuplicateReferralCodeError: class DuplicateReferralCodeError extends Error {},
-  CreatorNotEligibleError: class CreatorNotEligibleError extends Error {},
+  referralService: { setActive: setActiveMock },
   ReferralLinkNotFoundError: class ReferralLinkNotFoundError extends Error {},
 }));
 
@@ -17,126 +14,89 @@ vi.mock('@/lib/auth/session', () => ({
   verifyStaffSessionFromRequest: verifyStaffSessionFromRequestMock,
 }));
 
-import { POST as createRoute } from '@/app/api/admin/referral-links/route';
-import { PATCH as updateRoute } from '@/app/api/admin/referral-links/[linkId]/route';
-import {
-  DuplicateReferralCodeError,
-  CreatorNotEligibleError,
-  ReferralLinkNotFoundError,
-} from '@/services/referralService';
+import { PATCH as patchRoute } from '@/app/api/admin/referral-links/[linkId]/route';
+import { ReferralLinkNotFoundError } from '@/services/referralService';
 
 /**
- * Route-handler-level tests for Admin Referral Links create/update (§
- * Admin: Referrals) — `ReferralService` itself is already covered by
- * tests/services/referralService.test.ts; these prove the wire.
+ * Route-handler-level tests for the admin referral-link pause/resume
+ * endpoint (§ referral system overhaul) — the only mutation left once
+ * every creator's one permanent link is auto-generated at
+ * registration with a fixed discount and a tiered commission. Proves
+ * the route only ever accepts `isActive`, never `code`/`discountKes`/
+ * `commissionKes` — those fields simply have no effect if sent.
  */
 
-const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
+const STAFF_SESSION = {
+  uid: 'staff-1',
+  email: 'staff@example.com',
+  displayName: 'Staff',
+  roles: ['admin'],
+  businessId: 'biz-1',
+};
 
-function jsonRequest(url: string, body: unknown): Request {
-  return new Request(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+function call(body: unknown) {
+  const request = new Request(
+    'http://localhost/api/admin/referral-links/link-1',
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  return patchRoute(request, { params: Promise.resolve({ linkId: 'link-1' }) });
 }
 
-describe('POST /api/admin/referral-links', () => {
+describe('PATCH /api/admin/referral-links/[linkId]', () => {
   it('401s without a valid staff session', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(null);
-    const response = await createRoute(
-      jsonRequest('http://localhost/api/admin/referral-links', { ownerId: 'c1', code: 'X', discountKes: 0, commissionKes: 0 }),
-    );
+    const response = await call({ isActive: false });
     expect(response.status).toBe(401);
-    expect(createLinkMock).not.toHaveBeenCalled();
+    expect(setActiveMock).not.toHaveBeenCalled();
   });
 
-  it('400s a missing code', async () => {
+  it('400s a non-boolean isActive', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    const response = await createRoute(
-      jsonRequest('http://localhost/api/admin/referral-links', { ownerId: 'c1', discountKes: 0, commissionKes: 0 }),
-    );
+    const response = await call({ isActive: 'nope' });
     expect(response.status).toBe(400);
+    expect(setActiveMock).not.toHaveBeenCalled();
   });
 
-  it('creates a link scoped to the session businessId', async () => {
+  it('400s a body with no isActive at all, even if it carries other fields', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    createLinkMock.mockResolvedValue('link-1');
+    const response = await call({
+      code: 'NEWCODE',
+      discountKes: 500,
+      commissionKes: 1000,
+    });
+    expect(response.status).toBe(400);
+    expect(setActiveMock).not.toHaveBeenCalled();
+  });
 
-    const response = await createRoute(
-      jsonRequest('http://localhost/api/admin/referral-links', {
-        ownerId: 'creator-1',
-        code: 'SAVE10',
-        discountKes: 100,
-        commissionKes: 50,
-      }),
-    );
+  it('200s and calls the service scoped to the session businessId, ignoring any other fields in the body', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    setActiveMock.mockResolvedValue(undefined);
 
-    expect(response.status).toBe(201);
-    expect(createLinkMock).toHaveBeenCalledWith(
-      expect.objectContaining({ businessId: 'biz-1', ownerId: 'creator-1', code: 'SAVE10' }),
+    const response = await call({
+      isActive: false,
+      code: 'IGNORED',
+      discountKes: 999,
+      commissionKes: 999,
+    });
+
+    expect(response.status).toBe(200);
+    expect(setActiveMock).toHaveBeenCalledWith(
+      'biz-1',
+      'link-1',
+      false,
       'staff-1',
     );
   });
 
-  it('400s a creator the service reports as ineligible', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    createLinkMock.mockRejectedValue(new CreatorNotEligibleError('creator-1'));
-
-    const response = await createRoute(
-      jsonRequest('http://localhost/api/admin/referral-links', { ownerId: 'creator-1', code: 'X', discountKes: 0, commissionKes: 0 }),
-    );
-    expect(response.status).toBe(400);
-  });
-
-  it('409s a duplicate code', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    createLinkMock.mockRejectedValue(new DuplicateReferralCodeError('X'));
-
-    const response = await createRoute(
-      jsonRequest('http://localhost/api/admin/referral-links', { ownerId: 'creator-1', code: 'X', discountKes: 0, commissionKes: 0 }),
-    );
-    expect(response.status).toBe(409);
-  });
-});
-
-describe('PATCH /api/admin/referral-links/[linkId]', () => {
-  function call(body: unknown) {
-    return updateRoute(jsonRequest('http://localhost/api/admin/referral-links/link-1', body), {
-      params: Promise.resolve({ linkId: 'link-1' }),
-    });
-  }
-
-  it('401s without a valid staff session', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(null);
-    const response = await call({ isActive: false });
-    expect(response.status).toBe(401);
-    expect(updateLinkMock).not.toHaveBeenCalled();
-  });
-
-  it('200s and calls the service scoped to the session businessId', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    updateLinkMock.mockResolvedValue(undefined);
-
-    const response = await call({ isActive: false });
-
-    expect(response.status).toBe(200);
-    expect(updateLinkMock).toHaveBeenCalledWith('biz-1', 'link-1', { isActive: false }, 'staff-1');
-  });
-
   it('404s a link the service reports as not found', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    updateLinkMock.mockRejectedValue(new ReferralLinkNotFoundError('link-1'));
+    setActiveMock.mockRejectedValue(new ReferralLinkNotFoundError('link-1'));
 
     const response = await call({ isActive: false });
     expect(response.status).toBe(404);
-  });
-
-  it('409s a duplicate code on rename', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    updateLinkMock.mockRejectedValue(new DuplicateReferralCodeError('X'));
-
-    const response = await call({ code: 'X' });
-    expect(response.status).toBe(409);
   });
 });
