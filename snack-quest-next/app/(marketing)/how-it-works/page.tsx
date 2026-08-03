@@ -17,7 +17,7 @@ import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 export const metadata: Metadata = buildPageMetadata({
   title: 'How it works',
   description:
-    'The five real steps from your first WhatsApp message to delivery: pick a box, choose delivery or pickup, pay with M-Pesa, and get packed and delivered.',
+    'The five steps from your first WhatsApp message to delivery: pick a box, choose delivery or pickup, pay with M-Pesa, and get packed and delivered.',
   path: '/how-it-works',
 });
 
@@ -38,13 +38,13 @@ const STEPS = [
     icon: Truck,
     title: 'Choose delivery or pickup',
     description:
-      "Door delivery is available in Nairobi. Outside Nairobi, choose from real Jumia pickup stations near you, we'll confirm the fee for your area before you pay anything.",
+      "Door delivery is available in Nairobi. Outside Nairobi, choose from Jumia pickup stations near you, we'll confirm the fee for your area before you pay anything.",
   },
   {
     icon: Smartphone,
     title: 'Pay with M-Pesa',
     description:
-      "Once you reply PAY, we send a real M-Pesa STK push straight to your phone. Nothing is charged before that. You're always in control of when payment happens.",
+      "Once you reply PAY, we send an M-Pesa STK push straight to your phone. Nothing is charged before that. You're always in control of when payment happens.",
   },
   {
     icon: CheckCircle2,

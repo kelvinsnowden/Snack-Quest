@@ -18,17 +18,17 @@ const FAQS = [
   {
     question: 'How do I pay?',
     answer:
-      'Once you confirm your box and delivery details, reply PAY and we send a real M-Pesa STK push to your phone. Nothing is charged until you approve that prompt.',
+      'Once you confirm your box and delivery details, reply PAY and we send an M-Pesa STK push to your phone. Nothing is charged until you approve that prompt.',
   },
   {
     question: 'Where do you deliver?',
     answer:
-      "We offer door delivery in Nairobi. Outside Nairobi, you can choose a pickup station from our courier network, we'll show you real options and fees for your area during checkout.",
+      "We offer door delivery in Nairobi. Outside Nairobi, you can choose a pickup station from our courier network, we'll show you options and fees for your area during checkout.",
   },
   {
     question: 'How long does delivery take?',
     answer:
-      "It depends on your delivery method and location. We'll give you a real estimate on WhatsApp before you pay, and you can always ask for an update on your order afterward.",
+      "It depends on your delivery method and location. We'll give you an estimate on WhatsApp before you pay, and you can always ask for an update on your order afterward.",
   },
   {
     question: 'Can I change or cancel my order?',
@@ -43,7 +43,7 @@ const FAQS = [
   {
     question: 'How does the Creator Program work?',
     answer:
-      'Sign up, get your own referral link, and share it. When someone orders through your link, you earn a real commission credited to your creator balance, which you can withdraw to M-Pesa.',
+      'Sign up, get your own referral link, and share it. When someone orders through your link, you earn commission credited to your creator balance, which you can withdraw to M-Pesa.',
   },
 ];
 
