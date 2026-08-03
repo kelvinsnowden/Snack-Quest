@@ -20,11 +20,11 @@
   /* Primitives */
   --sq-primitive-orange: #ff7a00;
   --sq-primitive-purple: #6c3bff;
-  --sq-primitive-cream: #fff8ee;
+  --sq-primitive-offwhite: #f7f7f8;
   --sq-primitive-charcoal: #1f1f1f;
 
   /* Semantic — light mode (default) */
-  --sq-background: var(--sq-primitive-cream);
+  --sq-background: var(--sq-primitive-offwhite);
   --sq-foreground: var(--sq-primitive-charcoal);
   --sq-surface: #ffffff;
   --sq-surface-raised: #ffffff;
@@ -104,7 +104,7 @@
   --sq-info-foreground: #061626;
 }
 :root[data-theme='light'] {
-  --sq-background: var(--sq-primitive-cream);
+  --sq-background: var(--sq-primitive-offwhite);
   --sq-foreground: var(--sq-primitive-charcoal);
   --sq-surface: #ffffff;
   --sq-surface-raised: #ffffff;
