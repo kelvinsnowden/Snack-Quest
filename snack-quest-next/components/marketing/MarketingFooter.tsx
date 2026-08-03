@@ -5,73 +5,61 @@ function currentYear(): number {
   return new Date().getFullYear();
 }
 
-const FOOTER_SECTIONS = [
-  {
-    title: 'Snack Quest',
-    links: [
-      { href: '/boxes', label: 'Boxes' },
-      { href: '/how-it-works', label: 'How it works' },
-      { href: '/about', label: 'Our story' },
-    ],
-  },
-  {
-    title: 'Creators',
-    links: [
-      { href: '/creators', label: 'Creator program' },
-      { href: '/creator/register', label: 'Become a creator' },
-      { href: '/creator/login', label: 'Creator sign in' },
-    ],
-  },
-  {
-    title: 'Support',
-    links: [
-      { href: '/faq', label: 'FAQ' },
-      { href: '/contact', label: 'Contact us' },
-    ],
-  },
-  {
-    title: 'Legal',
-    links: [
-      { href: '/privacy', label: 'Privacy policy' },
-      { href: '/terms', label: 'Terms of service' },
-    ],
-  },
+/**
+ * Flat, single-row link list (§ reduce footer height ~70%) — the
+ * previous footer stacked four titled columns (Snack Quest / Creators
+ * / Support / Legal), each three-plus links tall, under 48px of
+ * top-and-bottom container padding. That height comes from the
+ * *number of stacked rows*, not spacing choices, so tightening gaps
+ * alone couldn't get close to a 70% cut without losing links. Every
+ * link below is unchanged from the old four-column list — just laid
+ * out as one wrapped row instead of four stacked ones, which is
+ * shorter and, for ten links, no less scannable.
+ */
+const FOOTER_LINKS = [
+  { href: '/boxes', label: 'Boxes' },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/about', label: 'Our story' },
+  { href: '/creators', label: 'Creator program' },
+  { href: '/creator/register', label: 'Become a creator' },
+  { href: '/creator/login', label: 'Creator sign in' },
+  { href: '/faq', label: 'FAQ' },
+  { href: '/contact', label: 'Contact us' },
+  { href: '/privacy', label: 'Privacy policy' },
+  { href: '/terms', label: 'Terms of service' },
 ];
 
 export function MarketingFooter({ businessName }: { businessName: string }) {
   return (
-    <footer className="border-t border-border bg-surface pb-20 md:pb-0">
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="lg:col-span-1">
-            <div className="flex items-center gap-2">
-              <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-                SQ
-              </span>
-              <span className="text-base font-bold tracking-tight text-foreground">{businessName}</span>
-            </div>
-            <p className="mt-3 max-w-xs text-sm text-muted-foreground">
-              Snack boxes ordered on WhatsApp, delivered across Kenya.
-            </p>
-          </div>
-          {FOOTER_SECTIONS.map((section) => (
-            <div key={section.title}>
-              <p className="text-caption font-semibold tracking-wide text-foreground uppercase">{section.title}</p>
-              <ul className="mt-3 flex flex-col gap-2">
-                {section.links.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className="text-sm text-muted-foreground hover:text-foreground">
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+    <footer className="border-border bg-surface border-t pb-20 md:pb-0">
+      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+          <Link href="/" className="flex items-center gap-1.5">
+            <span className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md text-[10px] font-bold">
+              SQ
+            </span>
+            <span className="text-foreground text-sm font-semibold tracking-tight">
+              {businessName}
+            </span>
+          </Link>
+          <nav
+            aria-label="Footer"
+            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-end"
+          >
+            {FOOTER_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-muted-foreground hover:text-foreground text-xs"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
-        <div className="mt-10 border-t border-border pt-6 text-caption text-muted-foreground">
+        <p className="text-caption text-muted-foreground text-center sm:text-left">
           © {currentYear()} {businessName}. All rights reserved.
-        </div>
+        </p>
       </div>
     </footer>
   );
