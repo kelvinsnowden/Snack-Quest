@@ -2,7 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { packageRepository } from '@/repositories/packageRepository';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
@@ -45,38 +45,58 @@ export default async function BoxDetailPage({
 
   const message = `Hi! I'd like to order the ${box.name} (${formatKes(box.priceKes)}).`;
   const inStock = box.stockCount === undefined || box.stockCount > 0;
-  const productJsonLd = {
+  const siteUrl = getSiteUrl();
+  const boxUrl = `${siteUrl}/boxes/${packageId}`;
+  const jsonLdGraph = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: box.name,
-    description: box.description,
-    ...(box.imageUrl ? { image: [box.imageUrl] } : {}),
-    url: `${getSiteUrl()}/boxes/${packageId}`,
-    offers: {
-      '@type': 'Offer',
-      priceCurrency: 'KES',
-      price: box.priceKes,
-      availability: inStock
-        ? 'https://schema.org/InStock'
-        : 'https://schema.org/OutOfStock',
-      url: `${getSiteUrl()}/boxes/${packageId}`,
-    },
+    '@graph': [
+      {
+        '@type': 'Product',
+        name: box.name,
+        description: box.description,
+        ...(box.imageUrl ? { image: [box.imageUrl] } : {}),
+        url: boxUrl,
+        offers: {
+          '@type': 'Offer',
+          priceCurrency: 'KES',
+          price: box.priceKes,
+          availability: inStock
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/OutOfStock',
+          url: boxUrl,
+        },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
+          { '@type': 'ListItem', position: 2, name: 'Our boxes', item: `${siteUrl}/boxes` },
+          { '@type': 'ListItem', position: 3, name: box.name, item: boxUrl },
+        ],
+      },
+    ],
   };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
       />
       <SetActiveBoxName name={box.name} />
-      <Link
-        href="/boxes"
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        All boxes
-      </Link>
+      <nav aria-label="Breadcrumb" className="text-muted-foreground flex items-center gap-1.5 text-sm">
+        <Link href="/" className="hover:text-foreground">
+          Home
+        </Link>
+        <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+        <Link href="/boxes" className="hover:text-foreground">
+          Our boxes
+        </Link>
+        <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="text-foreground min-w-0 truncate font-medium" aria-current="page">
+          {box.name}
+        </span>
+      </nav>
 
       <div className="animate-fade-in mt-6 grid gap-10 lg:grid-cols-2 lg:items-start">
         <div className="bg-border/40 relative aspect-square w-full overflow-hidden rounded-2xl">

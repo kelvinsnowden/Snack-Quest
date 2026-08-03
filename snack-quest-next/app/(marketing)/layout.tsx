@@ -24,19 +24,37 @@ export default async function MarketingLayout({
   const businessName = business?.name ?? 'Snack Quest';
   const siteUrl = getSiteUrl();
 
-  const organizationJsonLd = {
+  // A `@graph` rather than two separate `<script>` tags: `WebSite`
+  // references the `Organization` as its `publisher`, which only
+  // resolves correctly when both nodes share one JSON-LD document.
+  const jsonLdGraph = {
     '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: businessName,
-    url: siteUrl,
-    contactPoint: [
+    '@graph': [
       {
-        '@type': 'ContactPoint',
-        telephone: `+${WHATSAPP_CTA_NUMBER}`,
-        contactType: 'customer service',
+        '@type': 'Organization',
+        '@id': `${siteUrl}/#organization`,
+        name: businessName,
+        url: siteUrl,
+        logo: `${siteUrl}/logo.png`,
+        areaServed: 'KE',
+        contactPoint: [
+          {
+            '@type': 'ContactPoint',
+            telephone: `+${WHATSAPP_CTA_NUMBER}`,
+            contactType: 'customer service',
+          },
+        ],
+        sameAs: Object.values(SOCIAL_LINKS),
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteUrl}/#website`,
+        name: businessName,
+        url: siteUrl,
+        inLanguage: 'en-KE',
+        publisher: { '@id': `${siteUrl}/#organization` },
       },
     ],
-    sameAs: Object.values(SOCIAL_LINKS),
   };
 
   return (
@@ -44,7 +62,7 @@ export default async function MarketingLayout({
       <div className="flex min-h-full flex-col">
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
         />
         <a
           href="#main-content"

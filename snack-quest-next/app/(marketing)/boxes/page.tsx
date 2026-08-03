@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatKes } from '@/lib/orders/format';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Our boxes',
@@ -18,9 +19,27 @@ export const metadata: Metadata = buildPageMetadata({
 export default async function BoxesPage() {
   const businessId = getCurrentBusinessId();
   const packages = await packageRepository.listActive(businessId);
+  const siteUrl = getSiteUrl();
+
+  const itemListJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListElement: packages.map(({ id, data }, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      url: `${siteUrl}/boxes/${id}`,
+      name: data.name,
+    })),
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+      {packages.length > 0 ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
+        />
+      ) : null}
       <div className="max-w-2xl">
         <h1 className="text-page-title font-bold tracking-tight text-foreground">Our boxes</h1>
         <p className="mt-3 text-subtitle text-muted-foreground">
