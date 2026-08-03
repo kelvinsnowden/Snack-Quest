@@ -18,48 +18,11 @@ import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
+import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { formatDate, formatKes } from '@/lib/orders/format';
+import { computePeriodTrend } from '@/lib/analytics/trend';
 
 export const metadata: Metadata = { title: 'Dashboard' };
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tone?: 'default' | 'warning';
-}
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  tone = 'default',
-}: StatCardProps) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-4 p-6">
-        <div>
-          <p className="text-caption text-muted-foreground font-medium tracking-wide uppercase">
-            {label}
-          </p>
-          <p className="text-foreground mt-2 text-3xl font-semibold tabular-nums">
-            {value}
-          </p>
-        </div>
-        <div
-          className={
-            'flex size-10 shrink-0 items-center justify-center rounded-md ' +
-            (tone === 'warning'
-              ? 'bg-warning/10 text-warning'
-              : 'bg-primary/10 text-primary')
-          }
-        >
-          <Icon className="size-5" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 const QUICK_LINKS = [
   { href: '/admin/orders', label: 'Orders', icon: ClipboardList },
@@ -98,6 +61,13 @@ export default async function AdminDashboardPage() {
       orderRepository.listByBusiness(session.businessId, { limit: 5 }),
     ]);
 
+  const revenueTrend = computePeriodTrend(
+    revenue.totalRevenueKes,
+    revenue.previousPeriod.totalRevenueKes,
+    'vs previous 30 days',
+  );
+  const revenueDeltaKes = revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes;
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -111,28 +81,52 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
+        <TrendStatCard
           label="Revenue (30 days)"
           value={formatKes(revenue.totalRevenueKes)}
-          icon={Banknote}
+          icon={<Banknote className="size-5" />}
+          trend={revenueTrend}
+          sparkline={revenue.days.map((d) => d.revenueKes)}
         />
-        <StatCard
+        <TrendStatCard
           label="Total orders"
           value={totalOrders.toLocaleString()}
-          icon={ClipboardList}
+          icon={<ClipboardList className="size-5" />}
+          tone="secondary"
         />
-        <StatCard
+        <TrendStatCard
           label="Awaiting a human agent"
           value={agentQueueCount.toLocaleString()}
-          icon={MessageCircleWarning}
-          tone={agentQueueCount > 0 ? 'warning' : 'default'}
+          icon={<MessageCircleWarning className="size-5" />}
+          tone={agentQueueCount > 0 ? 'warning' : 'secondary'}
         />
-        <StatCard
+        <TrendStatCard
           label="Staff members"
           value={staff.length.toLocaleString()}
-          icon={Users}
+          icon={<Users className="size-5" />}
+          tone="secondary"
         />
       </div>
+
+      {revenueTrend ? (
+        <div
+          className={
+            'rounded-lg border p-4 text-sm ' +
+            (revenueTrend.percent >= 0
+              ? 'border-success/20 bg-success/5 text-success'
+              : 'border-danger/20 bg-danger/5 text-danger')
+          }
+        >
+          <span className="font-medium">
+            {revenueTrend.percent >= 0 ? 'Revenue is up' : 'Revenue is down'}{' '}
+            {Math.abs(revenueTrend.percent).toFixed(1)}% vs the previous 30 days
+          </span>{' '}
+          <span className="text-foreground/80">
+            ({revenueTrend.percent >= 0 ? '+' : '−'}
+            {formatKes(Math.abs(revenueDeltaKes))} {revenueTrend.percent >= 0 ? 'more' : 'less'} than last period)
+          </span>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">

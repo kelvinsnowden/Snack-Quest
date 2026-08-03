@@ -47,6 +47,11 @@ export interface RevenueOverview {
   orderCount: number;
   averageOrderValueKes: number;
   days: RevenueDay[];
+  /** The equal-length window immediately before this one — e.g. days 31–60 ago when `days` is 30 — for a real "vs last period" comparison, not a fabricated trend. */
+  previousPeriod: {
+    totalRevenueKes: number;
+    orderCount: number;
+  };
 }
 
 export interface FunnelStage {
@@ -92,10 +97,22 @@ export interface DeliveryPerformance {
 class BusinessAnalyticsService {
   async getRevenueOverview(businessId: string, days = 30): Promise<RevenueOverview> {
     const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const windowMs = days * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - windowMs;
+    const previousCutoff = cutoff - windowMs;
 
     const inWindow = orders.filter(
       (o) => REVENUE_STATUSES.includes(o.data.status) && toMillis(o.data.createdAt) >= cutoff,
+    );
+    // Bounded by the same REVENUE_ORDER_LIMIT scan as `inWindow` — this
+    // reuses the list already fetched rather than a second query, same
+    // "correct for today's volume" tradeoff the class doc comment
+    // already accepts for the current window.
+    const inPreviousWindow = orders.filter(
+      (o) =>
+        REVENUE_STATUSES.includes(o.data.status) &&
+        toMillis(o.data.createdAt) >= previousCutoff &&
+        toMillis(o.data.createdAt) < cutoff,
     );
 
     const byDay = new Map<string, RevenueDay>();
@@ -115,11 +132,17 @@ class BusinessAnalyticsService {
       }
     }
 
+    const previousTotalRevenueKes = inPreviousWindow.reduce((sum, o) => sum + o.data.pricing.totalKes, 0);
+
     return {
       totalRevenueKes,
       orderCount: inWindow.length,
       averageOrderValueKes: inWindow.length > 0 ? Math.round(totalRevenueKes / inWindow.length) : 0,
       days: Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date)),
+      previousPeriod: {
+        totalRevenueKes: previousTotalRevenueKes,
+        orderCount: inPreviousWindow.length,
+      },
     };
   }
 

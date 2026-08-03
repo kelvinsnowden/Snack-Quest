@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Banknote, Link2, Megaphone, ShoppingBag, Trophy } from 'lucide-react';
+import { ArrowRight, Banknote, Link2, Megaphone, Percent, ShoppingBag, Trophy } from 'lucide-react';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { referralService } from '@/services/referralService';
@@ -127,12 +127,26 @@ export default async function CreatorHomePage() {
       <PortalSection id="performance" title="How you're performing">
         <PortalCard>
           {/*
+            Icon-in-circle badge, same treatment as the admin/finance
+            stat cards (§ dashboard reference-image quality pass) — one
+            visual language for "here's a metric" across every portal,
+            without pulling the admin-tier TrendStatCard component into
+            the Creator Portal's own design tier.
+          */}
+          <span
+            aria-hidden="true"
+            className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-full"
+          >
+            <Percent className="size-5" />
+          </span>
+
+          {/*
             One ratio rather than two raw counters. "412 clicks, 18
             conversions" makes the reader do the division; the rate is
             the thing they were computing, so it leads and the counts
             become its supporting detail.
           */}
-          <div className="flex items-end justify-between gap-4">
+          <div className="mt-4 flex items-end justify-between gap-4">
             <div>
               <p className="text-caption text-muted-foreground font-medium tracking-wide uppercase">
                 Conversion rate

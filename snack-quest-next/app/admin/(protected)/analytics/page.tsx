@@ -1,11 +1,14 @@
 import type { Metadata } from 'next';
+import { Banknote, ClipboardList, Receipt } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RevenueChart } from '@/components/admin/RevenueChart';
 import { FunnelChart } from '@/components/admin/FunnelChart';
 import { MarketingSpendForm } from '@/components/admin/MarketingSpendForm';
+import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { formatKes } from '@/lib/orders/format';
+import { computePeriodTrend } from '@/lib/analytics/trend';
 
 export const metadata: Metadata = { title: 'Analytics' };
 
@@ -25,6 +28,11 @@ export default async function AdminAnalyticsPage() {
     businessAnalyticsService.getDeliveryPerformance(session.businessId),
   ]);
 
+  const previousAverageOrderValueKes =
+    revenue.previousPeriod.orderCount > 0
+      ? Math.round(revenue.previousPeriod.totalRevenueKes / revenue.previousPeriod.orderCount)
+      : 0;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -33,24 +41,25 @@ export default async function AdminAnalyticsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">Revenue (30 days)</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">{formatKes(revenue.totalRevenueKes)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">Orders (30 days)</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">{revenue.orderCount.toLocaleString('en-KE')}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">Average order value</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">{formatKes(revenue.averageOrderValueKes)}</p>
-          </CardContent>
-        </Card>
+        <TrendStatCard
+          label="Revenue (30 days)"
+          value={formatKes(revenue.totalRevenueKes)}
+          icon={<Banknote className="size-5" />}
+          trend={computePeriodTrend(revenue.totalRevenueKes, revenue.previousPeriod.totalRevenueKes, 'vs previous 30 days')}
+          sparkline={revenue.days.map((d) => d.revenueKes)}
+        />
+        <TrendStatCard
+          label="Orders (30 days)"
+          value={revenue.orderCount.toLocaleString('en-KE')}
+          icon={<ClipboardList className="size-5" />}
+          trend={computePeriodTrend(revenue.orderCount, revenue.previousPeriod.orderCount, 'vs previous 30 days')}
+        />
+        <TrendStatCard
+          label="Average order value"
+          value={formatKes(revenue.averageOrderValueKes)}
+          icon={<Receipt className="size-5" />}
+          trend={computePeriodTrend(revenue.averageOrderValueKes, previousAverageOrderValueKes, 'vs previous 30 days')}
+        />
       </div>
 
       <Card>

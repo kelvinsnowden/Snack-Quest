@@ -74,6 +74,22 @@ describe('BusinessAnalyticsService.getRevenueOverview', () => {
     expect(overview.averageOrderValueKes).toBe(3000);
     expect(overview.days).toHaveLength(30);
   });
+
+  it('computes the previous equal-length window separately, for a real "vs last period" comparison', async () => {
+    // Current 30-day window.
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', createdAt: daysAgo(1), pricing: { subtotalKes: 4000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 4000 } });
+    // Previous 30-day window (days 31-60 ago).
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', createdAt: daysAgo(35), pricing: { subtotalKes: 1000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 1000 } });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', createdAt: daysAgo(50), pricing: { subtotalKes: 500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 500 } });
+    // Older than the previous window entirely (61+ days ago) — excluded from both.
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', createdAt: daysAgo(90), pricing: { subtotalKes: 9000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 9000 } });
+
+    const overview = await businessAnalyticsService.getRevenueOverview(BUSINESS_ID, 30);
+
+    expect(overview.totalRevenueKes).toBe(4000);
+    expect(overview.previousPeriod.totalRevenueKes).toBe(1500);
+    expect(overview.previousPeriod.orderCount).toBe(2);
+  });
 });
 
 describe('BusinessAnalyticsService.getFunnel', () => {
