@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
@@ -28,9 +29,7 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
           className="flex items-center gap-2"
           onClick={() => setMobileOpen(false)}
         >
-          <span className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-xl text-sm font-bold">
-            SQ
-          </span>
+          <Image src="/logo.png" alt="Snack Quest" width={36} height={36} className="size-9 rounded-xl object-cover" />
           <span className="text-foreground text-base font-bold tracking-tight">
             {businessName}
           </span>

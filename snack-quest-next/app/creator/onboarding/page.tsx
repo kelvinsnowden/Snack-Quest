@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import { redirect } from 'next/navigation';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { OnboardingForm } from '@/components/creator/OnboardingForm';
@@ -26,9 +27,7 @@ export default async function CreatorOnboardingPage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">
-            SQ
-          </div>
+          <Image src="/logo.png" alt="Snack Quest" width={48} height={48} className="size-12 rounded-xl object-cover" />
           <h1 className="text-page-title font-bold tracking-tight text-foreground">Welcome, {session.displayName.split(' ')[0]}</h1>
           <p className="text-sm text-muted-foreground">A few details before you get your referral link.</p>
         </div>

@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { ImageResponse } from 'next/og';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 
@@ -15,8 +17,12 @@ export const contentType = 'image/png';
 export const dynamic = 'force-dynamic';
 
 export default async function Image() {
-  const business = await getCurrentBusiness();
+  const [business, logoBuffer] = await Promise.all([
+    getCurrentBusiness(),
+    readFile(path.join(process.cwd(), 'public', 'logo.png')),
+  ]);
   const businessName = business?.name ?? 'Snack Quest';
+  const logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
 
   return new ImageResponse(
     (
@@ -35,22 +41,13 @@ export default async function Image() {
           fontFamily: 'sans-serif',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 88,
-            height: 88,
-            borderRadius: 24,
-            background: '#ff7a00',
-            color: '#ffffff',
-            fontSize: 32,
-            fontWeight: 700,
-          }}
-        >
-          SQ
-        </div>
+        <img
+          src={logoDataUrl}
+          alt=""
+          width={88}
+          height={88}
+          style={{ borderRadius: 24 }}
+        />
         <div style={{ display: 'flex', fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>{businessName}</div>
         <div style={{ display: 'flex', fontSize: 32, color: '#756e5f' }}>Snack boxes on WhatsApp, delivered across Kenya</div>
       </div>

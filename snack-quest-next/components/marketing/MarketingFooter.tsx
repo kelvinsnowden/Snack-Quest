@@ -1,4 +1,6 @@
+import Image from 'next/image';
 import Link from 'next/link';
+import { SocialLinks } from './SocialLinks';
 
 /** Not a component/hook — safe to call `Date.now()` here (matches lib/inventory/expiry.ts's own note on this ESLint rule). */
 function currentYear(): number {
@@ -35,9 +37,7 @@ export function MarketingFooter({ businessName }: { businessName: string }) {
       <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
           <Link href="/" className="flex items-center gap-1.5">
-            <span className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md text-[10px] font-bold">
-              SQ
-            </span>
+            <Image src="/logo.png" alt="Snack Quest" width={24} height={24} className="size-6 rounded-md object-cover" />
             <span className="text-foreground text-sm font-semibold tracking-tight">
               {businessName}
             </span>
@@ -57,9 +57,12 @@ export function MarketingFooter({ businessName }: { businessName: string }) {
             ))}
           </nav>
         </div>
-        <p className="text-caption text-muted-foreground text-center sm:text-left">
-          © {currentYear()} {businessName}. All rights reserved.
-        </p>
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+          <p className="text-caption text-muted-foreground text-center sm:text-left">
+            © {currentYear()} {businessName}. All rights reserved.
+          </p>
+          <SocialLinks className="flex items-center gap-3" />
+        </div>
       </div>
     </footer>
   );

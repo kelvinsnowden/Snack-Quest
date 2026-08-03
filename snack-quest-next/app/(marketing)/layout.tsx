@@ -3,6 +3,7 @@ import { MarketingHeader } from '@/components/marketing/MarketingHeader';
 import { MarketingFooter } from '@/components/marketing/MarketingFooter';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
+import { SOCIAL_LINKS } from '@/lib/config/socialLinks';
 
 /**
  * Every marketing page reads live data (active boxes, the business's
@@ -34,6 +35,7 @@ export default async function MarketingLayout({
         contactType: 'customer service',
       },
     ],
+    sameAs: Object.values(SOCIAL_LINKS),
   };
 
   return (

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireStaffSession } from '@/lib/auth/session';
@@ -39,9 +40,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 md:px-6">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-              SQ
-            </div>
+            <Image src="/logo.png" alt="Snack Quest" width={32} height={32} className="size-8 rounded-lg object-cover" />
             <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Warehouse</span>
           </div>
           <nav className="hidden items-center gap-1 sm:flex">

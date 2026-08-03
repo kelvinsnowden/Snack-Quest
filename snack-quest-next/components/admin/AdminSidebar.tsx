@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -11,9 +12,7 @@ export function AdminSidebar({ businessName }: { businessName: string }) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface md:flex">
       <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-          SQ
-        </div>
+        <Image src="/logo.png" alt="Snack Quest" width={32} height={32} className="size-8 shrink-0 rounded-lg object-cover" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{businessName}</p>
           <p className="text-caption text-muted-foreground">Admin</p>

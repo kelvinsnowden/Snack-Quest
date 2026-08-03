@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
@@ -49,12 +50,14 @@ export default async function CreatorProtectedLayout({
             href="/creator"
             className="focus-visible:ring-primary focus-visible:ring-offset-background flex items-center gap-2.5 rounded-md focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
-            <span
+            <Image
+              src="/logo.png"
+              alt=""
               aria-hidden="true"
-              className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg text-sm font-bold"
-            >
-              SQ
-            </span>
+              width={32}
+              height={32}
+              className="size-8 rounded-lg object-cover"
+            />
             <span className="text-foreground font-semibold">Creators</span>
           </Link>
           <CreatorUserMenu

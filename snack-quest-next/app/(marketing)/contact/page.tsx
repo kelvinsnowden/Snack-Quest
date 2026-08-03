@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { MessageCircle, HelpCircle } from 'lucide-react';
+import { MessageCircle, HelpCircle, Share2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { SocialLinks } from '@/components/marketing/SocialLinks';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
 export const metadata: Metadata = buildPageMetadata({
@@ -23,7 +24,7 @@ export default async function ContactPage() {
         place: WhatsApp.
       </p>
 
-      <div className="mt-10 grid gap-6 sm:grid-cols-2">
+      <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="flex flex-col gap-4 p-6">
           <MessageCircle className="text-primary size-8" aria-hidden="true" />
           <div>
@@ -60,6 +61,20 @@ export default async function ContactPage() {
           >
             Read the FAQ
           </Link>
+        </Card>
+
+        <Card className="flex flex-col gap-4 p-6">
+          <Share2 className="text-primary size-8" aria-hidden="true" />
+          <div>
+            <p className="text-card-title text-foreground font-semibold">
+              Follow us
+            </p>
+            <p className="text-muted-foreground mt-1 text-sm">
+              New boxes, behind-the-scenes, and creator shoutouts on
+              Facebook, Instagram, and TikTok.
+            </p>
+          </div>
+          <SocialLinks className="mt-auto flex items-center gap-4" />
         </Card>
       </div>
     </div>
