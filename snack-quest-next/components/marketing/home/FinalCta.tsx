@@ -4,7 +4,7 @@ import { Reveal } from '../design/Reveal';
 
 export function FinalCta() {
   return (
-    <section className="bg-home-purple-deep relative overflow-hidden px-5 py-24 text-white md:px-10 md:py-40">
+    <section className="bg-home-purple-deep relative overflow-hidden px-5 py-16 text-white md:px-10 md:py-40">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="bg-secondary/40 absolute -top-40 left-1/2 size-[500px] -translate-x-1/2 rounded-full blur-3xl" />
         <div className="bg-primary/30 absolute -right-20 -bottom-20 size-[400px] rounded-full blur-3xl" />

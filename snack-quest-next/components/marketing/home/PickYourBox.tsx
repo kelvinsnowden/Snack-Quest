@@ -78,7 +78,7 @@ export function PickYourBox({
         </div>
       </Reveal>
 
-      <div className="mx-auto mt-14 grid max-w-6xl gap-6 md:mt-20 md:grid-cols-3">
+      <div className="mx-auto mt-10 grid max-w-6xl gap-6 md:mt-20 md:grid-cols-3">
         {packages.map((pkg, index) => {
           const accent = ACCENTS[index % ACCENTS.length];
           const isEmphasized = packages.length === 3 && index === 1;

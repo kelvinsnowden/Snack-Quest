@@ -22,13 +22,13 @@ const STORY_PARAGRAPHS = [
  */
 export function FounderStory({ founderImageUrl }: { founderImageUrl: string | null }) {
   return (
-    <section className="relative overflow-hidden bg-background px-5 py-24 md:px-10 md:py-32">
+    <section className="relative overflow-hidden bg-background px-5 py-16 md:px-10 md:py-32">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden md:block">
         <div className="absolute -top-32 -right-24 size-[420px] rounded-full bg-primary/10 blur-3xl" />
         <div className="absolute -bottom-24 -left-24 size-[420px] rounded-full bg-secondary/10 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto grid max-w-6xl items-center gap-14 md:grid-cols-2 md:gap-20">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2 md:gap-20">
         <Reveal>
           <div className="relative mx-auto w-full max-w-[560px]">
             <div

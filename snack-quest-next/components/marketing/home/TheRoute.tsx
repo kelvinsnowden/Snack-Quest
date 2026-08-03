@@ -183,7 +183,7 @@ export function TheRoute() {
   return (
     <section
       ref={sectionRef}
-      className="relative overflow-hidden px-5 py-24 md:px-10 md:py-36"
+      className="relative overflow-hidden px-5 py-16 md:px-10 md:py-36"
       style={{
         background:
           'radial-gradient(ellipse at top, oklch(0.32 0.09 155) 0%, oklch(0.20 0.07 160) 55%, oklch(0.14 0.05 165) 100%)',
@@ -216,9 +216,9 @@ export function TheRoute() {
         </p>
       </div>
 
-      <div className="relative mx-auto mt-16 max-w-4xl md:mt-20">
+      <div className="relative mx-auto mt-10 max-w-4xl md:mt-20">
         <TrailSvg progress={progress} />
-        <ol className="relative flex flex-col gap-16 md:gap-24">
+        <ol className="relative flex flex-col gap-10 md:gap-24">
           {CHECKPOINTS.map((checkpoint, index) => (
             <CheckpointItem key={checkpoint.title} checkpoint={checkpoint} index={index} />
           ))}

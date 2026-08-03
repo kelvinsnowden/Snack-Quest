@@ -17,7 +17,7 @@ const CATEGORY_PILLS: Array<{ emoji: string; label: string; position: string; fl
  */
 export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
   return (
-    <section className="overflow-hidden bg-background px-5 py-20 md:px-10 md:py-32">
+    <section className="overflow-hidden bg-background px-5 py-14 md:px-10 md:py-32">
       <Reveal>
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-caption font-bold tracking-[0.3em] text-secondary uppercase">The loot</p>
@@ -33,7 +33,7 @@ export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
       </Reveal>
 
       <Reveal delayMs={150}>
-        <div className="relative mx-auto mt-16 w-full max-w-[1000px]">
+        <div className="relative mx-auto mt-10 w-full max-w-[1000px] md:mt-16">
           <div
             aria-hidden="true"
             className="absolute -inset-8 rounded-[48px] bg-gradient-to-br from-primary/20 via-home-lime/20 to-secondary/20 blur-3xl"

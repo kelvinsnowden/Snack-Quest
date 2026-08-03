@@ -12,7 +12,7 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  */
 export function HomeHero() {
   return (
-    <section className="bg-background relative overflow-hidden px-5 py-28 md:px-10 md:py-40">
+    <section className="bg-background relative overflow-hidden px-5 py-16 md:px-10 md:py-40">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="bg-primary/20 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
         <div className="bg-secondary/20 absolute top-40 -right-32 size-[420px] rounded-full blur-3xl" />
