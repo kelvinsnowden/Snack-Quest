@@ -17,7 +17,8 @@ export interface Campaign extends AuditFields {
   status: CampaignStatus;
   commissionRateKes: number;
   rules: string;
-  assetsUrl: string;
+  /** A creative asset (banner image) for this campaign, uploaded via the same Vercel Blob storage every other admin image upload uses. `null` until an admin uploads one — a campaign can be drafted before its artwork is ready. */
+  assetsUrl: string | null;
   deadline: Timestamp;
   targetNiche: string;
   schemaVersion: number;

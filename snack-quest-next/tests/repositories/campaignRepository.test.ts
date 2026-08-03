@@ -58,3 +58,27 @@ describe('campaignRepository.listActive', () => {
     expect(results.map((r) => r.data.title)).toEqual(['Near deadline', 'Far deadline']);
   });
 });
+
+describe('campaignRepository.listAll', () => {
+  it('returns every campaign for the business regardless of status', async () => {
+    await seedCampaign({ title: 'Draft one', status: 'draft' });
+    await seedCampaign({ title: 'Active one', status: 'active' });
+    await seedCampaign({ title: 'Ended one', status: 'ended' });
+    await seedCampaign({ title: 'Other business campaign', businessId: OTHER_BUSINESS_ID });
+
+    const results = await campaignRepository.listAll(BUSINESS_ID);
+
+    expect(results.map((r) => r.data.title).sort()).toEqual(['Active one', 'Draft one', 'Ended one']);
+  });
+});
+
+describe('campaignRepository.update', () => {
+  it('applies a partial patch and bumps updatedBy/updatedAt', async () => {
+    const id = await seedCampaign({ status: 'draft', commissionRateKes: 100 });
+
+    await campaignRepository.update(id, { status: 'active', commissionRateKes: 250 }, 'staff-2');
+
+    const updated = await campaignRepository.findById(BUSINESS_ID, id);
+    expect(updated).toMatchObject({ status: 'active', commissionRateKes: 250, updatedBy: 'staff-2' });
+  });
+});

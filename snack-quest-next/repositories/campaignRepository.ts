@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import type { AuditFields, Campaign } from '@/types';
 
-/** `campaigns` reads/writes (§ Creator Portal campaigns browse). `create` has no caller yet (no admin campaign-management UI exists), but is real, tested persistence — used directly by test fixtures today, and ready for that admin UI when it's built. */
+/** `campaigns` reads/writes (§ Creator Portal campaigns browse, § Admin: Campaigns). */
 
 const COLLECTION = 'campaigns';
 
@@ -24,6 +24,14 @@ class CampaignRepository {
     return ref.id;
   }
 
+  async update(campaignId: string, patch: Partial<CampaignInput>, actor: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(campaignId).update({
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor,
+    });
+  }
+
   async findById(businessId: string, campaignId: string): Promise<Campaign | null> {
     const snapshot = await adminFirestore.collection(COLLECTION).doc(campaignId).get();
     if (!snapshot.exists) {
@@ -40,6 +48,17 @@ class CampaignRepository {
       .where('businessId', '==', businessId)
       .where('status', '==', 'active')
       .orderBy('deadline', 'asc')
+      .get();
+
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Campaign }));
+  }
+
+  /** § Admin: Campaigns — every campaign regardless of status, newest first, for the admin management list. */
+  async listAll(businessId: string): Promise<{ id: string; data: Campaign }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .orderBy('createdAt', 'desc')
       .get();
 
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Campaign }));

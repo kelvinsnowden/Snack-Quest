@@ -1,9 +1,9 @@
 import 'server-only';
 
-import { campaignRepository } from '@/repositories/campaignRepository';
+import { campaignRepository, type CampaignInput } from '@/repositories/campaignRepository';
 import { campaignSubmissionRepository } from '@/repositories/campaignSubmissionRepository';
 import { publishEvent } from '@/lib/events/eventBus';
-import type { Campaign, CampaignSubmission } from '@/types';
+import type { Campaign, CampaignSubmission, CampaignStatus } from '@/types';
 
 export class CampaignNotFoundError extends Error {
   constructor(campaignId: string) {
@@ -11,6 +11,15 @@ export class CampaignNotFoundError extends Error {
     this.name = 'CampaignNotFoundError';
   }
 }
+
+export class InvalidCampaignInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidCampaignInputError';
+  }
+}
+
+const CAMPAIGN_STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
 
 export class CampaignNotJoinableError extends Error {
   constructor(campaignId: string, reason: string) {
@@ -36,17 +45,68 @@ export interface SubmitDeliverableInput {
 }
 
 /**
- * Owns the creator-facing side of brand campaigns (§ Creator Portal
- * campaigns browse) — browsing what's currently joinable and
- * submitting proof of a deliverable. Campaign creation/moderation
- * (approving/rejecting a submission) is admin-side work that doesn't
- * exist yet (no admin campaigns UI is built) — `listActiveCampaigns`
- * will honestly return an empty list until one does; this Service
- * doesn't fabricate campaigns to fill that gap.
+ * Owns both sides of brand campaigns: the creator-facing browse/submit
+ * flow (§ Creator Portal campaigns browse) and admin authoring (§
+ * Admin: Campaigns) — creating a campaign, editing its rules/asset/
+ * deadline/commission, and changing its status. Submission moderation
+ * (approving/rejecting a creator's proof) still has no admin UI; that
+ * remains a documented gap, not silently built here.
  */
 class CampaignService {
   async listActiveCampaigns(businessId: string): Promise<{ id: string; data: Campaign }[]> {
     return campaignRepository.listActive(businessId);
+  }
+
+  /** § Admin: Campaigns — every campaign regardless of status, for the management list. */
+  async listAllCampaigns(businessId: string): Promise<{ id: string; data: Campaign }[]> {
+    return campaignRepository.listAll(businessId);
+  }
+
+  async createCampaign(input: CampaignInput, actor: string): Promise<string> {
+    this.validate(input);
+    return campaignRepository.create(input, actor);
+  }
+
+  async updateCampaign(
+    businessId: string,
+    campaignId: string,
+    patch: Partial<CampaignInput>,
+    actor: string,
+  ): Promise<void> {
+    const existing = await campaignRepository.findById(businessId, campaignId);
+    if (!existing) {
+      throw new CampaignNotFoundError(campaignId);
+    }
+    this.validate(patch);
+    await campaignRepository.update(campaignId, patch, actor);
+  }
+
+  private validate(input: Partial<CampaignInput>): void {
+    if (input.title !== undefined && input.title.trim().length === 0) {
+      throw new InvalidCampaignInputError('"title" cannot be empty.');
+    }
+    if (
+      input.commissionRateKes !== undefined &&
+      (!Number.isFinite(input.commissionRateKes) || input.commissionRateKes <= 0)
+    ) {
+      throw new InvalidCampaignInputError('"commissionRateKes" must be a positive number.');
+    }
+    if (input.rules !== undefined && input.rules.trim().length === 0) {
+      throw new InvalidCampaignInputError('"rules" cannot be empty.');
+    }
+    if (input.targetNiche !== undefined && input.targetNiche.trim().length === 0) {
+      throw new InvalidCampaignInputError('"targetNiche" cannot be empty.');
+    }
+    if (input.status !== undefined && !CAMPAIGN_STATUSES.includes(input.status)) {
+      throw new InvalidCampaignInputError(`"status" must be one of: ${CAMPAIGN_STATUSES.join(', ')}.`);
+    }
+    if (
+      input.assetsUrl !== undefined &&
+      input.assetsUrl !== null &&
+      input.assetsUrl.trim().length === 0
+    ) {
+      throw new InvalidCampaignInputError('"assetsUrl" must be a non-empty URL string or null.');
+    }
   }
 
   async listSubmissionsForCreator(
