@@ -22,6 +22,11 @@ describe('testMetaConnection', () => {
     const body = JSON.parse(init.body as string);
     expect(body.test_event_code).toBe('TEST123');
     expect(body.data[0].action_source).toBe('chat');
+    // Must carry at least one matching parameter — Meta rejects an
+    // empty `user_data` with error_subcode 2804050, confirmed against
+    // a real Pixel during setup.
+    expect(body.data[0].user_data.ph).toHaveLength(1);
+    expect(body.data[0].user_data.ph[0]).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('throws on an invalid access token', async () => {

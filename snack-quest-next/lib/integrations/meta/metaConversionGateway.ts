@@ -88,6 +88,12 @@ export const metaConversionGateway: ConversionGateway = new MetaConversionGatewa
  * Test Events tool and never counted in real ad reporting — side-effect
  * free where it matters (§ Integration Portal's "never mutates
  * production data" rule) without testing the wrong permission.
+ *
+ * Also carries one hashed placeholder `user_data.ph` — Meta separately
+ * rejects any event with zero matching parameters at all
+ * (`error_subcode: 2804050`), confirmed against a real Pixel. That
+ * requirement is real and applies to this synthetic test event same
+ * as a genuine order, so it needs *a* value, just not a real person's.
  */
 export async function testMetaConnection(businessId: string): Promise<void> {
   const config = await getMetaConfig(businessId);
@@ -107,7 +113,14 @@ export async function testMetaConnection(businessId: string): Promise<void> {
           event_name: 'TestConnection',
           event_time: Math.floor(Date.now() / 1000),
           action_source: 'chat',
-          user_data: {},
+          // Meta rejects (error_subcode 2804050) any event with zero
+          // matching parameters in `user_data` — a real requirement,
+          // not a permission gap. This is a pure connectivity check
+          // with no real customer behind it, so a hashed, obviously-
+          // placeholder phone number (Kenya's conventional "not a real
+          // subscriber" block, same idea as a US 555-number) satisfies
+          // that requirement without describing an actual person.
+          user_data: { ph: [hashForMeta('254700000000')] },
         },
       ],
     }),
