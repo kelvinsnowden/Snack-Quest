@@ -94,6 +94,33 @@ export function IntegrationEditDialog({
         </DialogHeader>
 
         <div className="mt-4 flex flex-col gap-4">
+          {/*
+            Decoy fields (§ Integration Portal). Chrome autofills a
+            saved login email into any plain text input that sits
+            directly above a `type="password"` input — a long-standing
+            heuristic it applies even with `autoComplete="off"` set on
+            the real fields, since it's keying off field type and DOM
+            position, not the autocomplete attribute. These two absorb
+            that heuristic instead: invisible, unfocusable, and never
+            read by `onSubmit` (which only reads from `values`, and
+            nothing here ever calls `setValues`).
+          */}
+          <input
+            type="text"
+            name="username"
+            autoComplete="username"
+            tabIndex={-1}
+            aria-hidden="true"
+            className="absolute h-0 w-0 opacity-0"
+          />
+          <input
+            type="password"
+            name="password"
+            autoComplete="new-password"
+            tabIndex={-1}
+            aria-hidden="true"
+            className="absolute h-0 w-0 opacity-0"
+          />
           {integration.fields.map((field) => (
             <div key={field.key} className="flex flex-col gap-1.5">
               <Label htmlFor={`integration-${integration.provider}-${field.key}`}>
@@ -121,7 +148,7 @@ export function IntegrationEditDialog({
                   value={values[field.key] ?? ''}
                   onChange={(event) => setValues((v) => ({ ...v, [field.key]: event.target.value }))}
                   placeholder={field.value ? `Currently set (${field.value})` : 'Not set'}
-                  autoComplete="off"
+                  autoComplete={field.secret ? 'new-password' : 'off'}
                 />
               )}
               {field.helpText ? <p className="text-caption text-muted-foreground">{field.helpText}</p> : null}
