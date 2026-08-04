@@ -4,6 +4,7 @@ import { conversationRepository } from '@/repositories/conversationRepository';
 import { conversationCheckoutSnapshotRepository } from '@/repositories/conversationCheckoutSnapshotRepository';
 import { packageRepository, OutOfStockError } from '@/repositories/packageRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
+import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
@@ -33,6 +34,14 @@ import type {
   DeliveryDetails,
   PickupStationCandidate,
 } from '@/types';
+import type {
+  ApplyReferralResponse,
+  OrderPaymentStatus,
+  OrderStatusResponse,
+  PickupStationOption,
+  QuoteDeliveryResponse,
+  WhatchimpCheckoutResponse,
+} from '@/types/whatchimpBridge';
 
 /**
  * Owns the conversation lifecycle (PLATFORM_ARCHITECTURE_V2.md §6):
@@ -425,6 +434,55 @@ class ConversationService {
    * mid-conversation waiting for the STK prompt on their phone, so
    * this cannot be async.
    */
+  /**
+   * Shared by `confirmAndFreeze` and the WhatChimp Bridge API's
+   * `bridgeCheckout` — the same `DeliveryDetails` construction either
+   * checkout path needs, extracted so the two don't drift out of sync.
+   * Pure/no I/O.
+   */
+  private buildDeliveryDetails(stateBlob: ConversationStateBlob): DeliveryDetails {
+    const isPickup = stateBlob.deliveryMethod === 'pickup';
+    return isPickup
+      ? {
+          method: 'pickup',
+          provider: DELIVERY_PROVIDER_FOR_METHOD.pickup,
+          status: 'pending',
+          shippingOrigin: 'Nairobi',
+          feeKes: stateBlob.deliveryFeeKes ?? 0,
+          county: stateBlob.county ?? '',
+          pickupStationId: stateBlob.pickupStationId ?? null,
+          pickupStationName: stateBlob.pickupStationName ?? null,
+          addressText: null,
+          landmark: null,
+          estate: null,
+          contactPhone: null,
+          courierShipmentRef: null,
+          // The generic tracker is known up front — the same URL for
+          // every Jumia shipment, not something a shipment-creation
+          // call returns.
+          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+        }
+      : {
+          method: 'door',
+          provider: DELIVERY_PROVIDER_FOR_METHOD.door,
+          status: 'pending_manual_booking',
+          shippingOrigin: 'Nairobi',
+          // Set by a human agent in priceDoorDelivery(), never re-derived here.
+          feeKes: stateBlob.deliveryFeeKes ?? 0,
+          county: stateBlob.county ?? '',
+          pickupStationId: null,
+          pickupStationName: null,
+          addressText: stateBlob.addressText ?? null,
+          landmark: stateBlob.landmark ?? null,
+          estate: stateBlob.estate ?? null,
+          contactPhone: stateBlob.contactPhone ?? null,
+          courierShipmentRef: null,
+          // No generic Bolt tracker exists — the agent stays the
+          // customer's point of contact for this order, unlike Jumia.
+          trackingUrl: null,
+        };
+  }
+
   private async confirmAndFreeze(
     businessId: string,
     conversationId: string,
@@ -478,45 +536,7 @@ class ConversationService {
       return;
     }
 
-    const delivery: DeliveryDetails = isPickup
-      ? {
-          method: 'pickup',
-          provider: DELIVERY_PROVIDER_FOR_METHOD.pickup,
-          status: 'pending',
-          shippingOrigin: 'Nairobi',
-          feeKes: stateBlob.deliveryFeeKes ?? 0,
-          county: stateBlob.county ?? '',
-          pickupStationId: stateBlob.pickupStationId ?? null,
-          pickupStationName: stateBlob.pickupStationName ?? null,
-          addressText: null,
-          landmark: null,
-          estate: null,
-          contactPhone: null,
-          courierShipmentRef: null,
-          // The generic tracker is known up front — the same URL for
-          // every Jumia shipment, not something a shipment-creation
-          // call returns.
-          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
-        }
-      : {
-          method: 'door',
-          provider: DELIVERY_PROVIDER_FOR_METHOD.door,
-          status: 'pending_manual_booking',
-          shippingOrigin: 'Nairobi',
-          // Set by a human agent in priceDoorDelivery(), never re-derived here.
-          feeKes: stateBlob.deliveryFeeKes ?? 0,
-          county: stateBlob.county ?? '',
-          pickupStationId: null,
-          pickupStationName: null,
-          addressText: stateBlob.addressText ?? null,
-          landmark: stateBlob.landmark ?? null,
-          estate: stateBlob.estate ?? null,
-          contactPhone: stateBlob.contactPhone ?? null,
-          courierShipmentRef: null,
-          // No generic Bolt tracker exists — the agent stays the
-          // customer's point of contact for this order, unlike Jumia.
-          trackingUrl: null,
-        };
+    const delivery = this.buildDeliveryDetails(stateBlob);
 
     const { snapshotId, totalKes, walletCreditAppliedKes } = await this.freezeSnapshot(
       businessId,
@@ -678,6 +698,392 @@ class ConversationService {
       phoneNumber,
       formatFinalOrderSummaryMessage({ ...stateBlob, ...patch }),
     );
+  }
+
+  // ---------------------------------------------------------------
+  // WhatChimp Bridge API (§ WhatChimp Integration Redesign). WhatChimp
+  // owns the conversation and its own flow builder now — these methods
+  // are the structured, non-text entry points its flow calls at each
+  // business-logic checkpoint. Deliberately silent: none of them call
+  // `this.reply()` or touch `this.gateway` for a customer-facing
+  // message, unlike every method above this point — WhatChimp's own
+  // flow renders whatever the customer sees, from the data these
+  // return, via its Response Mapping feature. Reuses the exact same
+  // repositories/services (`packageRepository`, `pickupStationRepository`,
+  // `referralService`, `paymentService`, `buildDeliveryDetails`,
+  // `freezeSnapshot`, `escalateToAgent`) the free-text engine above
+  // already does — only the entry point changed, not the business
+  // logic itself.
+  // ---------------------------------------------------------------
+
+  /**
+   * The structured equivalent of `startFromCatalogSelection` — same
+   * validated-product contract, same conversation bootstrap, but
+   * returns the product fields for the caller to shape into its own
+   * response instead of sending a WhatsApp reply.
+   */
+  async bridgeSelectProduct(
+    businessId: string,
+    phoneNumber: string,
+    product: ValidatedCatalogProduct,
+    options: StartOptions = {},
+  ): Promise<{ conversationId: string; nextStep: ConversationStep }> {
+    const existing = await conversationRepository.findActiveByPhoneNumber(businessId, phoneNumber);
+    if (existing?.conversation.status === 'agent_assigned') {
+      throw new Error(
+        `Conversation for ${phoneNumber} is already with a human agent — cannot start a new checkout until that's resolved.`,
+      );
+    }
+
+    let conversationId: string;
+    if (existing) {
+      conversationId = existing.id;
+    } else {
+      conversationId = await conversationRepository.create({ businessId, phoneNumber, ...options });
+      await publishEvent(businessId, 'ConversationStarted', 'conversation', conversationId, { phoneNumber });
+    }
+
+    await conversationRepository.appendMessage(conversationId, {
+      direction: 'inbound',
+      body: `[WhatChimp product selection] ${product.name}`,
+      providerMessageId: null,
+    });
+
+    const { nextStep, stateBlobPatch } = bootstrapFromCatalogSelection(product, {
+      referralCode: options.referralCode,
+    });
+    await conversationRepository.updateStep(conversationId, nextStep, stateBlobPatch);
+
+    return { conversationId, nextStep };
+  }
+
+  /**
+   * The structured equivalent of `awaiting_customer_details` through
+   * `awaiting_pickup_station_selection`/`awaiting_door_delivery_details`
+   * — driven by fields WhatChimp's own Data Collection already gathered
+   * instead of parsed free text. Three shapes of call, matched by which
+   * fields are present: (1) `pickupStationId` set — finalize that
+   * station; (2) `deliveryMethod: 'door'` with the four address fields
+   * set — escalate to a human agent for Bolt pricing, same as the
+   * free-text path's `ESCALATE_TO_AGENT`; (3) anything else — search
+   * pickup stations (or, for door without address fields yet, just
+   * confirm eligibility) and return candidates for WhatChimp to show.
+   */
+  async bridgeProvideDeliveryDetails(
+    businessId: string,
+    conversationId: string,
+    input: {
+      customerName: string;
+      county: string;
+      deliveryMethod?: 'pickup' | 'door';
+      pickupStationId?: string;
+      pickupStationSearch?: string;
+      addressText?: string;
+      landmark?: string;
+      estate?: string;
+      contactPhone?: string;
+    },
+  ): Promise<QuoteDeliveryResponse> {
+    const conversation = await this.getConversation(businessId, conversationId);
+    const isNairobi = isNairobiCounty(input.county);
+    const basePatch: Partial<ConversationStateBlob> = {
+      customerName: input.customerName,
+      county: input.county,
+    };
+
+    if (input.deliveryMethod === 'door') {
+      if (!isNairobi) {
+        throw new Error('Door delivery is only available in Nairobi');
+      }
+      if (input.addressText && input.landmark && input.estate && input.contactPhone) {
+        const finalPatch: Partial<ConversationStateBlob> = {
+          ...basePatch,
+          deliveryMethod: 'door',
+          addressText: input.addressText,
+          landmark: input.landmark,
+          estate: input.estate,
+          contactPhone: input.contactPhone,
+        };
+        await conversationRepository.updateStep(conversationId, 'awaiting_agent_pricing', finalPatch);
+        await this.escalateToAgent(businessId, conversationId, conversation.phoneNumber, {
+          ...conversation.stateBlob,
+          ...finalPatch,
+        });
+        return {
+          checkoutSessionId: conversationId,
+          nextStep: 'awaiting_agent_pricing',
+          doorDeliveryEligible: true,
+          escalatedToAgent: true,
+          pickupStations: [],
+          selectedPickupStation: null,
+        };
+      }
+      await conversationRepository.updateStep(conversationId, 'awaiting_door_delivery_details', {
+        ...basePatch,
+        deliveryMethod: 'door',
+      });
+      return {
+        checkoutSessionId: conversationId,
+        nextStep: 'awaiting_door_delivery_details',
+        doorDeliveryEligible: true,
+        escalatedToAgent: false,
+        pickupStations: [],
+        selectedPickupStation: null,
+      };
+    }
+
+    if (input.pickupStationId) {
+      const station = await pickupStationRepository.findById(businessId, input.pickupStationId);
+      if (!station) {
+        throw new Error(`Pickup station ${input.pickupStationId} not found`);
+      }
+      const finalPatch: Partial<ConversationStateBlob> = {
+        ...basePatch,
+        deliveryMethod: 'pickup',
+        pickupStationId: input.pickupStationId,
+        pickupStationName: station.name,
+        deliveryFeeKes: station.deliveryFeeKes,
+        // The station's own (computed) county is now the authoritative
+        // delivery destination — same rule the free-text path applies.
+        county: station.county ?? input.county,
+      };
+      await conversationRepository.updateStep(conversationId, 'awaiting_referral_code', finalPatch);
+      return {
+        checkoutSessionId: conversationId,
+        nextStep: 'awaiting_referral_code',
+        doorDeliveryEligible: isNairobi,
+        escalatedToAgent: false,
+        pickupStations: [],
+        selectedPickupStation: {
+          id: input.pickupStationId,
+          name: station.name,
+          deliveryFeeKes: station.deliveryFeeKes,
+        },
+      };
+    }
+
+    const searchText = input.pickupStationSearch ?? input.county;
+    const matches = await pickupStationRepository.search(businessId, searchText);
+    const options: PickupStationOption[] = matches.map(({ id, data }) => ({
+      id,
+      name: data.name,
+      county: data.county,
+      town: data.town,
+      deliveryFeeKes: data.deliveryFeeKes,
+    }));
+    await conversationRepository.updateStep(conversationId, 'awaiting_pickup_station_selection', {
+      ...basePatch,
+      deliveryMethod: 'pickup',
+      pickupStationCandidates: options,
+    });
+    return {
+      checkoutSessionId: conversationId,
+      nextStep: 'awaiting_pickup_station_selection',
+      doorDeliveryEligible: isNairobi,
+      escalatedToAgent: false,
+      pickupStations: options,
+      selectedPickupStation: null,
+    };
+  }
+
+  /**
+   * The structured equivalent of `awaiting_referral_code` — validates
+   * via the same `referralService.validateCode` the freeze-time path
+   * re-checks (a code can still expire between this call and payment;
+   * this is a preview, not the final word), and returns a computed
+   * discount preview instead of a formatted summary message. An
+   * invalid/missing code never blocks checkout, same rule as everywhere
+   * else this codebase applies it.
+   */
+  async bridgeApplyReferral(
+    businessId: string,
+    conversationId: string,
+    referralCode: string | null,
+  ): Promise<ApplyReferralResponse> {
+    const conversation = await this.getConversation(businessId, conversationId);
+
+    let discountKes = 0;
+    let valid = false;
+    if (referralCode) {
+      const referral = await referralService.validateCode(businessId, referralCode);
+      if (referral) {
+        discountKes = referral.discountKes;
+        valid = true;
+      }
+    }
+
+    const patch: Partial<ConversationStateBlob> = referralCode ? { referralCode } : {};
+    await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation', patch);
+
+    const mergedStateBlob = { ...conversation.stateBlob, ...patch };
+    const subtotalKes = mergedStateBlob.priceKes ?? 0;
+    const deliveryFeeKes = mergedStateBlob.deliveryFeeKes ?? 0;
+    const totalKes = subtotalKes - discountKes + deliveryFeeKes;
+
+    return {
+      checkoutSessionId: conversationId,
+      nextStep: 'awaiting_customer_payment_confirmation',
+      valid,
+      discountKes,
+      subtotalKes,
+      deliveryFeeKes,
+      totalKes,
+    };
+  }
+
+  /**
+   * The structured equivalent of the state machine's `FREEZE_SNAPSHOT`
+   * side effect — same price/fee-drift revalidation `confirmAndFreeze`
+   * does, same `freezeSnapshot`/`paymentService` calls, but returns the
+   * outcome instead of texting the customer. This is the one place
+   * either checkout path actually charges — reusing `freezeSnapshot`
+   * unchanged means a payment can never be initiated with a stale or
+   * caller-supplied price, regardless of which entry point reached it.
+   */
+  async bridgeCheckout(businessId: string, conversationId: string): Promise<WhatchimpCheckoutResponse> {
+    const conversation = await this.getConversation(businessId, conversationId);
+
+    if (conversation.currentStep !== 'awaiting_customer_payment_confirmation') {
+      return {
+        checkoutSessionId: conversationId,
+        status: 'not_ready',
+        priceKes: conversation.stateBlob.priceKes ?? 0,
+        deliveryFeeKes: conversation.stateBlob.deliveryFeeKes ?? 0,
+        totalKes: (conversation.stateBlob.priceKes ?? 0) + (conversation.stateBlob.deliveryFeeKes ?? 0),
+      };
+    }
+
+    const stateBlob = conversation.stateBlob;
+    const isPickup = stateBlob.deliveryMethod === 'pickup';
+
+    const currentPackage = await packageRepository.findById(businessId, stateBlob.packageId ?? '');
+    const currentPriceKes = currentPackage?.priceKes ?? stateBlob.priceKes ?? 0;
+    let currentDeliveryFeeKes = stateBlob.deliveryFeeKes ?? 0;
+    if (isPickup && stateBlob.pickupStationId) {
+      const currentStation = await pickupStationRepository.findById(businessId, stateBlob.pickupStationId);
+      if (currentStation) {
+        currentDeliveryFeeKes = currentStation.deliveryFeeKes;
+      }
+    }
+    const priceDrifted = currentPriceKes !== (stateBlob.priceKes ?? 0);
+    const feeDrifted = isPickup && currentDeliveryFeeKes !== (stateBlob.deliveryFeeKes ?? 0);
+    if (priceDrifted || feeDrifted) {
+      await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation', {
+        priceKes: currentPriceKes,
+        deliveryFeeKes: currentDeliveryFeeKes,
+      });
+      return {
+        checkoutSessionId: conversationId,
+        status: 'price_changed',
+        priceKes: currentPriceKes,
+        deliveryFeeKes: currentDeliveryFeeKes,
+        totalKes: currentPriceKes - (stateBlob.discountKes ?? 0) + currentDeliveryFeeKes,
+      };
+    }
+
+    const delivery = this.buildDeliveryDetails(stateBlob);
+    const { snapshotId, totalKes } = await this.freezeSnapshot(
+      businessId,
+      conversationId,
+      conversation.phoneNumber,
+      conversation.customerId,
+      {
+        packageId: stateBlob.packageId ?? '',
+        packageLabel: stateBlob.packageLabel ?? '',
+        priceKes: stateBlob.priceKes ?? 0,
+        customerName: stateBlob.customerName ?? '',
+        county: stateBlob.county ?? '',
+        referralCode: stateBlob.referralCode,
+      },
+      delivery,
+    );
+
+    const intentId = await paymentService.createIntent({
+      businessId,
+      conversationId,
+      conversationCheckoutSnapshotId: snapshotId,
+      customerId: conversation.customerId,
+      phoneNumber: conversation.phoneNumber,
+      amountKes: totalKes,
+    });
+
+    try {
+      await paymentService.initiateAttempt(businessId, intentId, {
+        phone: conversation.phoneNumber,
+        amountKes: totalKes,
+        accountReference: `SQ-${conversationId.slice(0, 8)}`,
+        transactionDesc: 'Snack Quest order',
+      });
+    } catch {
+      // Same recovery as confirmAndFreeze: STK push never reached
+      // Daraja, so return the conversation to the confirmation step —
+      // a retry (WhatChimp calling bridgeCheckout again) starts fresh.
+      await conversationRepository.update(conversationId, { status: 'active' });
+      await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation');
+      return {
+        checkoutSessionId: conversationId,
+        status: 'error',
+        priceKes: stateBlob.priceKes ?? 0,
+        deliveryFeeKes: stateBlob.deliveryFeeKes ?? 0,
+        totalKes,
+      };
+    }
+
+    return {
+      checkoutSessionId: conversationId,
+      status: 'stk_sent',
+      priceKes: stateBlob.priceKes ?? 0,
+      deliveryFeeKes: stateBlob.deliveryFeeKes ?? 0,
+      totalKes,
+    };
+  }
+
+  /**
+   * Read-only status for a WhatChimp Follow-up Sequence (or a
+   * customer-triggered "check status") to poll after `bridgeCheckout`
+   * returns `stk_sent` — the async gap the migration plan flags: our
+   * backend learns the real payment result from Daraja's callback
+   * (`handlePaymentResult`/`completeOrder`), on its own schedule, not
+   * from anything WhatChimp calls. `failed` vs `pending` is inferred
+   * from whether a snapshot already exists for this conversation
+   * (`conversationCheckoutSnapshotId` set) — the same signal
+   * `handlePaymentResult`'s failure path itself resets the conversation
+   * to, since a genuinely fresh conversation never had one.
+   */
+  async getOrderStatus(businessId: string, conversationId: string): Promise<OrderStatusResponse> {
+    const conversation = await this.getConversation(businessId, conversationId);
+
+    let paymentStatus: OrderPaymentStatus;
+    let orderId: string | null = null;
+    let totalKes: number | null = null;
+
+    if (conversation.status === 'completed') {
+      paymentStatus = 'succeeded';
+      const order = await orderRepository.findByConversationId(businessId, conversationId);
+      if (order) {
+        orderId = order.id;
+        totalKes = order.data.pricing.totalKes;
+      }
+    } else if (conversation.status === 'abandoned') {
+      paymentStatus = 'abandoned';
+    } else if (conversation.status === 'awaiting_payment') {
+      paymentStatus = 'processing';
+    } else if (conversation.status === 'agent_assigned') {
+      paymentStatus = 'awaiting_agent';
+    } else {
+      // 'active' — either never reached checkout yet, or a prior STK
+      // attempt failed/mismatched and handlePaymentResult already reset
+      // the conversation back here.
+      paymentStatus = conversation.conversationCheckoutSnapshotId ? 'failed' : 'pending';
+    }
+
+    return {
+      checkoutSessionId: conversationId,
+      paymentStatus,
+      currentStep: conversation.currentStep,
+      orderId,
+      totalKes,
+    };
   }
 
   /**
