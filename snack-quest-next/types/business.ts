@@ -178,6 +178,8 @@ export interface MetaIntegrationSecret extends IntegrationSecretMeta {
   pixelId: string;
   accessToken: string;
   apiVersion?: string;
+  /** From Events Manager → Test Events — only needed for the Integration Portal's Test Connection button, never for real event dispatch. */
+  testEventCode?: string;
 }
 
 export interface IntegrationSecretMap {

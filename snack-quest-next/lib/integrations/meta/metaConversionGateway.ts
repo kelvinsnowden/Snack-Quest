@@ -72,18 +72,46 @@ class MetaConversionGateway implements ConversionGateway {
 export const metaConversionGateway: ConversionGateway = new MetaConversionGateway();
 
 /**
- * "Test Connection" (§ Integration Portal) — `GET /{pixel-id}?fields=id`
- * is the real, public, documented Meta Graph API way to validate an
- * access token against a specific Pixel ID with no side effects, unlike
- * `sendEvent` above (which dispatches a real, permanent conversion
- * event). Real API, unlike Whatchimp/Jumia's honest "modeled, not
- * verified" caveat — see this file's own class-level comment.
+ * "Test Connection" (§ Integration Portal). Previously a
+ * `GET /{pixel-id}?fields=id` metadata read — real and side-effect-free,
+ * but the wrong check: a Conversions API access token generated the
+ * way Meta's own docs recommend (Events Manager → Pixel → Settings →
+ * Conversions API → Generate access token) is deliberately scoped to
+ * *sending events*, not reading the Pixel object's own fields, and
+ * legitimately gets `(#100) Missing Permission` on that GET call even
+ * when it can dispatch real events fine — confirmed against a real
+ * Pixel during setup.
+ *
+ * Tests the capability that actually matters instead: the same
+ * `POST /{pixel-id}/events` `sendEvent` uses, carrying `test_event_code`
+ * so it's a real, accepted event that's quarantined to Events Manager's
+ * Test Events tool and never counted in real ad reporting — side-effect
+ * free where it matters (§ Integration Portal's "never mutates
+ * production data" rule) without testing the wrong permission.
  */
 export async function testMetaConnection(businessId: string): Promise<void> {
   const config = await getMetaConfig(businessId);
-  const response = await fetch(
-    `https://graph.facebook.com/${config.apiVersion}/${config.pixelId}?fields=id&access_token=${encodeURIComponent(config.accessToken)}`,
-  );
+  if (!config.testEventCode) {
+    throw new Error(
+      'Meta connection test failed: no Test event code configured. Copy one from Events Manager → Test Events and save it in this integration first — that keeps the test call out of your real ad reporting.',
+    );
+  }
+  const response = await fetch(`https://graph.facebook.com/${config.apiVersion}/${config.pixelId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      access_token: config.accessToken,
+      test_event_code: config.testEventCode,
+      data: [
+        {
+          event_name: 'TestConnection',
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: 'chat',
+          user_data: {},
+        },
+      ],
+    }),
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
     throw new Error(`Meta connection test failed: ${response.status} ${body}`);

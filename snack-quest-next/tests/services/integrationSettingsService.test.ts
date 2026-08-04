@@ -156,8 +156,9 @@ describe('IntegrationSettingsService.testConnection', () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', {
       pixelId: 'pixel-1',
       accessToken: 'token-1',
+      testEventCode: 'TEST1',
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'pixel-1' }), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 })));
 
     const result = await integrationSettingsService.testConnection(BUSINESS_ID, 'meta');
     expect(result).toEqual({ success: true, error: null });
@@ -171,6 +172,7 @@ describe('IntegrationSettingsService.testConnection', () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', {
       pixelId: 'pixel-1',
       accessToken: 'bad-token',
+      testEventCode: 'TEST1',
     });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Invalid OAuth access token', { status: 401 })));
 

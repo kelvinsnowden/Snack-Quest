@@ -50,6 +50,7 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
     { key: 'pixelId', label: 'Pixel ID', secret: false, required: true },
     { key: 'accessToken', label: 'Access token', secret: true, required: true },
     { key: 'apiVersion', label: 'API version', secret: false, required: false, helpText: 'Defaults to the current Graph API version if left blank, e.g. v21.0.' },
+    { key: 'testEventCode', label: 'Test event code', secret: false, required: false, helpText: 'From Meta Events Manager → Test Events. Not required for real orders to work — only needed to use the Test Connection button below.' },
   ],
 };
 
