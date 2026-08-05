@@ -217,13 +217,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // faqs: public FAQ entries for the homepage FAQ section and /faq
-    // page (§ Admin: FAQ) — same public-read/admin-write shape as packages.
-    match /faqs/{faqId} {
-      allow read: if resource.data.isActive == true || isAdmin();
-      allow write: if isAdmin();
-    }
-
     // inventoryMovements: the stock-adjustment audit trail (§ Admin:
     // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
     // is the sole writer, always inside the same transaction as the

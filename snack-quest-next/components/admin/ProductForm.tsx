@@ -20,7 +20,6 @@ export interface ProductFormValues {
   stockCount?: number;
   lowStockThreshold?: number;
   imageUrl: string | null;
-  snackCountLabel?: string;
 }
 
 interface ProductFormProps {
@@ -37,7 +36,6 @@ const DEFAULTS: ProductFormValues = {
   stockCount: undefined,
   lowStockThreshold: undefined,
   imageUrl: null,
-  snackCountLabel: '',
 };
 
 export function ProductForm({ mode, packageId, initialValues }: ProductFormProps) {
@@ -106,7 +104,6 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
         priceKes: values.priceKes,
         isActive: values.isActive,
         imageUrl,
-        ...(values.snackCountLabel?.trim() ? { snackCountLabel: values.snackCountLabel.trim() } : {}),
         // Only sent on create — an initial stock count, not an adjustment.
         // Editing an existing product's stock happens on the audited
         // Inventory page instead (§ Admin: Inventory), never here.
@@ -197,19 +194,6 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
               placeholder="What's inside this box?"
               required
             />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="snackCountLabel">What&apos;s inside bullet (optional)</Label>
-            <Input
-              id="snackCountLabel"
-              value={values.snackCountLabel ?? ''}
-              onChange={(event) => setValues((v) => ({ ...v, snackCountLabel: event.target.value }))}
-              placeholder="e.g. 10+ snacks"
-            />
-            <p className="text-caption text-muted-foreground">
-              Shown as an extra bullet point on the homepage&apos;s Pick Your Box cards. Leave blank to omit it.
-            </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">

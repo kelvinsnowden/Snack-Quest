@@ -35,7 +35,6 @@ export default async function EditAdminProductPage({
           isActive: product.isActive,
           stockCount: product.stockCount,
           imageUrl: product.imageUrl,
-          snackCountLabel: product.snackCountLabel ?? '',
         }}
       />
     </div>

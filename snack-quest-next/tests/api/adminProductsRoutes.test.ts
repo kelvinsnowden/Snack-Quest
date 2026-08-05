@@ -103,51 +103,6 @@ describe('POST /api/admin/products', () => {
 
     expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ stockCount: 12 }), 'staff-1');
   });
-
-  it('includes a trimmed snackCountLabel when provided', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    createProductMock.mockResolvedValue('pkg-3');
-
-    await createRoute(
-      jsonRequest('http://localhost/api/admin/products', {
-        name: 'Starter Box',
-        description: 'A starter selection',
-        priceKes: 2500,
-        snackCountLabel: '  10+ snacks  ',
-      }),
-    );
-
-    expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ snackCountLabel: '10+ snacks' }), 'staff-1');
-  });
-
-  it('omits snackCountLabel when not provided', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    createProductMock.mockResolvedValue('pkg-4');
-
-    await createRoute(
-      jsonRequest('http://localhost/api/admin/products', {
-        name: 'Deluxe Box',
-        description: 'The best box',
-        priceKes: 3500,
-      }),
-    );
-
-    const [[input]] = createProductMock.mock.calls;
-    expect(input).not.toHaveProperty('snackCountLabel');
-  });
-
-  it('400s a non-string snackCountLabel', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    const response = await createRoute(
-      jsonRequest('http://localhost/api/admin/products', {
-        name: 'Box',
-        description: 'd',
-        priceKes: 100,
-        snackCountLabel: 42,
-      }),
-    );
-    expect(response.status).toBe(400);
-  });
 });
 
 describe('PATCH /api/admin/products/[packageId]', () => {
@@ -192,31 +147,5 @@ describe('PATCH /api/admin/products/[packageId]', () => {
 
     expect(response.status).toBe(200);
     expect(updateProductMock).toHaveBeenCalledWith('biz-1', 'pkg-1', { isActive: false }, 'staff-1');
-  });
-
-  it('400s an empty snackCountLabel', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    findByIdMock.mockResolvedValue({ businessId: 'biz-1', name: 'Box' });
-    const response = await updateRoute(
-      jsonRequest('http://localhost/api/admin/products/pkg-1', { snackCountLabel: '   ' }),
-      { params: Promise.resolve({ packageId: 'pkg-1' }) },
-    );
-    expect(response.status).toBe(400);
-  });
-
-  it('applies a trimmed snackCountLabel patch', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    findByIdMock
-      .mockResolvedValueOnce({ businessId: 'biz-1', name: 'Box' })
-      .mockResolvedValueOnce({ businessId: 'biz-1', name: 'Box', snackCountLabel: '15+ snacks' });
-    updateProductMock.mockResolvedValue(undefined);
-
-    const response = await updateRoute(
-      jsonRequest('http://localhost/api/admin/products/pkg-1', { snackCountLabel: ' 15+ snacks ' }),
-      { params: Promise.resolve({ packageId: 'pkg-1' }) },
-    );
-
-    expect(response.status).toBe(200);
-    expect(updateProductMock).toHaveBeenCalledWith('biz-1', 'pkg-1', { snackCountLabel: '15+ snacks' }, 'staff-1');
   });
 });

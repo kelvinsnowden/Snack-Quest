@@ -29,11 +29,4 @@ export interface Package extends AuditFields {
   lowStockThreshold?: number;
   /** Vercel Blob URL — null until an image is uploaded. Synced to the WhatsApp product catalog (§ product catalog sync) alongside name/description/price. */
   imageUrl: string | null;
-  /**
-   * Free text rather than a plain count (e.g. "10+ snacks", "20+
-   * snacks and drinks") since what a box actually contains varies by
-   * tier. Undefined = not set — the Pick Your Box bullet is omitted
-   * rather than showing a fabricated count.
-   */
-  snackCountLabel?: string;
 }

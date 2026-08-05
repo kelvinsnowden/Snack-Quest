@@ -16,7 +16,6 @@ export * from './conversation';
 export * from './conversationCheckoutSnapshot';
 export * from './domainEvent';
 export * from './package';
-export * from './faq';
 export * from './paymentIntent';
 export * from './referralLink';
 export * from './referralAttribution';
