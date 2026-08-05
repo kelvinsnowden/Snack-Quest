@@ -325,13 +325,17 @@ export interface PushGateway {
 /**
  * Product catalog sync — Snack Quest OS owns the master catalog;
  * WhatsApp's Product Catalog is a mirror kept in sync (§ product
- * catalog sync). Modeled on Meta's real, public WhatsApp Commerce
- * Catalog Batch API (`POST /{catalog_id}/items_batch`) — the one
- * genuinely documented external contract available here, since
- * Whatchimp itself has no real, independently verifiable API
- * documentation (see `whatchimpGateway.ts`'s own note on this).
- * `retailerId` is deliberately the *same* identifier as the product's
- * Snack Quest OS id — one identifier, never two catalogs to reconcile.
+ * catalog sync). `retailerId` is deliberately the *same* identifier as
+ * the product's Snack Quest OS id — one identifier, never two catalogs
+ * to reconcile.
+ *
+ * No implementation satisfies this today: WhatChimp's real catalog API
+ * only lists catalogs, triggers a whole-catalog pull from Meta Commerce
+ * Manager, and manages catalog *orders* — there is no per-item push, so
+ * `WhatchimpGateway` throws `WhatchimpCapabilityNotSupportedError` for
+ * both methods. The interface stays because the capability is real and
+ * a future BSP (or Meta's Catalog Batch API used directly) can provide
+ * it; it just cannot be reached through WhatChimp.
  */
 export interface ProductCatalogItem {
   retailerId: string;
