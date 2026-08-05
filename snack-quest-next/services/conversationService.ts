@@ -112,6 +112,16 @@ export interface ConversationTurnResult {
   botReply: string | null;
 }
 
+/**
+ * The one thing `reply()` actually depends on — deliberately narrower
+ * than `WhatsAppGateway` so a caller building a "silent" engine (§
+ * WhatChimp Integration Redesign, Phase 2) can supply just this,
+ * without having to fake the rest of the Gateway interface.
+ */
+export interface ConversationOutputSink {
+  send(input: { businessId: string; phone: string; text: string }): Promise<{ providerMessageId: string }>;
+}
+
 /** A product already resolved and validated by the caller of `startFromCatalogSelection` — never a raw, unchecked id. */
 export interface ValidatedCatalogProduct {
   id: string;
@@ -134,9 +144,27 @@ export class ConversationNotFoundError extends Error {
 
 class ConversationService {
   private readonly notifications: NotificationService;
+  private readonly outputSink: ConversationOutputSink;
 
-  constructor(private readonly gateway: WhatsAppGateway = whatchimpGateway) {
+  /**
+   * `outputSink` is the customer-facing reply channel only — `gateway`
+   * itself still backs admin notifications (`this.notifications`) and
+   * the best-effort BSP inbox sync calls (`assignHumanAgent`,
+   * `updateConversationStatus`) regardless of what `outputSink` does,
+   * so an admin never silently stops hearing about a door-delivery
+   * escalation just because a caller wants customer replies captured
+   * instead of sent (§ WhatChimp Integration Redesign, Phase 2 — the
+   * channel-agnostic turn engine constructs a `ConversationService`
+   * with the real `gateway` but a capturing `outputSink`). Defaults to
+   * forwarding through `gateway.sendMessage` — today's exact behavior
+   * — when no `outputSink` is given.
+   */
+  constructor(
+    private readonly gateway: WhatsAppGateway = whatchimpGateway,
+    outputSink?: ConversationOutputSink,
+  ) {
     this.notifications = new NotificationService(gateway);
+    this.outputSink = outputSink ?? { send: (input) => gateway.sendMessage(input) };
   }
 
   /**
@@ -1379,7 +1407,7 @@ class ConversationService {
     phoneNumber: string,
     text: string,
   ): Promise<void> {
-    const sendResult = await this.gateway.sendMessage({ businessId, phone: phoneNumber, text });
+    const sendResult = await this.outputSink.send({ businessId, phone: phoneNumber, text });
     await conversationRepository.appendMessage(conversationId, {
       direction: 'outbound',
       body: text,

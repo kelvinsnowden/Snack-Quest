@@ -15,7 +15,7 @@ import { businessIntegrationSecretRepository } from '@/repositories/businessInte
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { POST as priceDoorDeliveryRoute } from '@/app/api/internal/conversations/[conversationId]/price-door-delivery/route';
-import type { WhatsAppGateway, WhatsAppSendResult } from '@/lib/integrations/types';
+import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
 
 /**
  * The complete-loop proof: a customer goes from a first WhatsApp
@@ -38,42 +38,6 @@ import type { WhatsAppGateway, WhatsAppSendResult } from '@/lib/integrations/typ
  * just driven end-to-end through the conversation instead of in
  * isolation.
  */
-
-class FakeWhatsAppGateway implements WhatsAppGateway {
-  sent: { businessId: string; phone: string; text: string }[] = [];
-  private counter = 0;
-
-  async sendMessage(input: {
-    businessId: string;
-    phone: string;
-    text: string;
-  }): Promise<WhatsAppSendResult> {
-    this.sent.push(input);
-    this.counter += 1;
-    return { providerMessageId: `fake-${this.counter}` };
-  }
-  async sendTemplate(): Promise<WhatsAppSendResult> {
-    throw new Error('not used in this test');
-  }
-  async sendButtons(): Promise<WhatsAppSendResult> {
-    throw new Error('not used in this test');
-  }
-  async sendList(): Promise<WhatsAppSendResult> {
-    throw new Error('not used in this test');
-  }
-  async sendCatalogMessage(): Promise<WhatsAppSendResult> {
-    throw new Error('not used in this test');
-  }
-  async markAsRead(): Promise<void> {}
-  parseIncomingMessage(): never {
-    throw new Error('not used in this test');
-  }
-  verifyWebhookChallenge(): string | null {
-    return null;
-  }
-  async assignHumanAgent(): Promise<void> {}
-  async updateConversationStatus(): Promise<void> {}
-}
 
 const PHONE = '254712345678';
 
