@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { IntegrationStatusBadge } from './IntegrationStatusBadge';
 import { IntegrationEditDialog } from './IntegrationEditDialog';
-import { WhatchimpTestButtonsAction } from './WhatchimpTestButtonsAction';
+import { WhatchimpTestMessageAction } from './WhatchimpTestMessageAction';
 import { INTEGRATION_PROVIDER_LABELS } from '@/lib/integrations/statusFormat';
 import type { IntegrationSummary } from '@/services/integrationSettingsService';
 
@@ -122,7 +122,7 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
 
       {/* WhatsApp-specific: proving `sendButtons` needs a real message, which no other provider's card has an equivalent of. */}
       {integration.provider === 'whatchimp' ? (
-        <WhatchimpTestButtonsAction disabled={integration.status === 'missing' || !integration.enabled} />
+        <WhatchimpTestMessageAction disabled={integration.status === 'missing' || !integration.enabled} />
       ) : null}
 
       <IntegrationEditDialog integration={integration} open={editOpen} onOpenChange={setEditOpen} />
