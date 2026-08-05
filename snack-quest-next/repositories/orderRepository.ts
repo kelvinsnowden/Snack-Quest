@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { Order, OrderItem, OrderStatus } from '@/types';
+import type { Order, OrderFulfillment, OrderItem, OrderStatus } from '@/types';
 
 /**
  * `orders` + `items` subcollection reads/writes (TDD §8, expanded per
@@ -45,6 +45,28 @@ export function createInTransaction(
     tx.set(orderRef.collection('items').doc(), item);
   }
   return orderRef.id;
+}
+
+/**
+ * `FulfillmentBatchService.createFulfillmentBatch()`'s per-order write,
+ * applied inside the same transaction as the batch doc itself (§
+ * Fulfillment Batches) — every batched order gets its allocation in
+ * the same atomic write as the batch that owns it, never a separate
+ * later step that could partially fail.
+ */
+export function applyFulfillmentAllocationInTransaction(
+  tx: Transaction,
+  orderId: string,
+  fulfillmentBatchId: string,
+  fulfillment: OrderFulfillment,
+): void {
+  const ref = adminFirestore.collection(COLLECTION).doc(orderId);
+  tx.update(ref, {
+    fulfillmentBatchId,
+    fulfillment,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'system',
+  });
 }
 
 class OrderRepository {

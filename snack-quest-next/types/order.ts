@@ -1,3 +1,4 @@
+import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DeliveryDetails } from './delivery';
 
@@ -73,6 +74,48 @@ export interface Order extends AuditFields {
   /** Set whenever a staff member changes `status` with a reason attached (e.g. a cancellation or refund note) — absent on orders whose status has never been changed with one. */
   statusReason?: string | null;
   referralLinkId: string | null;
+  /**
+   * Set once, atomically, by `FulfillmentBatchService.createFulfillmentBatch()`
+   * (§ Fulfillment Batches) — null until this order is grouped into a real
+   * shopping trip. Deliberately separate from `status`/`VALID_ORDER_TRANSITIONS`:
+   * this is a fulfillment-cost concept, not a change to the order's own
+   * confirmed/dispatched/delivered lifecycle.
+   */
+  fulfillmentBatchId: string | null;
+  fulfillment: OrderFulfillment | null;
+  /**
+   * Set once, lazily, via an explicit "Assign recipe" action — never
+   * during order creation. An order stays pinned to whichever recipe
+   * version existed at assignment time even if the recipe is later
+   * revised (§ Packing Recipes) — never re-points itself at a newer
+   * version automatically.
+   */
+  packingRecipeVersionId: string | null;
+  packing: OrderPacking | null;
+}
+
+/** Snapshotted once at the batch's creation time — never recomputed if the order's own pricing later changes. */
+export interface OrderFulfillment {
+  allocatedCostKes: number;
+  orderRevenueKes: number;
+  estimatedProfitKes: number;
+}
+
+export type OrderPackingStatus = 'not_started' | 'in_progress' | 'packed';
+
+/**
+ * Wholly additive and separate from `OrderStatus` (§ Admin: Orders) —
+ * an order can be `delivered` (its real fulfillment status) and
+ * simultaneously `packing.status: 'in_progress'` at the same time.
+ * Nothing in `lib/orders/transitions.ts` or `OrderStatusActions.tsx`
+ * reads or writes this.
+ */
+export interface OrderPacking {
+  status: OrderPackingStatus;
+  /** `RecipeItem.id`s the packer has checked off — validated server-side against the assigned recipe version before `markPacked()` accepts them, never trusted as complete just because the client says so. */
+  checkedItemIds: string[];
+  packedAt: Timestamp | null;
+  packedBy: string | null;
 }
 
 /**

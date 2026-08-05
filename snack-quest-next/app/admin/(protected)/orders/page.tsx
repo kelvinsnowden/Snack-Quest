@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { EmptyOrdersState } from '@/components/admin/EmptyOrdersState';
-import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
+import { OrdersTable } from '@/components/admin/OrdersTable';
 import { ORDER_STATUS_LABELS } from '@/lib/orders/transitions';
-import { formatDate, formatKes } from '@/lib/orders/format';
+import { formatDate } from '@/lib/orders/format';
 import type { Order, OrderStatus } from '@/types';
 
 export const metadata: Metadata = { title: 'Orders' };
@@ -102,43 +102,18 @@ export default async function AdminOrdersPage({
       {orders.length === 0 ? (
         <EmptyOrdersState hasFilter={Boolean(trimmedQuery || status)} />
       ) : (
-        <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Customer</th>
-                  <th className="px-4 py-3 font-medium">Box</th>
-                  <th className="px-4 py-3 font-medium">Total</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Placed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map(({ id, data }) => (
-                  <tr key={id} className="border-b border-border last:border-0 hover:bg-border/20">
-                    <td className="px-4 py-3">
-                      <Link href={`/admin/orders/${id}`} className="block">
-                        <span className="font-medium text-foreground">{data.customer.customerName || 'Guest'}</span>
-                        <span className="block text-caption text-muted-foreground tabular-nums">
-                          {data.customer.phoneNumber}
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-foreground">{data.product.packageLabel}</td>
-                    <td className="px-4 py-3 font-medium tabular-nums text-foreground">
-                      {formatKes(data.pricing.totalKes)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <OrderStatusBadge status={data.status} />
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground tabular-nums">{formatDate(data.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <OrdersTable
+          orders={orders.map(({ id, data }) => ({
+            id,
+            customerName: data.customer.customerName,
+            phoneNumber: data.customer.phoneNumber,
+            packageLabel: data.product.packageLabel,
+            totalKes: data.pricing.totalKes,
+            status: data.status,
+            fulfillmentBatchId: data.fulfillmentBatchId,
+            createdAtLabel: formatDate(data.createdAt),
+          }))}
+        />
       )}
 
       {nextCursor ? (

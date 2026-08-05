@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "fulfillmentBatches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "faqs",
       "queryScope": "COLLECTION",
       "fields": [

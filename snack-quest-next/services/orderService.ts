@@ -83,6 +83,10 @@ class OrderService {
           conversationId: snapshot.conversationId,
           conversationCheckoutSnapshotId: snapshotId,
           referralLinkId: snapshot.referralLinkId,
+          fulfillmentBatchId: null,
+          fulfillment: null,
+          packingRecipeVersionId: null,
+          packing: null,
           createdBy: 'system',
         },
         [

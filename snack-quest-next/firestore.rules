@@ -250,6 +250,13 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+    // fulfillmentBatches: one real shopping trip covering several orders
+    // at once (§ Fulfillment Batches) — same admin-read/Admin-SDK-only
+    // write shape as purchaseOrders/inventoryBatches.
+    match /fulfillmentBatches/{batchId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
 
     // marketingSpendEntries: manually-entered monthly ad spend, the
     // input § Admin: Analytics computes CAC from — admin-only, same

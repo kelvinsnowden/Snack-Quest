@@ -182,6 +182,33 @@ export default async function AdminOrderDetailPage({
         </Card>
       ) : null}
 
+      {order.fulfillment ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Fulfillment</CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y divide-border">
+            <DetailRow
+              label="Batch"
+              value={
+                <Link href={`/admin/fulfillment-batches/${order.fulfillmentBatchId}`} className="text-primary hover:underline">
+                  View batch
+                </Link>
+              }
+            />
+            <DetailRow label="Allocated cost" value={formatKes(order.fulfillment.allocatedCostKes)} />
+            <DetailRow
+              label="Estimated profit"
+              value={
+                <span className={order.fulfillment.estimatedProfitKes < 0 ? 'text-danger' : undefined}>
+                  {formatKes(order.fulfillment.estimatedProfitKes)}
+                </span>
+              }
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
       {order.statusReason ? (
         <Card>
           <CardHeader>
