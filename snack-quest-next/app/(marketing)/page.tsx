@@ -9,6 +9,7 @@ import { WhatsInside } from '@/components/marketing/home/WhatsInside';
 import { TheRoute } from '@/components/marketing/home/TheRoute';
 import { PickYourBox } from '@/components/marketing/home/PickYourBox';
 import { FinalCta } from '@/components/marketing/home/FinalCta';
+import { FaqSection } from '@/components/marketing/home/FaqSection';
 import { MobileStickyBar } from '@/components/marketing/home/MobileStickyBar';
 import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhatsAppBubble';
 
@@ -38,6 +39,7 @@ export default async function MarketingHomePage() {
       <PickYourBox packages={featured} />
       <TheRoute />
       <FinalCta />
+      <FaqSection />
 
       <MobileStickyBar />
       <FloatingWhatsAppBubble />
