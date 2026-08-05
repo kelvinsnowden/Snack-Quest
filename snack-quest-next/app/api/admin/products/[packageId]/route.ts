@@ -11,6 +11,7 @@ interface UpdateProductBody {
   stockCount?: unknown;
   lowStockThreshold?: unknown;
   imageUrl?: unknown;
+  snackCountLabel?: unknown;
 }
 
 function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } | { error: string } {
@@ -61,6 +62,12 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
       return { error: '"imageUrl" must be a string or null when provided.' };
     }
     patch.imageUrl = body.imageUrl;
+  }
+  if (body.snackCountLabel !== undefined) {
+    if (typeof body.snackCountLabel !== 'string' || body.snackCountLabel.trim().length === 0) {
+      return { error: '"snackCountLabel" must be a non-empty string when provided.' };
+    }
+    patch.snackCountLabel = body.snackCountLabel.trim();
   }
 
   return { patch };

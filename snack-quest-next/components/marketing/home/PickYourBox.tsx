@@ -150,7 +150,10 @@ export function PickYourBox({
                   </p>
 
                   <ul className="mt-4 flex flex-1 flex-col gap-2 md:mt-7 md:gap-3">
-                    {TRUST_LINES.map((line) => (
+                    {[
+                      ...(pkg.data.snackCountLabel ? [pkg.data.snackCountLabel] : []),
+                      ...TRUST_LINES,
+                    ].map((line) => (
                       <li
                         key={line}
                         className="text-small text-foreground/80 flex items-start gap-2.5"

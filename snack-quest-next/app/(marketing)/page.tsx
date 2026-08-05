@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
+import { faqRepository } from '@/repositories/faqRepository';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { HomeHero } from '@/components/marketing/home/HomeHero';
 import { FounderStory } from '@/components/marketing/home/FounderStory';
@@ -22,9 +23,10 @@ export const metadata: Metadata = buildPageMetadata({
 
 export default async function MarketingHomePage() {
   const businessId = getCurrentBusinessId();
-  const [business, packages] = await Promise.all([
+  const [business, packages, faqs] = await Promise.all([
     getCurrentBusiness(),
     packageRepository.listActive(businessId),
+    faqRepository.listActive(businessId),
   ]);
   const featured = packages.slice(0, 3);
   const homepageContent = business?.homepageContent;
@@ -39,7 +41,7 @@ export default async function MarketingHomePage() {
       <PickYourBox packages={featured} />
       <TheRoute />
       <FinalCta />
-      <FaqSection />
+      <FaqSection faqs={faqs.map((entry) => entry.data)} />
 
       <MobileStickyBar />
       <FloatingWhatsAppBubble />

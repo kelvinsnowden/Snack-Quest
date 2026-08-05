@@ -1,14 +1,19 @@
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { Reveal } from '../design/Reveal';
-import { FAQS } from '@/lib/content/faqs';
+import type { Faq } from '@/types';
 
 /**
- * Same copy as the standalone `/faq` page (`lib/content/faqs.ts`), in
- * the homepage's own section shell — kicker + display heading +
- * Reveal stagger, matching every other section on this page — so a
- * visitor who scrolls this far never has to leave to get an answer.
+ * Same live, Admin-managed FAQ data as the standalone `/faq` page
+ * (§ Admin: FAQ), in the homepage's own section shell — kicker +
+ * display heading + Reveal stagger, matching every other section on
+ * this page — so a visitor who scrolls this far never has to leave to
+ * get an answer.
  */
-export function FaqSection() {
+export function FaqSection({ faqs }: { faqs: Faq[] }) {
+  if (faqs.length === 0) {
+    return null;
+  }
+
   return (
     <section className="bg-background px-5 py-16 md:px-10 md:py-32">
       <Reveal>
@@ -27,7 +32,7 @@ export function FaqSection() {
 
       <Reveal delayMs={150}>
         <div className="divide-border border-border bg-surface mx-auto mt-10 flex max-w-3xl flex-col divide-y rounded-2xl border md:mt-16">
-          {FAQS.map((faq) => (
+          {faqs.map((faq) => (
             <details key={faq.question} className="group px-5 py-4 md:px-7 md:py-5">
               <summary className="text-foreground marker:content-none flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold md:text-card-title">
                 {faq.question}

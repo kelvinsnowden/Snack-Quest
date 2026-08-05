@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
-import { FAQS } from '@/lib/content/faqs';
+import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { faqRepository } from '@/repositories/faqRepository';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Frequently asked questions',
@@ -11,13 +12,16 @@ export const metadata: Metadata = buildPageMetadata({
 });
 
 export default async function FaqPage() {
+  const businessId = getCurrentBusinessId();
+  const faqs = await faqRepository.listActive(businessId);
+
   const faqJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: FAQS.map((faq) => ({
+    mainEntity: faqs.map(({ data }) => ({
       '@type': 'Question',
-      name: faq.question,
-      acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      name: data.question,
+      acceptedAnswer: { '@type': 'Answer', text: data.answer },
     })),
   };
 
@@ -34,19 +38,21 @@ export default async function FaqPage() {
         Can&apos;t find what you&apos;re looking for? Just message us.
       </p>
 
-      <div className="divide-border border-border bg-surface mt-6 flex flex-col divide-y rounded-2xl border sm:mt-10">
-        {FAQS.map((faq) => (
-          <details key={faq.question} className="group px-4 py-4 sm:px-6 sm:py-5">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold text-foreground marker:content-none sm:text-card-title">
-              {faq.question}
-              <span className="text-muted-foreground shrink-0 text-xl transition-transform group-open:rotate-45 sm:text-2xl">
-                +
-              </span>
-            </summary>
-            <p className="mt-2 text-sm text-muted-foreground sm:mt-3">{faq.answer}</p>
-          </details>
-        ))}
-      </div>
+      {faqs.length > 0 ? (
+        <div className="divide-border border-border bg-surface mt-6 flex flex-col divide-y rounded-2xl border sm:mt-10">
+          {faqs.map(({ id, data }) => (
+            <details key={id} className="group px-4 py-4 sm:px-6 sm:py-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-semibold text-foreground marker:content-none sm:text-card-title">
+                {data.question}
+                <span className="text-muted-foreground shrink-0 text-xl transition-transform group-open:rotate-45 sm:text-2xl">
+                  +
+                </span>
+              </summary>
+              <p className="mt-2 text-sm text-muted-foreground sm:mt-3">{data.answer}</p>
+            </details>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-8 sm:mt-10">
         <WhatsAppOrderButton message="Hi! I have a question." variant="outline">

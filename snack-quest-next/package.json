@@ -16,6 +16,7 @@
     "seed:business": "node scripts/seedBusiness.mjs",
     "seed:staff": "node scripts/seedStaff.mjs",
     "seed:packages": "node scripts/seedPackages.mjs",
+    "seed:faqs": "node scripts/seedFaqs.mjs",
     "seed:pickup-stations": "node scripts/seedPickupStations.mjs",
     "seed:notification-templates": "node scripts/seedNotificationTemplates.mjs",
     "secure:daraja-webhook": "node scripts/setDarajaWebhookSecret.mjs",

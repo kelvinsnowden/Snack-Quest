@@ -10,6 +10,7 @@ interface CreateProductBody {
   stockCount?: unknown;
   lowStockThreshold?: unknown;
   imageUrl?: unknown;
+  snackCountLabel?: unknown;
 }
 
 function validate(body: CreateProductBody): { error: string } | null {
@@ -41,6 +42,9 @@ function validate(body: CreateProductBody): { error: string } | null {
   }
   if (body.imageUrl !== undefined && body.imageUrl !== null && typeof body.imageUrl !== 'string') {
     return { error: '"imageUrl" must be a string or null when provided.' };
+  }
+  if (body.snackCountLabel !== undefined && typeof body.snackCountLabel !== 'string') {
+    return { error: '"snackCountLabel" must be a string when provided.' };
   }
   return null;
 }
@@ -79,6 +83,9 @@ export async function POST(request: Request): Promise<Response> {
     // Omitted entirely (not `undefined`) when unset — Firestore rejects an explicit `undefined` field value.
     ...(typeof body.stockCount === 'number' ? { stockCount: body.stockCount } : {}),
     ...(typeof body.lowStockThreshold === 'number' ? { lowStockThreshold: body.lowStockThreshold } : {}),
+    ...(typeof body.snackCountLabel === 'string' && body.snackCountLabel.trim().length > 0
+      ? { snackCountLabel: body.snackCountLabel.trim() }
+      : {}),
   };
   const packageId = await productService.createProduct(productInput, session.uid);
 
