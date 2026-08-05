@@ -26,7 +26,11 @@ export default async function MarketingHomePage() {
   const [business, packages, faqs] = await Promise.all([
     getCurrentBusiness(),
     packageRepository.listActive(businessId),
-    faqRepository.listActive(businessId),
+    // The whole homepage must never 500 because the FAQ section's own
+    // query failed (e.g. a missing Firestore index) — worst case the
+    // section just doesn't render, same as when there are genuinely
+    // no FAQs yet.
+    faqRepository.listActive(businessId).catch(() => []),
   ]);
   const featured = packages.slice(0, 3);
   const homepageContent = business?.homepageContent;

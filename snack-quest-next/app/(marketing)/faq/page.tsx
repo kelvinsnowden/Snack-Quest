@@ -13,7 +13,9 @@ export const metadata: Metadata = buildPageMetadata({
 
 export default async function FaqPage() {
   const businessId = getCurrentBusinessId();
-  const faqs = await faqRepository.listActive(businessId);
+  // Same "never 500 the whole page" resilience as the homepage's FAQ
+  // section — a query failure just means the list is empty here too.
+  const faqs = await faqRepository.listActive(businessId).catch(() => []);
 
   const faqJsonLd = {
     '@context': 'https://schema.org',
