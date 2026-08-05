@@ -258,6 +258,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // webhookInspections: TEMPORARY diagnostic capture of one real
+    // WhatChimp inbound webhook, so parseIncomingMessage can be written
+    // from fact rather than guessed. Delete this block along with
+    // app/api/webhooks/whatchimp/inspect. Admin-read/Admin-SDK-only
+    // write, same shape as every other server-owned collection.
+    match /webhookInspections/{inspectionId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // marketingSpendEntries: manually-entered monthly ad spend, the
     // input § Admin: Analytics computes CAC from — admin-only, same
     // Admin-SDK-only-write discipline as everything else here.

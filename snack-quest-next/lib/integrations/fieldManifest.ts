@@ -39,6 +39,7 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
     { key: 'phoneNumberId', label: 'Phone number ID', secret: false, required: true },
     { key: 'baseUrl', label: 'Base URL', secret: false, required: false, helpText: 'Defaults to the standard Whatchimp API host if left blank.' },
     { key: 'catalogId', label: 'Product catalog ID', secret: false, required: false, helpText: 'Only needed for WhatsApp Commerce Catalog sync.' },
+    { key: 'teamMemberId', label: 'Escalation team member ID', secret: false, required: false, helpText: 'WhatChimp team member that door-delivery escalations assign the chat to. Leave blank to only record the escalation as a subscriber note.' },
   ],
   jumia: [
     { key: 'apiKey', label: 'API key', secret: true, required: true },

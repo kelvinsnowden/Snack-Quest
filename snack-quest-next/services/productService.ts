@@ -2,7 +2,10 @@ import 'server-only';
 
 import { packageRepository, type PackageInput } from '@/repositories/packageRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { CatalogNotConfiguredError } from '@/lib/integrations/whatchimp/config';
+import {
+  CatalogNotConfiguredError,
+  WhatchimpCapabilityNotSupportedError,
+} from '@/lib/integrations/whatchimp/config';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { Package } from '@/types';
 
@@ -38,8 +41,10 @@ export class ProductNotAvailableError extends Error {
  * not blocking a paid order: a Whatchimp outage must never block
  * adding or editing a product. A tenant with no `catalogId` configured
  * yet (`CatalogNotConfiguredError`) is a documented, expected no-op,
- * not logged as a failure; any other sync error is recorded as a
- * domain event for follow-up, never silently swallowed.
+ * not logged as a failure — as is WhatChimp having no per-item catalog
+ * push at all (`WhatchimpCapabilityNotSupportedError`), a standing
+ * platform limitation rather than an incident. Any other sync error is
+ * recorded as a domain event for follow-up, never silently swallowed.
  */
 class ProductService {
   async createProduct(data: PackageInput, actor: string): Promise<string> {
@@ -103,7 +108,10 @@ class ProductService {
         availability: inStock ? 'in stock' : 'out of stock',
       });
     } catch (error) {
-      if (!(error instanceof CatalogNotConfiguredError)) {
+      const isExpectedNoOp =
+        error instanceof CatalogNotConfiguredError ||
+        error instanceof WhatchimpCapabilityNotSupportedError;
+      if (!isExpectedNoOp) {
         await publishEvent(businessId, 'ProductCatalogSyncFailed', 'package', packageId, {
           reason: error instanceof Error ? error.message : 'unknown error',
         });

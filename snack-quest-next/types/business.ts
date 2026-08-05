@@ -156,6 +156,15 @@ export interface WhatchimpIntegrationSecret extends IntegrationSecretMeta {
    * discipline as every other not-yet-configured integration here.
    */
   catalogId?: string;
+  /**
+   * The WhatChimp team member a door-delivery escalation assigns the
+   * customer's chat to (`/subscriber/chat/assign-to-team-member`,
+   * which requires a real team member id). Optional — when unset, an
+   * escalation still records the reason as a subscriber note, which is
+   * the part an agent actually reads; only the inbox auto-assignment
+   * is skipped.
+   */
+  teamMemberId?: string;
 }
 
 export interface JumiaIntegrationSecret extends IntegrationSecretMeta {

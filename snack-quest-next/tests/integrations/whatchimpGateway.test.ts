@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { whatchimpGateway, testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { CatalogNotConfiguredError } from '@/lib/integrations/whatchimp/config';
+import { WhatchimpCapabilityNotSupportedError } from '@/lib/integrations/whatchimp/config';
 import { IntegrationSecretNotFoundError } from '@/repositories/businessIntegrationSecretRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 
@@ -199,6 +199,30 @@ describe('WhatchimpGateway.verifyWebhookChallenge', () => {
   });
 });
 
+
+/**
+ * Everything below exercises WhatChimp's *real*, documented API:
+ * form-encoded POSTs to `app.whatchimp.com/api/v1/whatsapp/...` with
+ * the key as an `apiToken` field, and a JSON body whose `status` — not
+ * the HTTP code — carries success or failure. The previous suite
+ * asserted Meta Cloud API shapes, which this Gateway was modeled on
+ * before any WhatChimp documentation existed.
+ */
+
+/** WhatChimp's success envelope. */
+function whatchimpOk(extra: Record<string, unknown> = {}): Response {
+  return new Response(JSON.stringify({ status: '1', message: 'ok', ...extra }), { status: 200 });
+}
+
+/** WhatChimp's failure envelope — note the HTTP 200. */
+function whatchimpFail(message: string): Response {
+  return new Response(JSON.stringify({ status: '0', message }), { status: 200 });
+}
+
+function formBodyOf(call: unknown[]): URLSearchParams {
+  return (call[1] as RequestInit).body as URLSearchParams;
+}
+
 describe('WhatchimpGateway.sendMessage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -214,13 +238,9 @@ describe('WhatchimpGateway.sendMessage', () => {
     ).rejects.toBeInstanceOf(IntegrationSecretNotFoundError);
   });
 
-  it('sends a text message and returns the provider message id', async () => {
+  it('posts a form-encoded send to the real endpoint and returns wa_message_id', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ messages: [{ id: 'wamid.sent-1' }] }), {
-        status: 200,
-      }),
-    );
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk({ wa_message_id: 'wamid.sent-1' }));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await whatchimpGateway.sendMessage({
@@ -230,42 +250,46 @@ describe('WhatchimpGateway.sendMessage', () => {
     });
 
     expect(result.providerMessageId).toBe('wamid.sent-1');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/1234567890/messages');
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toMatchObject({ to: '254700000000', type: 'text' });
+    expect(String(url)).toBe('https://app.whatchimp.com/api/v1/whatsapp/send');
+    expect((init as RequestInit).method).toBe('POST');
+    expect((init as RequestInit).headers).toMatchObject({
+      'Content-Type': 'application/x-www-form-urlencoded',
+    });
+
+    const body = formBodyOf(fetchMock.mock.calls[0]);
+    expect(body.get('apiToken')).toBe('test-key');
+    expect(body.get('phone_number_id')).toBe('1234567890');
+    expect(body.get('phone_number')).toBe('254700000000');
+    expect(body.get('message')).toBe('hello there');
   });
 
-  it('throws when Whatchimp rejects the send', async () => {
+  it('treats WhatChimp’s HTTP-200-with-status-0 as a failure, surfacing its own message', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'invalid phone number' } }), {
-        status: 400,
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => whatchimpFail('Subscriber limit has been exceeded.')));
 
     await expect(
-      whatchimpGateway.sendMessage({
-        businessId: BUSINESS_ID,
-        phone: 'not-a-phone',
-        text: 'hi',
-      }),
-    ).rejects.toThrow(/Whatchimp send failed/);
+      whatchimpGateway.sendMessage({ businessId: BUSINESS_ID, phone: '254700000000', text: 'hi' }),
+    ).rejects.toThrow(/Subscriber limit has been exceeded/);
   });
 
-  it('uses a different tenant\'s phone_number_id when sending on their behalf', async () => {
+  it('strips non-numeric characters from the phone number, as WhatChimp requires', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk({ wa_message_id: 'wamid.x' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await whatchimpGateway.sendMessage({ businessId: BUSINESS_ID, phone: '+254 700-000 000', text: 'hi' });
+
+    expect(formBodyOf(fetchMock.mock.calls[0]).get('phone_number')).toBe('254700000000');
+  });
+
+  it('sends with the owning tenant’s own credentials, never another’s', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
     await businessIntegrationSecretRepository.set(OTHER_BUSINESS_ID, 'whatchimp', {
       apiKey: 'other-tenant-key',
       phoneNumberId: '999999999',
     });
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ messages: [{ id: 'wamid.sent-2' }] }), {
-        status: 200,
-      }),
-    );
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk({ wa_message_id: 'wamid.sent-2' }));
     vi.stubGlobal('fetch', fetchMock);
 
     await whatchimpGateway.sendMessage({
@@ -274,140 +298,153 @@ describe('WhatchimpGateway.sendMessage', () => {
       text: 'hi from the other tenant',
     });
 
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/999999999/messages');
-    const headers = (init as RequestInit).headers as Record<string, string>;
-    expect(headers.Authorization).toBe('Bearer other-tenant-key');
+    const body = formBodyOf(fetchMock.mock.calls[0]);
+    expect(body.get('apiToken')).toBe('other-tenant-key');
+    expect(body.get('phone_number_id')).toBe('999999999');
   });
 });
 
-describe('WhatchimpGateway.syncItem / removeItem', () => {
+describe('WhatchimpGateway.sendButtons', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('throws CatalogNotConfiguredError when the business has no catalogId set', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET); // no catalogId
-    await expect(
-      whatchimpGateway.syncItem(BUSINESS_ID, {
-        retailerId: 'box-2500',
-        name: 'Starter Box',
-        description: 'desc',
-        priceKes: 2500,
-        imageUrl: null,
-        availability: 'in stock',
-      }),
-    ).rejects.toBeInstanceOf(CatalogNotConfiguredError);
-  });
-
-  it('calls the real Meta Catalog Batch API shape with an UPDATE request', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
-      ...SECRET,
-      catalogId: 'catalog-1',
-    });
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await whatchimpGateway.syncItem(BUSINESS_ID, {
-      retailerId: 'box-2500',
-      name: 'Starter Box',
-      description: 'A starter box',
-      priceKes: 2500,
-      imageUrl: null,
-      availability: 'in stock',
-    });
-
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/catalog-1/items_batch');
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.requests).toEqual([
-      {
-        method: 'UPDATE',
-        data: {
-          id: 'box-2500',
-          name: 'Starter Box',
-          description: 'A starter box',
-          availability: 'in stock',
-          condition: 'new',
-          price: '2500 KES',
-          currency: 'KES',
-        },
-      },
-    ]);
-  });
-
-  it('throws with the provider error message when the batch call fails', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
-      ...SECRET,
-      catalogId: 'catalog-1',
-    });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: { message: 'catalog offline' } }), { status: 500 }),
-      ),
-    );
-
-    await expect(
-      whatchimpGateway.syncItem(BUSINESS_ID, {
-        retailerId: 'box-2500',
-        name: 'Starter Box',
-        description: 'desc',
-        priceKes: 2500,
-        imageUrl: null,
-        availability: 'in stock',
-      }),
-    ).rejects.toThrow(/catalog offline/);
-  });
-
-  it('removeItem sends a DELETE request keyed by retailerId', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
-      ...SECRET,
-      catalogId: 'catalog-1',
-    });
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await whatchimpGateway.removeItem(BUSINESS_ID, 'box-2500');
-
-    const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.requests).toEqual([{ method: 'DELETE', data: { id: 'box-2500' } }]);
-  });
-});
-
-describe('WhatchimpGateway.sendCatalogMessage / assignHumanAgent / updateConversationStatus', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('sends a real Meta interactive product_list message', async () => {
+  it('posts buttons as a JSON array to the interactive-buttons endpoint', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ messages: [{ id: 'wamid.catalog-1' }] }), { status: 200 }),
-    );
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk({ wa_message_id: 'wamid.btn-1' }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await whatchimpGateway.sendCatalogMessage({
+    const result = await whatchimpGateway.sendButtons({
       businessId: BUSINESS_ID,
       phone: '254700000000',
-      catalogId: 'catalog-1',
-      productRetailerIds: ['box-2500', 'box-3500'],
+      bodyText: 'How would you like your box delivered?',
+      buttons: [
+        { id: 'door', title: 'Door Delivery' },
+        { id: 'pickup', title: 'Pickup Station' },
+      ],
     });
 
-    const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.interactive.type).toBe('product_list');
-    expect(body.interactive.action.catalog_id).toBe('catalog-1');
-    expect(body.interactive.action.sections[0].product_items).toEqual([
-      { product_retailer_id: 'box-2500' },
-      { product_retailer_id: 'box-3500' },
+    expect(result.providerMessageId).toBe('wamid.btn-1');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://app.whatchimp.com/api/v1/whatsapp/send/interactive-buttons',
+    );
+    const body = formBodyOf(fetchMock.mock.calls[0]);
+    expect(body.get('message')).toBe('How would you like your box delivered?');
+    expect(JSON.parse(body.get('buttons') ?? '[]')).toEqual([
+      { id: 'door', title: 'Door Delivery' },
+      { id: 'pickup', title: 'Pickup Station' },
     ]);
   });
 
-  it('assignHumanAgent posts the escalation reason', async () => {
+  it('rejects more than 3 buttons before making any network call', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      whatchimpGateway.sendButtons({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        bodyText: 'Pick one',
+        buttons: [
+          { id: 'a', title: 'A' },
+          { id: 'b', title: 'B' },
+          { id: 'c', title: 'C' },
+          { id: 'd', title: 'D' },
+        ],
+      }),
+    ).rejects.toThrow(/between 1 and 3 reply buttons/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a button title longer than WhatChimp’s 20-character limit', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      whatchimpGateway.sendButtons({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        bodyText: 'Pick one',
+        buttons: [{ id: 'a', title: 'This title is far too long for WhatsApp' }],
+      }),
+    ).rejects.toThrow(/limited to 20 characters/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('WhatchimpGateway — capabilities WhatChimp genuinely does not expose', () => {
+  beforeEach(async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports the gap instead of calling a fabricated endpoint', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      whatchimpGateway.sendTemplate({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        templateCode: 'order_confirmed',
+        params: {},
+      }),
+    ).rejects.toBeInstanceOf(WhatchimpCapabilityNotSupportedError);
+
+    await expect(
+      whatchimpGateway.sendList({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        bodyText: 'Pick a station',
+        buttonLabel: 'Stations',
+        sections: [],
+      }),
+    ).rejects.toBeInstanceOf(WhatchimpCapabilityNotSupportedError);
+
+    await expect(
+      whatchimpGateway.sendCatalogMessage({
+        businessId: BUSINESS_ID,
+        phone: '254700000000',
+        catalogId: 'cat-1',
+        productRetailerIds: ['box-1'],
+      }),
+    ).rejects.toBeInstanceOf(WhatchimpCapabilityNotSupportedError);
+
+    await expect(whatchimpGateway.markAsRead(BUSINESS_ID, 'wamid.x')).rejects.toBeInstanceOf(
+      WhatchimpCapabilityNotSupportedError,
+    );
+
+    await expect(
+      whatchimpGateway.syncItem(BUSINESS_ID, {
+        retailerId: 'box-2500',
+        name: 'Starter Box',
+        description: 'A box',
+        priceKes: 2500,
+        imageUrl: null,
+        availability: 'in stock',
+      }),
+    ).rejects.toBeInstanceOf(WhatchimpCapabilityNotSupportedError);
+
+    await expect(whatchimpGateway.removeItem(BUSINESS_ID, 'box-2500')).rejects.toBeInstanceOf(
+      WhatchimpCapabilityNotSupportedError,
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('WhatchimpGateway.assignHumanAgent / updateConversationStatus', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('records the escalation reason as a subscriber note, and skips team assignment when no team member is configured', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk());
     vi.stubGlobal('fetch', fetchMock);
 
     await whatchimpGateway.assignHumanAgent({
@@ -416,28 +453,52 @@ describe('WhatchimpGateway.sendCatalogMessage / assignHumanAgent / updateConvers
       reason: 'door_delivery_price_confirmation',
     });
 
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/1234567890/conversations/254700000000/assign');
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.reason).toBe('door_delivery_price_confirmation');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://app.whatchimp.com/api/v1/whatsapp/subscriber/chat/add-notes',
+    );
+    expect(formBodyOf(fetchMock.mock.calls[0]).get('note_text')).toContain(
+      'door_delivery_price_confirmation',
+    );
   });
 
-  it('assignHumanAgent throws on a non-OK response — every caller treats this as best-effort', async () => {
+  it('also assigns the chat to the configured team member when one is set', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
+      ...SECRET,
+      teamMemberId: '42',
+    });
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await whatchimpGateway.assignHumanAgent({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      reason: 'door_delivery_price_confirmation',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      'https://app.whatchimp.com/api/v1/whatsapp/subscriber/chat/assign-to-team-member',
+    );
+    expect(formBodyOf(fetchMock.mock.calls[1]).get('team_member_id')).toBe('42');
+  });
+
+  it('throws on a rejected call — every caller treats this as best-effort', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => whatchimpFail('Subscriber not found.')));
 
     await expect(
       whatchimpGateway.assignHumanAgent({
         businessId: BUSINESS_ID,
         phone: '254700000000',
-        reason: 'door_delivery_price_confirmation',
+        reason: 'whatever',
       }),
-    ).rejects.toThrow(/assignHumanAgent failed/);
+    ).rejects.toThrow(/Subscriber not found/);
   });
 
-  it('updateConversationStatus posts the new status', async () => {
+  it('records a conversation status change as a subscriber note', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk());
     vi.stubGlobal('fetch', fetchMock);
 
     await whatchimpGateway.updateConversationStatus({
@@ -446,10 +507,10 @@ describe('WhatchimpGateway.sendCatalogMessage / assignHumanAgent / updateConvers
       status: 'resolved',
     });
 
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/1234567890/conversations/254700000000/status');
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.status).toBe('resolved');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://app.whatchimp.com/api/v1/whatsapp/subscriber/chat/add-notes',
+    );
+    expect(formBodyOf(fetchMock.mock.calls[0]).get('note_text')).toContain('resolved');
   });
 });
 
@@ -458,21 +519,25 @@ describe('testWhatchimpConnection', () => {
     vi.unstubAllGlobals();
   });
 
-  it('resolves on a successful phone number lookup', async () => {
+  it('resolves against the real, side-effect-free label list endpoint', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: '1234567890' }), { status: 200 }));
+    const fetchMock = vi.fn().mockImplementation(async () => whatchimpOk({ message: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(testWhatchimpConnection(BUSINESS_ID)).resolves.toBeUndefined();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/1234567890');
-    expect((init as RequestInit).method).toBeUndefined(); // default GET, never mutates
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://app.whatchimp.com/api/v1/whatsapp/label/list',
+    );
+    const body = formBodyOf(fetchMock.mock.calls[0]);
+    expect(body.get('apiToken')).toBe('test-key');
+    expect(body.get('phone_number_id')).toBe('1234567890');
   });
 
-  it('throws on a failed lookup', async () => {
+  it('throws with WhatChimp’s own reason on a rejected credential', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', SECRET);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => whatchimpFail('WhatsApp account not found.')));
 
-    await expect(testWhatchimpConnection(BUSINESS_ID)).rejects.toThrow(/Whatchimp connection test failed/);
+    await expect(testWhatchimpConnection(BUSINESS_ID)).rejects.toThrow(/WhatsApp account not found/);
   });
 });

@@ -29,7 +29,7 @@ import type {
  * usual pricing-authority/no-premature-STK-push rules
  * `catalogCheckoutApi.test.ts` already covers for the legacy routes:
  * every Bridge API call is silent — it never calls Whatchimp's
- * `/messages` endpoint, unlike the legacy `/checkout/*` routes, which
+ * `/whatsapp/send` endpoint, unlike the legacy `/checkout/*` routes, which
  * still send a WhatsApp reply as a side effect of the free-text engine
  * underneath them.
  */
@@ -60,7 +60,9 @@ async function cleanCollections() {
 function mockProviders({ stkShouldFail = false }: { stkShouldFail?: boolean } = {}) {
   const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
     const urlStr = String(url);
-    const body = init?.body ? JSON.parse(init.body as string) : {};
+    // WhatChimp sends URLSearchParams (form-encoded); Daraja/Jumia/Meta
+    // still send JSON strings. Only parse what is actually JSON.
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
 
     if (urlStr.includes('/oauth/v1/generate')) {
       return new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 });
@@ -80,7 +82,7 @@ function mockProviders({ stkShouldFail = false }: { stkShouldFail?: boolean } = 
         { status: 200 },
       );
     }
-    if (urlStr.includes('/messages')) {
+    if (urlStr.includes('/whatsapp/')) {
       // Real, legitimate, and unchanged by the Bridge API: the
       // pre-existing Daraja-callback-triggered completion path
       // (`completeOrder`/`notifyAdmin`) still messages the business's
@@ -89,9 +91,10 @@ function mockProviders({ stkShouldFail = false }: { stkShouldFail?: boolean } = 
       // never trigger one, not that nothing in the whole system ever
       // does. Individual tests assert on call counts, not on this
       // branch being unreachable.
-      return new Response(JSON.stringify({ messages: [{ id: `wamid-${Date.now()}-${Math.random()}` }] }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({ status: '1', wa_message_id: `wamid-${Date.now()}-${Math.random()}` }),
+        { status: 200 },
+      );
     }
     throw new Error(`Unmocked fetch call: ${urlStr}`);
   });
@@ -297,9 +300,11 @@ describe('WhatChimp Bridge API — full checkout journey (pickup)', () => {
     expect(afterCheckout?.status).toBe('awaiting_payment');
 
     // The whole point of the Bridge API: nothing up to and including
-    // checkout ever called Whatchimp's /messages endpoint — only
+    // checkout ever called Whatchimp's send endpoint — only
     // /oauth and /mpesa/stkpush (Daraja, not Whatchimp).
-    const messageCallsBeforeCompletion = fetchMock.mock.calls.filter(([url]) => String(url).includes('/messages'));
+    const messageCallsBeforeCompletion = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/whatsapp/send'),
+    );
     expect(messageCallsBeforeCompletion).toHaveLength(0);
 
     // Poll before payment resolves.
@@ -414,8 +419,8 @@ describe('WhatChimp Bridge API — full checkout journey (pickup)', () => {
 
     // notifyAdmin does send one real WhatsApp message (to the business's
     // own admin number) — that's expected and unrelated to the
-    // customer-silence guarantee. No /messages call beyond that one.
-    const messageCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/messages'));
+    // customer-silence guarantee. No send call beyond that one.
+    const messageCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/whatsapp/send'));
     expect(messageCalls).toHaveLength(1);
   });
 

@@ -73,13 +73,26 @@ describe('ProductService.createProduct / updateProduct — catalog sync', () => 
     expect(stored?.name).toBe('Starter Box');
   });
 
-  it('syncs a new product to the WhatsApp Product Catalog using the package id as retailer_id', async () => {
+
+  /**
+   * WhatChimp's catalog API only lists catalogs, triggers a *whole-
+   * catalog* pull from Meta Commerce Manager, and manages catalog
+   * orders — there is no per-item push, so `syncItem` reports the gap
+   * (`WhatchimpCapabilityNotSupportedError`) instead of calling the
+   * fabricated Meta Catalog Batch endpoint this Gateway used to aim at.
+   *
+   * That makes it a standing platform limitation rather than an
+   * incident, which is why nothing is logged. The
+   * `ProductCatalogSyncFailed` event branch stays for a future Gateway
+   * that really can push items; no WhatChimp call can reach it today.
+   */
+  it('saves the product and logs nothing when the provider cannot push catalog items at all', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
       apiKey: 'key',
       phoneNumberId: 'wa-product-service-test',
       catalogId: 'catalog-1',
     });
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const packageId = await productService.createProduct(
@@ -94,74 +107,14 @@ describe('ProductService.createProduct / updateProduct — catalog sync', () => 
       'admin',
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/catalog-1/items_batch');
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.requests[0].data.id).toBe(packageId); // same identifier both systems use
-    expect(body.requests[0].data.price).toBe('3500 KES');
-    expect(body.requests[0].data.availability).toBe('in stock');
-    expect(body.requests[0].data.image_link).toBe('https://example.blob.vercel-storage.com/deluxe.png');
-  });
-
-  it('marks an out-of-stock update as unavailable in the catalog', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
-      apiKey: 'key',
-      phoneNumberId: 'wa-product-service-test',
-      catalogId: 'catalog-1',
-    });
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const packageId = await packageRepository.create(
-      {
-        businessId: BUSINESS_ID,
-        name: 'Premium Box',
-        description: 'A premium box',
-        priceKes: 5000,
-        isActive: true,
-        stockCount: 3,
-        imageUrl: null,
-      },
-      'admin',
-    );
-
-    await productService.updateProduct(BUSINESS_ID, packageId, { stockCount: 0 }, 'admin');
-
-    const [, init] = fetchMock.mock.calls.at(-1)!;
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.requests[0].data.availability).toBe('out of stock');
-  });
-
-  it('records a domain event (does not throw) when the catalog sync call fails for a real reason', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
-      apiKey: 'key',
-      phoneNumberId: 'wa-product-service-test',
-      catalogId: 'catalog-1',
-    });
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'catalog offline' } }), { status: 500 }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    await expect(
-      productService.createProduct(
-        {
-          businessId: BUSINESS_ID,
-          name: 'Failing Box',
-          description: 'desc',
-          priceKes: 1000,
-          isActive: true,
-          imageUrl: null,
-        },
-        'admin',
-      ),
-    ).resolves.toEqual(expect.any(String)); // sync failure never blocks the product write
-
+    expect(fetchMock).not.toHaveBeenCalled();
     const events = await adminFirestore.collection('domainEvents').get();
-    expect(events.size).toBe(1);
-    expect(events.docs[0].data().type).toBe('ProductCatalogSyncFailed');
+    expect(events.empty).toBe(true);
+
+    const stored = await packageRepository.findById(BUSINESS_ID, packageId);
+    expect(stored?.name).toBe('Deluxe Box');
   });
+
 });
 
 describe('ProductService.getCheckoutableProduct', () => {

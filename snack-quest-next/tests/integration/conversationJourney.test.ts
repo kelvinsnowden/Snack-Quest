@@ -153,7 +153,9 @@ async function seedFreePickupStation(businessId: string) {
 function mockAllProviders() {
   const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
     const urlStr = String(url);
-    const body = init?.body ? JSON.parse(init.body as string) : {};
+    // WhatChimp sends URLSearchParams (form-encoded); Daraja/Jumia/Meta
+    // still send JSON strings. Only parse what is actually JSON.
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
 
     if (urlStr.includes('/oauth/v1/generate')) {
       return new Response(
@@ -186,13 +188,13 @@ function mockAllProviders() {
     if (urlStr.includes('graph.facebook.com')) {
       return new Response(JSON.stringify({ events_received: 1 }), { status: 200 });
     }
-    if (urlStr.includes('/messages')) {
+    if (urlStr.includes('/whatsapp/')) {
       // Real WhatchimpGateway HTTP call — only hit when a Service uses the
       // module-level singleton (e.g. the internal agent-pricing route,
       // which doesn't take a FakeWhatsAppGateway) instead of a test's
       // own `new ConversationService(fakeGateway)`.
       return new Response(
-        JSON.stringify({ messages: [{ id: `wamid-${Date.now()}` }] }),
+        JSON.stringify({ status: '1', wa_message_id: `wamid-${Date.now()}` }),
         { status: 200 },
       );
     }
