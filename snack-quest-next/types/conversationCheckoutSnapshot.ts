@@ -33,7 +33,7 @@ export interface ConversationCheckoutSnapshot {
   packageId: string;
   packageLabel: string;
   /** Frozen quantity, so the paid order and inventory reservation cannot drift. */
-  quantity: number;
+  quantity?: number;
   customerName: string;
   county: string;
   delivery: DeliveryDetails;
