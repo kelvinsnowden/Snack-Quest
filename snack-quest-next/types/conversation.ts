@@ -62,7 +62,10 @@ export interface PickupStationCandidate {
 export interface ConversationStateBlob {
   packageId?: string;
   packageLabel?: string;
+  /** Authoritative unit price; totals are derived server-side with quantity. */
   priceKes?: number;
+  /** Defaults to one for existing WhatsApp conversations. */
+  quantity?: number;
   customerName?: string;
   county?: string;
   deliveryMethod?: DeliveryMethod;
