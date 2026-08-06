@@ -43,6 +43,7 @@ export class InsufficientStockError extends Error {
 export async function reserveStockInTransaction(
   tx: Transaction,
   packageId: string,
+  quantity = 1,
 ): Promise<void> {
   const ref = adminFirestore.collection('packages').doc(packageId);
   const snapshot = await tx.get(ref);
@@ -50,10 +51,10 @@ export async function reserveStockInTransaction(
   if (!data || data.stockCount === undefined) {
     return;
   }
-  if (data.stockCount <= 0) {
+  if (!Number.isInteger(quantity) || quantity < 1 || data.stockCount < quantity) {
     throw new OutOfStockError(packageId);
   }
-  tx.update(ref, { stockCount: data.stockCount - 1 });
+  tx.update(ref, { stockCount: data.stockCount - quantity });
 }
 
 /**
