@@ -52,7 +52,7 @@ class OrderService {
     const orderId = await adminFirestore.runTransaction(async (tx) => {
       // Stock check/decrement first — if this throws (OutOfStockError),
       // the whole transaction aborts and no order is created.
-      await reserveStockInTransaction(tx, snapshot.packageId);
+      await reserveStockInTransaction(tx, snapshot.packageId, snapshot.quantity);
 
       return createOrderInTransaction(
         tx,
@@ -93,8 +93,8 @@ class OrderService {
           {
             packageId: snapshot.packageId,
             packageLabel: snapshot.packageLabel,
-            quantity: 1,
-            unitCostKes: snapshot.subtotalKes,
+            quantity: snapshot.quantity,
+            unitCostKes: snapshot.subtotalKes / snapshot.quantity,
           },
         ],
       );
