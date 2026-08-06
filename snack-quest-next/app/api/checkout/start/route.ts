@@ -49,11 +49,8 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  if (quantity !== undefined && quantity !== 1) {
-    return Response.json(
-      { error: 'this catalog only supports a single unit per checkout — quantity must be 1' },
-      { status: 400 },
-    );
+  if (quantity !== undefined && (!Number.isInteger(quantity) || quantity < 1)) {
+    return Response.json({ error: 'quantity must be a positive integer' }, { status: 400 });
   }
 
   const business = await businessRepository.findByWhatsappPhoneNumberId(phoneNumberId);
@@ -83,6 +80,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         referralLinkId: creatorAttributionId ?? null,
         referralCode: referralCode ?? null,
+        quantity: quantity ?? 1,
       },
     );
 
