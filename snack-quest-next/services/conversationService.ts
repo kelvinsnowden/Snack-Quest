@@ -835,24 +835,23 @@ class ConversationService {
         throw new Error('Door delivery is only available in Nairobi');
       }
       if (input.addressText && input.landmark && input.estate && input.contactPhone) {
+        // Bolt is paid to the rider on delivery. The checkout snapshot therefore
+        // charges the box only; no client or server invents a dynamic Bolt fee.
         const finalPatch: Partial<ConversationStateBlob> = {
           ...basePatch,
           deliveryMethod: 'door',
+          deliveryFeeKes: 0,
           addressText: input.addressText,
           landmark: input.landmark,
           estate: input.estate,
           contactPhone: input.contactPhone,
         };
-        await conversationRepository.updateStep(conversationId, 'awaiting_agent_pricing', finalPatch);
-        await this.escalateToAgent(businessId, conversationId, conversation.phoneNumber, {
-          ...conversation.stateBlob,
-          ...finalPatch,
-        });
+        await conversationRepository.updateStep(conversationId, 'awaiting_referral_code', finalPatch);
         return {
           checkoutSessionId: conversationId,
-          nextStep: 'awaiting_agent_pricing',
+          nextStep: 'awaiting_referral_code',
           doorDeliveryEligible: true,
-          escalatedToAgent: true,
+          escalatedToAgent: false,
           pickupStations: [],
           selectedPickupStation: null,
         };
