@@ -105,6 +105,8 @@ export interface StartOptions {
   attributionSnapshot?: Record<string, unknown> | null;
   /** A text referral/discount code, pre-supplied by the caller (§ startFromCatalogSelection) — never applied to `Conversation` itself, only pre-fills `stateBlob.referralCode` for the existing `awaiting_referral_code` freeze-time re-validation to check. */
   referralCode?: string | null;
+  /** Validated by the caller; defaults to one for existing channels. */
+  quantity?: number;
 }
 
 export interface ConversationTurnResult {
@@ -308,7 +310,10 @@ class ConversationService {
     const { nextStep, stateBlobPatch, botReply } = bootstrapFromCatalogSelection(product, {
       referralCode: options.referralCode,
     });
-    await conversationRepository.updateStep(conversationId, nextStep, stateBlobPatch);
+    await conversationRepository.updateStep(conversationId, nextStep, {
+      ...stateBlobPatch,
+      quantity: options.quantity ?? 1,
+    });
     await this.reply(businessId, conversationId, phoneNumber, botReply);
 
     return { conversationId, nextStep, botReply };
@@ -386,6 +391,7 @@ class ConversationService {
       packageId: string;
       packageLabel: string;
       priceKes: number;
+      quantity: number;
       customerName: string;
       county: string;
       referralCode?: string;
@@ -396,7 +402,7 @@ class ConversationService {
       ? await referralService.validateCode(businessId, common.referralCode)
       : null;
 
-    const subtotalKes = common.priceKes;
+    const subtotalKes = common.priceKes * common.quantity;
     const discountKes = referral?.discountKes ?? 0;
     // Wallet credit is applied on top of any referral discount, capped
     // at what's left of the order after it — never below zero, and
@@ -418,6 +424,7 @@ class ConversationService {
       phoneNumber,
       packageId: common.packageId,
       packageLabel: common.packageLabel,
+      quantity: common.quantity,
       customerName: common.customerName,
       county: common.county,
       delivery,
@@ -575,6 +582,7 @@ class ConversationService {
         packageId: stateBlob.packageId ?? '',
         packageLabel: stateBlob.packageLabel ?? '',
         priceKes: stateBlob.priceKes ?? 0,
+        quantity: stateBlob.quantity ?? 1,
         customerName: stateBlob.customerName ?? '',
         county: stateBlob.county ?? '',
         referralCode: stateBlob.referralCode,
@@ -780,7 +788,10 @@ class ConversationService {
     const { nextStep, stateBlobPatch } = bootstrapFromCatalogSelection(product, {
       referralCode: options.referralCode,
     });
-    await conversationRepository.updateStep(conversationId, nextStep, stateBlobPatch);
+    await conversationRepository.updateStep(conversationId, nextStep, {
+      ...stateBlobPatch,
+      quantity: options.quantity ?? 1,
+    });
 
     return { conversationId, nextStep };
   }
@@ -1019,6 +1030,7 @@ class ConversationService {
         packageId: stateBlob.packageId ?? '',
         packageLabel: stateBlob.packageLabel ?? '',
         priceKes: stateBlob.priceKes ?? 0,
+        quantity: stateBlob.quantity ?? 1,
         customerName: stateBlob.customerName ?? '',
         county: stateBlob.county ?? '',
         referralCode: stateBlob.referralCode,
