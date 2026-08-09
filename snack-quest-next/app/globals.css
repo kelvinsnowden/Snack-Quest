@@ -17,10 +17,26 @@
  * distinct name avoids a same-name self-reference between the two.
  */
 :root {
-  /* Native UI (scrollbars, form controls, date pickers) follows the brand,
-     not the OS — without this Chrome still renders them dark on a
-     dark-mode machine, against a light page. */
-  color-scheme: light;
+  /*
+   * `only light`, not plain `light`, and the keyword is doing real work.
+   *
+   * Two separate things repaint this site on a dark-mode phone. The
+   * first was ours: a `prefers-color-scheme: dark` block that swapped
+   * the whole palette, since removed. The second is Chrome's own Auto
+   * Dark Theme on Android, which inverts sites it decides have no dark
+   * theme of their own — and a light-only site is precisely what it
+   * targets. It re-tints backgrounds, buttons and text at paint time,
+   * which is why computed styles still read as light while the screen
+   * plainly isn't: verified with Chromium's WebContentsForceDark against
+   * a control page, and it turned the checkout's placeholder text into
+   * dark grey on near-black and the Pay button into muddy brown.
+   *
+   * Bare `light` only says "this page has a light theme". `only light`
+   * is the opt-out that tells the browser not to synthesise a dark one.
+   * It also keeps native UI — scrollbars, form controls, date pickers —
+   * on the brand rather than the OS.
+   */
+  color-scheme: only light;
 
   /* Primitives */
   --sq-primitive-orange: #ff7a00;
