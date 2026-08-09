@@ -151,52 +151,69 @@ export function CheckoutForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-12">
+    <form onSubmit={onSubmit} className="flex flex-col gap-9 sm:gap-12">
       <section className="flex flex-col gap-4">
         <SectionHeading step={1} title="Your box" />
-        <div className="grid gap-3 sm:grid-cols-2">
-          {boxes.map((candidate) => {
-            const isSelected = candidate.id === boxId;
-            const soldOut = candidate.stockCount === 0;
-            return (
-              <button
-                key={candidate.id}
-                type="button"
-                disabled={soldOut}
-                onClick={() => {
-                  setBoxId(candidate.id);
-                  setQuantity(1);
-                }}
-                aria-pressed={isSelected}
-                className={cn(
-                  'focus-visible:ring-primary relative flex items-start gap-4 rounded-lg border p-4 text-left outline-none transition-colors focus-visible:ring-2',
-                  isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface hover:bg-border/30',
-                  soldOut && 'cursor-not-allowed opacity-50',
-                )}
-              >
-                <div className="bg-border/40 relative size-14 shrink-0 overflow-hidden rounded-md">
-                  {candidate.imageUrl ? (
-                    <Image src={candidate.imageUrl} alt="" fill sizes="56px" className="object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-2xl" aria-hidden="true">
-                      🍿
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-foreground text-sm font-semibold">{candidate.name}</p>
-                  <p className="text-foreground mt-1 text-sm">{formatKes(candidate.priceKes)}</p>
-                  {candidate.snackCountLabel ? (
-                    <p className="text-muted-foreground mt-1 text-sm">{candidate.snackCountLabel}</p>
-                  ) : null}
-                  {soldOut ? <p className="text-danger mt-1 text-sm">Sold out</p> : null}
-                </div>
-                {isSelected ? (
-                  <Check className="text-primary size-5 shrink-0" aria-hidden="true" />
-                ) : null}
-              </button>
-            );
-          })}
+        {/*
+          A swipeable rail on a phone, a grid once there's width for
+          one. Three stacked full-width cards cost a whole screen of
+          scrolling before the customer had even entered their name —
+          on the page where every extra screen is someone who doesn't
+          finish. Bleeds past the edge so the next card peeks, same
+          language as the homepage reviews rail.
+        */}
+        <div className="-mx-5 sm:mx-0">
+          <ul className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0">
+            {boxes.map((candidate) => {
+              const isSelected = candidate.id === boxId;
+              const soldOut = candidate.stockCount === 0;
+              return (
+                <li key={candidate.id} className="w-[64vw] max-w-[220px] shrink-0 snap-start sm:w-auto sm:max-w-none">
+                  <button
+                    type="button"
+                    disabled={soldOut}
+                    onClick={() => {
+                      setBoxId(candidate.id);
+                      setQuantity(1);
+                    }}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      'focus-visible:ring-primary relative flex h-full w-full flex-col gap-3 rounded-xl border p-4 text-left outline-none transition-colors focus-visible:ring-2',
+                      isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface hover:bg-border/30',
+                      soldOut && 'cursor-not-allowed opacity-50',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="bg-border/40 relative size-12 shrink-0 overflow-hidden rounded-lg">
+                        {candidate.imageUrl ? (
+                          <Image src={candidate.imageUrl} alt="" fill sizes="48px" className="object-cover" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-xl" aria-hidden="true">
+                            🍿
+                          </span>
+                        )}
+                      </div>
+                      {isSelected ? (
+                        <span className="bg-primary text-primary-foreground flex size-5 shrink-0 items-center justify-center rounded-full">
+                          <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-foreground text-sm font-semibold">{candidate.name}</p>
+                      <p className="text-foreground mt-1 text-base font-semibold">
+                        {formatKes(candidate.priceKes)}
+                      </p>
+                      {candidate.snackCountLabel ? (
+                        <p className="text-muted-foreground mt-1 text-sm">{candidate.snackCountLabel}</p>
+                      ) : null}
+                      {soldOut ? <p className="text-danger mt-1 text-sm font-medium">Sold out</p> : null}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
         <div className="border-border bg-surface flex items-center justify-between gap-4 rounded-lg border p-4">
@@ -360,6 +377,7 @@ export function CheckoutForm({
       <div className="border-border flex flex-col gap-4 border-t pt-8">
         <OrderSummary
           quote={quote}
+          stationChosen={deliveryMethod === 'pickup' ? Boolean(station) : true}
           fallbackLabel={box ? `${quantity} × ${box.name}` : 'Your order'}
           fallbackTotalKes={box ? box.priceKes * quantity : null}
         />
@@ -375,14 +393,51 @@ export function CheckoutForm({
           </p>
         ) : null}
 
-        <Button type="submit" size="lg" loading={submitting} disabled={!ready}>
-          {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
-        </Button>
-
-        {!ready && problems.length > 0 ? (
-          <p className="text-muted-foreground text-sm">Still needed: {problems.join(' · ')}</p>
-        ) : null}
+        {/*
+          The in-flow submit is the one a desktop visitor uses, and the
+          one that exists without JavaScript. On a phone the sticky bar
+          below carries the real call to action, so this is hidden
+          there rather than duplicated into two live buttons.
+        */}
+        <div className="hidden sm:flex sm:flex-col sm:gap-4">
+          <Button type="submit" size="lg" loading={submitting} disabled={!ready}>
+            {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
+          </Button>
+          {!ready && problems.length > 0 ? (
+            <p className="text-muted-foreground text-sm">Still needed: {problems.join(' · ')}</p>
+          ) : null}
+        </div>
       </div>
+
+      {/*
+        The phone's checkout bar. The total and the way to pay it were
+        at the very bottom of a page roughly five screens tall — a
+        customer had to scroll past everything to find out what they'd
+        be charged, and again to pay. Now both follow them down the
+        page, and the bar states what's still missing rather than just
+        greying out and leaving them to guess.
+      */}
+      <div
+        className="border-border bg-background/95 fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur sm:hidden"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+      >
+        <div className="mx-auto flex max-w-3xl flex-col gap-2 px-5 pt-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-muted-foreground text-sm">
+              {ready ? 'Total to pay now' : (problems[0] ?? 'Your order')}
+            </span>
+            <span className="text-foreground text-lg font-semibold tabular-nums">
+              {quote ? formatKes(quote.pricing.totalKes) : box ? formatKes(box.priceKes * quantity) : '—'}
+            </span>
+          </div>
+          <Button type="submit" size="lg" loading={submitting} disabled={!ready} className="w-full">
+            {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Reserves the space the fixed bar covers, so the last field is never trapped underneath it. */}
+      <div aria-hidden="true" className="h-28 sm:hidden" />
     </form>
   );
 }
@@ -395,10 +450,13 @@ export function CheckoutForm({
  */
 function OrderSummary({
   quote,
+  stationChosen,
   fallbackLabel,
   fallbackTotalKes,
 }: {
   quote: WebCheckoutQuote | null;
+  /** Whether a real pickup station has been selected — distinguishes "no fee yet" from "a fee of zero". Always true for door delivery, which has no station. */
+  stationChosen: boolean;
   fallbackLabel: string;
   fallbackTotalKes: number | null;
 }) {
@@ -442,11 +500,22 @@ function OrderSummary({
       <div className="flex items-baseline justify-between gap-4">
         <dt className="text-muted-foreground text-sm">Delivery</dt>
         <dd className="text-foreground text-sm tabular-nums">
+          {/*
+            A chosen station whose fee is 0 is not the same as no
+            station chosen, and saying "Choose a station" to someone who
+            just chose one reads as the page having lost their pick.
+            The caller passes `stationChosen` so the two states are
+            distinguishable — a zero fee shown as "Free" is the honest
+            reading of a rate the business has set to zero (or not yet
+            set; see the delivery-zone rates in Admin).
+          */}
           {pricing.boltArrangedSeparately
             ? 'Arranged after checkout'
-            : pricing.deliveryFeeKes > 0
-              ? formatKes(pricing.deliveryFeeKes)
-              : 'Choose a station'}
+            : !stationChosen
+              ? 'Choose a station'
+              : pricing.deliveryFeeKes > 0
+                ? formatKes(pricing.deliveryFeeKes)
+                : 'Free'}
         </dd>
       </div>
 
@@ -466,7 +535,7 @@ function SectionHeading({ step, title, optional }: { step: number; title: string
       <span className="bg-primary text-primary-foreground flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
         {step}
       </span>
-      <h2 className="text-card-title text-foreground font-semibold">{title}</h2>
+      <h2 className="text-foreground text-base font-semibold sm:text-[length:var(--text-card-title)]">{title}</h2>
       {optional ? <span className="text-muted-foreground text-sm">Optional</span> : null}
     </div>
   );
@@ -499,7 +568,7 @@ function DeliveryOption({
         {icon}
         <span className="text-foreground text-sm font-semibold">{title}</span>
       </span>
-      <span className="text-muted-foreground text-sm">{detail}</span>
+      <span className="text-muted-foreground text-sm leading-snug">{detail}</span>
     </button>
   );
 }

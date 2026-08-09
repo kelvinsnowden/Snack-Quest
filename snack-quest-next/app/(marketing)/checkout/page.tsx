@@ -51,16 +51,22 @@ export default async function CheckoutPage({
     snackCountLabel: data.snackCountLabel ?? null,
   }));
 
+  // Tighter on a phone than a marketing page would be: a hero-sized
+  // title and a two-line strapline were eating close to half of the
+  // first screen on a page whose entire job is to be filled in. The
+  // full treatment returns at `sm`, where there's room for it.
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+    <div className="mx-auto max-w-3xl px-5 py-7 sm:px-6 sm:py-16 lg:px-8">
       <header>
-        <h1 className="text-page-title text-foreground font-bold tracking-tight">Checkout</h1>
-        <p className="text-muted-foreground mt-3 text-base">
+        <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-[length:var(--text-page-title)]">
+          Checkout
+        </h1>
+        <p className="text-muted-foreground mt-2 text-sm sm:mt-3 sm:text-base">
           Pick your box, tell us where to send it, and pay with M-Pesa. It takes about a minute.
         </p>
       </header>
 
-      <div className="mt-10">
+      <div className="mt-7 sm:mt-10">
         <CheckoutForm
           boxes={boxes}
           initialBoxId={requestedBoxId ?? null}
