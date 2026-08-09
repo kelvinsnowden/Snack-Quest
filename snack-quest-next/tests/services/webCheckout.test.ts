@@ -75,6 +75,23 @@ async function seed(overrides: { priceKes?: number; stockCount?: number; station
   );
 }
 
+/** A creator's one permanent link, on today's flat economics (§ flat affiliate commission). */
+async function seedReferralLink() {
+  await referralLinkRepository.create(
+    {
+      businessId: BUSINESS_ID,
+      ownerId: 'creator-1',
+      code: 'SAVE500',
+      discountKes: 500,
+      commissionKes: 300,
+      isActive: true,
+      clickCount: 0,
+      conversionCount: 0,
+    },
+    'test',
+  );
+}
+
 function service() {
   return new ConversationService(new FakeWhatsAppGateway());
 }
@@ -162,19 +179,7 @@ describe('startWebCheckout — pricing authority', () => {
   });
 
   it('applies a valid referral code, and freezes who earns the commission', async () => {
-    await referralLinkRepository.create(
-      {
-        businessId: BUSINESS_ID,
-        ownerId: 'creator-1',
-        code: 'SAVE500',
-        discountKes: 500,
-        commissionKes: 250,
-        isActive: true,
-        clickCount: 0,
-        conversionCount: 0,
-      },
-      'test',
-    );
+    await seedReferralLink();
 
     const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ referralCode: 'SAVE500' }));
 
@@ -185,7 +190,7 @@ describe('startWebCheckout — pricing authority', () => {
     const snapshot = await conversationCheckoutSnapshotRepository.findById(
       conversation!.conversationCheckoutSnapshotId!,
     );
-    expect(snapshot).toMatchObject({ referralOwnerId: 'creator-1', referralCommissionKes: 250 });
+    expect(snapshot).toMatchObject({ referralOwnerId: 'creator-1', referralCommissionKes: 300 });
   });
 
   it('charges nothing extra for an unknown referral code — it just does not apply', async () => {
@@ -193,6 +198,69 @@ describe('startWebCheckout — pricing authority', () => {
 
     expect(result.pricing.discountKes).toBe(0);
     expect(result.pricing.totalKes).toBe(2800);
+  });
+
+  it('applies a referral code however the customer capitalised it', async () => {
+    await seedReferralLink();
+
+    // The regression this guards: codes are stored uppercase and
+    // looked up by exact match, so a customer typing what they read on
+    // a creator's post used to pay full price with no error anywhere,
+    // and the creator earned nothing.
+    for (const typed of ['save500', 'Save500', ' save500 ', 'SAVE500']) {
+      const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ referralCode: typed }));
+      expect(result.pricing.discountKes).toBe(500);
+      expect(result.pricing.totalKes).toBe(2300);
+    }
+  });
+
+  it('quotes exactly what it will charge', async () => {
+    await seedReferralLink();
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 2,
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      referralCode: 'save500',
+      phone: PHONE_TYPED,
+    });
+    const charged = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ quantity: 2, referralCode: 'save500' }),
+    );
+
+    expect(quote?.referralCodeApplied).toBe(true);
+    expect(quote?.pricing).toEqual(charged.pricing);
+    expect(initiateStkPushMock).toHaveBeenCalledWith(
+      expect.objectContaining({ amountKes: quote!.pricing.totalKes }),
+    );
+  });
+
+  it('tells the customer a code was rejected rather than silently ignoring it', async () => {
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      referralCode: 'MADEUP',
+    });
+
+    expect(quote?.referralCodeApplied).toBe(false);
+    expect(quote?.referralCodeRejected).toBe(true);
+    expect(quote?.pricing.discountKes).toBe(0);
+  });
+
+  it('quotes a door delivery without a Bolt fare it has no way to know', async () => {
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+    });
+
+    expect(quote?.pricing.deliveryFeeKes).toBe(0);
+    expect(quote?.pricing.boltArrangedSeparately).toBe(true);
+    expect(quote?.pricing.totalKes).toBe(2500);
   });
 });
 
@@ -379,6 +447,71 @@ describe('startWebCheckout — payment hand-off', () => {
     const conversation = await conversationRepository.findById(result.checkoutSessionId);
     expect(conversation?.conversationCheckoutSnapshotId).toBeTruthy();
     expect(conversation?.status).toBe('active');
+  });
+});
+
+describe('startWebCheckout — staff-initiated', () => {
+  const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
+
+  it('prices a staff order exactly like a customer order', async () => {
+    const staffOrder = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF }),
+    );
+    const customerOrder = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+
+    // A faster way to start an order, never a privileged way to price one.
+    expect(staffOrder.pricing).toEqual(customerOrder.pricing);
+  });
+
+  it('warns the customer on WhatsApp before the prompt arrives', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+
+    await svc.startWebCheckout(BUSINESS_ID, pickupInput({ initiatedBy: STAFF }));
+
+    const toCustomer = gateway.sent.find((message) => message.phone === PHONE_NORMALIZED);
+    expect(toCustomer).toBeDefined();
+    expect(toCustomer!.text).toContain('Achieng');
+    expect(toCustomer!.text).toContain('2800');
+    // An unexplained M-Pesa prompt reads as a scam; the way out has to
+    // be stated, not implied.
+    expect(toCustomer!.text).toMatch(/ignore it and nothing will be charged/i);
+  });
+
+  it('says nothing to a customer who checked out themselves', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+
+    await svc.startWebCheckout(BUSINESS_ID, pickupInput());
+
+    expect(gateway.sent.filter((message) => message.phone === PHONE_NORMALIZED)).toHaveLength(0);
+  });
+
+  it('records who took the order', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ initiatedBy: STAFF }));
+
+    const events = await adminFirestore.collection('domainEvents').get();
+    const event = events.docs.map((doc) => doc.data()).find((data) => data.type === 'StaffInitiatedCheckout');
+    expect(event).toMatchObject({
+      businessId: BUSINESS_ID,
+      aggregateId: result.checkoutSessionId,
+      payload: { staffUid: 'staff-1', staffName: 'Achieng', totalKes: 2800 },
+    });
+  });
+
+  it('lets staff take an order for a customer whose thread they have already taken over', async () => {
+    const conversationId = await conversationRepository.create({
+      businessId: BUSINESS_ID,
+      phoneNumber: PHONE_NORMALIZED,
+    });
+    await conversationRepository.update(conversationId, { status: 'agent_assigned' });
+
+    // The customer-facing guard exists to stop a second channel firing
+    // an STK push at someone a human is helping. Staff *are* that
+    // human, and this is the case the feature exists for.
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ initiatedBy: STAFF }));
+    expect(result.stkPushSent).toBe(true);
   });
 });
 

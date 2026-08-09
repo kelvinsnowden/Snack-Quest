@@ -60,12 +60,25 @@ export interface CommissionListItem {
 }
 
 class ReferralService {
-  /** Returns null for an invalid/inactive/unknown code — never blocks the purchase. */
+  /**
+   * Returns null for an invalid/inactive/unknown code — never blocks
+   * the purchase.
+   *
+   * Codes are normalized the same way `recordClick` normalizes them,
+   * and for the same reason: `referralLinks.code` is stored uppercase,
+   * `findByCode` is an exact-match query, and a customer typing their
+   * creator's code into the checkout form types it however they saw it
+   * written. Before this, `save10` found nothing while `SAVE10`
+   * worked — the order went through at full price with no error
+   * anywhere, and the creator earned nothing. The website checkout
+   * made that path reachable by real customers rather than only by the
+   * bot, which had already matched on text it echoed back.
+   */
   async validateCode(
     businessId: string,
     code: string,
   ): Promise<ValidatedReferral | null> {
-    const match = await referralLinkRepository.findByCode(businessId, code);
+    const match = await referralLinkRepository.findByCode(businessId, code.trim().toUpperCase());
     if (!match) {
       return null;
     }

@@ -7,6 +7,8 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { refundRepository } from '@/repositories/refundRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { OrderStatusActions } from '@/components/admin/OrderStatusActions';
 import { RefundActions } from '@/components/admin/RefundActions';
@@ -205,6 +207,26 @@ export default async function AdminOrderDetailPage({
                 </span>
               }
             />
+          </CardContent>
+        </Card>
+      ) : isOrderBatchable(order.status, order.fulfillmentBatchId) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Fulfillment</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 pt-0">
+            {/* Silence here used to read as "no cost", which is the one
+                thing it never means — this order's revenue is counted
+                but nothing has been spent against it on paper yet. */}
+            <p className="text-sm text-muted-foreground">
+              No shopping trip has been costed against this order yet, so its profit is unknown — not zero. It
+              appears under uncosted orders in Finance until a batch covers it.
+            </p>
+            <div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/fulfillment-batches/new">Record a batch</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}

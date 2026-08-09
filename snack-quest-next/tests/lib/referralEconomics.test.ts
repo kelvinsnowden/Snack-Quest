@@ -1,31 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CREATOR_COMMISSION_KES,
+  REFERRAL_DISCOUNT_KES,
   resolveCommissionRateKes,
-  EARLY_CREATOR_LIMIT,
-  EARLY_CREATOR_COMMISSION_KES,
-  STANDARD_CREATOR_COMMISSION_KES,
 } from '@/lib/creators/referralEconomics';
 
+/**
+ * The referral program's fixed economics (§ flat affiliate
+ * commission). These are the numbers a creator was promised and a
+ * customer was quoted, so they are worth asserting outright rather
+ * than only through the services that read them.
+ */
+
 describe('resolveCommissionRateKes', () => {
-  it('gives the early rate to the very first registrant', () => {
-    expect(resolveCommissionRateKes(1)).toBe(EARLY_CREATOR_COMMISSION_KES);
+  it('is the same rate for every affiliate', () => {
+    expect(resolveCommissionRateKes()).toBe(CREATOR_COMMISSION_KES);
   });
 
-  it('gives the early rate to exactly the EARLY_CREATOR_LIMITth registrant', () => {
-    expect(resolveCommissionRateKes(EARLY_CREATOR_LIMIT)).toBe(
-      EARLY_CREATOR_COMMISSION_KES,
-    );
+  it('is KES 300', () => {
+    expect(CREATOR_COMMISSION_KES).toBe(300);
   });
+});
 
-  it('gives the standard rate to the registrant right after the limit', () => {
-    expect(resolveCommissionRateKes(EARLY_CREATOR_LIMIT + 1)).toBe(
-      STANDARD_CREATOR_COMMISSION_KES,
-    );
-  });
-
-  it('gives the standard rate well past the limit', () => {
-    expect(resolveCommissionRateKes(1000)).toBe(
-      STANDARD_CREATOR_COMMISSION_KES,
-    );
+describe('REFERRAL_DISCOUNT_KES', () => {
+  it('is unchanged by the commission flattening — the customer still saves KES 250', () => {
+    expect(REFERRAL_DISCOUNT_KES).toBe(250);
   });
 });

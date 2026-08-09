@@ -106,8 +106,9 @@ describe('CreatorAuthService.register', () => {
       onboardingCompleted: false,
       tier: 'bronze',
       availableCashKes: 0,
-      // The very first creator registered on this business (§ referral system overhaul) — locks in the early rate.
-      commissionRateKes: 500,
+      // Flat for every affiliate now (§ flat affiliate commission) —
+      // no early-registration tier to be the first creator of.
+      commissionRateKes: 300,
     });
     expect(profile?.referralCode).toMatch(/^[A-Z]+\d{4}$/);
 
@@ -122,7 +123,7 @@ describe('CreatorAuthService.register', () => {
       code: profile?.referralCode,
       ownerId: uid,
       discountKes: 250,
-      commissionKes: 500,
+      commissionKes: 300,
       isActive: true,
       clickCount: 0,
       conversionCount: 0,
@@ -135,27 +136,23 @@ describe('CreatorAuthService.register', () => {
     });
   });
 
-  it('gives the standard commission rate once a business has passed its first 50 registered creators', async () => {
-    for (let i = 0; i < 50; i += 1) {
-      const uid = await createAuthUser(`early-${i}@example.com`);
+  it('gives every creator the same commission, whenever they registered', async () => {
+    // Registration order used to decide the rate. It no longer does —
+    // the tenth creator earns exactly what the first one does.
+    const rates: number[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const uid = await createAuthUser(`creator-order-${i}@example.com`);
       const idToken = await getIdTokenForUid(uid);
-      await creatorAuthService.register(idToken, `Early Creator ${i}`);
+      await creatorAuthService.register(idToken, `Creator Number ${i}`);
+
+      const profile = await creatorRepository.findById(uid);
+      const { links } = await referralLinkRepository.listByOwner('snack-quest', uid);
+      rates.push(profile!.commissionRateKes, links[0].data.commissionKes);
+      expect(links[0].data.discountKes).toBe(250);
     }
 
-    const uid = await createAuthUser('creator-51@example.com');
-    const idToken = await getIdTokenForUid(uid);
-    await creatorAuthService.register(idToken, 'Creator Fifty-One');
-
-    const profile = await creatorRepository.findById(uid);
-    expect(profile?.commissionRateKes).toBe(300);
-
-    const { links } = await referralLinkRepository.listByOwner(
-      'snack-quest',
-      uid,
-    );
-    expect(links[0].data.commissionKes).toBe(300);
-    expect(links[0].data.discountKes).toBe(250);
-  }, 30000);
+    expect(rates).toEqual([300, 300, 300, 300, 300, 300]);
+  });
 
   it('adds the creator role to an existing customer account instead of creating a duplicate identity', async () => {
     const uid = await createAuthUser('existing-customer@example.com');

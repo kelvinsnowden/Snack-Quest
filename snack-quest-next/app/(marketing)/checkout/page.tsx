@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { REFERRAL_COOKIE_NAME, resolveReferralCode } from '@/lib/creators/referralCookie';
 import { packageRepository } from '@/repositories/packageRepository';
 import { CheckoutForm, type CheckoutBox } from '@/components/checkout/CheckoutForm';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
@@ -28,8 +30,13 @@ export default async function CheckoutPage({
 }: {
   searchParams: Promise<{ box?: string; ref?: string }>;
 }) {
-  const { box: requestedBoxId, ref: referralCode } = await searchParams;
+  const { box: requestedBoxId, ref: refParam } = await searchParams;
   const businessId = getCurrentBusinessId();
+
+  // `?ref=` when the visitor arrived from a creator's link just now,
+  // the cookie when they arrived from one earlier and browsed first.
+  const cookieStore = await cookies();
+  const referralCode = resolveReferralCode(refParam, cookieStore.get(REFERRAL_COOKIE_NAME)?.value);
 
   const active = await packageRepository.listActive(businessId);
   const boxes: CheckoutBox[] = active.map(({ id, data }) => ({
@@ -57,7 +64,7 @@ export default async function CheckoutPage({
         <CheckoutForm
           boxes={boxes}
           initialBoxId={requestedBoxId ?? null}
-          initialReferralCode={referralCode ?? null}
+          initialReferralCode={referralCode}
         />
       </div>
     </div>

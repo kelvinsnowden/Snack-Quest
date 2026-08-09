@@ -10,6 +10,7 @@ import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
+import { computeCheckoutTotals, redeemableCeilingKes } from '@/lib/checkout/pricing';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -36,6 +37,7 @@ import type {
   DeliveryMethod,
   PickupStationCandidate,
   WebCheckoutPricing,
+  WebCheckoutQuote,
   WebCheckoutStatusResponse,
 } from '@/types';
 import type {
@@ -184,6 +186,20 @@ export interface WebCheckoutInput {
   landmark?: string;
   contactPhone?: string;
   referralCode?: string;
+  /**
+   * Set when a staff member is placing this order on the customer's
+   * behalf (§ staff-initiated orders) — an order taken over the phone,
+   * at an event, or in a DM. Absent for a customer checking out
+   * themselves on the website.
+   *
+   * It changes three things and nothing else: the transcript records
+   * who placed it, the customer is told what is about to be charged
+   * before the prompt arrives (an unexplained STK push is alarming),
+   * and a domain event names the staff member. The pricing, the
+   * snapshot and the payment are identical — a staff order is not a
+   * privileged path that can discount anything.
+   */
+  initiatedBy?: { staffUid: string; staffName: string };
 }
 
 export interface WebCheckoutResult {
@@ -191,6 +207,17 @@ export interface WebCheckoutResult {
   payingPhone: string;
   stkPushSent: boolean;
   pricing: WebCheckoutPricing;
+}
+
+/** What a quote needs — a subset of `WebCheckoutInput`, since a customer mid-form hasn't supplied the rest yet. */
+export interface WebCheckoutQuoteInput {
+  packageId: string;
+  quantity: number;
+  deliveryMethod: DeliveryMethod;
+  pickupStationId?: string;
+  referralCode?: string;
+  /** Optional — only used to look up wallet credit, and ignored when it isn't yet a valid number. */
+  phone?: string;
 }
 
 class ConversationService {
@@ -428,9 +455,12 @@ class ConversationService {
     // A customer mid-way through a WhatsApp conversation that a human
     // agent has taken over must not have an STK push fired at them
     // from a second channel — same guard `startFromCatalogSelection`
-    // applies for the same reason.
+    // applies for the same reason. Staff placing the order are exempt:
+    // they are that human agent, and refusing them here would block the
+    // exact case staff-initiated orders exist for — someone on the
+    // phone with a customer whose thread they've already taken over.
     const existing = await conversationRepository.findActiveByPhoneNumber(businessId, phoneNumber);
-    if (existing?.conversation.status === 'agent_assigned') {
+    if (existing?.conversation.status === 'agent_assigned' && !input.initiatedBy) {
       throw new WebCheckoutConflictError(
         'One of our team is already helping you with an order on WhatsApp — please finish there, or message us to start over.',
       );
@@ -454,7 +484,9 @@ class ConversationService {
     // nowhere.
     await conversationRepository.appendMessage(conversationId, {
       direction: 'inbound',
-      body: `[Website checkout] ${quantity} x ${box.name}`,
+      body: input.initiatedBy
+        ? `[Staff order by ${input.initiatedBy.staffName}] ${quantity} x ${box.name}`
+        : `[Website checkout] ${quantity} x ${box.name}`,
       providerMessageId: null,
     });
     await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation', {
@@ -485,6 +517,28 @@ class ConversationService {
         delivery,
       );
 
+    // A customer who didn't press anything is about to get an M-Pesa
+    // prompt. Telling them what it's for, before it lands, is the
+    // difference between a service and a scam — so this goes out ahead
+    // of the push, not after it, and a send failure doesn't stop the
+    // order (the staff member is on the phone with them anyway).
+    if (input.initiatedBy) {
+      try {
+        await this.reply(
+          businessId,
+          conversationId,
+          phoneNumber,
+          `Hi ${customerName.split(' ')[0]}, ${input.initiatedBy.staffName} from Snack Quest has set up your order:\n\n` +
+            `${quantity} x ${box.name}\n` +
+            `${formatDeliveryLabel(delivery)}\n` +
+            `Total: KES ${totalKes}\n\n` +
+            'An M-Pesa prompt is on its way — enter your PIN to confirm. If you were not expecting this, ignore it and nothing will be charged.',
+        );
+      } catch {
+        // Best-effort, same discipline as every other notification here.
+      }
+    }
+
     const intentId = await paymentService.createIntent({
       businessId,
       conversationId,
@@ -510,6 +564,21 @@ class ConversationService {
       // retry re-prices nothing.
       stkPushSent = false;
       await conversationRepository.update(conversationId, { status: 'active' });
+    }
+
+    if (input.initiatedBy) {
+      // Named on the event, not just in the transcript, so "who took
+      // this order" is answerable without reading conversation
+      // messages — the same question the audit log exists for.
+      await publishEvent(businessId, 'StaffInitiatedCheckout', 'conversation', conversationId, {
+        staffUid: input.initiatedBy.staffUid,
+        staffName: input.initiatedBy.staffName,
+        phoneNumber,
+        packageId: input.packageId,
+        quantity,
+        totalKes,
+        stkPushSent,
+      });
     }
 
     return {
@@ -623,6 +692,99 @@ class ConversationService {
         ...(input.landmark?.trim() ? { landmark: input.landmark.trim() } : {}),
         ...(contactPhone ? { contactPhone } : {}),
       },
+    };
+  }
+
+  /**
+   * Prices a website selection without freezing anything or charging
+   * anyone (§ Website Becomes the Primary Commerce Channel). The
+   * checkout page calls this as the customer builds their order, so the
+   * pickup fee, the referral discount and any wallet credit are all
+   * visible *before* the M-Pesa prompt rather than appearing for the
+   * first time on the payment screen.
+   *
+   * Shares `resolveWebPricing` with `startWebCheckout` — same catalog
+   * read, same station read, same `referralService.validateCode`, same
+   * `computeCheckoutTotals`. A quote that didn't match the charge
+   * would be worse than no quote at all, so there is no second
+   * implementation for it to drift from.
+   *
+   * Never throws for a bad referral code or an unpriceable delivery
+   * choice: a customer half-way through filling a form is expected to
+   * be in an incomplete state, and a quote is not the place to reject
+   * them. Validation belongs to `startWebCheckout`, which is what
+   * actually takes money.
+   */
+  async quoteWebCheckout(
+    businessId: string,
+    input: WebCheckoutQuoteInput,
+  ): Promise<WebCheckoutQuote | null> {
+    const quantity = Math.trunc(input.quantity);
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > MAX_WEB_CHECKOUT_QUANTITY) {
+      return null;
+    }
+
+    const box = await packageRepository.findById(businessId, input.packageId);
+    if (!box || !box.isActive) {
+      return null;
+    }
+
+    let deliveryFeeKes = 0;
+    if (input.deliveryMethod === 'pickup') {
+      if (!input.pickupStationId) {
+        // No station chosen yet — quote the box alone rather than
+        // refusing to answer. The fee appears the moment they pick one.
+        deliveryFeeKes = 0;
+      } else {
+        const station = await pickupStationRepository.findById(businessId, input.pickupStationId);
+        if (!station || !station.isActive) {
+          return null;
+        }
+        deliveryFeeKes = station.deliveryFeeKes;
+      }
+    }
+
+    const referral = input.referralCode
+      ? await referralService.validateCode(businessId, input.referralCode)
+      : null;
+
+    // Wallet credit needs a real, normalized phone number to look up.
+    // Half-typed numbers are the norm here, so a rejection just means
+    // "no credit shown yet", never an error.
+    let availableWalletCreditKes = 0;
+    const rawDiscountKes = referral?.discountKes ?? 0;
+    if (input.phone) {
+      try {
+        availableWalletCreditKes = await walletService.redeemableAmount(
+          businessId,
+          normalizeKenyanPhone(input.phone),
+          redeemableCeilingKes(box.priceKes * quantity, rawDiscountKes),
+        );
+      } catch {
+        availableWalletCreditKes = 0;
+      }
+    }
+
+    const totals = computeCheckoutTotals({
+      unitPriceKes: box.priceKes,
+      quantity,
+      discountKes: rawDiscountKes,
+      walletCreditAppliedKes: availableWalletCreditKes,
+      deliveryFeeKes,
+    });
+
+    return {
+      pricing: {
+        packageLabel: box.name,
+        quantity,
+        unitPriceKes: box.priceKes,
+        ...totals,
+        boltArrangedSeparately: input.deliveryMethod === 'door',
+      },
+      // The customer typed a code; saying whether it worked is the
+      // whole point of showing them a quote.
+      referralCodeApplied: Boolean(referral),
+      referralCodeRejected: Boolean(input.referralCode) && !referral,
     };
   }
 
@@ -751,24 +913,28 @@ class ConversationService {
       : null;
 
     const quantity = common.quantity ?? 1;
-    // `priceKes` is the unit price; the snapshot's `subtotalKes` has
-    // always been the extended amount, so multiplying here keeps every
-    // downstream reader (order pricing, Daraja amount verification,
-    // revenue reporting) unchanged.
-    const subtotalKes = common.priceKes * quantity;
-    const discountKes = referral?.discountKes ?? 0;
     // Wallet credit is applied on top of any referral discount, capped
-    // at what's left of the order after it — never below zero, and
-    // never more than the customer's actual available balance (§
-    // Phase 4: Customer loyalty / Quest system). Only reserved here;
-    // the real debit happens in `completeOrder()`, once payment for
-    // this reduced amount has actually succeeded.
-    const walletCreditAppliedKes = await walletService.redeemableAmount(
+    // at what's left of the order after it (§ Phase 4: Customer loyalty
+    // / Quest system). Only reserved here; the real debit happens in
+    // `completeOrder()`, once payment for this reduced amount has
+    // actually succeeded.
+    const rawDiscountKes = referral?.discountKes ?? 0;
+    const availableWalletCreditKes = await walletService.redeemableAmount(
       businessId,
       phoneNumber,
-      Math.max(subtotalKes - discountKes, 0),
+      redeemableCeilingKes(common.priceKes * quantity, rawDiscountKes),
     );
-    const totalKes = subtotalKes - discountKes - walletCreditAppliedKes + delivery.feeKes;
+    // `computeCheckoutTotals` is the one definition of this arithmetic
+    // — shared with `quoteWebCheckout`, so the figure a customer is
+    // shown before paying and the figure they are charged cannot
+    // disagree.
+    const { subtotalKes, discountKes, walletCreditAppliedKes, totalKes } = computeCheckoutTotals({
+      unitPriceKes: common.priceKes,
+      quantity,
+      discountKes: rawDiscountKes,
+      walletCreditAppliedKes: availableWalletCreditKes,
+      deliveryFeeKes: delivery.feeKes,
+    });
 
     const snapshotId = await conversationCheckoutSnapshotRepository.create({
       businessId,

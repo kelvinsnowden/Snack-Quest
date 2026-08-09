@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { orderRepository } from '@/repositories/orderRepository';
+import { packageRepository } from '@/repositories/packageRepository';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { EmptyOrdersState } from '@/components/admin/EmptyOrdersState';
 import { OrdersTable } from '@/components/admin/OrdersTable';
+import { StaffInitiatedOrderDialog } from '@/components/admin/StaffInitiatedOrderDialog';
 import { ORDER_STATUS_LABELS } from '@/lib/orders/transitions';
 import { formatDate } from '@/lib/orders/format';
 import type { Order, OrderStatus } from '@/types';
@@ -34,6 +36,14 @@ export default async function AdminOrdersPage({
   const session = await requireStaffSession();
   const { q, status, cursor } = await searchParams;
 
+  // Projected to plain fields: `Package` carries Firestore Timestamps,
+  // which cannot cross into a Client Component.
+  const orderableBoxes = (await packageRepository.listActive(session.businessId)).map(({ id, data }) => ({
+    id,
+    name: data.name,
+    priceKes: data.priceKes,
+  }));
+
   let orders: { id: string; data: Order }[];
   let nextCursor: string | null = null;
 
@@ -54,9 +64,14 @@ export default async function AdminOrdersPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Orders</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Every order placed through the WhatsApp checkout.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-page-title font-bold tracking-tight text-foreground">Orders</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every paid order — placed on the website, over WhatsApp, or taken by staff.
+          </p>
+        </div>
+        <StaffInitiatedOrderDialog boxes={orderableBoxes} />
       </div>
 
       <Card className="p-4">

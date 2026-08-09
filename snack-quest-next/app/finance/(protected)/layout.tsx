@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/finance/refunds', label: 'Refunds' },
   { href: '/finance/reconciliation', label: 'Reconciliation' },
   { href: '/finance/revenue', label: 'Revenue' },
+  { href: '/finance/fulfillment', label: 'Fulfilment' },
 ];
 
 /**

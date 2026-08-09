@@ -1,5 +1,6 @@
 import { referralService } from '@/services/referralService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { buildReferralCookie } from '@/lib/creators/referralCookie';
 
 /**
  * A creator's shareable referral link (§ Creator Portal referral
@@ -36,5 +37,16 @@ export async function GET(
 
   const destination = new URL('/checkout', origin);
   destination.searchParams.set('ref', link.code);
-  return Response.redirect(destination, 302);
+
+  // The cookie covers the visitor who doesn't buy on this visit — see
+  // `lib/creators/referralCookie.ts`. Set alongside the parameter, not
+  // instead of it: the parameter is what makes this checkout obviously
+  // attributed, the cookie is what makes the next one still attributed.
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: destination.toString(),
+      'set-cookie': buildReferralCookie(link.code),
+    },
+  });
 }

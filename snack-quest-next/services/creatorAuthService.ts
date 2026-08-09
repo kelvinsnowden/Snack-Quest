@@ -144,11 +144,12 @@ class CreatorAuthService {
     );
 
     await adminFirestore.runTransaction(async (tx) => {
-      const registrationNumber = await claimNextRegistrationNumberInTransaction(
-        tx,
-        businessId,
-      );
-      const commissionRateKes = resolveCommissionRateKes(registrationNumber);
+      // Still claimed, though the commission no longer depends on it:
+      // this counter is the only durable record of the order creators
+      // joined in, and a monotonic sequence can't be reconstructed
+      // after the fact from timestamps alone.
+      await claimNextRegistrationNumberInTransaction(tx, businessId);
+      const commissionRateKes = resolveCommissionRateKes();
 
       createCreatorProfileInTransaction(tx, decoded.uid, {
         businessId,

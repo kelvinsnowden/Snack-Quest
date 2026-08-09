@@ -23,6 +23,7 @@
     "secure:jumia-webhook": "node scripts/setJumiaWebhookSecret.mjs",
     "backup:export": "node scripts/exportBusinessData.mjs",
     "migrate:referral-links": "node scripts/migrateReferralLinks.mjs",
+    "commission:flatten": "node scripts/setFlatCommission.mjs",
     "backup:export-auth-users": "node scripts/exportAuthUsers.mjs"
   },
   "dependencies": {

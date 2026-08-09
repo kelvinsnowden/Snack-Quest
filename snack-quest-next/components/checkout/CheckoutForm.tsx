@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PickupStationPicker, type SelectedStation } from './PickupStationPicker';
+import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
 import type { DeliveryMethod } from '@/types/delivery';
-import type { WebCheckoutResponse } from '@/types/webCheckout';
+import type { WebCheckoutQuote, WebCheckoutResponse } from '@/types/webCheckout';
 
 /**
  * The website checkout form (§ Website Becomes the Primary Commerce
@@ -72,6 +73,15 @@ export function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
 
   const box = useMemo(() => boxes.find((candidate) => candidate.id === boxId) ?? null, [boxes, boxId]);
+
+  const quote = useCheckoutQuote({
+    packageId: boxId,
+    quantity,
+    deliveryMethod,
+    pickupStationId: station?.id,
+    referralCode: referralCode.trim(),
+    phone,
+  });
 
   const maxQuantity = Math.min(MAX_QUANTITY, box?.stockCount ?? MAX_QUANTITY);
   const outOfStock = box?.stockCount === 0;
@@ -331,25 +341,32 @@ export function CheckoutForm({
             placeholder="SNACK10"
             autoCapitalize="characters"
           />
-          <p className="text-muted-foreground text-sm">
-            We&apos;ll check it and apply any discount to your total before charging you.
-          </p>
+          {referralCode.trim() && quote?.referralCodeApplied ? (
+            <p className="text-success text-sm">
+              Code applied — {formatKes(quote.pricing.discountKes)} off your order.
+            </p>
+          ) : referralCode.trim() && quote?.referralCodeRejected ? (
+            <p className="text-warning text-sm">
+              We don&apos;t recognise that code. You can still order without it.
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              We&apos;ll check it and apply any discount to your total before charging you.
+            </p>
+          )}
         </div>
       </section>
 
       <div className="border-border flex flex-col gap-4 border-t pt-8">
-        <div className="flex items-baseline justify-between gap-4">
-          <span className="text-muted-foreground text-sm">
-            {box ? `${quantity} × ${box.name}` : 'Your order'}
-          </span>
-          <span className="text-foreground text-lg font-semibold">
-            {box ? formatKes(box.priceKes * quantity) : '—'}
-          </span>
-        </div>
+        <OrderSummary
+          quote={quote}
+          fallbackLabel={box ? `${quantity} × ${box.name}` : 'Your order'}
+          fallbackTotalKes={box ? box.priceKes * quantity : null}
+        />
         <p className="text-muted-foreground text-sm">
-          {deliveryMethod === 'pickup'
-            ? 'Any pickup fee, referral discount and wallet credit are calculated and shown on the next screen before your M-Pesa prompt.'
-            : 'Bolt delivery is not included — it is arranged and paid separately after checkout.'}
+          {deliveryMethod === 'door'
+            ? 'Bolt delivery is not included — it is arranged and paid separately after checkout.'
+            : 'You’ll be prompted for exactly this amount on M-Pesa.'}
         </p>
 
         {error ? (
@@ -367,6 +384,79 @@ export function CheckoutForm({
         ) : null}
       </div>
     </form>
+  );
+}
+
+/**
+ * The itemized total. Every line comes from the server's quote — the
+ * `fallback*` props are only what's shown in the moment before the
+ * first quote lands, and are the plain catalog price, never a guess at
+ * a discount or a fee.
+ */
+function OrderSummary({
+  quote,
+  fallbackLabel,
+  fallbackTotalKes,
+}: {
+  quote: WebCheckoutQuote | null;
+  fallbackLabel: string;
+  fallbackTotalKes: number | null;
+}) {
+  if (!quote) {
+    return (
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="text-muted-foreground text-sm">{fallbackLabel}</span>
+        <span className="text-foreground text-lg font-semibold">
+          {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
+        </span>
+      </div>
+    );
+  }
+
+  const { pricing } = quote;
+  return (
+    <dl className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-4">
+        <dt className="text-muted-foreground text-sm">
+          {pricing.quantity} × {pricing.packageLabel}
+        </dt>
+        <dd className="text-foreground text-sm tabular-nums">{formatKes(pricing.subtotalKes)}</dd>
+      </div>
+
+      {pricing.discountKes > 0 ? (
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-success text-sm">Referral discount</dt>
+          <dd className="text-success text-sm tabular-nums">−{formatKes(pricing.discountKes)}</dd>
+        </div>
+      ) : null}
+
+      {pricing.walletCreditAppliedKes > 0 ? (
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-success text-sm">Wallet credit</dt>
+          <dd className="text-success text-sm tabular-nums">
+            −{formatKes(pricing.walletCreditAppliedKes)}
+          </dd>
+        </div>
+      ) : null}
+
+      <div className="flex items-baseline justify-between gap-4">
+        <dt className="text-muted-foreground text-sm">Delivery</dt>
+        <dd className="text-foreground text-sm tabular-nums">
+          {pricing.boltArrangedSeparately
+            ? 'Arranged after checkout'
+            : pricing.deliveryFeeKes > 0
+              ? formatKes(pricing.deliveryFeeKes)
+              : 'Choose a station'}
+        </dd>
+      </div>
+
+      <div className="border-border flex items-baseline justify-between gap-4 border-t pt-3">
+        <dt className="text-foreground text-sm font-medium">Total to pay now</dt>
+        <dd className="text-foreground text-xl font-semibold tabular-nums">
+          {formatKes(pricing.totalKes)}
+        </dd>
+      </div>
+    </dl>
   );
 }
 

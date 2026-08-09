@@ -52,6 +52,20 @@ export interface WebCheckoutPricing {
   boltArrangedSeparately: boolean;
 }
 
+/**
+ * What `POST /api/checkout/web/quote` answers — the same figures the
+ * charge will use, computed the same way, but with nothing frozen and
+ * nothing charged. Lets the checkout page show a real pickup fee and a
+ * real referral discount before the customer commits.
+ */
+export interface WebCheckoutQuote {
+  pricing: WebCheckoutPricing;
+  /** True when the code the customer typed resolved to a live referral link. */
+  referralCodeApplied: boolean;
+  /** True when they typed something that isn't a working code — worth telling them before they pay, not after. */
+  referralCodeRejected: boolean;
+}
+
 export interface WebCheckoutResponse {
   /** The `conversations/{id}` this checkout runs on — the same session id the status poll takes. */
   checkoutSessionId: string;
