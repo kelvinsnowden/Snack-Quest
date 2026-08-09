@@ -139,7 +139,7 @@ export default async function BoxDetailPage({
             <BuyNowButton packageId={packageId}>
               Buy this box
             </BuyNowButton>
-            <WhatsAppOrderButton message={message} variant="outline">
+            <WhatsAppOrderButton message={message}>
               Ask a question
             </WhatsAppOrderButton>
           </div>

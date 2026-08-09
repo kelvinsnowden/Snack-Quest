@@ -116,7 +116,7 @@ export default async function HowItWorksPage() {
           </div>
           <WhatsAppOrderButton
             message="Hi! I have a question."
-            variant="outline"
+           
             size="md"
             className="self-start"
           >

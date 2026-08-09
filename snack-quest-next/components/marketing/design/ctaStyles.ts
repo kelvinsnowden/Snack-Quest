@@ -10,5 +10,21 @@
 export const PRIMARY_CTA_CLASS =
   'rounded-full bg-gradient-to-br from-primary to-home-orange-glow shadow-[0_20px_60px_-15px_rgb(255_122_0/0.5)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-[0_30px_70px_-15px_rgb(255_122_0/0.65)] active:translate-y-0 active:scale-[0.99]';
 
+/**
+ * The "talk to us on WhatsApp" treatment. Same pill, same lift, same
+ * living glow as the primary CTA — it was an outline button before,
+ * which read as a footnote next to everything else on the page.
+ *
+ * Purple rather than orange on purpose: orange is the buy button
+ * everywhere on this site, and support should never be mistaken for
+ * checkout. It is still one of the two brand colours, so the button
+ * belongs to the page instead of borrowing WhatsApp's own green.
+ *
+ * The pulse is halted automatically for anyone with
+ * `prefers-reduced-motion` — see the platform-wide guard in globals.css.
+ */
+export const WHATSAPP_CTA_CLASS =
+  'animate-pulse-glow-secondary from-secondary rounded-full bg-gradient-to-br to-[oklch(0.62_0.21_295)] text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:brightness-110 active:translate-y-0 active:scale-[0.99]';
+
 export const GHOST_CTA_CLASS =
   'rounded-full bg-background text-foreground shadow-none transition-all duration-300 hover:bg-white hover:shadow-sm';

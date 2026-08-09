@@ -42,6 +42,22 @@ const CREATOR_LOGIN_PATH = '/creator/login';
 // already signed in), not just an exemption from the sign-in gate.
 const CREATOR_PUBLIC_PATHS = new Set(['/creator/login', '/creator/register']);
 
+/**
+ * Whether a path is inside the Creator Portal — the signed-in area at
+ * `/creator`.
+ *
+ * A `startsWith('/creator')` test is not the same question, and getting
+ * that wrong put the public `/creators` marketing page behind the
+ * sign-in wall: anyone tapping "Creator program" while signed out was
+ * bounced to `/creator/login?next=/creators`, so the page describing
+ * the program was reachable only by people who had already joined it.
+ * Matching on the segment boundary keeps `/creators`, and any future
+ * `/creator*` marketing route, public.
+ */
+function isCreatorPortalPath(pathname: string): boolean {
+  return pathname === '/creator' || pathname.startsWith('/creator/');
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const portal = resolvePortal(request.headers.get('host'));
   const publicPathname = request.nextUrl.pathname;
@@ -73,7 +89,7 @@ export function proxy(request: NextRequest): NextResponse {
   }
 
   if (
-    pathname.startsWith('/creator') &&
+    isCreatorPortalPath(pathname) &&
     !CREATOR_PUBLIC_PATHS.has(pathname) &&
     !hasCreatorSessionCookie
   ) {

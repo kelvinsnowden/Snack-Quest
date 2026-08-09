@@ -57,7 +57,7 @@ export default async function FaqPage() {
       ) : null}
 
       <div className="mt-8 sm:mt-10">
-        <WhatsAppOrderButton message="Hi! I have a question." variant="outline">
+        <WhatsAppOrderButton message="Hi! I have a question.">
           Ask us on WhatsApp
         </WhatsAppOrderButton>
       </div>

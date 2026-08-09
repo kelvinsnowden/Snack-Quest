@@ -48,7 +48,7 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
 
       <Reveal delayMs={250}>
         <div className="mt-10 text-center">
-          <WhatsAppOrderButton message="Hi! I have a question." variant="outline">
+          <WhatsAppOrderButton message="Hi! I have a question.">
             Ask us on WhatsApp
           </WhatsAppOrderButton>
         </div>
