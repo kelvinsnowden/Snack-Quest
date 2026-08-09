@@ -3,6 +3,7 @@ import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
 import { faqRepository } from '@/repositories/faqRepository';
+import { reviewService } from '@/services/reviewService';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { HomeHero } from '@/components/marketing/home/HomeHero';
 import { FounderStory } from '@/components/marketing/home/FounderStory';
@@ -11,6 +12,7 @@ import { TheRoute } from '@/components/marketing/home/TheRoute';
 import { PickYourBox } from '@/components/marketing/home/PickYourBox';
 import { FinalCta } from '@/components/marketing/home/FinalCta';
 import { FaqSection } from '@/components/marketing/home/FaqSection';
+import { ReviewsSection } from '@/components/marketing/home/ReviewsSection';
 import { MobileStickyBar } from '@/components/marketing/home/MobileStickyBar';
 import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhatsAppBubble';
 
@@ -23,7 +25,7 @@ export const metadata: Metadata = buildPageMetadata({
 
 export default async function MarketingHomePage() {
   const businessId = getCurrentBusinessId();
-  const [business, packages, faqs] = await Promise.all([
+  const [business, packages, faqs, reviews] = await Promise.all([
     getCurrentBusiness(),
     packageRepository.listActive(businessId),
     // The whole homepage must never 500 because the FAQ section's own
@@ -31,6 +33,13 @@ export default async function MarketingHomePage() {
     // section just doesn't render, same as when there are genuinely
     // no FAQs yet.
     faqRepository.listActive(businessId).catch(() => []),
+    // Same reasoning, and the same shape a genuinely empty result
+    // takes — `ReviewsSection` renders nothing for an empty list, so a
+    // failed query degrades to exactly "no reviews yet" rather than a
+    // broken page.
+    reviewService
+      .listPublished(businessId, 9)
+      .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0 })),
   ]);
   const featured = packages.slice(0, 3);
   const homepageContent = business?.homepageContent;
@@ -43,6 +52,11 @@ export default async function MarketingHomePage() {
         founderImageUrl={homepageContent?.founderImageUrl ?? null}
       />
       <PickYourBox packages={featured} />
+      <ReviewsSection
+        reviews={reviews.reviews}
+        totalCount={reviews.totalCount}
+        averageRating={reviews.averageRating}
+      />
       <TheRoute />
       <FinalCta />
       <FaqSection faqs={faqs.map((entry) => entry.data)} />

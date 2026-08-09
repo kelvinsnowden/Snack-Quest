@@ -224,6 +224,23 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // reviews: customer reviews (§ homepage reviews). Writes are
+    // unconditionally denied here even though the submission form is
+    // public — it posts to `POST /api/reviews`, which validates the
+    // text, size-caps and magic-byte-checks the photos, rate-limits by
+    // phone number, and forces `status: 'pending'`. A direct client
+    // write would bypass every one of those, so the only writer is the
+    // Admin SDK behind that route.
+    //
+    // Reads mirror `faqs`: a published review is public (it is
+    // rendered on the homepage), and everything else — pending
+    // submissions awaiting moderation, rejected ones, and the
+    // `contactPhone` a reviewer gave for follow-up — is admin-only.
+    match /reviews/{reviewId} {
+      allow read: if resource.data.status == 'published' || isAdmin();
+      allow write: if false;
+    }
+
     // inventoryMovements: the stock-adjustment audit trail (§ Admin:
     // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
     // is the sole writer, always inside the same transaction as the

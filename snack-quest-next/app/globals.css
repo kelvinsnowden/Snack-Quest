@@ -384,6 +384,21 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+
+  /*
+   * Hides the scrollbar on a swipeable card rail
+   * (components/marketing/home/ReviewsSection.tsx) without disabling
+   * the scrolling itself. Only for rails whose scrollability is
+   * already obvious from a partially-visible next card — never on a
+   * container where the bar is the only cue that there is more to see.
+   */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /*

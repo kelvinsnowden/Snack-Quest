@@ -16,6 +16,7 @@ export const STORAGE_DIRECTORIES = [
   'marketing',
   'orders',
   'documents',
+  'reviews',
 ] as const;
 
 export type StorageDirectory = (typeof STORAGE_DIRECTORIES)[number];
@@ -58,4 +59,11 @@ export const STORAGE_DIRECTORY_POLICIES: Record<StorageDirectory, StorageDirecto
     maxSizeBytes: 10 * MB,
   },
   documents: { allowedMimeTypes: DOCUMENT_MIME_TYPES, maxSizeBytes: 20 * MB },
+  // The only directory an unauthenticated member of the public can
+  // write into (§ homepage reviews), so it is the tightest: images
+  // only, and small enough that a phone photo goes through while a
+  // deliberately oversized payload doesn't. `StorageService` also
+  // magic-byte checks every one of these types, so a renamed
+  // executable claiming to be a JPEG is rejected before upload.
+  reviews: { allowedMimeTypes: IMAGE_MIME_TYPES, maxSizeBytes: 6 * MB },
 };

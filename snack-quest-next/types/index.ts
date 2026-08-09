@@ -36,3 +36,4 @@ export * from './scheduledJobRun';
 export * from './featureFlag';
 export * from './fulfillmentBatch';
 export * from './webCheckout';
+export * from './review';
