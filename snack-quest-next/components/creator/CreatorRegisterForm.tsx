@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { createUserWithEmailAndPassword, type AuthError } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  type AuthError,
+} from 'firebase/auth';
 import { AlertCircle, Loader2, UserPlus } from 'lucide-react';
 import { clientAuth } from '@/lib/firebase/client';
 import { Button } from '@/components/ui/button';
@@ -13,7 +17,6 @@ import { PasswordInput } from '@/components/creator/PasswordInput';
 import { rememberCreator } from '@/lib/creator/rememberedIdentity';
 
 const FIREBASE_AUTH_ERROR_MESSAGES: Record<string, string> = {
-  'auth/email-already-in-use': 'An account with that email already exists. Sign in instead.',
   'auth/invalid-email': 'That doesn’t look like a valid email address.',
   'auth/weak-password': 'Choose a password with at least 6 characters.',
 };
@@ -26,11 +29,33 @@ const FIREBASE_AUTH_ERROR_MESSAGES: Record<string, string> = {
  * which is the only place `users/{uid}` and `creatorProfiles/{uid}`
  * actually get written — `firestore.rules` blocks a client from
  * writing either directly with a `creator` role/profile.
+ *
+ * Those are two steps, and an account that completed the first but not
+ * the second used to be unrecoverable from the UI: signing up again
+ * hit `auth/email-already-in-use`, and signing in hit "not registered
+ * as a creator yet", so the person bounced between two pages that both
+ * refused them. Anyone who already had an account for another reason —
+ * an admin, or a customer — hit exactly the same wall.
+ *
+ * So `auth/email-already-in-use` is no longer treated as a failure. We
+ * sign in with the credentials just entered and provision from that
+ * token instead, which is precisely the resubmission
+ * `CreatorAuthService.register()` is already written to tolerate: it
+ * keys off `creatorProfiles/{uid}`, merges the `creator` role into
+ * whatever roles the account already had, and answers 409 if the
+ * profile genuinely exists. Only a wrong password gets an error now,
+ * and it points at sign-in and password reset.
  */
 export function CreatorRegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  // Prefilled when sign-in sent them here because their account exists
+  // but isn't a creator yet — retyping the address they just typed is
+  // pure friction. A derived fallback, never seeded into state, so it
+  // can't overwrite what they type.
+  const [emailInput, setEmailInput] = useState('');
+  const email = emailInput || searchParams.get('email') || '';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +73,19 @@ export function CreatorRegisterForm() {
     setSubmitting(true);
 
     try {
-      const credential = await createUserWithEmailAndPassword(clientAuth, email, password);
+      let credential;
+      try {
+        credential = await createUserWithEmailAndPassword(clientAuth, email, password);
+      } catch (caught) {
+        if ((caught as AuthError | undefined)?.code !== 'auth/email-already-in-use') {
+          throw caught;
+        }
+        // The account half exists. Finish it rather than refuse it —
+        // see this component's doc comment for the dead end this
+        // replaces. A wrong password lands in the catch below.
+        credential = await signInWithEmailAndPassword(clientAuth, email, password);
+      }
+
       const idToken = await credential.user.getIdToken();
 
       const response = await fetch('/api/creator/register', {
@@ -69,7 +106,19 @@ export function CreatorRegisterForm() {
       router.refresh();
     } catch (caught) {
       const code = (caught as AuthError | undefined)?.code;
-      setError((code && FIREBASE_AUTH_ERROR_MESSAGES[code]) ?? 'Could not create your account. Please try again.');
+      // Reached only when the email is taken *and* the password given
+      // doesn't open it — the one case where we genuinely can't tell
+      // whether this is their account.
+      const wrongPassword =
+        code === 'auth/wrong-password' ||
+        code === 'auth/invalid-credential' ||
+        code === 'auth/too-many-requests';
+      setError(
+        wrongPassword
+          ? 'An account with that email already exists, but that password doesn’t match it. Sign in instead, or reset your password.'
+          : ((code && FIREBASE_AUTH_ERROR_MESSAGES[code]) ??
+            'Could not create your account. Please try again.'),
+      );
       setSubmitting(false);
     }
   }
@@ -100,7 +149,7 @@ export function CreatorRegisterForm() {
           autoComplete="username"
           required
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => setEmailInput(event.target.value)}
           placeholder="you@example.com"
           disabled={submitting}
         />

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PasswordInput } from '@/components/creator/PasswordInput';
+import { ForgotPasswordDialog } from '@/components/creator/ForgotPasswordDialog';
 import { rememberCreator, useRememberedCreator } from '@/lib/creator/rememberedIdentity';
 
 /**
@@ -31,11 +32,17 @@ export function CreatorLoginForm() {
   const email = emailInput || remembered?.email || '';
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // The password was right but this account has no creator profile —
+  // a different problem from a bad password, and one the person can
+  // fix themselves by finishing sign-up on the same email. Tracked
+  // separately so the message can carry that link.
+  const [notACreator, setNotACreator] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setNotACreator(false);
     setSubmitting(true);
 
     try {
@@ -50,7 +57,11 @@ export function CreatorLoginForm() {
 
       if (!response.ok) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? 'Could not sign you in. Please try again.');
+        if (response.status === 403) {
+          setNotACreator(true);
+        } else {
+          setError(data.error ?? 'Could not sign you in. Please try again.');
+        }
         setSubmitting(false);
         return;
       }
@@ -102,6 +113,22 @@ export function CreatorLoginForm() {
         />
       </div>
 
+      {notACreator ? (
+        <p role="alert" className="bg-danger/10 text-danger flex items-start gap-2 rounded-md px-3 py-2 text-sm">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span>
+            That password is right, but this email isn&apos;t in the Creator Program yet.{' '}
+            <Link
+              href={`/creator/register?email=${encodeURIComponent(email)}`}
+              className="font-medium underline underline-offset-4"
+            >
+              Finish signing up
+            </Link>{' '}
+            with the same email and password — it keeps this account.
+          </span>
+        </p>
+      ) : null}
+
       {error ? (
         <p role="alert" className="flex items-start gap-2 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -113,6 +140,10 @@ export function CreatorLoginForm() {
         {!submitting ? <LogIn aria-hidden="true" /> : null}
         {submitting ? 'Signing in…' : 'Sign in'}
       </Button>
+
+      <div className="text-center">
+        <ForgotPasswordDialog defaultEmail={email} />
+      </div>
 
       <p className="text-center text-sm text-muted-foreground">
         New here?{' '}

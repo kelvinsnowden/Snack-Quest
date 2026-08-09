@@ -178,6 +178,43 @@ describe('CreatorAuthService.register', () => {
     expect(user?.roles.sort()).toEqual(['creator', 'customer']);
   });
 
+  // The production dead end: an account existed in Firebase Auth (an
+  // admin's, but a half-finished sign-up looks identical) with no
+  // creator profile. Signing up again was refused by Auth for the
+  // duplicate email, and signing in was refused here for the missing
+  // profile, so the person could not get in by any route. The register
+  // form now recovers by signing in and re-submitting that token, which
+  // is this call — it has to provision without stripping the role the
+  // account already had.
+  it('provisions a creator on an account that already exists with another role, keeping that role', async () => {
+    const uid = await createAuthUser('owner@example.com');
+    await userRepository.create(
+      uid,
+      {
+        email: 'owner@example.com',
+        roles: ['super_admin'],
+        displayName: 'Site Owner',
+        photoURL: null,
+      },
+      uid,
+    );
+    const idToken = await getIdTokenForUid(uid);
+
+    await expect(creatorAuthService.login(idToken)).rejects.toBeInstanceOf(
+      CreatorNotProvisionedError,
+    );
+
+    const { session } = await creatorAuthService.register(idToken, 'Site Owner');
+    expect(session.status).toBe('pending');
+
+    const user = await userRepository.findById(uid);
+    expect(user?.roles.sort()).toEqual(['creator', 'super_admin']);
+
+    // And the account that could not sign in a moment ago now can.
+    const after = await creatorAuthService.login(idToken);
+    expect(after.session.uid).toBe(uid);
+  });
+
   it('rejects a uid that already has a creator profile', async () => {
     const uid = await createAuthUser('already-creator@example.com');
     const idToken = await getIdTokenForUid(uid);
