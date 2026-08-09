@@ -1,24 +1,13 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
-import { referralService } from '@/services/referralService';
 import { CreatorUserMenu } from '@/components/creator/CreatorUserMenu';
 import {
   PortalSideRail,
   PortalTabBar,
 } from '@/components/creator/design/PortalNav';
-
-async function getOrigin(): Promise<string> {
-  const headerList = await headers();
-  const host = headerList.get('host') ?? 'localhost:3000';
-  const protocol =
-    headerList.get('x-forwarded-proto') ??
-    (host.startsWith('localhost') ? 'http' : 'https');
-  return `${protocol}://${host}`;
-}
 
 export const metadata: Metadata = {
   title: {
@@ -50,14 +39,6 @@ export default async function CreatorProtectedLayout({
   if (!session.onboardingCompleted) {
     redirect('/creator/onboarding');
   }
-
-  const [{ links }, origin] = await Promise.all([
-    referralService.listLinksForCreator(session.businessId, session.uid, {
-      limit: 1,
-    }),
-    getOrigin(),
-  ]);
-  const shareUrl = links[0] ? `${origin}/r/${links[0].data.code}` : null;
 
   return (
     <div className="bg-background relative min-h-dvh md:flex">
@@ -110,7 +91,7 @@ export default async function CreatorProtectedLayout({
         </main>
       </div>
 
-      <PortalTabBar shareUrl={shareUrl} />
+      <PortalTabBar />
     </div>
   );
 }
