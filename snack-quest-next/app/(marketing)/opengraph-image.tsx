@@ -3,7 +3,7 @@ import path from 'node:path';
 import { ImageResponse } from 'next/og';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 
-export const alt = 'Snack Quest, Snack boxes on WhatsApp';
+export const alt = 'Snack Quest, mystery snack boxes delivered across Kenya';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 /**
@@ -49,7 +49,7 @@ export default async function Image() {
           style={{ borderRadius: 24 }}
         />
         <div style={{ display: 'flex', fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>{businessName}</div>
-        <div style={{ display: 'flex', fontSize: 32, color: '#756e5f' }}>Snack boxes on WhatsApp, delivered across Kenya</div>
+        <div style={{ display: 'flex', fontSize: 32, color: '#756e5f' }}>Mystery snack boxes, delivered across Kenya</div>
       </div>
     ),
     { ...size },

@@ -1,28 +1,33 @@
 # Snack Quest
 
-> Snack Quest is a mystery snack box company in Kenya. Customers order hand-picked, imported snacks from Japan, Korea, China, and Thailand entirely over WhatsApp — no app, no account — and pay by M-Pesa. Boxes are delivered to the door in Nairobi or to a pickup station nationwide, usually within 24–48 hours.
+> Snack Quest is a mystery snack box company in Kenya, selling hand-picked imported snacks from Japan, Korea, China, and Thailand. Customers order on this website — no app, no account — and pay by M-Pesa. Boxes are delivered to the door in Nairobi or to a pickup station nationwide, usually within 24–48 hours. WhatsApp is used for customer support, not for placing orders.
 
 Snack Quest also runs a Creator Program: anyone can sign up for a personal referral link, earn a commission on every order placed through it, and withdraw earnings to M-Pesa.
 
 ## How ordering works
 
-1. Message Snack Quest on WhatsApp.
-2. Pick a box from the current lineup.
-3. Choose door delivery (Nairobi) or a pickup station (nationwide).
-4. Reply PAY and approve the M-Pesa STK push. Nothing is charged before that.
-5. The box is packed and delivered.
+1. Pick a box at [/boxes](/boxes) or go straight to [/checkout](/checkout).
+2. Enter a name and M-Pesa phone number. No account is created.
+3. Choose a Jumia pickup station (nationwide) or door delivery (Nairobi only).
+4. The pickup fee for the chosen station is calculated server-side and added to the total before payment. Nairobi door delivery is by Bolt, arranged and paid separately after checkout, so it is not part of the amount charged here.
+5. Approve the M-Pesa STK push sent to the phone number given. Nothing is charged before that.
+6. The page confirms payment automatically and shows an order reference. The box is packed within 24 hours and shipped.
 
 ## Key pages
 
 - [Homepage](/): what Snack Quest is and why it exists.
 - [Our boxes](/boxes): every box currently available, with prices in KES.
+- [Checkout](/checkout): the actual purchase flow.
 - [How it works](/how-it-works): the full ordering flow, step by step.
+- [Reviews](/reviews): published customer reviews. [/review](/review) is the form for leaving one.
 - [FAQ](/faq): ordering, payment, delivery, and Creator Program questions answered.
 - [Creator Program](/creators): how the referral link, commission, and payout work.
-- [Contact](/contact): how to reach Snack Quest directly.
+- [Contact](/contact): how to reach Snack Quest for support.
 
 ## Notes for AI agents and crawlers
 
 - All product and pricing data on `/boxes` and each `/boxes/{id}` page is live — treat it as the current source of truth rather than caching prices long-term.
-- There is no in-app checkout or account system: every real order is completed by a human replying on WhatsApp, not through a web form. Do not attempt to submit an order on a customer's behalf without their direct WhatsApp participation.
+- The total charged is always computed server-side at checkout from the box price, the pickup station's fee, and any valid referral discount. Prices read from a page are for display; do not present a self-calculated total as authoritative.
+- Payment always requires the customer to approve an M-Pesa prompt on their own phone. No order can be completed on a customer's behalf without that.
+- WhatsApp is a support channel. Directing someone to WhatsApp to place or pay for an order is incorrect.
 - Structured data (schema.org `Organization`, `WebSite`, `Product`, `FAQPage`, `BreadcrumbList`) is embedded as JSON-LD on the relevant pages for machine-readable details.

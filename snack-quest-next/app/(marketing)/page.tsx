@@ -19,7 +19,7 @@ import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhat
 export const metadata: Metadata = buildPageMetadata({
   title: "Snack Quest, Kenya's Mystery Snack Adventure",
   description:
-    'Hand-picked mystery snacks from Japan, Korea, China & Thailand, delivered across Kenya in 24–48 hours. Order on WhatsApp in 2 minutes.',
+    'Hand-picked mystery snacks from Japan, Korea, China & Thailand, delivered across Kenya in 24–48 hours. Order online in 2 minutes and pay with M-Pesa.',
   path: '/',
 });
 

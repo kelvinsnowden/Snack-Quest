@@ -12,7 +12,7 @@ import { getSiteUrl } from '@/lib/seo/siteUrl';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Our boxes',
-  description: 'Browse every Snack Quest box available right now, priced in KES. Message us on WhatsApp to order.',
+  description: 'Browse every Snack Quest box available right now, priced in KES. Check out online and pay with M-Pesa.',
   path: '/boxes',
 });
 
@@ -43,7 +43,7 @@ export default async function BoxesPage() {
       <div className="max-w-2xl">
         <h1 className="text-page-title font-bold tracking-tight text-foreground">Our boxes</h1>
         <p className="mt-3 text-subtitle text-muted-foreground">
-          Every box is curated and packed by hand. Message us on WhatsApp to order any of these.
+          Every box is curated and packed by hand. Tap one to see the details, then check out with M-Pesa.
         </p>
       </div>
 

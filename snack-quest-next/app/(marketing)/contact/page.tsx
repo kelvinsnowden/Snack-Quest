@@ -9,7 +9,7 @@ import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 export const metadata: Metadata = buildPageMetadata({
   title: 'Contact us',
   description:
-    'Reach Snack Quest on WhatsApp for orders, delivery updates, or questions.',
+    'Reach Snack Quest on WhatsApp for delivery updates, order changes, or any question. Ordering itself happens on the website.',
   path: '/contact',
 });
 
@@ -20,7 +20,11 @@ export default async function ContactPage() {
         Contact us
       </h1>
       <p className="mt-2 text-sm text-muted-foreground sm:mt-3 sm:text-subtitle">
-        We keep every order, question, and issue in one place: WhatsApp.
+        Orders happen{' '}
+        <Link href="/checkout" className="text-primary font-medium hover:underline">
+          on the site
+        </Link>
+        , in about a minute. Everything else, a real person on WhatsApp.
       </p>
 
       <div className="mt-6 grid gap-4 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
@@ -31,8 +35,8 @@ export default async function ContactPage() {
               Message us on WhatsApp
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
-              The fastest way to reach us, for orders, delivery updates, or
-              anything else.
+              Where your order is, changing an address, arranging a Bolt rider,
+              or anything that went wrong. Real replies, no ticket system.
             </p>
           </div>
           <WhatsAppOrderButton

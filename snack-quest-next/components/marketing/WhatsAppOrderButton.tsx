@@ -2,13 +2,24 @@ import { MessageCircle } from 'lucide-react';
 import { Button, type ButtonProps } from '@/components/ui/button';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 
-/** The site-wide "Order on WhatsApp" CTA — a real `wa.me` deep link to the platform's centralized WhatsApp number (`lib/config/whatsapp.ts`), never a fake "Buy now" button pointing at a checkout page that doesn't exist. */
+/**
+ * The site-wide "talk to a human" CTA — a real `wa.me` deep link to the
+ * platform's centralized WhatsApp number (`lib/config/whatsapp.ts`).
+ *
+ * This is support and engagement, not commerce (§ Website Becomes the
+ * Primary Commerce Channel): questions before buying, order updates,
+ * address changes, arranging a Bolt rider, something arrived wrong.
+ * Anything that is actually "buy this" uses `BuyNowButton` instead —
+ * the default label here says so, so a caller that forgets to pass
+ * `children` can't accidentally re-open a WhatsApp ordering path we no
+ * longer run.
+ */
 export function WhatsAppOrderButton({
   message,
   size = 'lg',
   variant = 'primary',
   className,
-  children = 'Order on WhatsApp',
+  children = 'Chat on WhatsApp',
 }: {
   message: string;
   size?: ButtonProps['size'];

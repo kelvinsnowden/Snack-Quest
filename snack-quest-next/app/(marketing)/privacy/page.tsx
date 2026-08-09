@@ -4,7 +4,7 @@ import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Privacy policy',
-  description: 'How Snack Quest collects, uses, and protects your personal data across WhatsApp ordering, the website, and the Creator Program.',
+  description: 'How Snack Quest collects, uses, and protects your personal data across website checkout, WhatsApp support, and the Creator Program.',
   path: '/privacy',
 });
 
@@ -26,18 +26,20 @@ export default async function PrivacyPage() {
       <h1 className="text-page-title font-bold tracking-tight text-foreground">Privacy policy</h1>
       <p className="mt-3 text-sm text-muted-foreground">
         This policy explains what {businessName} collects, why, and how it&apos;s used. It applies to our
-        WhatsApp ordering service, our website, and the Creator Program.
+        website checkout, our WhatsApp support channel, and the Creator Program.
       </p>
 
       <div className="mt-10 flex flex-col gap-10">
         <Section title="What we collect">
-          <p>When you order or message us on WhatsApp, we collect:</p>
+          <p>When you check out on our website, or message us on WhatsApp, we collect:</p>
           <ul className="ml-4 list-disc space-y-1">
             <li>Your name, phone number, and delivery address or chosen pickup station.</li>
             <li>Order details: the box(es) you chose, price, and delivery method.</li>
             <li>Payment confirmation details from M-Pesa (via Safaricom&apos;s Daraja API). We never see or store your M-Pesa PIN.</li>
-            <li>Your WhatsApp messages with us, so we can respond and keep a record of your order.</li>
+            <li>Your WhatsApp messages with us, so we can respond and keep a record of the conversation.</li>
+            <li>If you leave a review, the name you give us, your review, any photos you attach, and the phone number you optionally provide so we can reach you about it.</li>
           </ul>
+          <p>We do not ask you to create an account or set a password to buy from us.</p>
           <p>If you join the Creator Program, we also collect your referral activity: link clicks, orders attributed to your link, and commission earned.</p>
         </Section>
 

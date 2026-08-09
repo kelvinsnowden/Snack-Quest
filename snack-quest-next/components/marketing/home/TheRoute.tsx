@@ -15,14 +15,14 @@ const CHECKPOINTS: Checkpoint[] = [
     body: 'Starter, Deluxe, or Premium. Pick your size, takes about 30 seconds.',
   },
   {
-    emoji: '📦',
-    title: 'We Pack the Mystery',
-    body: 'Hand-packed within 24 hours. Pay by M-Pesa on WhatsApp.',
+    emoji: '📲',
+    title: 'Check Out & Pay',
+    body: 'Fill in where it goes, see your total, and approve the M-Pesa prompt on your phone. No account needed.',
   },
   {
     emoji: '🚚',
     title: 'Fast Delivery Across Kenya',
-    body: 'We use Jumia pickup stations countrywide and Bolt Package for home delivery within Nairobi.',
+    body: 'Hand-packed within 24 hours. Jumia pickup stations countrywide, or Bolt Package to your door in Nairobi.',
   },
   {
     emoji: '🎉',
@@ -209,7 +209,7 @@ export function TheRoute() {
       <div className="relative mx-auto max-w-2xl text-center">
         <p className="text-caption font-bold tracking-[0.3em] text-home-lime uppercase">The route</p>
         <h2 className="mt-4 text-balance font-display text-4xl leading-[1.05] font-normal text-white uppercase md:text-6xl">
-          From WhatsApp to your <span className="text-home-lime">door.</span>
+          From your screen to your <span className="text-home-lime">door.</span>
         </h2>
         <p className="mx-auto mt-5 max-w-[512px] text-base text-white/70 md:text-lg">
           Four checkpoints. Two minutes to order. Two days to your door.

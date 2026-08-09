@@ -87,7 +87,7 @@ export function HomeHero() {
           <div className="text-small text-foreground/70 mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <span className="inline-flex items-center gap-1.5">
               <Clock className="text-primary size-4" aria-hidden="true" />
-              Order in 2 min on WhatsApp
+              Checkout in 2 minutes
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Truck className="text-secondary size-4" aria-hidden="true" />

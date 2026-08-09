@@ -44,7 +44,11 @@ export default async function BoxDetailPage({
     notFound();
   }
 
-  const message = `Hi! I'd like to order the ${box.name} (${formatKes(box.priceKes)}).`;
+  // The CTA next to this is "Ask a question", not "Order" — buying
+  // happens at checkout now, so the message this opens with has to be
+  // a question, or the thread starts with someone expecting us to take
+  // an order we no longer take there.
+  const message = `Hi! I have a question about the ${box.name} (${formatKes(box.priceKes)}).`;
   const inStock = box.stockCount === undefined || box.stockCount > 0;
   const siteUrl = getSiteUrl();
   const boxUrl = `${siteUrl}/boxes/${packageId}`;

@@ -1,7 +1,7 @@
 /**
  * Shared class strings for the home page's pill-shaped CTAs (§
  * jungle-adventure landing page rebuild) — centralized so the same
- * "Order on WhatsApp" visual treatment used across ~9 CTAs never
+ * primary-action visual treatment used across ~9 CTAs never
  * drifts between instances. The base `Button` component is
  * `rounded-md` by default; these override to the pill shape this
  * page's brand language calls for via the existing `--radius-full`
