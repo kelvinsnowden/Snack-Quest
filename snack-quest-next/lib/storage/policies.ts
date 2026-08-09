@@ -87,6 +87,28 @@ export const STORAGE_DIRECTORY_POLICIES: Record<StorageDirectory, StorageDirecto
  * form asks for 30 seconds and enforces the duration itself; this is
  * the backstop for anything that gets past it.
  */
+/**
+ * Whether customers may attach a video to a review at all.
+ *
+ * Off deliberately, not because the feature is unfinished. Video is
+ * the only thing on this site whose cost scales with traffic rather
+ * than with orders: Blob bills for bandwidth, so every visitor to a
+ * homepage carrying videos costs something, and paid traffic multiplies
+ * that directly. Photos are small enough not to matter; a 25MB clip is.
+ *
+ * Flip this to `true` once the numbers are known and acceptable. It
+ * gates both ends — the form stops offering it, and the upload
+ * endpoint refuses tokens — so turning it off cannot be walked around
+ * by a client that remembers the old form.
+ *
+ * Before turning it on, also consider `preload="none"` plus a poster
+ * in `ReviewsSection` instead of `preload="metadata"`: metadata still
+ * costs a few hundred KB per video per visitor before anyone presses
+ * play, which is the expensive half of this feature and the half
+ * nobody sees.
+ */
+export const REVIEW_VIDEO_ENABLED = false;
+
 export const REVIEW_VIDEO_POLICY = {
   allowedMimeTypes: VIDEO_MIME_TYPES,
   maxSizeBytes: 50 * MB,

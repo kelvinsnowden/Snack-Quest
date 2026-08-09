@@ -1,5 +1,5 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { REVIEW_VIDEO_POLICY } from '@/lib/storage/policies';
+import { REVIEW_VIDEO_ENABLED, REVIEW_VIDEO_POLICY } from '@/lib/storage/policies';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 
 /**
@@ -41,6 +41,12 @@ export async function POST(request: Request): Promise<Response> {
     body = (await request.json()) as HandleUploadBody;
   } catch {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
+  }
+
+  // Checked here as well as in the form, because the form is not what
+  // protects this — anyone can post to this endpoint directly.
+  if (!REVIEW_VIDEO_ENABLED) {
+    return Response.json({ error: 'Video reviews are not available.' }, { status: 404 });
   }
 
   const businessId = getCurrentBusinessId();

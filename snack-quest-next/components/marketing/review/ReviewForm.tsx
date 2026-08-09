@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { StarRating } from './StarRating';
 import { compressImage, totalBytes, MAX_TOTAL_UPLOAD_BYTES } from './compressImage';
-import { REVIEW_VIDEO_POLICY } from '@/lib/storage/policies';
+import { REVIEW_VIDEO_ENABLED, REVIEW_VIDEO_POLICY } from '@/lib/storage/policies';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
 /**
@@ -290,7 +290,7 @@ export function ReviewForm() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <Label>Add photos or a video (optional)</Label>
+        <Label>{REVIEW_VIDEO_ENABLED ? 'Add photos or a video (optional)' : 'Add photos (optional)'}</Label>
 
         {video ? (
           <div className="border-border bg-surface relative overflow-hidden rounded-xl border">
@@ -377,7 +377,7 @@ export function ReviewForm() {
           on mobile data — and in practice a person has either filmed
           the unboxing or photographed the result, not both.
         */}
-        {video ? null : (
+        {video || !REVIEW_VIDEO_ENABLED ? null : (
           <button
             type="button"
             onClick={() => videoInput.current?.click()}
@@ -401,7 +401,9 @@ export function ReviewForm() {
         <p className="text-muted-foreground text-sm">
           {video
             ? `One video, up to ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds. Remove it if you'd rather send photos.`
-            : `Up to ${MAX_PHOTOS} photos, or one video of ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds or less. A shot of the box or your favourite snack is perfect.`}
+            : REVIEW_VIDEO_ENABLED
+              ? `Up to ${MAX_PHOTOS} photos, or one video of ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds or less. A shot of the box or your favourite snack is perfect.`
+              : `Up to ${MAX_PHOTOS}. Take one now or pick from your gallery — a shot of the box or your favourite snack is perfect.`}
         </p>
       </div>
 
