@@ -11,6 +11,7 @@ import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { computeCheckoutTotals, redeemableCeilingKes } from '@/lib/checkout/pricing';
+import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -625,6 +626,15 @@ class ConversationService {
       const station = await pickupStationRepository.findById(businessId, input.pickupStationId);
       if (!station || !station.isActive) {
         throw new WebCheckoutValidationError(`Pickup station ${input.pickupStationId} is not available`);
+      }
+      // A station Jumia hasn't zoned has an unknown delivery cost. The
+      // picker already hides those, but the id arrives from the client,
+      // so refusing it here is what actually prevents an order shipping
+      // for free — the filter is presentation, this is the rule.
+      if (!isJumiaZone(station.zone)) {
+        throw new WebCheckoutValidationError(
+          'We can’t deliver to that pickup station yet — please choose another one.',
+        );
       }
       return {
         delivery: {

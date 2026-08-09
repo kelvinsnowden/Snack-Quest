@@ -1,5 +1,6 @@
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import {
   groupStationsByCounty,
   stationsInCounty,
@@ -29,6 +30,24 @@ const CACHE_HEADERS = { 'cache-control': 'public, max-age=60, s-maxage=300, stal
 
 const SEARCH_LIMIT = 12;
 
+/**
+ * Only stations we can actually price are offered.
+ *
+ * Jumia's published zone list covers about half this network; the rest
+ * have no zone the courier has told us, so their delivery fee is
+ * unknown. An unknown fee rendered as a selectable option is not a
+ * neutral omission — it charges the customer nothing for delivery and
+ * the business absorbs it silently, which is exactly the leak this
+ * pricing work exists to close. Better to not offer a station than to
+ * ship to it for free.
+ *
+ * They come back the moment an admin assigns their zone in
+ * Admin > Delivery zones; nothing here needs changing for that.
+ */
+function isPriced(entry: { data: { zone: string | null } }): boolean {
+  return isJumiaZone(entry.data.zone);
+}
+
 function toDirectoryStation(entry: {
   id: string;
   data: { name: string; county: string | null; town: string | null; description: string; deliveryFeeKes: number };
@@ -51,10 +70,15 @@ export async function GET(request: Request): Promise<Response> {
 
   if (query) {
     const matches = await pickupStationRepository.search(businessId, query, SEARCH_LIMIT);
-    return Response.json({ stations: matches.map(toDirectoryStation) }, { headers: CACHE_HEADERS });
+    return Response.json(
+      { stations: matches.filter(isPriced).map(toDirectoryStation) },
+      { headers: CACHE_HEADERS },
+    );
   }
 
-  const active = (await pickupStationRepository.listActive(businessId)).map(toDirectoryStation);
+  const active = (await pickupStationRepository.listActive(businessId))
+    .filter(isPriced)
+    .map(toDirectoryStation);
 
   if (county) {
     return Response.json({ stations: stationsInCounty(active, county) }, { headers: CACHE_HEADERS });

@@ -24,6 +24,7 @@
     "backup:export": "node scripts/exportBusinessData.mjs",
     "migrate:referral-links": "node scripts/migrateReferralLinks.mjs",
     "commission:flatten": "node scripts/setFlatCommission.mjs",
+    "pricing:jumia-zones": "node scripts/applyJumiaZonePricing.mjs",
     "backup:export-auth-users": "node scripts/exportAuthUsers.mjs"
   },
   "dependencies": {

@@ -64,7 +64,7 @@ async function seed(overrides: { priceKes?: number; stockCount?: number; station
       description: 'Next to the mall',
       county: 'Nairobi',
       town: 'Kasarani',
-      zone: 'Nairobi',
+      zone: 'Zone 1',
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
       deliveryFeeKes: overrides.stationFeeKes ?? 300,
@@ -335,6 +335,37 @@ describe('startWebCheckout — delivery', () => {
     ).rejects.toBeInstanceOf(WebCheckoutValidationError);
   });
 
+  it('refuses a station Jumia has not zoned, rather than shipping to it for free', async () => {
+    // The real shape of the problem: about half this network sits in
+    // towns Jumia's published zone list never names, so their delivery
+    // cost is unknown. Such a station carries its county in `zone`,
+    // which matches no rate — offering it would ship free.
+    const unzoned = await pickupStationRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        courier: 'jumia',
+        name: 'Nyali Pickup Station',
+        latitude: 0,
+        longitude: 0,
+        description: '',
+        county: 'Mombasa',
+        town: 'Nyali',
+        zone: 'Mombasa',
+        shippingOrigin: 'Nairobi',
+        packageCategory: 'small',
+        deliveryFeeKes: 0,
+        isActive: true,
+        searchTokens: [],
+      },
+      'test',
+    );
+
+    await expect(
+      service().startWebCheckout(BUSINESS_ID, pickupInput({ pickupStationId: unzoned })),
+    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+    expect(initiateStkPushMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a station belonging to another business', async () => {
     const foreignStation = await pickupStationRepository.create(
       {
@@ -346,7 +377,7 @@ describe('startWebCheckout — delivery', () => {
         description: '',
         county: 'Nairobi',
         town: 'Nairobi',
-        zone: 'Nairobi',
+        zone: 'Zone 1',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 0,
