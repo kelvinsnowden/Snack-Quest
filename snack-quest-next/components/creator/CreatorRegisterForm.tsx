@@ -147,6 +147,12 @@ export function CreatorRegisterForm() {
           name="email"
           type="email"
           autoComplete="username"
+          // Same reason as the sign-in form: mobile keyboards
+          // capitalize and autocorrect email addresses otherwise.
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={email}
           onChange={(event) => setEmailInput(event.target.value)}

@@ -91,6 +91,14 @@ export function CreatorLoginForm() {
           name="email"
           type="email"
           autoComplete="username"
+          // A phone keyboard capitalizes the first letter and
+          // autocorrects what it thinks is a typo, so an address
+          // typed on mobile arrived as "Kelvin@gmail.com" or worse,
+          // and the sign-in simply failed with no clue why.
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={email}
           onChange={(event) => setEmailInput(event.target.value)}
