@@ -67,3 +67,28 @@ export const STORAGE_DIRECTORY_POLICIES: Record<StorageDirectory, StorageDirecto
   // executable claiming to be a JPEG is rejected before upload.
   reviews: { allowedMimeTypes: IMAGE_MIME_TYPES, maxSizeBytes: 6 * MB },
 };
+
+/**
+ * Review video is deliberately NOT part of `reviews` above.
+ *
+ * Everything in that policy travels through `POST /api/reviews` in the
+ * same request as the text, and Vercel caps a function's request body
+ * at 4.5MB — the limit that silently rejected photo uploads until they
+ * were compressed in the browser. A phone video is 10-100MB, so it
+ * cannot use that path at all: the browser uploads it straight to Blob
+ * storage and only the resulting URL comes back through us.
+ *
+ * That makes it a different trust problem, not just a bigger file. A
+ * public endpoint handing out upload tokens is a file host unless it
+ * is fenced, so the fence lives here: these types only, this ceiling,
+ * and nothing else in the app may widen it.
+ *
+ * 50MB is roughly 30 seconds of phone video at typical bitrates. The
+ * form asks for 30 seconds and enforces the duration itself; this is
+ * the backstop for anything that gets past it.
+ */
+export const REVIEW_VIDEO_POLICY = {
+  allowedMimeTypes: VIDEO_MIME_TYPES,
+  maxSizeBytes: 50 * MB,
+  maxDurationSeconds: 30,
+} as const;

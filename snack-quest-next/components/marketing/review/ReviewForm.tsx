@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { CheckCircle2, ImagePlus, Loader2, X } from 'lucide-react';
+import { upload } from '@vercel/blob/client';
+import { CheckCircle2, ImagePlus, Loader2, Video, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { StarRating } from './StarRating';
 import { compressImage, totalBytes, MAX_TOTAL_UPLOAD_BYTES } from './compressImage';
+import { REVIEW_VIDEO_POLICY } from '@/lib/storage/policies';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
 /**
@@ -43,7 +45,13 @@ export function ReviewForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [compressing, setCompressing] = useState(false);
+  // A chosen video, held locally until submit. It is uploaded straight
+  // to Blob storage rather than sent with the form — see
+  // app/api/reviews/video/route.ts for why it cannot travel with it.
+  const [video, setVideo] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
 
   // Object URLs are a real allocation, not a string — released when the
   // photo is removed or the component unmounts.
@@ -103,6 +111,64 @@ export function ReviewForm() {
     }
   }
 
+  /**
+   * Reads the real duration out of the file before accepting it. A
+   * byte ceiling alone would let a long, heavily compressed clip
+   * through and reject a short, high-bitrate one, which from the
+   * customer's side looks arbitrary.
+   */
+  async function addVideo(files: FileList | null) {
+    const file = files?.[0];
+    if (videoInput.current) {
+      videoInput.current.value = '';
+    }
+    if (!file) {
+      return;
+    }
+    setError(null);
+
+    if (file.size > REVIEW_VIDEO_POLICY.maxSizeBytes) {
+      setError(
+        `That video is too big. Keep it under ${Math.round(REVIEW_VIDEO_POLICY.maxSizeBytes / (1024 * 1024))}MB — about ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds.`,
+      );
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    const duration = await new Promise<number>((resolve) => {
+      const probe = document.createElement('video');
+      probe.preload = 'metadata';
+      probe.onloadedmetadata = () => resolve(probe.duration);
+      // A duration we can't read is not a reason to refuse the file —
+      // the byte ceiling above and the server's own cap still hold.
+      probe.onerror = () => resolve(0);
+      probe.src = previewUrl;
+    });
+
+    if (duration > REVIEW_VIDEO_POLICY.maxDurationSeconds + 1) {
+      URL.revokeObjectURL(previewUrl);
+      setError(
+        `That video is ${Math.round(duration)} seconds long. Please keep it to ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds or less.`,
+      );
+      return;
+    }
+
+    // One or the other, never both — see the picker's own note.
+    for (const photo of photos) {
+      URL.revokeObjectURL(photo.previewUrl);
+    }
+    setPhotos([]);
+    setVideo({ file, previewUrl });
+  }
+
+  function removeVideo() {
+    if (video) {
+      URL.revokeObjectURL(video.previewUrl);
+    }
+    setVideo(null);
+    setVideoProgress(null);
+  }
+
   function removePhoto(index: number) {
     setPhotos((current) => {
       URL.revokeObjectURL(current[index].previewUrl);
@@ -121,6 +187,21 @@ export function ReviewForm() {
     setSubmitting(true);
     setError(null);
     try {
+      // Uploaded before the form is submitted, straight from the
+      // browser to Blob storage. If this fails the review is not sent
+      // — better to tell them now than to drop the video silently
+      // from a review they think they posted with it.
+      let videoUrl: string | null = null;
+      if (video) {
+        setVideoProgress(0);
+        const blob = await upload(video.file.name, video.file, {
+          access: 'public',
+          handleUploadUrl: '/api/reviews/video',
+          onUploadProgress: ({ percentage }) => setVideoProgress(percentage),
+        });
+        videoUrl = blob.url;
+      }
+
       const payload = new FormData();
       payload.set('customerName', customerName.trim());
       payload.set('rating', String(rating));
@@ -130,6 +211,9 @@ export function ReviewForm() {
       }
       for (const photo of photos) {
         payload.append('photos', photo.file);
+      }
+      if (videoUrl) {
+        payload.set('videoUrl', videoUrl);
       }
 
       const response = await fetch('/api/reviews', { method: 'POST', body: payload });
@@ -157,6 +241,7 @@ export function ReviewForm() {
       setError("We couldn't reach Snack Quest. Check your connection and try again.");
     } finally {
       setSubmitting(false);
+      setVideoProgress(null);
     }
   }
 
@@ -205,8 +290,33 @@ export function ReviewForm() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <Label>Add photos (optional)</Label>
-        <div className="grid grid-cols-3 gap-3">
+        <Label>Add photos or a video (optional)</Label>
+
+        {video ? (
+          <div className="border-border bg-surface relative overflow-hidden rounded-xl border">
+            {/* Muted and click-to-play: this is a preview of their own
+                clip, not something that should start shouting. */}
+            <video
+              src={video.previewUrl}
+              controls
+              playsInline
+              muted
+              preload="metadata"
+              className="aspect-video w-full bg-black object-contain"
+            />
+            <button
+              type="button"
+              onClick={removeVideo}
+              disabled={submitting}
+              aria-label="Remove video"
+              className="focus-visible:ring-primary absolute top-2 right-2 flex size-8 items-center justify-center rounded-full bg-black/60 text-white outline-none focus-visible:ring-2 disabled:opacity-50"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+
+        <div className={`grid grid-cols-3 gap-3 ${video ? 'hidden' : ''}`}>
           {photos.map((photo, index) => (
             <div key={photo.previewUrl} className="bg-border/40 relative aspect-square overflow-hidden rounded-xl">
               <Image src={photo.previewUrl} alt="" fill sizes="33vw" className="object-cover" unoptimized />
@@ -261,9 +371,37 @@ export function ReviewForm() {
           tabIndex={-1}
           aria-hidden="true"
         />
+        {/*
+          Deliberately one or the other. A card carrying three photos
+          and a video is a mess to lay out and a lot to ask of someone
+          on mobile data — and in practice a person has either filmed
+          the unboxing or photographed the result, not both.
+        */}
+        {video ? null : (
+          <button
+            type="button"
+            onClick={() => videoInput.current?.click()}
+            className="border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:ring-primary flex items-center justify-center gap-2 rounded-xl border-2 border-dashed py-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2"
+          >
+            <Video className="size-4" aria-hidden="true" />
+            {photos.length > 0 ? 'Use a video instead' : 'Add a video'}
+          </button>
+        )}
+
+        <input
+          ref={videoInput}
+          type="file"
+          accept="video/*"
+          onChange={(event) => addVideo(event.target.files)}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+
         <p className="text-muted-foreground text-sm">
-          Up to {MAX_PHOTOS}. Take one now or pick from your gallery — a shot of the box or your favourite snack
-          is perfect.
+          {video
+            ? `One video, up to ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds. Remove it if you'd rather send photos.`
+            : `Up to ${MAX_PHOTOS} photos, or one video of ${REVIEW_VIDEO_POLICY.maxDurationSeconds} seconds or less. A shot of the box or your favourite snack is perfect.`}
         </p>
       </div>
 
@@ -302,7 +440,11 @@ export function ReviewForm() {
 
       <div className="flex flex-col gap-3">
         <Button type="submit" size="lg" loading={submitting} disabled={!ready} className={PRIMARY_CTA_CLASS}>
-          {submitting ? 'Sending…' : 'Post my review'}
+          {submitting
+            ? videoProgress !== null && videoProgress < 100
+              ? `Uploading video… ${Math.round(videoProgress)}%`
+              : 'Sending…'
+            : 'Post my review'}
         </Button>
         <p className="text-muted-foreground text-center text-sm">
           Every review is read by a person before it appears on the site.

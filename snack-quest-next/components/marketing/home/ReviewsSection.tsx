@@ -132,7 +132,23 @@ export function ReviewCard({ review }: { review: PublicReview }) {
 
   return (
     <figure className="border-border bg-surface flex h-full flex-col overflow-hidden rounded-2xl border shadow-[0_20px_50px_-30px_rgb(31_31_31/0.35)]">
-      {lead ? (
+      {/*
+        Never autoplays, and `preload="metadata"` fetches only the
+        first few bytes — enough to draw a first frame and a duration.
+        A homepage that streams every review video to every visitor
+        spends their mobile data and our bandwidth on something most
+        of them never press play on.
+      */}
+      {review.videoUrl ? (
+        <video
+          src={review.videoUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="aspect-[4/3] w-full bg-black object-cover"
+          aria-label={`Video from ${review.customerName}'s Snack Quest box`}
+        />
+      ) : lead ? (
         <div className="bg-border/40 relative aspect-[4/3] w-full">
           <Image
             src={lead.url}

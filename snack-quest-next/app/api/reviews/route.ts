@@ -31,6 +31,7 @@ export async function POST(request: Request): Promise<Response> {
   const body = formData.get('body');
   const rating = formData.get('rating');
   const contactPhone = formData.get('contactPhone');
+  const videoUrl = formData.get('videoUrl');
 
   if (typeof customerName !== 'string' || typeof body !== 'string') {
     return Response.json({ error: 'Your name and review are both required.' }, { status: 400 });
@@ -61,6 +62,11 @@ export async function POST(request: Request): Promise<Response> {
       body,
       contactPhone: typeof contactPhone === 'string' ? contactPhone : undefined,
       photos,
+      // Already in Blob storage by the time this request is made — the
+      // browser put it there directly, because a video cannot fit in
+      // this request at all. `submitReview` verifies the URL rather
+      // than trusting it.
+      videoUrl: typeof videoUrl === 'string' && videoUrl ? videoUrl : null,
     });
     return Response.json({ reviewId }, { status: 201 });
   } catch (error) {

@@ -25,6 +25,19 @@ export interface ReviewPhoto {
   pathname: string;
 }
 
+/**
+ * A video the customer attached. Unlike photos, this was uploaded by
+ * the browser straight to Blob storage before the review was
+ * submitted (see `app/api/reviews/video/route.ts` for why it cannot
+ * travel with the rest of the form), so the URL arrives from the
+ * client and is verified server-side before it is trusted.
+ */
+export interface ReviewVideo {
+  url: string;
+  /** Kept for the same reason as a photo's: a rejected review's video has to be deletable, not orphaned. */
+  pathname: string;
+}
+
 export interface Review extends AuditFields {
   businessId: string;
   /** As the customer typed it. Displayed publicly, so it's their choice what to be called. */
@@ -33,6 +46,8 @@ export interface Review extends AuditFields {
   rating: number;
   body: string;
   photos: ReviewPhoto[];
+  /** Null on every review submitted before video existed, and on every review where the customer chose photos instead. */
+  video?: ReviewVideo | null;
   status: ReviewStatus;
   /**
    * Optional and never displayed — only so staff can reach the person
@@ -52,6 +67,8 @@ export interface PublicReview {
   rating: number;
   body: string;
   photos: { url: string }[];
+  /** Null when the customer attached photos instead, or nothing at all. */
+  videoUrl: string | null;
   /** ISO string rather than a Firestore Timestamp: this crosses into Client Components. */
   createdAtIso: string;
 }

@@ -5,7 +5,7 @@ import { storageService } from '@/services/storageService';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { publishEvent } from '@/lib/events/eventBus';
 import { toMillis } from '@/lib/firestoreTimestamp';
-import type { PublicReview, Review, ReviewPhoto, ReviewStatus } from '@/types';
+import type { PublicReview, Review, ReviewPhoto, ReviewStatus, ReviewVideo } from '@/types';
 
 /**
  * Owns customer reviews (§ homepage reviews) — submission through a
@@ -47,6 +47,8 @@ export interface SubmitReviewInput {
   body: string;
   contactPhone?: string;
   photos: { filename: string; contentType: string; data: Buffer }[];
+  /** The Blob URL the browser uploaded to before submitting, or null. Verified here — never trusted as given. */
+  videoUrl?: string | null;
 }
 
 export interface PublishedReviewSummary {
@@ -55,6 +57,44 @@ export interface PublishedReviewSummary {
   totalCount: number;
   /** Mean rating across published reviews, one decimal place. 0 when there are none — never a fabricated 5. */
   averageRating: number;
+}
+
+/**
+ * Turns the URL the browser reports after its direct-to-Blob upload
+ * into a stored `ReviewVideo`, or rejects it.
+ *
+ * Everything else on a review is bytes we uploaded ourselves, so this
+ * is the only place a client-supplied URL becomes part of published
+ * content. Treated accordingly: it has to parse, be https, sit on the
+ * exact Blob host this deployment writes to, and live under the
+ * reviews prefix. Anything else — a link to another site, a
+ * lookalike host, a path outside reviews — is not a near miss to be
+ * corrected, it is someone doing something else, so it is refused
+ * outright rather than sanitised.
+ */
+function parseReviewVideoUrl(raw: string | null): ReviewVideo | null {
+  if (!raw) {
+    return null;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ReviewValidationError('That video could not be attached. Please try again.');
+  }
+
+  const expectedHost = process.env.BLOB_PUBLIC_HOST;
+  const hostAllowed = expectedHost
+    ? url.hostname === expectedHost
+    : url.hostname.endsWith('.public.blob.vercel-storage.com');
+
+  const pathname = url.pathname.replace(/^\//, '');
+  if (url.protocol !== 'https:' || !hostAllowed || !pathname.startsWith('reviews/')) {
+    throw new ReviewValidationError('That video could not be attached. Please try again.');
+  }
+
+  return { url: url.toString(), pathname };
 }
 
 function toPublicReview(entry: { id: string; data: Review }): PublicReview {
@@ -66,6 +106,7 @@ function toPublicReview(entry: { id: string; data: Review }): PublicReview {
     // Only the URL crosses to the client — `pathname` is a storage
     // implementation detail that exists for deletion, not display.
     photos: entry.data.photos.map((photo) => ({ url: photo.url })),
+    videoUrl: entry.data.video?.url ?? null,
     createdAtIso: new Date(toMillis(entry.data.createdAt)).toISOString(),
   };
 }
@@ -138,12 +179,21 @@ class ReviewService {
       photos.push({ url: uploaded.url, pathname: uploaded.pathname });
     }
 
+    // The one field on a review that arrives as a URL rather than as
+    // bytes we uploaded ourselves, because the video went straight
+    // from the browser to Blob storage. So it is checked rather than
+    // believed: it must be a real URL on our own Blob host, under the
+    // reviews prefix. Without this, the form is an open invitation to
+    // hang any URL on the internet off a published review card.
+    const video = parseReviewVideoUrl(input.videoUrl ?? null);
+
     const reviewId = await reviewRepository.create({
       businessId,
       customerName,
       rating,
       body,
       photos,
+      video,
       contactPhone,
       // Never published on arrival — see types/review.ts.
       status: 'pending',
@@ -152,6 +202,7 @@ class ReviewService {
     await publishEvent(businessId, 'ReviewSubmitted', 'review', reviewId, {
       rating,
       photoCount: photos.length,
+      hasVideo: video !== null,
     });
 
     return { reviewId };
@@ -185,8 +236,11 @@ class ReviewService {
    * Approve or reject. Rejecting deletes the photos: they were
    * uploaded by an unauthenticated stranger and will never be shown,
    * so keeping them is storage cost and, if the reason for rejection
-   * was the image itself, a liability. Best-effort per photo — a
-   * storage hiccup must not leave a review stuck in the queue.
+   * was the image itself, a liability. The video goes the same way,
+   * and matters more: it is the largest object a stranger can put in
+   * our storage, so a rejected one left behind is both the biggest
+   * cost and the biggest liability. Best-effort per file — a storage
+   * hiccup must not leave a review stuck in the queue.
    */
   async moderate(
     businessId: string,
@@ -202,12 +256,16 @@ class ReviewService {
     await reviewRepository.setStatus(reviewId, status, actor);
 
     if (status === 'rejected') {
-      for (const photo of review.photos) {
+      const attachments = [
+        ...review.photos,
+        ...(review.video ? [review.video] : []),
+      ];
+      for (const attachment of attachments) {
         try {
-          await storageService.deleteFile(photo.url);
+          await storageService.deleteFile(attachment.url);
         } catch (error) {
           await publishEvent(businessId, 'ReviewPhotoDeleteFailed', 'review', reviewId, {
-            pathname: photo.pathname,
+            pathname: attachment.pathname,
             reason: error instanceof Error ? error.message : 'unknown error',
           });
         }
