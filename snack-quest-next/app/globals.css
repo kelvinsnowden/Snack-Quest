@@ -17,6 +17,11 @@
  * distinct name avoids a same-name self-reference between the two.
  */
 :root {
+  /* Native UI (scrollbars, form controls, date pickers) follows the brand,
+     not the OS — without this Chrome still renders them dark on a
+     dark-mode machine, against a light page. */
+  color-scheme: light;
+
   /* Primitives */
   --sq-primitive-orange: #ff7a00;
   --sq-primitive-purple: #6c3bff;
@@ -51,38 +56,30 @@
   --sq-shadow-lg: 0 24px 64px -20px rgb(31 31 31 / 0.24);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sq-background: #17140f;
-    --sq-foreground: #f7f3ea;
-    --sq-surface: #211d16;
-    --sq-surface-raised: #29241b;
-    --sq-border: #38311f;
-    --sq-muted: #a89d87;
-    --sq-muted-foreground: #a89d87;
-
-    --sq-primary: #ff8f24;
-    --sq-primary-foreground: #1f1105;
-    --sq-secondary: #8a63ff;
-    --sq-secondary-foreground: #ffffff;
-
-    --sq-success: #3ba873;
-    --sq-success-foreground: #0d2117;
-    --sq-warning: #d99a2b;
-    --sq-warning-foreground: #241a05;
-    --sq-danger: #e2685c;
-    --sq-danger-foreground: #250a07;
-    --sq-info: #5a9ce0;
-    --sq-info-foreground: #061626;
-
-    --sq-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-    --sq-shadow-md: 0 12px 32px -12px rgb(0 0 0 / 0.5);
-    --sq-shadow-lg: 0 24px 64px -20px rgb(0 0 0 / 0.6);
-  }
-}
-
-/* The theme toggle stamps data-theme on <html>, and must win over the OS media query in both directions. */
+/*
+ * Dark mode is OPT-IN, never automatic.
+ *
+ * This used to be an `@media (prefers-color-scheme: dark)` block, which
+ * silently repainted the entire brand — background, foreground, and the
+ * primary orange (#ff7a00 -> #ff8f24) — for every visitor whose OS or
+ * browser was set to dark. That is why the site "sometimes loaded with
+ * different colours in Chrome": Chrome honours the OS preference, and
+ * nothing here could override it, because the `data-theme` escape hatch
+ * below is never actually stamped — no theme toggle or provider exists
+ * anywhere in the app (verified: zero references to `data-theme` outside
+ * this file). A customer could land on an off-brand site with no way back.
+ *
+ * The palette itself is unchanged and still fully reachable: set
+ * `data-theme="dark"` on <html> and it applies. Restoring an automatic
+ * OS-driven dark mode is a deliberate product decision that needs a real
+ * toggle to go with it, not a media query that overrides the brand
+ * without asking.
+ */
 :root[data-theme='dark'] {
+  color-scheme: dark;
+  --sq-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --sq-shadow-md: 0 12px 32px -12px rgb(0 0 0 / 0.5);
+  --sq-shadow-lg: 0 24px 64px -20px rgb(0 0 0 / 0.6);
   --sq-background: #17140f;
   --sq-foreground: #f7f3ea;
   --sq-surface: #211d16;
