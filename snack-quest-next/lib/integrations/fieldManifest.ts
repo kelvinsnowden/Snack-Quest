@@ -53,6 +53,18 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
     { key: 'apiVersion', label: 'API version', secret: false, required: false, helpText: 'Defaults to the current Graph API version if left blank, e.g. v21.0.' },
     { key: 'testEventCode', label: 'Test event code', secret: false, required: false, helpText: 'From Meta Events Manager → Test Events. Not required for real orders to work — only needed to use the Test Connection button below.' },
   ],
+  // Saving these pushes them into the Firebase project, which is where
+  // Authentication reads them from when it sends a password reset —
+  // see lib/integrations/authEmail/identityPlatformGateway.ts.
+  authEmail: [
+    { key: 'senderEmail', label: 'Send from', secret: false, required: true, helpText: 'The address resets arrive from, e.g. noreply@snackquests.shop. It must be on a domain you have verified with your email provider, or the mail will be treated as spoofed.' },
+    { key: 'senderName', label: 'Sender name', secret: false, required: false, helpText: 'What recipients see instead of the raw address, e.g. Snack Quest.' },
+    { key: 'host', label: 'SMTP host', secret: false, required: true, helpText: 'From your email provider, e.g. smtp.mailgun.org.' },
+    { key: 'port', label: 'SMTP port', secret: false, required: true, helpText: '587 for STARTTLS, 465 for SSL. Use whichever your provider recommends.' },
+    { key: 'securityMode', label: 'Security', secret: false, required: true, type: 'select', options: ['START_TLS', 'SSL'] },
+    { key: 'username', label: 'SMTP username', secret: false, required: true },
+    { key: 'password', label: 'SMTP password', secret: true, required: true, helpText: 'Stored encrypted here and handed to Firebase. Neither this page nor Google will show it back to you.' },
+  ],
 };
 
 export function getIntegrationFieldManifest(provider: IntegrationProvider): IntegrationFieldSpec[] {

@@ -89,3 +89,38 @@ function getAdminApp(): App {
 
 export const adminAuth: Auth = lazy(() => getAuth(getAdminApp()));
 export const adminFirestore: Firestore = lazy(() => getFirestore(getAdminApp()));
+
+/**
+ * An OAuth access token for the same service account the Admin SDK
+ * already authenticates as.
+ *
+ * The Admin SDK covers Auth and Firestore, but a few Google APIs it
+ * has no wrapper for still belong to this project — notably Identity
+ * Platform's project config, which is where Firebase Auth's outbound
+ * email (password resets, verification) is configured. Rather than
+ * ship a second credential for those, this reuses the one already in
+ * the environment.
+ *
+ * `credential` is absent when running against the emulators, where
+ * there is no real project to call — callers must handle that rather
+ * than assume a token is always available.
+ */
+export async function getAdminAccessToken(): Promise<string> {
+  const { credential } = getAdminApp().options;
+  if (!credential) {
+    throw new Error(
+      'No Firebase service-account credential is configured, so Google APIs outside the Admin SDK cannot be called. This is expected against the emulators.',
+    );
+  }
+  const token = await credential.getAccessToken();
+  return token.access_token;
+}
+
+/** The Google Cloud project these credentials belong to — the project whose Identity Platform config the auth-email integration edits. */
+export function getAdminProjectId(): string {
+  const projectId = getAdminApp().options.projectId ?? process.env.FIREBASE_ADMIN_PROJECT_ID;
+  if (!projectId) {
+    throw new Error('Missing required environment variable: FIREBASE_ADMIN_PROJECT_ID');
+  }
+  return projectId;
+}

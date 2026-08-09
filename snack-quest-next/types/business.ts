@@ -83,7 +83,7 @@ export interface LoyaltyConfig {
  * is unconditional deny, independent of whatever the parent
  * document's rule becomes.
  */
-export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta';
+export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta' | 'authEmail';
 
 /**
  * Shared status/audit fields every per-tenant integration secret now
@@ -191,11 +191,30 @@ export interface MetaIntegrationSecret extends IntegrationSecretMeta {
   testEventCode?: string;
 }
 
+/**
+ * The SMTP account Firebase Authentication sends password-reset mail
+ * through. Stored here like any other credential, then pushed into the
+ * project's Identity Platform config — Firebase, not this app, is what
+ * actually connects to the server (see
+ * `lib/integrations/authEmail/config.ts`).
+ */
+export interface AuthEmailIntegrationSecret extends IntegrationSecretMeta {
+  senderEmail: string;
+  senderName?: string;
+  host: string;
+  /** Stored as a string like every other field on these documents; parsed and range-checked when read. */
+  port: string;
+  securityMode: string;
+  username: string;
+  password: string;
+}
+
 export interface IntegrationSecretMap {
   daraja: DarajaIntegrationSecret;
   whatchimp: WhatchimpIntegrationSecret;
   jumia: JumiaIntegrationSecret;
   meta: MetaIntegrationSecret;
+  authEmail: AuthEmailIntegrationSecret;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import { INTEGRATION_FIELD_MANIFEST } from '@/lib/integrations/fieldManifest';
 import {
   integrationSettingsService,
   IntegrationValidationError,
@@ -22,9 +23,14 @@ afterEach(() => {
 describe('IntegrationSettingsService.listSummaries', () => {
   it('reports every provider as missing when nothing is configured', async () => {
     const summaries = await integrationSettingsService.listSummaries(BUSINESS_ID);
-    expect(summaries).toHaveLength(4);
     expect(summaries.every((s) => s.status === 'missing')).toBe(true);
-    expect(summaries.map((s) => s.provider).sort()).toEqual(['daraja', 'jumia', 'meta', 'whatchimp']);
+    // Derived from the manifest rather than a hardcoded list, so
+    // adding a provider is caught here as a genuine regression only if
+    // the portal actually stops listing one — not simply because the
+    // count changed.
+    expect(summaries.map((s) => s.provider).sort()).toEqual(
+      Object.keys(INTEGRATION_FIELD_MANIFEST).sort(),
+    );
   });
 
   it('reports connected once required fields are present, with secret values masked', async () => {

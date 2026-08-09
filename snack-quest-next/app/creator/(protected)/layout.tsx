@@ -60,10 +60,24 @@ export default async function CreatorProtectedLayout({
   const shareUrl = links[0] ? `${origin}/r/${links[0].data.code}` : null;
 
   return (
-    <div className="bg-background min-h-dvh md:flex">
+    <div className="bg-background relative min-h-dvh md:flex">
+      {/*
+        The same atmosphere the storefront opens with — two soft brand
+        washes behind the content (§ brand consistency pass). The portal
+        was a flat grey field, which is why it read as a different
+        product from the site that recruited the creator into it.
+        Fixed rather than absolute so the colour stays put while a long
+        earnings list scrolls over it, and pointer-events-none so it can
+        never intercept a tap.
+      */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="bg-secondary/10 absolute -top-40 -left-32 size-[520px] rounded-full blur-3xl" />
+        <div className="bg-primary/10 absolute -right-40 bottom-0 size-[460px] rounded-full blur-3xl" />
+      </div>
+
       <PortalSideRail />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <header className="border-border bg-surface/95 sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur md:h-16 md:px-8">
           <Link
             href="/creator"

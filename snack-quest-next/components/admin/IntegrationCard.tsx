@@ -125,6 +125,23 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
         <WhatchimpTestMessageAction disabled={integration.status === 'missing' || !integration.enabled} />
       ) : null}
 
+      {/*
+        Auth-email-specific. "Test connection" here can only confirm
+        Google stored what we sent — Google accepts SMTP credentials
+        without dialling the server, so a wrong password passes that
+        check. Saying so is the honest thing, and the real test costs
+        the reader thirty seconds.
+      */}
+      {integration.provider === 'authEmail' ? (
+        <p className="text-muted-foreground rounded-md bg-border/30 px-3 py-2 text-xs">
+          Saving pushes these settings straight into Firebase, which is what sends password-reset emails.
+          Test connection only confirms Firebase stored them — it cannot tell whether your SMTP password is
+          right. To know that, request a reset at{' '}
+          <span className="text-foreground font-medium">/creator/login</span> and check the mail arrives from
+          your own domain rather than firebaseapp.com.
+        </p>
+      ) : null}
+
       <IntegrationEditDialog integration={integration} open={editOpen} onOpenChange={setEditOpen} />
     </Card>
   );

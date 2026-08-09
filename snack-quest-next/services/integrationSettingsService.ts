@@ -10,6 +10,10 @@ import { testDarajaConnection } from '@/lib/integrations/daraja/darajaGateway';
 import { testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { testJumiaConnection } from '@/lib/integrations/jumia/jumiaGateway';
 import { testMetaConnection } from '@/lib/integrations/meta/metaConversionGateway';
+import {
+  applyAuthEmailConfig,
+  testAuthEmailConnection,
+} from '@/lib/integrations/authEmail/identityPlatformGateway';
 import type { IntegrationProvider, IntegrationSecretMap, IntegrationSecretMeta } from '@/types';
 
 export class IntegrationValidationError extends Error {
@@ -53,13 +57,32 @@ export interface IntegrationSummary {
   secretsEncryptedAtRest: boolean | null;
 }
 
-const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta'];
+const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta', 'authEmail'];
 
 const TEST_CONNECTORS: Record<IntegrationProvider, (businessId: string) => Promise<void>> = {
   daraja: testDarajaConnection,
   whatchimp: testWhatchimpConnection,
   jumia: testJumiaConnection,
   meta: testMetaConnection,
+  authEmail: testAuthEmailConnection,
+};
+
+/**
+ * Providers that need something done *outside* Firestore the moment
+ * their settings are saved.
+ *
+ * Only the auth-email integration has one, and it is the whole point
+ * of that integration: the credentials are useless sitting in our
+ * database, because the system that sends the mail is Firebase, not
+ * this app. Saving pushes them into the project config so the Admin
+ * Portal is genuinely where this is set up.
+ *
+ * A failure here is surfaced, never swallowed — the row is already
+ * saved by then, so silently failing would leave the portal claiming a
+ * sender that Firebase has never heard of.
+ */
+const ON_SAVE_APPLY: Partial<Record<IntegrationProvider, (businessId: string) => Promise<void>>> = {
+  authEmail: applyAuthEmailConfig,
 };
 
 function maskSecretValue(value: string): string {
@@ -222,6 +245,13 @@ class IntegrationSettingsService {
       provider,
       cleanPatch as Partial<IntegrationSecretMap[typeof provider]>,
     );
+
+    // Only auth-email has one of these today; see ON_SAVE_APPLY for
+    // why it can't just live in Firestore like the others.
+    const apply = ON_SAVE_APPLY[provider];
+    if (apply && cleanPatch.enabled !== false) {
+      await apply(businessId);
+    }
 
     const after = await this.getSummary(businessId, provider);
     return { before, after };
