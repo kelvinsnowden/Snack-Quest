@@ -38,7 +38,12 @@ export function ReviewsSection({
   }
 
   return (
-    <section className="bg-background relative overflow-hidden px-0 py-16 md:py-28">
+    // `scroll-mt` clears the sticky header, which would otherwise sit
+    // on top of the heading when the nav's "Reviews" link jumps here.
+    <section
+      id="reviews"
+      className="bg-background relative scroll-mt-20 overflow-hidden px-0 py-16 md:py-28"
+    >
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="bg-primary/10 absolute -top-20 right-0 size-[380px] rounded-full blur-3xl" />
         <div className="bg-home-lime/10 absolute -bottom-24 -left-16 size-[320px] rounded-full blur-3xl" />
@@ -122,7 +127,7 @@ export function ReviewsSection({
   );
 }
 
-function ReviewCard({ review }: { review: PublicReview }) {
+export function ReviewCard({ review }: { review: PublicReview }) {
   const [lead, ...rest] = review.photos;
 
   return (
@@ -184,7 +189,7 @@ function ReviewCard({ review }: { review: PublicReview }) {
  * otherwise a screen reader reads "star star star star star" and
  * conveys nothing about the score.
  */
-function Stars({ rating, className }: { rating: number; className: string }) {
+export function Stars({ rating, className }: { rating: number; className: string }) {
   return (
     <span className="flex items-center gap-0.5" role="img" aria-label={`${rating} out of 5 stars`}>
       {[1, 2, 3, 4, 5].map((star) => (

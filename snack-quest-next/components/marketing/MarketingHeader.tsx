@@ -10,8 +10,14 @@ import { useActiveBox } from './design/ActiveBoxContext';
 import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
+  // The logo goes home, but that is a convention people have to know
+  // rather than see — and on mobile it competes with a hamburger for
+  // attention. An explicit entry costs one line and removes the
+  // dead-end feeling of being three pages deep.
+  { href: '/', label: 'Home' },
   { href: '/boxes', label: 'Boxes' },
   { href: '/how-it-works', label: 'How it works' },
+  { href: '/reviews', label: 'Reviews' },
   { href: '/creators', label: 'Creator program' },
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact' },

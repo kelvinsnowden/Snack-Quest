@@ -19,11 +19,14 @@ function currentYear(): number {
  * shorter and, for ten links, no less scannable.
  */
 const FOOTER_LINKS = [
+  { href: '/', label: 'Home' },
   { href: '/boxes', label: 'Boxes' },
   { href: '/how-it-works', label: 'How it works' },
   { href: '/creators', label: 'Creator program' },
   { href: '/creator/register', label: 'Become a creator' },
   { href: '/creator/login', label: 'Creator sign in' },
+  { href: '/reviews', label: 'Reviews' },
+  { href: '/review', label: 'Leave a review' },
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact us' },
   { href: '/privacy', label: 'Privacy policy' },

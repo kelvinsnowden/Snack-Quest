@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Camera, CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, ImagePlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,8 +16,7 @@ import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
  *
  * Built for a phone held in one hand, because that is where it will
  * actually be filled in — a customer with the box open in front of
- * them. Everything is full-width and thumb-sized, the photo picker
- * opens the camera directly on mobile (`capture`), and there is no
+ * them. Everything is full-width and thumb-sized, and there is no
  * account, no email, and nothing required beyond a name, a rating and
  * a sentence.
  *
@@ -179,20 +178,32 @@ export function ReviewForm() {
             <button
               type="button"
               onClick={() => fileInput.current?.click()}
+              // The icon used to be a camera, which promised the one
+              // thing the picker no longer forces. An image icon says
+              // "a photo goes here" without implying how you get it.
               className="border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:ring-primary flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed outline-none transition-colors focus-visible:ring-2"
             >
-              <Camera className="size-6" aria-hidden="true" />
-              <span className="text-sm font-medium">Add</span>
+              <ImagePlus className="size-6" aria-hidden="true" />
+              <span className="text-sm font-medium">
+                {photos.length === 0 ? 'Add photo' : 'Add more'}
+              </span>
             </button>
           ) : null}
         </div>
+        {/*
+          Deliberately no `capture` attribute. It was here to open the
+          camera straight away, on the assumption that someone reviewing
+          a box has it in front of them — but `capture` doesn't add the
+          camera to the chooser, it *replaces* the chooser. Anyone who
+          photographed their box when it arrived and wanted to attach
+          that photo had no way to. Without it the browser shows its own
+          picker — camera, gallery and files — which is both options
+          instead of one.
+        */}
         <input
           ref={fileInput}
           type="file"
           accept="image/*"
-          // Opens the camera straight away on a phone, which is where
-          // the box actually is.
-          capture="environment"
           multiple
           onChange={(event) => addPhotos(event.target.files)}
           className="sr-only"
@@ -200,7 +211,8 @@ export function ReviewForm() {
           aria-hidden="true"
         />
         <p className="text-muted-foreground text-sm">
-          Up to {MAX_PHOTOS} photos. A shot of the box or your favourite snack is perfect.
+          Up to {MAX_PHOTOS}. Take one now or pick from your gallery — a shot of the box or your favourite snack
+          is perfect.
         </p>
       </div>
 

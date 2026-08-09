@@ -155,66 +155,85 @@ export function CheckoutForm({
       <section className="flex flex-col gap-4">
         <SectionHeading step={1} title="Your box" />
         {/*
-          A swipeable rail on a phone, a grid once there's width for
-          one. Three stacked full-width cards cost a whole screen of
-          scrolling before the customer had even entered their name —
-          on the page where every extra screen is someone who doesn't
-          finish. Bleeds past the edge so the next card peeks, same
-          language as the homepage reviews rail.
+          Every box visible at once, no interaction required to see the
+          options. This was a swipeable rail, which saved vertical space
+          but hid boxes behind a gesture people didn't realise was
+          there — and a box a customer never sees is a box they can't
+          buy. Compact rows on a phone cost barely more height than the
+          rail did while showing all three; the roomier grid returns as
+          soon as there's width for it.
         */}
-        <div className="-mx-5 sm:mx-0">
-          <ul className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0">
-            {boxes.map((candidate) => {
-              const isSelected = candidate.id === boxId;
-              const soldOut = candidate.stockCount === 0;
-              return (
-                <li key={candidate.id} className="w-[64vw] max-w-[220px] shrink-0 snap-start sm:w-auto sm:max-w-none">
-                  <button
-                    type="button"
-                    disabled={soldOut}
-                    onClick={() => {
-                      setBoxId(candidate.id);
-                      setQuantity(1);
-                    }}
-                    aria-pressed={isSelected}
-                    className={cn(
-                      'focus-visible:ring-primary relative flex h-full w-full flex-col gap-3 rounded-xl border p-4 text-left outline-none transition-colors focus-visible:ring-2',
-                      isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface hover:bg-border/30',
-                      soldOut && 'cursor-not-allowed opacity-50',
+        <ul className="flex flex-col gap-2.5 sm:grid sm:grid-cols-3 sm:gap-3">
+          {boxes.map((candidate) => {
+            const isSelected = candidate.id === boxId;
+            const soldOut = candidate.stockCount === 0;
+            return (
+              <li key={candidate.id}>
+                <button
+                  type="button"
+                  disabled={soldOut}
+                  onClick={() => {
+                    setBoxId(candidate.id);
+                    setQuantity(1);
+                  }}
+                  aria-pressed={isSelected}
+                  className={cn(
+                    'focus-visible:ring-primary relative flex h-full w-full items-center gap-3 rounded-xl border p-3 text-left outline-none transition-colors focus-visible:ring-2 sm:flex-col sm:items-start sm:gap-3 sm:p-4',
+                    isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface hover:bg-border/30',
+                    soldOut && 'cursor-not-allowed opacity-50',
+                  )}
+                >
+                  <div className="bg-border/40 relative size-12 shrink-0 overflow-hidden rounded-lg">
+                    {candidate.imageUrl ? (
+                      <Image src={candidate.imageUrl} alt="" fill sizes="48px" className="object-cover" />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-xl" aria-hidden="true">
+                        🍿
+                      </span>
                     )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="bg-border/40 relative size-12 shrink-0 overflow-hidden rounded-lg">
-                        {candidate.imageUrl ? (
-                          <Image src={candidate.imageUrl} alt="" fill sizes="48px" className="object-cover" />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center text-xl" aria-hidden="true">
-                            🍿
-                          </span>
-                        )}
-                      </div>
-                      {isSelected ? (
-                        <span className="bg-primary text-primary-foreground flex size-5 shrink-0 items-center justify-center rounded-full">
-                          <Check className="size-3" strokeWidth={3} aria-hidden="true" />
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-foreground text-sm font-semibold">{candidate.name}</p>
-                      <p className="text-foreground mt-1 text-base font-semibold">
-                        {formatKes(candidate.priceKes)}
-                      </p>
-                      {candidate.snackCountLabel ? (
-                        <p className="text-muted-foreground mt-1 text-sm">{candidate.snackCountLabel}</p>
-                      ) : null}
-                      {soldOut ? <p className="text-danger mt-1 text-sm font-medium">Sold out</p> : null}
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1 sm:w-full sm:flex-none">
+                    <p className="text-foreground text-sm font-semibold">{candidate.name}</p>
+                    {candidate.snackCountLabel ? (
+                      <p className="text-muted-foreground mt-0.5 text-sm">{candidate.snackCountLabel}</p>
+                    ) : null}
+                    {soldOut ? <p className="text-danger mt-0.5 text-sm font-medium">Sold out</p> : null}
+                    {/* On the grid the price sits under the name; in a
+                        row it belongs on the right, where a reader
+                        scanning prices expects to find it. */}
+                    <p className="text-foreground mt-1 hidden text-base font-semibold sm:block">
+                      {formatKes(candidate.priceKes)}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 sm:hidden">
+                    <span className="text-foreground text-base font-semibold">
+                      {formatKes(candidate.priceKes)}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'flex size-5 items-center justify-center rounded-full border transition-colors',
+                        isSelected
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-surface',
+                      )}
+                    >
+                      {isSelected ? <Check className="size-3" strokeWidth={3} /> : null}
+                    </span>
+                  </div>
+
+                  {isSelected ? (
+                    <span className="bg-primary text-primary-foreground absolute top-3 right-3 hidden size-5 items-center justify-center rounded-full sm:flex">
+                      <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
 
         <div className="border-border bg-surface flex items-center justify-between gap-4 rounded-lg border p-4">
           <div>
