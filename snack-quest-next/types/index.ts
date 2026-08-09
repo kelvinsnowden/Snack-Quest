@@ -35,3 +35,4 @@ export * from './inventoryBatch';
 export * from './scheduledJobRun';
 export * from './featureFlag';
 export * from './fulfillmentBatch';
+export * from './webCheckout';

@@ -9,6 +9,7 @@ import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway'
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
+import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -32,7 +33,10 @@ import type {
   ConversationStatus,
   ConversationStep,
   DeliveryDetails,
+  DeliveryMethod,
   PickupStationCandidate,
+  WebCheckoutPricing,
+  WebCheckoutStatusResponse,
 } from '@/types';
 import type {
   ApplyReferralResponse,
@@ -140,6 +144,53 @@ export class ConversationNotFoundError extends Error {
     super(`Conversation ${conversationId} not found`);
     this.name = 'ConversationNotFoundError';
   }
+}
+
+/**
+ * A ceiling, not a stock rule — stock is checked separately against
+ * the box's own `stockCount`. This exists so a typo or a scripted
+ * request can't freeze a snapshot for an amount no real customer
+ * would ever be prompted to pay.
+ */
+export const MAX_WEB_CHECKOUT_QUANTITY = 20;
+
+/** The customer got something wrong (or sent something impossible) — safe to show them verbatim, answered as 400. */
+export class WebCheckoutValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebCheckoutValidationError';
+  }
+}
+
+/** The request was well-formed but this customer can't check out right now — answered as 409. */
+export class WebCheckoutConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebCheckoutConflictError';
+  }
+}
+
+/** Exactly `WebCheckoutRequest`, but with the fields the route has already narrowed to real types. */
+export interface WebCheckoutInput {
+  packageId: string;
+  quantity: number;
+  customerName: string;
+  phone: string;
+  county: string;
+  deliveryMethod: DeliveryMethod;
+  pickupStationId?: string;
+  addressText?: string;
+  estate?: string;
+  landmark?: string;
+  contactPhone?: string;
+  referralCode?: string;
+}
+
+export interface WebCheckoutResult {
+  checkoutSessionId: string;
+  payingPhone: string;
+  stkPushSent: boolean;
+  pricing: WebCheckoutPricing;
 }
 
 class ConversationService {
@@ -314,6 +365,307 @@ class ConversationService {
     return { conversationId, nextStep, botReply };
   }
 
+  /**
+   * The website checkout's single entry point (§ Website Becomes the
+   * Primary Commerce Channel). The website collects everything in one
+   * form instead of over several conversational turns, so this skips
+   * the state machine entirely — but it deliberately runs the *same*
+   * `freezeSnapshot` and the *same* `paymentService` hand-off the
+   * WhatsApp path does, so there is still exactly one place that
+   * prices an order and exactly one place that charges for it.
+   *
+   * It still creates/resumes a real `conversations` document. That's
+   * not ceremony: the snapshot, the payment intent, the Daraja
+   * callback's `handlePaymentResult` → `completeOrder` path, the admin
+   * conversation view, and the order's own `conversationId` all key off
+   * one, so a web order that skipped it would need a parallel copy of
+   * every one of them. The web customer also gets the same WhatsApp
+   * confirmations a bot customer does, for free, because
+   * `completeOrder` already sends them.
+   *
+   * Pricing is authoritative here and nowhere else: the unit price is
+   * re-read from `packages`, and the pickup fee from `pickupStations`,
+   * at request time. Nothing the client sent about money is trusted,
+   * because the client never sends any.
+   */
+  async startWebCheckout(
+    businessId: string,
+    input: WebCheckoutInput,
+  ): Promise<WebCheckoutResult> {
+    const quantity = Math.trunc(input.quantity);
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > MAX_WEB_CHECKOUT_QUANTITY) {
+      throw new WebCheckoutValidationError(
+        `quantity must be a whole number between 1 and ${MAX_WEB_CHECKOUT_QUANTITY}`,
+      );
+    }
+
+    const customerName = input.customerName.trim();
+    if (customerName.length < 2) {
+      throw new WebCheckoutValidationError('customerName is required');
+    }
+    const county = input.county.trim();
+    if (!county) {
+      throw new WebCheckoutValidationError('county is required');
+    }
+
+    // Throws InvalidPhoneNumberError for anything that isn't
+    // unambiguously a Kenyan mobile number — an STK push to a
+    // mis-normalized number charges a stranger.
+    const phoneNumber = normalizeKenyanPhone(input.phone);
+
+    const box = await packageRepository.findById(businessId, input.packageId);
+    if (!box || !box.isActive) {
+      throw new WebCheckoutValidationError(`Box ${input.packageId} is not available`);
+    }
+    if (box.stockCount !== undefined && box.stockCount < quantity) {
+      throw new WebCheckoutValidationError(
+        box.stockCount <= 0
+          ? `${box.name} is out of stock`
+          : `Only ${box.stockCount} of ${box.name} left — reduce the quantity`,
+      );
+    }
+
+    // A customer mid-way through a WhatsApp conversation that a human
+    // agent has taken over must not have an STK push fired at them
+    // from a second channel — same guard `startFromCatalogSelection`
+    // applies for the same reason.
+    const existing = await conversationRepository.findActiveByPhoneNumber(businessId, phoneNumber);
+    if (existing?.conversation.status === 'agent_assigned') {
+      throw new WebCheckoutConflictError(
+        'One of our team is already helping you with an order on WhatsApp — please finish there, or message us to start over.',
+      );
+    }
+
+    const { delivery, stateBlob } = await this.buildWebDeliveryDetails(businessId, county, input);
+
+    const conversationId =
+      existing?.id ??
+      (await conversationRepository.create({ businessId, phoneNumber }));
+    if (!existing) {
+      await publishEvent(businessId, 'ConversationStarted', 'conversation', conversationId, {
+        phoneNumber,
+        channel: 'web',
+      });
+    }
+
+    // Recorded as a transcript entry so the admin conversation view
+    // shows *why* this thread suddenly has a payment against it —
+    // otherwise a web order looks like a snapshot that appeared from
+    // nowhere.
+    await conversationRepository.appendMessage(conversationId, {
+      direction: 'inbound',
+      body: `[Website checkout] ${quantity} x ${box.name}`,
+      providerMessageId: null,
+    });
+    await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation', {
+      packageId: input.packageId,
+      packageLabel: box.name,
+      priceKes: box.priceKes,
+      customerName,
+      county,
+      ...stateBlob,
+      ...(input.referralCode ? { referralCode: input.referralCode } : {}),
+    });
+
+    const { snapshotId, totalKes, walletCreditAppliedKes, subtotalKes, discountKes } =
+      await this.freezeSnapshot(
+        businessId,
+        conversationId,
+        phoneNumber,
+        existing?.conversation.customerId ?? null,
+        {
+          packageId: input.packageId,
+          packageLabel: box.name,
+          priceKes: box.priceKes,
+          quantity,
+          customerName,
+          county,
+          referralCode: input.referralCode,
+        },
+        delivery,
+      );
+
+    const intentId = await paymentService.createIntent({
+      businessId,
+      conversationId,
+      conversationCheckoutSnapshotId: snapshotId,
+      customerId: existing?.conversation.customerId ?? null,
+      phoneNumber,
+      amountKes: totalKes,
+    });
+
+    let stkPushSent = true;
+    try {
+      await paymentService.initiateAttempt(businessId, intentId, {
+        phone: phoneNumber,
+        amountKes: totalKes,
+        accountReference: `SQ-${conversationId.slice(0, 8)}`,
+        transactionDesc: 'Snack Quest order',
+      });
+    } catch {
+      // The prompt never reached Daraja. Unlike the WhatsApp path there
+      // is no "reply PAY" to retry with, so the conversation goes back
+      // to the confirmation step and the payment screen tells the
+      // customer to try again — the frozen snapshot stays valid, so a
+      // retry re-prices nothing.
+      stkPushSent = false;
+      await conversationRepository.update(conversationId, { status: 'active' });
+    }
+
+    return {
+      checkoutSessionId: conversationId,
+      payingPhone: phoneNumber,
+      stkPushSent,
+      pricing: {
+        packageLabel: box.name,
+        quantity,
+        unitPriceKes: box.priceKes,
+        subtotalKes,
+        discountKes,
+        walletCreditAppliedKes,
+        deliveryFeeKes: delivery.feeKes,
+        totalKes,
+        boltArrangedSeparately: delivery.method === 'door',
+      },
+    };
+  }
+
+  /**
+   * The website's delivery branch. Pickup resolves a real station and
+   * takes that station's own fee — the same figure the WhatsApp flow
+   * reads, from the same collection.
+   *
+   * Door delivery deliberately carries `feeKes: 0`. Bolt's fare is
+   * dynamic and per-trip; nobody has quoted it at the moment of
+   * checkout, the customer pays the rider directly, and the ride is
+   * arranged over WhatsApp afterwards. Charging a made-up figure here
+   * would be charging for a service at a price that doesn't exist —
+   * so the website bills for the Snack Quest order only, and the
+   * shipment is created `pending_manual_booking` exactly as the
+   * agent-priced WhatsApp path already produces.
+   */
+  private async buildWebDeliveryDetails(
+    businessId: string,
+    county: string,
+    input: WebCheckoutInput,
+  ): Promise<{ delivery: DeliveryDetails; stateBlob: ConversationStateBlob }> {
+    if (input.deliveryMethod === 'pickup') {
+      if (!input.pickupStationId) {
+        throw new WebCheckoutValidationError('pickupStationId is required for pickup delivery');
+      }
+      const station = await pickupStationRepository.findById(businessId, input.pickupStationId);
+      if (!station || !station.isActive) {
+        throw new WebCheckoutValidationError(`Pickup station ${input.pickupStationId} is not available`);
+      }
+      return {
+        delivery: {
+          method: 'pickup',
+          provider: DELIVERY_PROVIDER_FOR_METHOD.pickup,
+          status: 'pending',
+          shippingOrigin: 'Nairobi',
+          feeKes: station.deliveryFeeKes,
+          county: station.county ?? county,
+          pickupStationId: input.pickupStationId,
+          pickupStationName: station.name,
+          addressText: null,
+          landmark: null,
+          estate: null,
+          contactPhone: null,
+          courierShipmentRef: null,
+          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+        },
+        stateBlob: {
+          deliveryMethod: 'pickup',
+          pickupStationId: input.pickupStationId,
+          pickupStationName: station.name,
+          deliveryFeeKes: station.deliveryFeeKes,
+        },
+      };
+    }
+
+    if (!isNairobiCounty(county)) {
+      throw new WebCheckoutValidationError(
+        'Door delivery is only available in Nairobi — choose a pickup station for other counties',
+      );
+    }
+    const addressText = (input.addressText ?? '').trim();
+    if (!addressText) {
+      throw new WebCheckoutValidationError('addressText is required for door delivery');
+    }
+    // Optional and validated only if given: the rider calls the paying
+    // number when there's no alternate.
+    const contactPhone = input.contactPhone?.trim()
+      ? normalizeKenyanPhone(input.contactPhone)
+      : null;
+
+    return {
+      delivery: {
+        method: 'door',
+        provider: DELIVERY_PROVIDER_FOR_METHOD.door,
+        status: 'pending_manual_booking',
+        shippingOrigin: 'Nairobi',
+        feeKes: 0,
+        county,
+        pickupStationId: null,
+        pickupStationName: null,
+        addressText,
+        landmark: input.landmark?.trim() || null,
+        estate: input.estate?.trim() || null,
+        contactPhone,
+        courierShipmentRef: null,
+        trackingUrl: null,
+      },
+      stateBlob: {
+        deliveryMethod: 'door',
+        deliveryFeeKes: 0,
+        addressText,
+        ...(input.estate?.trim() ? { estate: input.estate.trim() } : {}),
+        ...(input.landmark?.trim() ? { landmark: input.landmark.trim() } : {}),
+        ...(contactPhone ? { contactPhone } : {}),
+      },
+    };
+  }
+
+  /**
+   * The payment screen's poll (§ Website Becomes the Primary Commerce
+   * Channel — "the page should automatically detect when payment is
+   * complete"). Layers the few order details the success page renders
+   * on top of `getOrderStatus`, rather than restating what a payment
+   * state means for a second channel.
+   */
+  async getWebCheckoutStatus(
+    businessId: string,
+    conversationId: string,
+  ): Promise<WebCheckoutStatusResponse> {
+    const base = await this.getOrderStatus(businessId, conversationId);
+
+    let deliveryMethod: DeliveryMethod | null = null;
+    let customerName: string | null = null;
+    let packageLabel: string | null = null;
+
+    const conversation = await conversationRepository.findById(conversationId);
+    if (conversation?.conversationCheckoutSnapshotId) {
+      const snapshot = await conversationCheckoutSnapshotRepository.findById(
+        conversation.conversationCheckoutSnapshotId,
+      );
+      if (snapshot) {
+        deliveryMethod = snapshot.delivery.method;
+        customerName = snapshot.customerName;
+        packageLabel = snapshot.packageLabel;
+      }
+    }
+
+    return {
+      checkoutSessionId: base.checkoutSessionId,
+      paymentStatus: base.paymentStatus,
+      orderId: base.orderId,
+      totalKes: base.totalKes,
+      deliveryMethod,
+      customerName,
+      packageLabel,
+    };
+  }
+
   private async processTurn(
     businessId: string,
     conversationId: string,
@@ -386,17 +738,24 @@ class ConversationService {
       packageId: string;
       packageLabel: string;
       priceKes: number;
+      /** Unit count. Omitted by every WhatsApp path — a conversation can only ever buy one box. */
+      quantity?: number;
       customerName: string;
       county: string;
       referralCode?: string;
     },
     delivery: DeliveryDetails,
-  ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number }> {
+  ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
     const referral = common.referralCode
       ? await referralService.validateCode(businessId, common.referralCode)
       : null;
 
-    const subtotalKes = common.priceKes;
+    const quantity = common.quantity ?? 1;
+    // `priceKes` is the unit price; the snapshot's `subtotalKes` has
+    // always been the extended amount, so multiplying here keeps every
+    // downstream reader (order pricing, Daraja amount verification,
+    // revenue reporting) unchanged.
+    const subtotalKes = common.priceKes * quantity;
     const discountKes = referral?.discountKes ?? 0;
     // Wallet credit is applied on top of any referral discount, capped
     // at what's left of the order after it — never below zero, and
@@ -418,6 +777,7 @@ class ConversationService {
       phoneNumber,
       packageId: common.packageId,
       packageLabel: common.packageLabel,
+      quantity,
       customerName: common.customerName,
       county: common.county,
       delivery,
@@ -444,7 +804,7 @@ class ConversationService {
       { conversationId, totalKes },
     );
 
-    return { snapshotId, totalKes, walletCreditAppliedKes };
+    return { snapshotId, totalKes, walletCreditAppliedKes, subtotalKes, discountKes };
   }
 
   /**

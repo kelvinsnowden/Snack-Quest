@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, Clock, MapPin, Truck } from 'lucide-react';
-import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Button } from '@/components/ui/button';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
@@ -68,11 +68,9 @@ export function HomeHero() {
 
         <Reveal delayMs={300}>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <WhatsAppOrderButton
-              message="Hi! I'd like to order a Snack Quest box."
-              size="lg"
-              className={PRIMARY_CTA_CLASS}
-            />
+            <BuyNowButton size="lg" className={PRIMARY_CTA_CLASS}>
+              Start your quest
+            </BuyNowButton>
             <Button
               asChild
               variant="secondary"

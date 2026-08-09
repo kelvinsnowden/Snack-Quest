@@ -6,6 +6,7 @@ import { ChevronRight } from 'lucide-react';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { packageRepository } from '@/repositories/packageRepository';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { SetActiveBoxName } from '@/components/marketing/design/ActiveBoxContext';
 import { formatKes } from '@/lib/orders/format';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
@@ -83,7 +84,7 @@ export default async function BoxDetailPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
       />
-      <SetActiveBoxName name={box.name} />
+      <SetActiveBoxName packageId={packageId} name={box.name} />
       <nav aria-label="Breadcrumb" className="text-muted-foreground flex items-center gap-1.5 text-sm">
         <Link href="/" className="hover:text-foreground">
           Home
@@ -130,13 +131,19 @@ export default async function BoxDetailPage({
             All snacks have passed the taste test. I have tasted each of them.
           </p>
 
-          <div className="mt-8">
-            <WhatsAppOrderButton message={message} />
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <BuyNowButton packageId={packageId}>
+              Buy this box
+            </BuyNowButton>
+            <WhatsAppOrderButton message={message} variant="outline">
+              Ask a question
+            </WhatsAppOrderButton>
           </div>
 
           <p className="text-muted-foreground mt-4 text-sm">
-            Door delivery in Nairobi or pickup station nationwide, we&apos;ll
-            confirm delivery options once you message us.
+            Pay with M-Pesa. Choose a Jumia pickup station countrywide, or door
+            delivery in Nairobi — we arrange the Bolt rider with you on WhatsApp
+            after checkout.
           </p>
         </div>
       </div>

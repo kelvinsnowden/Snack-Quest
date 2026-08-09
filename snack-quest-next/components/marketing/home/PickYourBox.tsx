@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Boxes, Check } from 'lucide-react';
-import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Badge } from '@/components/ui/badge';
 import { formatKes } from '@/lib/orders/format';
 import { Reveal } from '../design/Reveal';
@@ -173,13 +173,13 @@ export function PickYourBox({
                   </ul>
 
                   <div className="mt-6 md:mt-9">
-                    <WhatsAppOrderButton
-                      message={`Hi! I'd like to order the ${pkg.data.name}.`}
+                    <BuyNowButton
+                      packageId={pkg.id}
                       size="lg"
                       className={`w-full justify-center md:w-auto ${PRIMARY_CTA_CLASS}`}
                     >
-                      Order the {pkg.data.name}
-                    </WhatsAppOrderButton>
+                      Buy the {pkg.data.name}
+                    </BuyNowButton>
                   </div>
                 </div>
               </div>

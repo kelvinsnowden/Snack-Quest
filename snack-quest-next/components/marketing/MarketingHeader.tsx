@@ -5,8 +5,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
-import { WhatsAppOrderButton } from './WhatsAppOrderButton';
-import { useActiveBoxName } from './design/ActiveBoxContext';
+import { BuyNowButton } from './BuyNowButton';
+import { useActiveBox } from './design/ActiveBoxContext';
 import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
@@ -20,10 +20,10 @@ const NAV_LINKS = [
 export function MarketingHeader({ businessName }: { businessName: string }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const activeBoxName = useActiveBoxName();
-  const orderMessage = activeBoxName
-    ? `Hi! I'd like to order the ${activeBoxName}.`
-    : "Hi! I'd like to order a Snack Quest box.";
+  // Set by a box's own detail page — so the header's CTA takes the
+  // visitor straight to checkout for the box they're already reading
+  // about, rather than making them pick it a second time.
+  const activeBox = useActiveBox();
 
   return (
     <header className="border-border bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
@@ -55,10 +55,9 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
         </nav>
 
         <div className="hidden lg:block">
-          <WhatsAppOrderButton
-            message={orderMessage}
-            size="sm"
-          />
+          <BuyNowButton packageId={activeBox?.id} size="sm">
+            {activeBox ? `Buy the ${activeBox.name}` : 'Buy now'}
+          </BuyNowButton>
         </div>
 
         <button
@@ -100,10 +99,13 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
             ))}
           </ul>
           <div className="mt-3">
-            <WhatsAppOrderButton
-              message={orderMessage}
+            <BuyNowButton
+              packageId={activeBox?.id}
               className="w-full"
-            />
+              onClick={() => setMobileOpen(false)}
+            >
+              {activeBox ? `Buy the ${activeBox.name}` : 'Buy now'}
+            </BuyNowButton>
           </div>
         </nav>
       ) : null}

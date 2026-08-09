@@ -32,6 +32,15 @@ export interface ConversationCheckoutSnapshot {
   phoneNumber: string;
   packageId: string;
   packageLabel: string;
+  /**
+   * How many of `packageId` this order is for. Optional because every
+   * snapshot written before the website checkout existed omits it —
+   * absent means 1, which is the only quantity a WhatsApp conversation
+   * can produce. `subtotalKes` is already the extended (quantity ×
+   * unit) amount either way; this is here so the order's line item and
+   * the stock reservation know how many units to move.
+   */
+  quantity?: number;
   customerName: string;
   county: string;
   delivery: DeliveryDetails;

@@ -1,5 +1,5 @@
 import { Compass } from 'lucide-react';
-import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Reveal } from '../design/Reveal';
 
 export function FinalCta() {
@@ -48,11 +48,12 @@ export function FinalCta() {
 
         <Reveal delayMs={350}>
           <div className="mt-10">
-            <WhatsAppOrderButton
-              message="Hi! I'd like to start my Snack Quest adventure."
+            <BuyNowButton
               size="lg"
               className="animate-pulse-glow from-primary to-home-orange-glow rounded-full bg-gradient-to-br px-8 text-lg"
-            />
+            >
+              Start your quest
+            </BuyNowButton>
           </div>
 
           <p className="text-small mt-8 tracking-[0.3em] text-white/60 uppercase">

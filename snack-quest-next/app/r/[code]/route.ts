@@ -1,15 +1,21 @@
 import { referralService } from '@/services/referralService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 
 /**
  * A creator's shareable referral link (§ Creator Portal referral
- * links) — the one place a real click gets counted before handing the
- * visitor off to WhatsApp, where the actual order happens (this
- * codebase has no live storefront to redirect to yet; a `wa.me/`
- * deep link with the code pre-filled into the message is the real,
- * working destination today, not a placeholder one). Public, no
- * session required — this is what a creator posts publicly.
+ * links) — the one place a real click gets counted before the visitor
+ * is handed off to where the order actually happens. Public, no
+ * session required: this is what a creator posts publicly.
+ *
+ * That destination is now the website's own checkout, with the code
+ * pre-filled (§ Website Becomes the Primary Commerce Channel). It used
+ * to be a `wa.me/` deep link carrying the code inside a message body,
+ * because no storefront existed to send anyone to — which meant the
+ * code only counted if the customer left it in the text they sent and
+ * the bot then parsed it back out. Going straight to `/checkout?ref=`
+ * puts the code into the frozen snapshot through the same
+ * `referralService.validateCode` path, with nothing for the customer
+ * to accidentally delete.
  *
  * Fails soft on an unknown/inactive code, sending the visitor to `/`
  * rather than erroring — a mistyped or stale link should never dead-end
@@ -28,6 +34,7 @@ export async function GET(
     return Response.redirect(new URL('/', origin), 302);
   }
 
-  const message = `Hi! I'd like to order a Snack Quest box. Referral code: ${link.code}`;
-  return Response.redirect(buildWhatsAppOrderUrl(message), 302);
+  const destination = new URL('/checkout', origin);
+  destination.searchParams.set('ref', link.code);
+  return Response.redirect(destination, 302);
 }

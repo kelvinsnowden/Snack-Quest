@@ -42,7 +42,7 @@ describe('GET /r/[code]', () => {
     expect(response.headers.get('location')).toBe('http://localhost/');
   });
 
-  it("redirects to the platform's centralized WhatsApp number with the code pre-filled", async () => {
+  it('redirects to the website checkout with the code pre-filled', async () => {
     recordClickMock.mockResolvedValue({ code: 'SAVE10' });
 
     const response = await clickThroughRoute(request('save10'), {
@@ -50,9 +50,9 @@ describe('GET /r/[code]', () => {
     });
 
     expect(response.status).toBe(302);
-    const location = response.headers.get('location')!;
-    expect(location).toMatch(/^https:\/\/wa\.me\/254713157084\?text=/);
-    expect(decodeURIComponent(location.split('text=')[1])).toContain('SAVE10');
+    // The canonical code from the link record, not the (possibly
+    // differently-cased) one the visitor typed.
+    expect(response.headers.get('location')).toBe('http://localhost/checkout?ref=SAVE10');
     expect(recordClickMock).toHaveBeenCalledWith('biz-1', 'save10');
   });
 });

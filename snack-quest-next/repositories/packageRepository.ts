@@ -39,10 +39,17 @@ export class InsufficientStockError extends Error {
  * a silent no-op, not an error. Exported as a function (not a class
  * method) because it must run inside `OrderService`'s own transaction
  * alongside order creation, using the same `Transaction` object.
+ *
+ * `quantity` defaults to 1 — the only value any WhatsApp checkout ever
+ * produces. The website checkout (§ Website Becomes the Primary
+ * Commerce Channel) is the first path that can order several of the
+ * same box, and reserving them one call at a time would let a
+ * concurrent order slip in between the reads.
  */
 export async function reserveStockInTransaction(
   tx: Transaction,
   packageId: string,
+  quantity = 1,
 ): Promise<void> {
   const ref = adminFirestore.collection('packages').doc(packageId);
   const snapshot = await tx.get(ref);
@@ -50,10 +57,10 @@ export async function reserveStockInTransaction(
   if (!data || data.stockCount === undefined) {
     return;
   }
-  if (data.stockCount <= 0) {
+  if (data.stockCount < quantity) {
     throw new OutOfStockError(packageId);
   }
-  tx.update(ref, { stockCount: data.stockCount - 1 });
+  tx.update(ref, { stockCount: data.stockCount - quantity });
 }
 
 /**

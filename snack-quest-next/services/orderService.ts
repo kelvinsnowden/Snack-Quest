@@ -49,10 +49,15 @@ class OrderService {
   async createFromConversationSnapshot(input: CreateOrderInput): Promise<string> {
     const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber } = input;
 
+    // Absent on every snapshot frozen before the website checkout
+    // existed, and on every WhatsApp one since — a conversation can
+    // only ever buy one box.
+    const quantity = snapshot.quantity ?? 1;
+
     const orderId = await adminFirestore.runTransaction(async (tx) => {
       // Stock check/decrement first — if this throws (OutOfStockError),
       // the whole transaction aborts and no order is created.
-      await reserveStockInTransaction(tx, snapshot.packageId);
+      await reserveStockInTransaction(tx, snapshot.packageId, quantity);
 
       return createOrderInTransaction(
         tx,
@@ -93,8 +98,12 @@ class OrderService {
           {
             packageId: snapshot.packageId,
             packageLabel: snapshot.packageLabel,
-            quantity: 1,
-            unitCostKes: snapshot.subtotalKes,
+            quantity,
+            // `subtotalKes` is the extended amount, so the unit price
+            // has to be divided back out — a line item recording the
+            // whole subtotal as its unit cost would overstate revenue
+            // per unit by `quantity`x everywhere it's read.
+            unitCostKes: Math.round(snapshot.subtotalKes / quantity),
           },
         ],
       );
