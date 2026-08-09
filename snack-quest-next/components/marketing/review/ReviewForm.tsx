@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { CheckCircle2, ImagePlus, X } from 'lucide-react';
+import { CheckCircle2, ImagePlus, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { StarRating } from './StarRating';
+import { compressImage, totalBytes, MAX_TOTAL_UPLOAD_BYTES } from './compressImage';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
 /**
@@ -41,6 +42,7 @@ export function ReviewForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [compressing, setCompressing] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Object URLs are a real allocation, not a string — released when the
@@ -53,21 +55,51 @@ export function ReviewForm() {
     };
   }, [photos]);
 
-  function addPhotos(files: FileList | null) {
+  async function addPhotos(files: FileList | null) {
     if (!files) {
       return;
     }
     const room = MAX_PHOTOS - photos.length;
-    const accepted = Array.from(files)
+    const picked = Array.from(files)
       .filter((file) => file.type.startsWith('image/'))
       .slice(0, room);
-    setPhotos((current) => [
-      ...current,
-      ...accepted.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
-    ]);
     // Lets the same file be picked again after being removed.
     if (fileInput.current) {
       fileInput.current.value = '';
+    }
+    if (picked.length === 0) {
+      return;
+    }
+
+    setCompressing(true);
+    setError(null);
+    try {
+      // Shrunk here, before it ever becomes part of a request — see
+      // compressImage.ts for why a raw phone photo cannot be uploaded.
+      const prepared = await Promise.all(picked.map(compressImage));
+      const next = [
+        ...photos,
+        ...prepared.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
+      ];
+
+      // Backstop for anything that wouldn't compress. Saying so here
+      // beats letting the platform reject the request, which returns
+      // no message this form can show.
+      if (totalBytes(next.map((entry) => entry.file)) > MAX_TOTAL_UPLOAD_BYTES) {
+        for (const entry of next.slice(photos.length)) {
+          URL.revokeObjectURL(entry.previewUrl);
+        }
+        setError(
+          photos.length === 0
+            ? 'That photo is too large to upload. Try a different one.'
+            : 'Those photos are too large together — remove one and try again.',
+        );
+        return;
+      }
+
+      setPhotos(next);
+    } finally {
+      setCompressing(false);
     }
   }
 
@@ -78,7 +110,8 @@ export function ReviewForm() {
     });
   }
 
-  const ready = customerName.trim().length >= 2 && rating > 0 && body.trim().length >= 10;
+  const ready =
+    customerName.trim().length >= 2 && rating > 0 && body.trim().length >= 10 && !compressing;
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -100,9 +133,23 @@ export function ReviewForm() {
       }
 
       const response = await fetch('/api/reviews', { method: 'POST', body: payload });
-      const result = (await response.json()) as { error?: string };
+
+      // Not every failure answers in JSON. A request rejected before it
+      // reaches the route — a 413 from the platform for an oversized
+      // body, a gateway error — replies with HTML or nothing, and
+      // parsing that unconditionally used to throw straight into the
+      // catch below, reporting "couldn't reach Snack Quest" for a
+      // request that had very much arrived. That misdirection is what
+      // hid a real 413 from oversized photos.
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+
       if (!response.ok) {
-        setError(result.error ?? 'Something went wrong. Please try again.');
+        setError(
+          result?.error ??
+            (response.status === 413
+              ? 'Your photos are too large to upload. Remove one and try again.'
+              : `Something went wrong (error ${response.status}). Please try again.`),
+        );
         return;
       }
       setSubmitted(true);
@@ -183,9 +230,13 @@ export function ReviewForm() {
               // "a photo goes here" without implying how you get it.
               className="border-border text-muted-foreground hover:border-primary hover:text-primary focus-visible:ring-primary flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed outline-none transition-colors focus-visible:ring-2"
             >
-              <ImagePlus className="size-6" aria-hidden="true" />
+              {compressing ? (
+                <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+              ) : (
+                <ImagePlus className="size-6" aria-hidden="true" />
+              )}
               <span className="text-sm font-medium">
-                {photos.length === 0 ? 'Add photo' : 'Add more'}
+                {compressing ? 'Preparing…' : photos.length === 0 ? 'Add photo' : 'Add more'}
               </span>
             </button>
           ) : null}
