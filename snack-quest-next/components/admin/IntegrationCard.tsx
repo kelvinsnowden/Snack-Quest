@@ -134,9 +134,10 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
       */}
       {integration.provider === 'authEmail' ? (
         <p className="text-muted-foreground rounded-md bg-border/30 px-3 py-2 text-xs">
-          Saving pushes these settings straight into Firebase, which is what sends password-reset emails.
-          Test connection only confirms Firebase stored them — it cannot tell whether your SMTP password is
-          right. To know that, request a reset at{' '}
+          One account for everything: password resets (sent by Firebase) and this app&apos;s own emails both go
+          out through these credentials, from your domain. Add your provider&apos;s SPF and DKIM records first,
+          or the mail will be treated as spoofed. Test connection only confirms Firebase stored the settings —
+          it cannot tell whether the SMTP password is right. To know that, request a reset at{' '}
           <span className="text-foreground font-medium">/creator/login</span> and check the mail arrives from
           your own domain rather than firebaseapp.com.
         </p>

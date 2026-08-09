@@ -417,7 +417,13 @@ export interface EmailSendResult {
 }
 
 export interface EmailGateway {
-  send(input: { to: string; subject: string; body: string }): Promise<EmailSendResult>;
+  /**
+   * `businessId` because email is per-tenant now (§ one email provider
+   * for everything): a business that has connected its own SMTP in
+   * Admin sends from its own domain, and only one that hasn't falls
+   * back to the platform-wide SendGrid account.
+   */
+  send(input: { businessId: string; to: string; subject: string; body: string }): Promise<EmailSendResult>;
 }
 
 export interface SmsSendResult {

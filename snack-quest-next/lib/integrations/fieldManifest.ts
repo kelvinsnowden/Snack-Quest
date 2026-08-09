@@ -53,13 +53,17 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
     { key: 'apiVersion', label: 'API version', secret: false, required: false, helpText: 'Defaults to the current Graph API version if left blank, e.g. v21.0.' },
     { key: 'testEventCode', label: 'Test event code', secret: false, required: false, helpText: 'From Meta Events Manager → Test Events. Not required for real orders to work — only needed to use the Test Connection button below.' },
   ],
-  // Saving these pushes them into the Firebase project, which is where
-  // Authentication reads them from when it sends a password reset —
-  // see lib/integrations/authEmail/identityPlatformGateway.ts.
+  // One SMTP account for everything a customer or creator receives
+  // (§ one email provider for everything). Saving pushes it into the
+  // Firebase project, which is what sends password resets
+  // (identityPlatformGateway.ts), and the same credentials are what
+  // this app's own mail goes out through (smtpEmailGateway.ts) — so a
+  // business connects Mailgun once, against a domain it has verified,
+  // and every message comes from that domain.
   authEmail: [
-    { key: 'senderEmail', label: 'Send from', secret: false, required: true, helpText: 'The address resets arrive from, e.g. noreply@snackquests.shop. It must be on a domain you have verified with your email provider, or the mail will be treated as spoofed.' },
+    { key: 'senderEmail', label: 'Send from', secret: false, required: true, helpText: 'The address every email arrives from, e.g. noreply@snackquests.shop. It must be on a domain you have verified with your provider (SPF and DKIM records added), or the mail will be treated as spoofed.' },
     { key: 'senderName', label: 'Sender name', secret: false, required: false, helpText: 'What recipients see instead of the raw address, e.g. Snack Quest.' },
-    { key: 'host', label: 'SMTP host', secret: false, required: true, helpText: 'From your email provider, e.g. smtp.mailgun.org.' },
+    { key: 'host', label: 'SMTP host', secret: false, required: true, helpText: 'From your provider’s SMTP credentials page, e.g. smtp.mailgun.org.' },
     { key: 'port', label: 'SMTP port', secret: false, required: true, helpText: '587 for STARTTLS, 465 for SSL. Use whichever your provider recommends.' },
     { key: 'securityMode', label: 'Security', secret: false, required: true, type: 'select', options: ['START_TLS', 'SSL'] },
     { key: 'username', label: 'SMTP username', secret: false, required: true },

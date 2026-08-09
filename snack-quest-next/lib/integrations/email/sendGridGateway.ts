@@ -26,7 +26,8 @@ class SendGridGateway implements EmailGateway {
     return { apiKey, fromEmail };
   }
 
-  async send(input: { to: string; subject: string; body: string }): Promise<EmailSendResult> {
+  /** `businessId` is accepted and ignored: this is the platform-wide fallback, one account for the whole deployment (see `smtpEmailGateway` for the per-business path). */
+  async send(input: { businessId?: string; to: string; subject: string; body: string }): Promise<EmailSendResult> {
     const { apiKey, fromEmail } = this.requireConfig();
 
     return withCircuitBreaker(GATEWAY_NAME, async () => {

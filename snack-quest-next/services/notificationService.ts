@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { sendGridGateway } from '@/lib/integrations/email/sendGridGateway';
+import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
 import { africasTalkingGateway } from '@/lib/integrations/sms/africasTalkingGateway';
 import { businessRepository } from '@/repositories/businessRepository';
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
@@ -56,7 +56,7 @@ export interface SendNotificationInput {
 class NotificationService {
   constructor(
     private readonly whatsapp: WhatsAppGateway = whatchimpGateway,
-    private readonly email: EmailGateway = sendGridGateway,
+    private readonly email: EmailGateway = smtpEmailGateway,
     private readonly sms: SmsGateway = africasTalkingGateway,
   ) {}
 
@@ -159,7 +159,7 @@ class NotificationService {
       case 'whatsapp':
         return this.whatsapp.sendMessage({ businessId, phone: recipientRef, text: body });
       case 'email':
-        return this.email.send({ to: recipientRef, subject: subject ?? '', body });
+        return this.email.send({ businessId, to: recipientRef, subject: subject ?? '', body });
       case 'sms':
         return this.sms.send({ to: recipientRef, body });
       case 'in_app':

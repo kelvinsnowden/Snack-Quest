@@ -51,9 +51,9 @@ export function CreatorsHero() {
         <Reveal delayMs={120}>
           <h1 className="font-display mt-6 text-[clamp(2.5rem,7.5vw,5rem)] leading-[0.9] font-normal tracking-tight text-balance uppercase">
             <span className="text-foreground">Get paid for </span>
-            <span className="text-secondary">snacks</span>
-            <span className="text-foreground"> you already </span>
-            <span className="text-primary">post about.</span>
+            <span className="text-secondary">introducing</span>
+            <span className="text-foreground"> people to </span>
+            <span className="text-primary">Snack Quest.</span>
           </h1>
         </Reveal>
 

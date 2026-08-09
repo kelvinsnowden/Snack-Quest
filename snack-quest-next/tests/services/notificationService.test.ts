@@ -140,6 +140,9 @@ describe('NotificationService.send', () => {
     });
 
     expect(email.send).toHaveBeenCalledWith({
+      // Carried through so the gateway can pick this business's own
+      // SMTP account over the platform fallback.
+      businessId: BUSINESS_ID,
       to: 'creator@example.com',
       subject: 'Welcome, Amina!',
       body: 'Hi Amina, your referral code is AMINA1234.',

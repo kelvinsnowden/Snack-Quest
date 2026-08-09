@@ -27,9 +27,9 @@ const PLATFORM_WIDE_INTEGRATIONS: Array<{ label: string; configured: boolean; no
     note: 'The database this app itself runs on — set via deployment environment variables, never editable at runtime.',
   },
   {
-    label: 'Notification email (SendGrid)',
+    label: 'Fallback email (SendGrid)',
     configured: Boolean(process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL),
-    note: 'Emails this app sends itself. One sender account per deployment, not per business — change via deployment environment variables. Password-reset emails are separate: Firebase sends those, configured in the Sign-in email (SMTP) card above.',
+    note: 'Only used by a business that has not connected its own SMTP above. One account per deployment, changed via deployment environment variables — configure Email (SMTP) instead and everything sends from your own domain.',
   },
   {
     label: 'SMS (Africa’s Talking)',
