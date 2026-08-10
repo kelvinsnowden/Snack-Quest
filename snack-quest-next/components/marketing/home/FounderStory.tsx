@@ -47,10 +47,16 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
 
         <div className="mt-6 grid items-center gap-10 md:mt-10 md:grid-cols-2 md:gap-20">
           <Reveal>
-            <div className="relative mx-auto w-full max-w-[200px]">
+            {/* 200px is the deliberate mobile size; the two-column grid at
+                `md` has room for far more than that, so the photo and its
+                decorations scale back up rather than sitting undersized
+                and off-center in half the section. 400px matches the cap
+                an earlier pass already settled on as right for this
+                column width (see git history) — not a new guess. */}
+            <div className="relative mx-auto w-full max-w-[200px] md:max-w-[400px]">
               <div
                 aria-hidden="true"
-                className="absolute -inset-3 rounded-[24px] bg-gradient-to-br from-primary/25 via-home-lime/20 to-secondary/25 blur-2xl"
+                className="absolute -inset-3 rounded-[24px] bg-gradient-to-br from-primary/25 via-home-lime/20 to-secondary/25 blur-2xl md:-inset-5 md:blur-3xl"
               />
               <div className="relative aspect-[4/5] overflow-hidden rounded-[20px] shadow-[0_20px_50px_-20px_rgb(31_31_31/0.3)]">
                 {founderImageUrl ? (
@@ -58,33 +64,33 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
                     src={founderImageUrl}
                     alt="Kelvin, founder of Snack Quest, holding a mystery box."
                     fill
-                    sizes="(min-width: 200px) 200px, 100vw"
+                    sizes="(min-width: 768px) 400px, 200px"
                     className="object-cover"
                   />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-secondary via-secondary to-home-purple-deep text-center text-white">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-white/10">
-                      <Compass className="size-4 text-home-lime" aria-hidden="true" />
+                    <span className="flex size-9 items-center justify-center rounded-full bg-white/10 md:size-14">
+                      <Compass className="size-4 text-home-lime md:size-6" aria-hidden="true" />
                     </span>
-                    <p className="px-4 text-[10px] leading-tight font-semibold tracking-wide text-white/70 uppercase">
+                    <p className="px-4 text-[10px] leading-tight font-semibold tracking-wide text-white/70 uppercase md:text-xs">
                       Founder portrait coming soon
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="absolute top-3 -right-2 hidden items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-secondary shadow-sm md:flex">
-                <Globe2 className="size-2.5" aria-hidden="true" />
+              <div className="absolute top-3 -right-2 hidden items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-secondary shadow-sm md:flex md:top-5 md:-right-4 md:gap-1.5 md:px-3 md:py-1.5 md:text-xs">
+                <Globe2 className="size-2.5 md:size-3.5" aria-hidden="true" />
                 Curated worldwide
               </div>
               <div
                 aria-hidden="true"
-                className="absolute top-[-10px] left-[-10px] hidden -rotate-[10deg] items-center rounded-md border border-primary/70 bg-background/95 px-2 py-1 text-[10px] font-bold tracking-wide text-primary uppercase shadow-sm md:flex"
+                className="absolute top-[-10px] left-[-10px] hidden -rotate-[10deg] items-center rounded-md border border-primary/70 bg-background/95 px-2 py-1 text-[10px] font-bold tracking-wide text-primary uppercase shadow-sm md:flex md:top-[-16px] md:left-[-16px] md:px-3 md:py-1.5 md:text-xs"
               >
                 ✈ Nairobi · Founder
               </div>
-              <div className="absolute -right-2.5 -bottom-2.5 flex size-9 animate-float-slow items-center justify-center rounded-full bg-foreground shadow-[0_12px_30px_-10px_rgb(255_122_0/0.5)]">
-                <Compass className="size-4 text-home-lime" aria-hidden="true" />
+              <div className="absolute -right-2.5 -bottom-2.5 flex size-9 animate-float-slow items-center justify-center rounded-full bg-foreground shadow-[0_12px_30px_-10px_rgb(255_122_0/0.5)] md:-right-4 md:-bottom-4 md:size-14">
+                <Compass className="size-4 text-home-lime md:size-6" aria-hidden="true" />
               </div>
             </div>
           </Reveal>
