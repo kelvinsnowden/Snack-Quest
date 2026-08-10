@@ -1,8 +1,12 @@
-import Image from 'next/image';
 import Link from 'next/link';
-import { PenLine, Quote, Star } from 'lucide-react';
+import { PenLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Reveal } from '../design/Reveal';
+// The card and its stars moved to components/marketing/review/ when
+// the photos became openable — the card is a client component now and
+// this section is not. Re-exported so `/reviews` keeps importing from
+// one place.
+import { ReviewCard, Stars } from '../review/ReviewCard';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 import type { PublicReview } from '@/types';
 
@@ -127,95 +131,4 @@ export function ReviewsSection({
   );
 }
 
-export function ReviewCard({ review }: { review: PublicReview }) {
-  const [lead, ...rest] = review.photos;
-
-  return (
-    <figure className="border-border bg-surface flex h-full flex-col overflow-hidden rounded-2xl border shadow-[0_20px_50px_-30px_rgb(31_31_31/0.35)]">
-      {/*
-        Never autoplays, and `preload="metadata"` fetches only the
-        first few bytes — enough to draw a first frame and a duration.
-        A homepage that streams every review video to every visitor
-        spends their mobile data and our bandwidth on something most
-        of them never press play on.
-      */}
-      {review.videoUrl ? (
-        <video
-          src={review.videoUrl}
-          controls
-          playsInline
-          preload="metadata"
-          className="aspect-[4/3] w-full bg-black object-cover"
-          aria-label={`Video from ${review.customerName}'s Snack Quest box`}
-        />
-      ) : lead ? (
-        <div className="bg-border/40 relative aspect-[4/3] w-full">
-          <Image
-            src={lead.url}
-            alt={`Photo from ${review.customerName}'s Snack Quest box`}
-            fill
-            sizes="(min-width: 768px) 33vw, 82vw"
-            className="object-cover"
-          />
-          {rest.length > 0 ? (
-            <div className="absolute right-2.5 bottom-2.5 flex gap-1.5">
-              {rest.map((photo) => (
-                <div
-                  key={photo.url}
-                  className="relative size-11 overflow-hidden rounded-lg border-2 border-white/80 shadow-sm"
-                >
-                  <Image src={photo.url} alt="" fill sizes="44px" className="object-cover" />
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="flex flex-1 flex-col gap-4 p-5 md:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <Stars rating={review.rating} className="size-4" />
-          <Quote className="text-primary/25 size-6 shrink-0" aria-hidden="true" />
-        </div>
-
-        <blockquote className="text-foreground flex-1 text-base leading-relaxed text-pretty">
-          {review.body}
-        </blockquote>
-
-        <figcaption className="border-border flex items-center gap-3 border-t pt-4">
-          <span
-            aria-hidden="true"
-            className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold"
-          >
-            {review.customerName.trim().charAt(0).toUpperCase()}
-          </span>
-          <div className="min-w-0">
-            <p className="text-foreground truncate text-sm font-semibold">{review.customerName}</p>
-            <p className="text-muted-foreground text-sm">Verified by Snack Quest</p>
-          </div>
-        </figcaption>
-      </div>
-    </figure>
-  );
-}
-
-/**
- * Five stars with `rating` filled. The accessible name carries the
- * number, and the stars themselves are hidden from assistive tech —
- * otherwise a screen reader reads "star star star star star" and
- * conveys nothing about the score.
- */
-export function Stars({ rating, className }: { rating: number; className: string }) {
-  return (
-    <span className="flex items-center gap-0.5" role="img" aria-label={`${rating} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star
-          key={star}
-          className={`${className} ${star <= rating ? 'fill-primary text-primary' : 'fill-transparent text-border'}`}
-          strokeWidth={1.5}
-          aria-hidden="true"
-        />
-      ))}
-    </span>
-  );
-}
+export { ReviewCard, Stars };
