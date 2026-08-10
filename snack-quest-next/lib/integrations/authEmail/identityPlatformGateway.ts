@@ -94,11 +94,22 @@ export async function getAuthEmailProviderState(): Promise<AuthEmailProviderStat
  * sending through them. Called on save, so the Admin Portal is genuinely
  * where this gets set up rather than a place to record what someone
  * already typed into the Firebase Console.
+ *
+ * `SendEmail` itself has no `senderEmail` or `senderDisplayName` field —
+ * Identity Toolkit rejects both with a 400 ("Cannot find field") if sent
+ * here directly. The address lives only under `smtp.senderEmail`; the
+ * display name has no account-wide home at all — it exists per email
+ * *template* (`EmailTemplate.senderDisplayName`), so it's set on the two
+ * templates this integration's own docs claim to cover: password reset
+ * and email verification, the flows Firebase's Client SDK sends through
+ * this project's Identity Platform config on its own.
  */
 export async function applyAuthEmailConfig(businessId: string): Promise<void> {
   const config = await getAuthEmailConfig(businessId);
   const projectId = getAdminProjectId();
   const token = await getAdminAccessToken();
+
+  const template = config.senderName ? { senderDisplayName: config.senderName } : undefined;
 
   const response = await fetch(configUrl(projectId, 'notification.sendEmail'), {
     method: 'PATCH',
@@ -110,8 +121,6 @@ export async function applyAuthEmailConfig(businessId: string): Promise<void> {
       notification: {
         sendEmail: {
           method: 'CUSTOM_SMTP',
-          senderEmail: config.senderEmail,
-          ...(config.senderName ? { senderDisplayName: config.senderName } : {}),
           smtp: {
             senderEmail: config.senderEmail,
             host: config.host,
@@ -120,6 +129,7 @@ export async function applyAuthEmailConfig(businessId: string): Promise<void> {
             password: config.password,
             securityMode: config.securityMode,
           },
+          ...(template ? { resetPasswordTemplate: template, verifyEmailTemplate: template } : {}),
         },
       },
     }),
