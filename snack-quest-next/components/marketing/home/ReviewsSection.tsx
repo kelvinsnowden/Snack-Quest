@@ -2,11 +2,8 @@ import Link from 'next/link';
 import { PenLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Reveal } from '../design/Reveal';
-// The card moved to components/marketing/review/ when the photos
-// became openable — the card is a client component now and this
-// section is not.
-import { ReviewCard } from '../review/ReviewCard';
 import { AnimatedRatingSummary } from './AnimatedRatingSummary';
+import { ReviewRail } from './ReviewRail';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 import type { PublicReview } from '@/types';
 
@@ -14,11 +11,11 @@ import type { PublicReview } from '@/types';
  * Real customers, in their own words (§ homepage reviews).
  *
  * Mobile is the design target, not the fallback: the cards are a
- * scroll-snapped, swipeable rail on a phone — the interaction people
- * already know from every feed they use — and only become a grid once
- * there's room for one. The rail bleeds past the screen edge on
- * purpose, so a half-visible next card makes it obvious there's more
- * to swipe without needing arrows or dots.
+ * scroll-snapped, swipeable rail on a phone (see ReviewRail.tsx) — the
+ * interaction people already know from every feed they use — and only
+ * become a grid once there's room for one. The rail bleeds past the
+ * screen edge on purpose, so a half-visible next card makes it obvious
+ * there's more to swipe.
  *
  * Photos lead the card when a review has them, because a real photo of
  * a real box is the most persuasive thing on this page, and they're
@@ -74,35 +71,7 @@ export function ReviewsSection({
           </Reveal>
         </div>
 
-        {/*
-          The rail: `snap-x` + per-card `snap-start` gives a native,
-          momentum-preserving swipe with no JavaScript, so it works on
-          the first paint and for a visitor whose JS never loads. The
-          leading/trailing spacers keep the first and last cards aligned
-          with the page's own padding while still letting the rail run
-          edge to edge.
-        */}
-        <div className="mt-9 md:mt-12">
-          <ul className="scrollbar-none flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:grid md:snap-none md:grid-cols-3 md:gap-6 md:overflow-visible md:px-10">
-            {/* Matches the section's own `px-5`, so the first card's
-                left edge lines up with the heading above it rather
-                than sitting a few pixels off. */}
-            <li aria-hidden="true" className="w-5 shrink-0 md:hidden" />
-            {reviews.map((review, index) => (
-              <Reveal
-                key={review.id}
-                as="li"
-                delayMs={Math.min(index, 3) * 90}
-                className="w-[82vw] max-w-[340px] shrink-0 snap-start md:w-auto md:max-w-none"
-              >
-                <ReviewCard review={review} />
-              </Reveal>
-            ))}
-            {/* And the same again at the end, so the last card can
-                scroll fully clear of the screen edge. */}
-            <li aria-hidden="true" className="w-5 shrink-0 md:hidden" />
-          </ul>
-        </div>
+        <ReviewRail reviews={reviews} />
 
         <div className="mt-8 px-5 md:mt-12 md:px-10">
           <Reveal>
