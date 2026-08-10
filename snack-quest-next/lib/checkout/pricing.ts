@@ -16,6 +16,16 @@
  * someone else's courier.
  */
 
+/**
+ * A ceiling, not a stock rule — stock is checked separately against the
+ * box's own `stockCount`. Shared between the client (the quantity
+ * stepper's max) and the server (`ConversationService.startWebCheckout`'s
+ * validation) so a typo or a scripted request can't freeze a snapshot
+ * for an amount no real customer would ever be prompted to pay, and so
+ * the two ceilings cannot drift apart into two different numbers.
+ */
+export const MAX_CHECKOUT_QUANTITY = 20;
+
 export interface CheckoutPricingInputs {
   unitPriceKes: number;
   quantity: number;

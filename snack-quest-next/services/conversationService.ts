@@ -10,7 +10,7 @@ import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
-import { computeCheckoutTotals, redeemableCeilingKes } from '@/lib/checkout/pricing';
+import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
@@ -150,12 +150,13 @@ export class ConversationNotFoundError extends Error {
 }
 
 /**
- * A ceiling, not a stock rule — stock is checked separately against
- * the box's own `stockCount`. This exists so a typo or a scripted
- * request can't freeze a snapshot for an amount no real customer
- * would ever be prompted to pay.
+ * Re-exported so existing importers of `MAX_WEB_CHECKOUT_QUANTITY` from
+ * this module keep working — the definition itself now lives in
+ * `lib/checkout/pricing.ts` (as `MAX_CHECKOUT_QUANTITY`) so the client
+ * quantity stepper and this server-side check share one number instead
+ * of two that could drift apart.
  */
-export const MAX_WEB_CHECKOUT_QUANTITY = 20;
+export const MAX_WEB_CHECKOUT_QUANTITY = MAX_CHECKOUT_QUANTITY;
 
 /** The customer got something wrong (or sent something impossible) — safe to show them verbatim, answered as 400. */
 export class WebCheckoutValidationError extends Error {
