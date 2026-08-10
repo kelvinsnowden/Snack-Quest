@@ -125,21 +125,15 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
         <WhatchimpTestMessageAction disabled={integration.status === 'missing' || !integration.enabled} />
       ) : null}
 
-      {/*
-        Auth-email-specific. "Test connection" here can only confirm
-        Google stored what we sent — Google accepts SMTP credentials
-        without dialling the server, so a wrong password passes that
-        check. Saying so is the honest thing, and the real test costs
-        the reader thirty seconds.
-      */}
+      {/* Auth-email-specific. */}
       {integration.provider === 'authEmail' ? (
         <p className="text-muted-foreground rounded-md bg-border/30 px-3 py-2 text-xs">
-          One account for everything: password resets (sent by Firebase) and this app&apos;s own emails both go
-          out through these credentials, from your domain. Add your provider&apos;s SPF and DKIM records first,
-          or the mail will be treated as spoofed. Test connection only confirms Firebase stored the settings —
-          it cannot tell whether the SMTP password is right. To know that, request a reset at{' '}
-          <span className="text-foreground font-medium">/creator/login</span> and check the mail arrives from
-          your own domain rather than firebaseapp.com.
+          This app&apos;s own emails — order confirmations, creator notices, staff invites — go out through
+          these credentials, from your domain. Add your provider&apos;s SPF and DKIM records first, or the mail
+          will be treated as spoofed. The Creator Portal&apos;s own &quot;forgot password&quot; email keeps
+          coming from Firebase&apos;s address rather than yours — Firebase only relays through a connected SMTP
+          account for projects upgraded to Identity Platform, which this one isn&apos;t. Test connection dials
+          the SMTP server directly and authenticates, so a wrong password shows up right here.
         </p>
       ) : null}
 
