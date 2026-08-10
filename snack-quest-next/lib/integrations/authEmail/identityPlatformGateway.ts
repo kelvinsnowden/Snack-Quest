@@ -95,21 +95,23 @@ export async function getAuthEmailProviderState(): Promise<AuthEmailProviderStat
  * where this gets set up rather than a place to record what someone
  * already typed into the Firebase Console.
  *
- * `SendEmail` itself has no `senderEmail` or `senderDisplayName` field —
- * Identity Toolkit rejects both with a 400 ("Cannot find field") if sent
- * here directly. The address lives only under `smtp.senderEmail`; the
- * display name has no account-wide home at all — it exists per email
- * *template* (`EmailTemplate.senderDisplayName`), so it's set on the two
- * templates this integration's own docs claim to cover: password reset
- * and email verification, the flows Firebase's Client SDK sends through
- * this project's Identity Platform config on its own.
+ * `SendEmail` itself has no `senderEmail` field — Identity Toolkit
+ * rejects it with a 400 ("Cannot find field") if sent here directly;
+ * the address lives only under `smtp.senderEmail`. There is no
+ * account-wide sender *display name* either: that's a field of
+ * `EmailTemplate`, set per template (`resetPasswordTemplate`,
+ * `verifyEmailTemplate`, ...) — but a real save against a live project
+ * confirmed Identity Toolkit refuses to update those templates through
+ * this endpoint at all (`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`), so this
+ * does not attempt to set it. `config.senderName` still applies to
+ * this app's own outbound mail (`smtpEmailGateway.ts`, a plain SMTP
+ * "From" header with no such restriction) — only the display name on
+ * Firebase Auth's own auto-sent emails is out of reach here.
  */
 export async function applyAuthEmailConfig(businessId: string): Promise<void> {
   const config = await getAuthEmailConfig(businessId);
   const projectId = getAdminProjectId();
   const token = await getAdminAccessToken();
-
-  const template = config.senderName ? { senderDisplayName: config.senderName } : undefined;
 
   const response = await fetch(configUrl(projectId, 'notification.sendEmail'), {
     method: 'PATCH',
@@ -129,7 +131,6 @@ export async function applyAuthEmailConfig(businessId: string): Promise<void> {
             password: config.password,
             securityMode: config.securityMode,
           },
-          ...(template ? { resetPasswordTemplate: template, verifyEmailTemplate: template } : {}),
         },
       },
     }),
