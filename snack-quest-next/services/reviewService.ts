@@ -165,6 +165,21 @@ class ReviewService {
       }
     }
 
+    // The one field on a review that arrives as a URL rather than as
+    // bytes we uploaded ourselves, because the video went straight
+    // from the browser to Blob storage. So it is checked rather than
+    // believed: it must be a real URL on our own Blob host, under the
+    // reviews prefix. Without this, the form is an open invitation to
+    // hang any URL on the internet off a published review card.
+    //
+    // Validated before any photo upload runs, not after: every other
+    // check on this submission is a plain in-memory check, so this was
+    // the only way a rejection could happen *after* bytes had already
+    // reached storage — and that would leave the just-uploaded photos
+    // orphaned, the exact "free file host" risk this endpoint exists to
+    // avoid (see the module doc comment).
+    const video = parseReviewVideoUrl(input.videoUrl ?? null);
+
     const photos: ReviewPhoto[] = [];
     for (const photo of input.photos) {
       // `StorageService` enforces the `reviews` policy: images only,
@@ -178,14 +193,6 @@ class ReviewService {
       });
       photos.push({ url: uploaded.url, pathname: uploaded.pathname });
     }
-
-    // The one field on a review that arrives as a URL rather than as
-    // bytes we uploaded ourselves, because the video went straight
-    // from the browser to Blob storage. So it is checked rather than
-    // believed: it must be a real URL on our own Blob host, under the
-    // reviews prefix. Without this, the form is an open invitation to
-    // hang any URL on the internet off a published review card.
-    const video = parseReviewVideoUrl(input.videoUrl ?? null);
 
     const reviewId = await reviewRepository.create({
       businessId,
