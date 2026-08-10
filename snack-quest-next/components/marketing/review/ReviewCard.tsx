@@ -17,11 +17,26 @@ import type { PublicReview } from '@/types';
  *
  * The lightbox is only mounted once opened, so a page carrying twelve
  * reviews ships twelve buttons rather than twelve hidden viewers.
+ *
+ * The card itself stays a standard, uniform size regardless of how
+ * much someone wrote — the body is clamped to four lines with its own
+ * inline "Read more" toggle, rather than the card growing to fit
+ * whatever length review landed on it. That toggle is a plain expand
+ * in place: only tapping the *photo* opens the full-screen viewer, so
+ * reading a long review never triggers the same takeover as looking
+ * at a photo does.
  */
 export function ReviewCard({ review }: { review: PublicReview }) {
   const [openAt, setOpenAt] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [lead, ...rest] = review.photos;
   const hasPhotos = review.photos.length > 0;
+  // No server-side way to know if four clamped lines will actually
+  // truncate this body, so this is a stand-in: short enough bodies
+  // never need the toggle, and the rare long-but-not-quite-truncated
+  // one gets a harmless "Read more" that expands onto an identical
+  // line — better than a truncated review with no way to read the rest.
+  const isLong = review.body.length > 180;
 
   return (
     <>
@@ -32,7 +47,7 @@ export function ReviewCard({ review }: { review: PublicReview }) {
             controls
             playsInline
             preload="none"
-            className="aspect-[4/3] w-full bg-black object-cover"
+            className="aspect-[16/10] w-full bg-black object-cover"
             aria-label={`Video from ${review.customerName}'s Snack Quest box`}
           />
         ) : hasPhotos ? (
@@ -40,7 +55,7 @@ export function ReviewCard({ review }: { review: PublicReview }) {
             type="button"
             onClick={() => setOpenAt(0)}
             aria-label={`View ${review.photos.length} ${review.photos.length === 1 ? 'photo' : 'photos'} from ${review.customerName}'s review`}
-            className="focus-visible:ring-primary relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset"
+            className="focus-visible:ring-primary relative block aspect-[16/10] w-full cursor-zoom-in overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset"
           >
             <Image
               src={lead.url}
@@ -80,17 +95,30 @@ export function ReviewCard({ review }: { review: PublicReview }) {
           </button>
         ) : null}
 
-        <div className="flex flex-1 flex-col gap-4 p-5 md:p-6">
+        <div className="flex flex-1 flex-col gap-3 p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
             <Stars rating={review.rating} className="size-4" />
             <Quote className="text-primary/25 size-6 shrink-0" aria-hidden="true" />
           </div>
 
-          <blockquote className="text-foreground flex-1 text-base leading-relaxed text-pretty">
-            {review.body}
-          </blockquote>
+          <div className="flex-1">
+            <blockquote
+              className={`text-foreground text-base leading-relaxed text-pretty ${expanded ? '' : 'line-clamp-4'}`}
+            >
+              {review.body}
+            </blockquote>
+            {isLong ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="text-primary mt-1 text-sm font-medium underline-offset-4 hover:underline"
+              >
+                {expanded ? 'Show less' : 'Read more'}
+              </button>
+            ) : null}
+          </div>
 
-          <figcaption className="border-border/70 flex items-center justify-between gap-3 border-t pt-4">
+          <figcaption className="border-border/70 flex items-center justify-between gap-3 border-t pt-3">
             <p className="text-foreground text-sm font-semibold">{review.customerName}</p>
             {hasPhotos && !review.videoUrl ? (
               <button
