@@ -2,11 +2,11 @@ import Link from 'next/link';
 import { PenLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Reveal } from '../design/Reveal';
-// The card and its stars moved to components/marketing/review/ when
-// the photos became openable — the card is a client component now and
-// this section is not. Re-exported so `/reviews` keeps importing from
-// one place.
-import { ReviewCard, Stars } from '../review/ReviewCard';
+// The card moved to components/marketing/review/ when the photos
+// became openable — the card is a client component now and this
+// section is not.
+import { ReviewCard } from '../review/ReviewCard';
+import { RatingSummary } from '../review/RatingSummary';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 import type { PublicReview } from '@/types';
 
@@ -32,10 +32,12 @@ export function ReviewsSection({
   reviews,
   totalCount,
   averageRating,
+  ratingCounts,
 }: {
   reviews: PublicReview[];
   totalCount: number;
   averageRating: number;
+  ratingCounts: Record<1 | 2 | 3 | 4 | 5, number>;
 }) {
   if (reviews.length === 0) {
     return null;
@@ -66,14 +68,8 @@ export function ReviewsSection({
           </Reveal>
 
           <Reveal delayMs={150}>
-            <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Stars rating={Math.round(averageRating)} className="size-5" />
-              <p className="text-foreground text-base font-semibold tabular-nums">
-                {averageRating.toFixed(1)}
-                <span className="text-muted-foreground ml-2 text-sm font-normal">
-                  from {totalCount} {totalCount === 1 ? 'review' : 'reviews'}
-                </span>
-              </p>
+            <div className="mt-6">
+              <RatingSummary averageRating={averageRating} totalCount={totalCount} ratingCounts={ratingCounts} />
             </div>
           </Reveal>
         </div>
@@ -130,5 +126,3 @@ export function ReviewsSection({
     </section>
   );
 }
-
-export { ReviewCard, Stars };
