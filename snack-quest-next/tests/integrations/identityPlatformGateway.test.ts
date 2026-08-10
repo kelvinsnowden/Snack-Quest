@@ -6,9 +6,13 @@ import { businessIntegrationSecretRepository } from '@/repositories/businessInte
  * admin config endpoint) that has no emulator, so `getAdminAccessToken`/
  * `getAdminProjectId` and `fetch` itself are faked here — the behaviour
  * under test is the shape of the request this gateway builds, which is
- * exactly what broke in production: Identity Toolkit 400s on any field
- * `SendEmail` doesn't define, and it defines neither `senderEmail` nor
- * `senderDisplayName` directly (see the gateway's own doc comment).
+ * exactly what broke in production twice: first a 400 on `senderEmail`
+ * outside `smtp` (`SendEmail` has no such field), then
+ * `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED` once that was fixed and this tried
+ * setting a sender display name via `resetPasswordTemplate`/
+ * `verifyEmailTemplate` instead — a real save against a live project
+ * confirmed Identity Toolkit refuses that too (see the gateway's own
+ * doc comment).
  */
 
 const BUSINESS_ID = 'biz-identity-platform-test';
@@ -36,36 +40,26 @@ beforeEach(async () => {
 });
 
 describe('applyAuthEmailConfig', () => {
-  it('never sends the fields Identity Toolkit rejects with a 400', async () => {
+  it('never sends the fields Identity Toolkit rejects — either the 400 or the EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED shape', async () => {
     const { applyAuthEmailConfig } = await import('@/lib/integrations/authEmail/identityPlatformGateway');
     await applyAuthEmailConfig(BUSINESS_ID);
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const body = JSON.parse(init.body as string);
-    expect(body.notification.sendEmail).not.toHaveProperty('senderEmail');
-    expect(body.notification.sendEmail).not.toHaveProperty('senderDisplayName');
+    const { sendEmail } = JSON.parse(init.body as string).notification;
+    expect(sendEmail).not.toHaveProperty('senderEmail');
+    expect(sendEmail).not.toHaveProperty('senderDisplayName');
+    expect(sendEmail).not.toHaveProperty('resetPasswordTemplate');
+    expect(sendEmail).not.toHaveProperty('verifyEmailTemplate');
   });
 
-  it('sends the address only inside smtp, and the display name only on the two templates this integration covers', async () => {
+  it('sends the address only inside smtp', async () => {
     const { applyAuthEmailConfig } = await import('@/lib/integrations/authEmail/identityPlatformGateway');
     await applyAuthEmailConfig(BUSINESS_ID);
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const { sendEmail } = JSON.parse(init.body as string).notification;
     expect(sendEmail.smtp.senderEmail).toBe('noreply@snackquests.shop');
-    expect(sendEmail.resetPasswordTemplate).toEqual({ senderDisplayName: 'Snack Quest' });
-    expect(sendEmail.verifyEmailTemplate).toEqual({ senderDisplayName: 'Snack Quest' });
-  });
-
-  it('omits both templates when no sender name was given', async () => {
-    await businessIntegrationSecretRepository.update(BUSINESS_ID, 'authEmail', { senderName: '' } as never);
-    const { applyAuthEmailConfig } = await import('@/lib/integrations/authEmail/identityPlatformGateway');
-    await applyAuthEmailConfig(BUSINESS_ID);
-
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const { sendEmail } = JSON.parse(init.body as string).notification;
-    expect(sendEmail).not.toHaveProperty('resetPasswordTemplate');
-    expect(sendEmail).not.toHaveProperty('verifyEmailTemplate');
+    expect(sendEmail.method).toBe('CUSTOM_SMTP');
   });
 
   it('surfaces a 400 from Identity Toolkit as a readable error rather than swallowing it', async () => {
