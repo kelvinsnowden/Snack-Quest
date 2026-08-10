@@ -6,7 +6,7 @@ import { Reveal } from '../design/Reveal';
 // became openable — the card is a client component now and this
 // section is not.
 import { ReviewCard } from '../review/ReviewCard';
-import { RatingSummary } from '../review/RatingSummary';
+import { AnimatedRatingSummary } from './AnimatedRatingSummary';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 import type { PublicReview } from '@/types';
 
@@ -69,7 +69,7 @@ export function ReviewsSection({
 
           <Reveal delayMs={150}>
             <div className="mt-6">
-              <RatingSummary averageRating={averageRating} totalCount={totalCount} ratingCounts={ratingCounts} />
+              <AnimatedRatingSummary averageRating={averageRating} totalCount={totalCount} ratingCounts={ratingCounts} />
             </div>
           </Reveal>
         </div>
