@@ -56,6 +56,7 @@ export default async function MarketingHomePage() {
         reviews={reviews.reviews}
         totalCount={reviews.totalCount}
         averageRating={reviews.averageRating}
+        ratingCounts={reviews.ratingCounts}
       />
       <TheRoute />
       <FinalCta />
