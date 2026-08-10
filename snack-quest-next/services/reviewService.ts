@@ -57,6 +57,8 @@ export interface PublishedReviewSummary {
   totalCount: number;
   /** Mean rating across published reviews, one decimal place. 0 when there are none — never a fabricated 5. */
   averageRating: number;
+  /** How many published reviews sit at each star rating, 1 through 5 — the whole set, not just the ones fetched for display. */
+  ratingCounts: Record<1 | 2 | 3 | 4 | 5, number>;
 }
 
 /**
@@ -165,6 +167,21 @@ class ReviewService {
       }
     }
 
+    // The one field on a review that arrives as a URL rather than as
+    // bytes we uploaded ourselves, because the video went straight
+    // from the browser to Blob storage. So it is checked rather than
+    // believed: it must be a real URL on our own Blob host, under the
+    // reviews prefix. Without this, the form is an open invitation to
+    // hang any URL on the internet off a published review card.
+    //
+    // Validated before any photo upload runs, not after: every other
+    // check on this submission is a plain in-memory check, so this was
+    // the only way a rejection could happen *after* bytes had already
+    // reached storage — and that would leave the just-uploaded photos
+    // orphaned, the exact "free file host" risk this endpoint exists to
+    // avoid (see the module doc comment).
+    const video = parseReviewVideoUrl(input.videoUrl ?? null);
+
     const photos: ReviewPhoto[] = [];
     for (const photo of input.photos) {
       // `StorageService` enforces the `reviews` policy: images only,
@@ -178,14 +195,6 @@ class ReviewService {
       });
       photos.push({ url: uploaded.url, pathname: uploaded.pathname });
     }
-
-    // The one field on a review that arrives as a URL rather than as
-    // bytes we uploaded ourselves, because the video went straight
-    // from the browser to Blob storage. So it is checked rather than
-    // believed: it must be a real URL on our own Blob host, under the
-    // reviews prefix. Without this, the form is an open invitation to
-    // hang any URL on the internet off a published review card.
-    const video = parseReviewVideoUrl(input.videoUrl ?? null);
 
     const reviewId = await reviewRepository.create({
       businessId,
@@ -208,19 +217,28 @@ class ReviewService {
     return { reviewId };
   }
 
-  /** What the homepage renders. Published only — there is no code path that reads pending reviews into a public view. */
+  /**
+   * What the homepage and `/reviews` render. Published only — there is
+   * no code path that reads pending reviews into a public view.
+   *
+   * `totalCount`, `averageRating` and `ratingCounts` are computed from
+   * every published review, not from the `limit`-bounded `entries`
+   * fetched for display — a shop with more published reviews than a
+   * page shows must still report its real rating, not the rating of
+   * whichever page happened to load.
+   */
   async listPublished(businessId: string, limit = 12): Promise<PublishedReviewSummary> {
-    const [entries, totalCount] = await Promise.all([
+    const [entries, ratingCounts] = await Promise.all([
       reviewRepository.listByStatus(businessId, 'published', { limit }),
-      reviewRepository.countByStatus(businessId, 'published'),
+      reviewRepository.countByStatusPerRating(businessId, 'published'),
     ]);
 
-    const averageRating =
-      entries.length > 0
-        ? Math.round((entries.reduce((sum, entry) => sum + entry.data.rating, 0) / entries.length) * 10) / 10
-        : 0;
+    const totalCount = ratingCounts[1] + ratingCounts[2] + ratingCounts[3] + ratingCounts[4] + ratingCounts[5];
+    const ratingSum =
+      ratingCounts[1] * 1 + ratingCounts[2] * 2 + ratingCounts[3] * 3 + ratingCounts[4] * 4 + ratingCounts[5] * 5;
+    const averageRating = totalCount > 0 ? Math.round((ratingSum / totalCount) * 10) / 10 : 0;
 
-    return { reviews: entries.map(toPublicReview), totalCount, averageRating };
+    return { reviews: entries.map(toPublicReview), totalCount, averageRating, ratingCounts };
   }
 
   /** The moderation queue (§ Admin: Reviews). */

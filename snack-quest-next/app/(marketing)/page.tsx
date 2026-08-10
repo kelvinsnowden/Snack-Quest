@@ -39,7 +39,7 @@ export default async function MarketingHomePage() {
     // broken page.
     reviewService
       .listPublished(businessId, 9)
-      .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0 })),
+      .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
   ]);
   const featured = packages.slice(0, 3);
   const homepageContent = business?.homepageContent;

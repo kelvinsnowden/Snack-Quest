@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { PickupStationPicker, type SelectedStation } from './PickupStationPicker';
 import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
+import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
 import type { DeliveryMethod } from '@/types/delivery';
@@ -44,7 +45,7 @@ export interface CheckoutBox {
   snackCountLabel: string | null;
 }
 
-const MAX_QUANTITY = 20;
+const MAX_QUANTITY = MAX_CHECKOUT_QUANTITY;
 
 export function CheckoutForm({
   boxes,
