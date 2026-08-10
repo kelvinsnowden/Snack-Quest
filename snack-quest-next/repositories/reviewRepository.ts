@@ -68,6 +68,31 @@ class ReviewRepository {
     return snapshot.data().count;
   }
 
+  /**
+   * How many reviews of each status carry each star rating, 1 through
+   * 5 — the rating histogram on `/reviews`. Five aggregation `.count()`
+   * queries rather than fetching every document: Firestore has no
+   * `GROUP BY`, and reading every review just to tally ratings would
+   * cost far more once there are more than a handful, and would only
+   * grow worse over time.
+   */
+  async countByStatusPerRating(businessId: string, status: ReviewStatus): Promise<Record<1 | 2 | 3 | 4 | 5, number>> {
+    const ratings = [1, 2, 3, 4, 5] as const;
+    const counts = await Promise.all(
+      ratings.map((rating) =>
+        adminFirestore
+          .collection(COLLECTION)
+          .where('businessId', '==', businessId)
+          .where('status', '==', status)
+          .where('rating', '==', rating)
+          .count()
+          .get()
+          .then((snapshot) => snapshot.data().count),
+      ),
+    );
+    return { 1: counts[0], 2: counts[1], 3: counts[2], 4: counts[3], 5: counts[4] };
+  }
+
   async setStatus(reviewId: string, status: ReviewStatus, actor: string): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(reviewId).update({
       status,

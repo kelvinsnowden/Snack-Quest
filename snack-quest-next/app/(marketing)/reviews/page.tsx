@@ -4,7 +4,8 @@ import { MessageSquareQuote, PenLine } from 'lucide-react';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { reviewService } from '@/services/reviewService';
 import { Button } from '@/components/ui/button';
-import { ReviewCard, Stars } from '@/components/marketing/home/ReviewsSection';
+import { RatingSummary } from '@/components/marketing/review/RatingSummary';
+import { ReviewFilterList } from '@/components/marketing/review/ReviewFilterList';
 import { PRIMARY_CTA_CLASS } from '@/components/marketing/design/ctaStyles';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
@@ -29,9 +30,9 @@ const ALL_REVIEWS_LIMIT = 60;
 
 export default async function ReviewsPage() {
   const businessId = getCurrentBusinessId();
-  const { reviews, totalCount, averageRating } = await reviewService
+  const { reviews, totalCount, averageRating, ratingCounts } = await reviewService
     .listPublished(businessId, ALL_REVIEWS_LIMIT)
-    .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0 }));
+    .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }));
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-16 lg:px-8">
@@ -40,18 +41,13 @@ export default async function ReviewsPage() {
         <h1 className="text-page-title text-foreground font-bold tracking-tight text-balance">
           What snackers are saying
         </h1>
-        {reviews.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <Stars rating={Math.round(averageRating)} className="size-5" />
-            <p className="text-foreground text-base font-semibold tabular-nums">
-              {averageRating.toFixed(1)}
-              <span className="text-muted-foreground ml-2 text-sm font-normal">
-                from {totalCount} {totalCount === 1 ? 'review' : 'reviews'}
-              </span>
-            </p>
-          </div>
-        ) : null}
       </header>
+
+      {reviews.length > 0 ? (
+        <div className="mt-8">
+          <RatingSummary averageRating={averageRating} totalCount={totalCount} ratingCounts={ratingCounts} />
+        </div>
+      ) : null}
 
       {reviews.length === 0 ? (
         <div className="border-border bg-surface mt-10 flex flex-col items-center gap-5 rounded-2xl border p-10 text-center">
@@ -74,13 +70,7 @@ export default async function ReviewsPage() {
         </div>
       ) : (
         <>
-          <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {reviews.map((review) => (
-              <li key={review.id}>
-                <ReviewCard review={review} />
-              </li>
-            ))}
-          </ul>
+          <ReviewFilterList reviews={reviews} />
 
           <div className="border-border bg-surface mt-10 flex flex-col items-center gap-4 rounded-2xl border p-6 text-center md:flex-row md:justify-between md:p-8 md:text-left">
             <div>

@@ -218,4 +218,27 @@ describe('listPublished', () => {
     expect(published.totalCount).toBe(3);
     expect(published.averageRating).toBe(4);
   });
+
+  it('counts and averages across every published review, not just the page fetched for display', async () => {
+    const ratings = [5, 5, 5, 5, 4, 3, 3, 2, 1];
+    for (const rating of ratings) {
+      const { reviewId } = await reviewService.submitReview(BUSINESS_ID, validReview({ rating }));
+      await reviewService.moderate(BUSINESS_ID, reviewId, 'published', 'staff-1');
+    }
+
+    // A `limit` far smaller than the published set — the histogram and
+    // average must still reflect all nine, not just the three fetched.
+    const published = await reviewService.listPublished(BUSINESS_ID, 3);
+    expect(published.reviews).toHaveLength(3);
+    expect(published.totalCount).toBe(9);
+    expect(published.ratingCounts).toEqual({ 1: 1, 2: 1, 3: 2, 4: 1, 5: 4 });
+    expect(published.averageRating).toBe(
+      Math.round((ratings.reduce((sum, r) => sum + r, 0) / ratings.length) * 10) / 10,
+    );
+  });
+
+  it('reports an empty histogram when there are no published reviews', async () => {
+    const published = await reviewService.listPublished(BUSINESS_ID);
+    expect(published.ratingCounts).toEqual({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+  });
 });
