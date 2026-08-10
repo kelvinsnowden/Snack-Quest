@@ -16,8 +16,9 @@ const CONFIGURED = 'biz-smtp-configured';
 const UNCONFIGURED = 'biz-smtp-unconfigured';
 
 const sendMail = vi.fn();
+const verify = vi.fn();
 vi.mock('nodemailer', () => ({
-  default: { createTransport: () => ({ sendMail }) },
+  default: { createTransport: () => ({ sendMail, verify }) },
 }));
 
 const sendGridSend = vi.fn();
@@ -27,6 +28,7 @@ vi.mock('@/lib/integrations/email/sendGridGateway', () => ({
 
 beforeEach(async () => {
   sendMail.mockReset().mockResolvedValue({ messageId: '<smtp-1@snackquests.shop>' });
+  verify.mockReset().mockResolvedValue(true);
   sendGridSend.mockReset().mockResolvedValue({ providerMessageId: 'sg-1' });
   await adminFirestore
     .collection('businesses')
@@ -108,5 +110,30 @@ describe('smtpEmailGateway.send', () => {
       }),
     ).rejects.toThrow(/disabled/i);
     expect(sendGridSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('testAuthEmailConnection', () => {
+  it('dials the real SMTP server and authenticates, without sending anything', async () => {
+    await configureSmtp();
+    const { testAuthEmailConnection } = await import('@/lib/integrations/email/smtpEmailGateway');
+
+    await testAuthEmailConnection(CONFIGURED);
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a real auth/connection failure rather than swallowing it', async () => {
+    await configureSmtp();
+    verify.mockRejectedValue(new Error('Invalid login: 535 authentication failed'));
+    const { testAuthEmailConnection } = await import('@/lib/integrations/email/smtpEmailGateway');
+
+    await expect(testAuthEmailConnection(CONFIGURED)).rejects.toThrow(/authentication failed/);
+  });
+
+  it('refuses to test a business with nothing configured', async () => {
+    const { testAuthEmailConnection } = await import('@/lib/integrations/email/smtpEmailGateway');
+    await expect(testAuthEmailConnection(UNCONFIGURED)).rejects.toThrow();
   });
 });

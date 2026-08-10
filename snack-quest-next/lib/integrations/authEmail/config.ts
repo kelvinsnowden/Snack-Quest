@@ -4,23 +4,24 @@ import { businessIntegrationSecretRepository } from '@/repositories/businessInte
 import { assertIntegrationEnabled } from '../shared/assertEnabled';
 
 /**
- * The SMTP account Firebase Authentication sends its own emails
- * through — password resets, and email verification if it is ever
- * switched on (§ Integration Portal: auth email).
+ * The SMTP account this app's own outbound email goes through —
+ * order confirmations, creator notices, staff invites, see
+ * `smtpEmailGateway.ts` (§ Integration Portal: auth email) — once a
+ * business connects one, from their own domain rather than a shared
+ * platform address.
  *
- * Unlike every other integration here, nothing in this app ever calls
- * this SMTP server itself. Firebase does. What this integration owns
- * is the *configuration*: the credentials are stored and encrypted the
- * same way as every other provider's, and then pushed into the
- * project's Identity Platform config, which is the only place Firebase
- * reads them from.
- *
- * Why it needs to exist at all: with no SMTP configured, Firebase
- * sends from `noreply@<project>.firebaseapp.com`, a domain the
- * business does not own and cannot authenticate with SPF or DKIM.
- * Password-reset mail from an unfamiliar domain is exactly the profile
- * spam filters are built to catch, so the creator who most needs the
- * email is the one least likely to see it.
+ * Deliberately *not* pushed into Firebase's Identity Platform config.
+ * An earlier attempt did that, so that Firebase's own auto-sent auth
+ * email (the Creator Portal's "forgot password", via the client SDK's
+ * `sendPasswordResetEmail` — see `ForgotPasswordDialog.tsx`) would
+ * also go out from the business's domain. Every real save against a
+ * live project failed: Identity Toolkit rejects updating its email
+ * templates through that API on a plain Firebase Authentication
+ * project — reaching that feature requires upgrading to Identity
+ * Platform, which this project isn't set up to require. So that one
+ * flow keeps using Firebase's own default `noreply@<project>.
+ * firebaseapp.com` sender, unrelated to whatever is configured here;
+ * everything else this app sends does not need that upgrade at all.
  */
 
 export type SmtpSecurityMode = 'SSL' | 'START_TLS';
@@ -42,7 +43,7 @@ export class InvalidAuthEmailConfigError extends Error {
   }
 }
 
-/** Ports outside this are almost always a typo, and Identity Platform rejects them with a far less helpful message than this one. */
+/** Ports outside this are almost always a typo, and the SMTP server would reject them with a far less helpful message than this one. */
 function parsePort(raw: unknown): number {
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
