@@ -110,7 +110,7 @@ export function ReviewLightbox({
         </button>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1 basis-1/2">
         <div
           ref={rail}
           onScroll={onScroll}
@@ -158,10 +158,19 @@ export function ReviewLightbox({
         ) : null}
       </div>
 
-      {/* The words come with the pictures. Someone who opened a photo
-          to judge whether the box is worth it should not have to close
-          it again to read what the person said. */}
-      <div className="shrink-0 px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+      {/*
+        The words come with the pictures. Someone who opened a photo to
+        judge whether the box is worth it should not have to close it
+        again to read what the person said.
+
+        This panel scrolls, and that is a fix rather than a nicety: it
+        was `shrink-0` with the body clamped to four lines, so a long
+        review simply ran out of card — no scroll, no expand, no way to
+        read the rest. `overscroll-contain` stops that scroll chaining
+        into the page behind once it bottoms out, and the height cap
+        keeps the photo the larger half of the screen.
+      */}
+      <div className="max-h-[45dvh] shrink-0 overflow-y-auto overscroll-contain px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-lg">
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-0.5" role="img" aria-label={`${review.rating} out of 5 stars`}>
@@ -176,7 +185,7 @@ export function ReviewLightbox({
             </span>
             <p className="text-sm font-semibold text-white">{review.customerName}</p>
           </div>
-          <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-white/75">{review.body}</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/75">{review.body}</p>
 
           {photos.length > 1 ? (
             <div className="scrollbar-none mt-4 flex gap-2 overflow-x-auto">
