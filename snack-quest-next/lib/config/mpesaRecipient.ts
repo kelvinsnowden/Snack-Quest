@@ -7,4 +7,4 @@
  * outright. `CheckoutForm.tsx` names it explicitly, right next to the
  * "Pay with M-Pesa" button, so nothing about the prompt is a surprise.
  */
-export const MPESA_RECIPIENT_NAME = 'Snowden Collection';
+export const MPESA_RECIPIENT_NAME = 'Snowden Collections';
