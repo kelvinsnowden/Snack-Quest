@@ -19,17 +19,28 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
+import { RevenueChart } from '@/components/admin/RevenueChart';
+import { TrafficChart } from '@/components/admin/TrafficChart';
+import { StatusDonutChart, type DonutSlice } from '@/components/admin/StatusDonutChart';
 import { formatDate, formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
+import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
 const QUICK_LINKS = [
-  { href: '/admin/orders', label: 'Orders', icon: ClipboardList },
-  { href: '/admin/products', label: 'Products', icon: Package },
-  { href: '/admin/deliveries', label: 'Deliveries', icon: Truck },
-  { href: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote },
+  { href: '/admin/orders', label: 'Orders', description: 'Every order, oldest to newest', icon: ClipboardList },
+  { href: '/admin/products', label: 'Products', description: 'Manage boxes and pricing', icon: Package },
+  { href: '/admin/deliveries', label: 'Deliveries', description: 'Track every shipment', icon: Truck },
+  { href: '/admin/withdrawals', label: 'Withdrawals', description: 'Creator payout requests', icon: Banknote },
 ];
+
+/** First letter of each of up to two words — the same "no photo, still recognisable" treatment initials-avatars use everywhere. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
 
 /**
  * The admin landing page (§ Complete the Admin Portal). Previously
@@ -41,14 +52,17 @@ const QUICK_LINKS = [
  * now, and where do I go next.
  *
  * Every number here is a repository/service call already used
- * elsewhere in the admin portal (revenue mirrors /finance/revenue,
- * recent orders mirrors /admin/orders) — no new backend, only wiring
- * what already exists into the one page staff actually land on.
+ * elsewhere in the admin portal (revenue and delivery mirror
+ * /admin/analytics, recent orders mirrors /admin/orders, traffic
+ * mirrors /admin/analytics's own visitor chart) — no new backend,
+ * only wiring what already exists into the one page staff actually
+ * land on, and giving it the visual rhythm a dashboard should have:
+ * one real chart, one real composition view, one real list.
  */
 export default async function AdminDashboardPage() {
   const session = await requireStaffSession();
 
-  const [business, totalOrders, agentQueueCount, staff, revenue, recentOrders] =
+  const [business, totalOrders, agentQueueCount, staff, revenue, recentOrders, delivery, traffic] =
     await Promise.all([
       businessRepository.findById(session.businessId),
       orderRepository.countByBusiness(session.businessId),
@@ -59,6 +73,8 @@ export default async function AdminDashboardPage() {
       staffRepository.listByBusiness(session.businessId),
       businessAnalyticsService.getRevenueOverview(session.businessId, 30),
       orderRepository.listByBusiness(session.businessId, { limit: 5 }),
+      businessAnalyticsService.getDeliveryPerformance(session.businessId),
+      businessAnalyticsService.getTraffic(session.businessId, 30),
     ]);
 
   const revenueTrend = computePeriodTrend(
@@ -68,8 +84,33 @@ export default async function AdminDashboardPage() {
   );
   const revenueDeltaKes = revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes;
 
+  const STATUS_COLOR: Record<string, string> = {
+    delivered: 'var(--color-success)',
+    in_transit: 'var(--color-secondary)',
+    created: 'var(--color-primary)',
+    pending_manual_booking: 'var(--color-warning)',
+    pending: 'var(--color-muted)',
+    failed: 'var(--color-danger)',
+  };
+  const statusSlices: DonutSlice[] = delivery.statusBreakdown.map((s) => ({
+    key: s.status,
+    label: s.label,
+    count: s.count,
+    color: STATUS_COLOR[s.status] ?? 'var(--color-muted)',
+  }));
+  const METHOD_COLOR: Record<string, string> = {
+    pickup: 'var(--color-primary)',
+    door: 'var(--color-secondary)',
+  };
+  const methodSlices: DonutSlice[] = delivery.methodBreakdown.map((m) => ({
+    key: m.method,
+    label: m.method === 'pickup' ? 'Pickup station' : 'Door delivery',
+    count: m.count,
+    color: METHOD_COLOR[m.method] ?? 'var(--color-muted)',
+  }));
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-page-title text-foreground font-bold tracking-tight">
           Welcome back, {session.displayName.split(' ')[0]}
@@ -128,6 +169,88 @@ export default async function AdminDashboardPage() {
         </div>
       ) : null}
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Revenue, last 30 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RevenueChart days={revenue.days} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Delivery snapshot</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-6">
+            {delivery.totalShipments > 0 ? (
+              <>
+                <StatusDonutChart slices={statusSlices} totalLabel="shipments" />
+                <div className="border-t border-border pt-6">
+                  <StatusDonutChart slices={methodSlices} totalLabel="shipments" />
+                </div>
+              </>
+            ) : (
+              <p className="py-4 text-center text-sm text-muted-foreground">No shipments recorded yet.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Website visitors, last 30 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {traffic.totalVisits > 0 ? (
+              <>
+                <TrafficChart days={traffic.days} />
+                <div className="mt-3 flex items-center gap-4 text-caption text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="size-2 rounded-full bg-primary" />
+                    Page views
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="size-2 rounded-full bg-secondary" />
+                    Visitors
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="py-16 text-center text-sm text-muted-foreground">
+                No visits recorded yet — this fills in as people browse the site.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Jump to</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1 p-3 pt-0">
+            {QUICK_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex items-center gap-3 rounded-md p-3 transition-colors hover:bg-border/30"
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <link.icon className="size-4" aria-hidden="true" />
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-medium text-foreground">{link.label}</span>
+                  <span className="block text-caption text-muted-foreground">{link.description}</span>
+                </span>
+                <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
           <CardTitle>Recent orders</CardTitle>
@@ -144,7 +267,7 @@ export default async function AdminDashboardPage() {
             <EmptyState
               icon={ClipboardList}
               title="No orders yet"
-              description="Real orders placed on WhatsApp will show up here as soon as the first one lands."
+              description="Real orders placed through checkout will show up here as soon as the first one lands."
             />
           ) : (
             <div className="border-border overflow-x-auto rounded-lg border">
@@ -158,57 +281,42 @@ export default async function AdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentOrders.orders.map(({ id, data }) => (
-                    <tr
-                      key={id}
-                      className="border-border border-b last:border-0"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/admin/orders/${id}`}
-                          className="text-foreground font-medium hover:underline"
-                        >
-                          {data.customer.customerName ||
-                            data.customer.phoneNumber}
-                        </Link>
-                      </td>
-                      <td className="text-foreground px-4 py-3 tabular-nums">
-                        {formatKes(data.pricing.totalKes)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <OrderStatusBadge status={data.status} />
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                        {formatDate(data.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
+                  {recentOrders.orders.map(({ id, data }) => {
+                    const customerLabel = data.customer.customerName || data.customer.phoneNumber;
+                    return (
+                      <tr key={id} className="border-border border-b last:border-0">
+                        <td className="px-4 py-3">
+                          <Link href={`/admin/orders/${id}`} className="group flex items-center gap-3">
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                                'bg-secondary/10 text-secondary',
+                              )}
+                            >
+                              {initials(customerLabel)}
+                            </span>
+                            <span className="text-foreground font-medium group-hover:underline">{customerLabel}</span>
+                          </Link>
+                        </td>
+                        <td className="text-foreground px-4 py-3 tabular-nums">
+                          {formatKes(data.pricing.totalKes)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <OrderStatusBadge status={data.status} />
+                        </td>
+                        <td className="text-muted-foreground px-4 py-3 tabular-nums">
+                          {formatDate(data.createdAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
       </Card>
-
-      <div>
-        <h2 className="text-card-title text-foreground font-semibold">
-          Jump to
-        </h2>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {QUICK_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="border-border bg-surface hover:bg-border/40 flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-colors"
-            >
-              <link.icon className="text-primary size-5" aria-hidden="true" />
-              <span className="text-foreground text-sm font-medium">
-                {link.label}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
