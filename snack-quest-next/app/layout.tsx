@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { Geist, Geist_Mono, Bagel_Fat_One } from 'next/font/google';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { ADMIN_THEME_STORAGE_KEY } from '@/lib/theme/adminTheme';
 import './globals.css';
 
 const geistSans = Geist({
@@ -57,8 +59,29 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${displayFont.variable} h-full antialiased`}
+      // `data-theme` is set by the inline script below, deliberately
+      // outside React's own render output for this element — the
+      // documented case for suppressHydrationWarning (React: "if this
+      // attribute change is caused by something outside of React").
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        {/*
+          Applies the Admin portal's stored light/dark preference to
+          `<html>` before first paint (§ Admin Dashboard redesign).
+          `beforeInteractive` must live directly in the root layout —
+          confirmed against this Next.js version's own bundled docs —
+          so it's inlined here rather than a separate component. The
+          script itself is scoped to `/admin`: it's a no-op everywhere
+          else, so the public marketing site's `data-theme` is never
+          touched, and `ThemeToggle`'s unmount cleanup handles the
+          client-side-navigation half of that same guarantee.
+        */}
+        <Script id="admin-theme-init" strategy="beforeInteractive">
+          {`(function(){try{if(!location.pathname.startsWith('/admin'))return;var t=localStorage.getItem(${JSON.stringify(ADMIN_THEME_STORAGE_KEY)});document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}})();`}
+        </Script>
+        {children}
+      </body>
     </html>
   );
 }

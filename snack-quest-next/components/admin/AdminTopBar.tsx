@@ -1,6 +1,7 @@
 import { AdminMobileNav } from './AdminMobileNav';
 import { AdminUserMenu } from './AdminUserMenu';
 import { GlobalSearchTrigger } from './GlobalSearchDialog';
+import { ThemeToggle } from './ThemeToggle';
 
 export function AdminTopBar({
   businessName,
@@ -19,7 +20,10 @@ export function AdminTopBar({
       <div className="hidden md:block">
         <GlobalSearchTrigger />
       </div>
-      <AdminUserMenu displayName={displayName} email={email} role={role} />
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <AdminUserMenu displayName={displayName} email={email} role={role} />
+      </div>
     </header>
   );
 }
