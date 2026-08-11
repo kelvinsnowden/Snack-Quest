@@ -408,8 +408,9 @@ export function CheckoutForm({
             : 'You’ll be prompted for exactly this amount on M-Pesa.'}
         </p>
         <p className="text-muted-foreground text-sm">
-          The M-Pesa prompt will show <span className="font-medium text-foreground">{MPESA_RECIPIENT_NAME}</span> as
-          the recipient — that’s Snack Quest’s registered payment account, so it’s expected.
+          <span className="font-medium text-foreground">M-Pesa note:</span> Your payment prompt will show{' '}
+          <span className="font-medium text-foreground">{MPESA_RECIPIENT_NAME}</span> as the recipient. This is
+          Snack Quest’s official payment account.
         </p>
 
         {error ? (
