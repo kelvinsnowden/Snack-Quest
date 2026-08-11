@@ -333,6 +333,8 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(order.delivery.method).toBe('pickup');
     expect(order.delivery.provider).toBe('jumia');
     expect(order.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
+    // A native WhatsApp-originated order has no browser to attribute to.
+    expect(order.attribution).toBeNull();
 
     const items = await orderRepository.listItems(orderDoc.id);
     expect(items).toHaveLength(1);
@@ -428,6 +430,17 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(tiktokBody.data[0].event).toBe('Purchase');
     expect(tiktokBody.data[0].user.ttclid).toBe('tt-real-click-id');
     expect(tiktokBody.data[0].user.phone_numbers[0]).toMatch(/^[0-9a-f]{64}$/);
+
+    const ordersSnapshot = await adminFirestore
+      .collection('orders')
+      .where('businessId', '==', SNACK_QUEST.businessId)
+      .get();
+    expect(ordersSnapshot.docs).toHaveLength(1);
+    expect(ordersSnapshot.docs[0].data().attribution).toEqual({
+      channel: 'web',
+      landingUrl: 'https://snackquests.shop/checkout',
+      ttclid: 'tt-real-click-id',
+    });
   });
 
   it('validates a referral code, discounts the order, and credits the creator commission', async () => {

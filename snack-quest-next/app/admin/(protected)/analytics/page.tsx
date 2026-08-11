@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import { Banknote, ClipboardList, Receipt, Users, Eye } from 'lucide-react';
+import { Banknote, ClipboardList, Receipt, Users, Eye, RotateCcw, Repeat, Wallet } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { businessAnalyticsService } from '@/services/businessAnalyticsService';
+import { businessAnalyticsService, ORDER_CHANNEL_LABELS } from '@/services/businessAnalyticsService';
+import { fulfillmentAccountingService } from '@/services/fulfillmentAccountingService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RevenueChart } from '@/components/admin/RevenueChart';
 import { FunnelChart } from '@/components/admin/FunnelChart';
@@ -21,19 +22,43 @@ export default async function AdminAnalyticsPage() {
   const session = await requireStaffSession();
   const month = currentMonth();
 
-  const [revenue, funnel, topCreators, cac, delivery, traffic] = await Promise.all([
+  const [
+    revenue,
+    funnel,
+    creatorRoi,
+    cac,
+    cacByChannel,
+    delivery,
+    traffic,
+    revenueByChannel,
+    margin,
+    refundRate,
+    repeatPurchase,
+    abandonment,
+    ltv,
+  ] = await Promise.all([
     businessAnalyticsService.getRevenueOverview(session.businessId, 30),
     businessAnalyticsService.getFunnel(session.businessId),
-    businessAnalyticsService.getTopCreators(session.businessId),
+    businessAnalyticsService.getCreatorRoi(session.businessId, 30),
     businessAnalyticsService.getCac(session.businessId, month),
+    businessAnalyticsService.getCacByChannel(session.businessId, month),
     businessAnalyticsService.getDeliveryPerformance(session.businessId),
     businessAnalyticsService.getTraffic(session.businessId, 30),
+    businessAnalyticsService.getRevenueByChannel(session.businessId, 30),
+    fulfillmentAccountingService.getOverview(session.businessId, 30),
+    businessAnalyticsService.getRefundRate(session.businessId, 30),
+    businessAnalyticsService.getRepeatPurchaseRate(session.businessId, 30),
+    businessAnalyticsService.getCheckoutAbandonment(session.businessId, 30),
+    businessAnalyticsService.getLtv(session.businessId),
   ]);
 
   const previousAverageOrderValueKes =
     revenue.previousPeriod.orderCount > 0
       ? Math.round(revenue.previousPeriod.totalRevenueKes / revenue.previousPeriod.orderCount)
       : 0;
+
+  const metaCac = cacByChannel.find((c) => c.channel === 'meta');
+  const tiktokCac = cacByChannel.find((c) => c.channel === 'tiktok');
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,12 +89,87 @@ export default async function AdminAnalyticsPage() {
         />
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue, last 30 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RevenueChart days={revenue.days} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue by channel</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {revenueByChannel.channels.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[360px] text-sm">
+                  <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Channel</th>
+                      <th className="px-4 py-3 font-medium">Orders</th>
+                      <th className="px-4 py-3 font-medium">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueByChannel.channels.map((c) => (
+                      <tr key={c.channel} className="border-b border-border last:border-0">
+                        <td className="px-4 py-3 font-medium text-foreground">{ORDER_CHANNEL_LABELS[c.channel]}</td>
+                        <td className="px-4 py-3 tabular-nums text-foreground">{c.orderCount}</td>
+                        <td className="px-4 py-3 tabular-nums text-foreground">{formatKes(c.revenueKes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="p-6 text-center text-sm text-muted-foreground">No revenue in the last 30 days yet.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Margin</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Real cost from recorded shopping trips, not a guess — see{' '}
+          <a href="/finance/fulfillment" className="text-primary hover:underline">
+            Finance → Fulfillment
+          </a>{' '}
+          for the full ledger.
+        </p>
+      </div>
+
       <Card>
-        <CardHeader>
-          <CardTitle>Revenue, last 30 days</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RevenueChart days={revenue.days} />
+        <CardContent className="flex flex-col gap-6 pt-6">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-caption text-muted-foreground uppercase">Costed revenue</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{formatKes(margin.costed.revenueKes)}</p>
+            </div>
+            <div>
+              <p className="text-caption text-muted-foreground uppercase">Gross profit</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{formatKes(margin.costed.grossProfitKes)}</p>
+            </div>
+            <div>
+              <p className="text-caption text-muted-foreground uppercase">Margin</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{margin.costed.marginPct.toFixed(1)}%</p>
+            </div>
+            <div>
+              <p className="text-caption text-muted-foreground uppercase">Cost coverage</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{margin.costCoveragePct.toFixed(0)}%</p>
+            </div>
+          </div>
+          {margin.uncosted.orderCount > 0 ? (
+            <p className="text-caption text-muted-foreground">
+              {margin.uncosted.orderCount} order{margin.uncosted.orderCount === 1 ? '' : 's'} worth{' '}
+              {formatKes(margin.uncosted.revenueKes)} in this window have no shopping trip recorded against them yet
+              — their margin isn&apos;t counted above until one is.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -166,6 +266,34 @@ export default async function AdminAnalyticsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Checkout abandonment (30 days)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">STK pushes sent</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{abandonment.totalIntents}</p>
+              </div>
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Completed</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{abandonment.succeededIntents}</p>
+              </div>
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Abandoned</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{abandonment.abandonmentRatePct.toFixed(0)}%</p>
+              </div>
+            </div>
+            <p className="text-caption text-muted-foreground">
+              A customer who received the M-Pesa prompt but never completed it — the number a fix like naming the
+              M-Pesa recipient on checkout is meant to move.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
             <CardTitle>Customer acquisition cost</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -175,16 +303,62 @@ export default async function AdminAnalyticsPage() {
                 <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{cac.newCustomers}</p>
               </div>
               <div>
-                <p className="text-caption text-muted-foreground uppercase">CAC</p>
+                <p className="text-caption text-muted-foreground uppercase">Blended CAC</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
                   {cac.cacKes !== null ? formatKes(cac.cacKes) : '—'}
                 </p>
               </div>
             </div>
+            {metaCac || tiktokCac ? (
+              <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
+                <div>
+                  <p className="text-caption text-muted-foreground uppercase">Meta CAC</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                    {metaCac?.cacKes !== null && metaCac?.cacKes !== undefined ? formatKes(metaCac.cacKes) : '—'}
+                  </p>
+                  <p className="text-caption text-muted-foreground">{metaCac?.newCustomers ?? 0} new customers</p>
+                </div>
+                <div>
+                  <p className="text-caption text-muted-foreground uppercase">TikTok CAC</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                    {tiktokCac?.cacKes !== null && tiktokCac?.cacKes !== undefined ? formatKes(tiktokCac.cacKes) : '—'}
+                  </p>
+                  <p className="text-caption text-muted-foreground">{tiktokCac?.newCustomers ?? 0} new customers</p>
+                </div>
+              </div>
+            ) : null}
             <p className="text-caption text-muted-foreground">
-              There&apos;s no ad-spend integration — enter what {month} actually cost to compute a real CAC.
+              There&apos;s no ad-spend integration — enter what {month} actually cost to compute a real CAC, per
+              platform if you want the split below.
             </p>
-            <MarketingSpendForm month={month} initialAmountKes={cac.spendKes} />
+            <MarketingSpendForm
+              month={month}
+              initialAmountKes={cac.spendKes}
+              initialMetaSpendKes={metaCac?.spendKes}
+              initialTiktokSpendKes={tiktokCac?.spendKes}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Refunds (30 days)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Refunded orders</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{refundRate.refundedOrderCount}</p>
+              </div>
+              <div>
+                <p className="text-caption text-muted-foreground uppercase">Refund rate</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{refundRate.refundRatePct.toFixed(1)}%</p>
+              </div>
+            </div>
+            <p className="text-caption text-muted-foreground">
+              {formatKes(refundRate.refundedAmountKes)} refunded out of {formatKes(refundRate.revenueKes)} taken across{' '}
+              {refundRate.orderCount} paid orders.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -229,27 +403,31 @@ export default async function AdminAnalyticsPage() {
         </Card>
       ) : null}
 
-      {topCreators.length > 0 ? (
+      {creatorRoi.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>Top creators</CardTitle>
+            <CardTitle>Creator program ROI</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[480px] text-sm">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
                   <tr>
                     <th className="px-4 py-3 font-medium">Creator</th>
-                    <th className="px-4 py-3 font-medium">Conversions</th>
-                    <th className="px-4 py-3 font-medium">Commission earned</th>
+                    <th className="px-4 py-3 font-medium">Orders</th>
+                    <th className="px-4 py-3 font-medium">Revenue driven</th>
+                    <th className="px-4 py-3 font-medium">Commission paid</th>
+                    <th className="px-4 py-3 font-medium">ROI</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {topCreators.map((creator) => (
+                  {creatorRoi.map((creator) => (
                     <tr key={creator.creatorId} className="border-b border-border last:border-0">
                       <td className="px-4 py-3 font-medium text-foreground">{creator.displayName}</td>
-                      <td className="px-4 py-3 tabular-nums text-foreground">{creator.conversions}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{creator.orderCount}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{formatKes(creator.revenueKes)}</td>
                       <td className="px-4 py-3 tabular-nums text-foreground">{formatKes(creator.commissionKes)}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{creator.roi !== null ? `${creator.roi}×` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -258,6 +436,34 @@ export default async function AdminAnalyticsPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Customers</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Real revenue per customer to date — not a predictive model, just what&apos;s actually happened so far.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <TrendStatCard
+          label="Avg. revenue per customer"
+          value={formatKes(ltv.averageRevenueKes)}
+          icon={<Wallet className="size-5" />}
+          tone="success"
+        />
+        <TrendStatCard
+          label="Repeat purchase rate (30 days)"
+          value={`${repeatPurchase.repeatRatePct.toFixed(0)}%`}
+          icon={<Repeat className="size-5" />}
+          tone="secondary"
+        />
+        <TrendStatCard
+          label="Refund rate (30 days)"
+          value={`${refundRate.refundRatePct.toFixed(1)}%`}
+          icon={<RotateCcw className="size-5" />}
+          tone="warning"
+        />
+      </div>
     </div>
   );
 }

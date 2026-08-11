@@ -75,6 +75,15 @@ export interface Order extends AuditFields {
   statusReason?: string | null;
   referralLinkId: string | null;
   /**
+   * `Conversation.attributionSnapshot` at the moment this order's
+   * conversation began (§ close the loop: ad-conversion attribution) —
+   * copied over once, at order creation, rather than requiring every
+   * later report to join back through `conversationId`. Null for a
+   * native WhatsApp-originated order (nothing to attribute to a web ad
+   * click) and for every order that predates this field.
+   */
+  attribution: Record<string, unknown> | null;
+  /**
    * Set once, atomically, by `FulfillmentBatchService.createFulfillmentBatch()`
    * (§ Fulfillment Batches) — null until this order is grouped into a real
    * shopping trip. Deliberately separate from `status`/`VALID_ORDER_TRANSITIONS`:

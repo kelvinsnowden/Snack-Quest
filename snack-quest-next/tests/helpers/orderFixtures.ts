@@ -37,6 +37,7 @@ export async function seedOrder(
     conversationCheckoutSnapshotId: 'snapshot-1',
     status: 'confirmed' satisfies OrderStatus,
     referralLinkId: null,
+    attribution: null,
     fulfillmentBatchId: null,
     fulfillment: null,
     packingRecipeVersionId: null,

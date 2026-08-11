@@ -16,6 +16,16 @@ export interface MarketingSpendEntry {
   /** `YYYY-MM`. */
   month: string;
   amountKes: number;
+  /**
+   * Per-channel breakdown (§ close the loop: ad-conversion
+   * attribution), same manual-entry honesty as `amountKes` — optional
+   * because most months predate this split. `getCacByChannel` returns
+   * null CAC for a channel with no spend entered, never a fabricated
+   * zero. Not required to sum to `amountKes`: a business may track a
+   * blended total without ever breaking it down by platform.
+   */
+  metaSpendKes?: number;
+  tiktokSpendKes?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   updatedBy: string;
