@@ -425,7 +425,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(tiktokCall).toBeDefined();
     const tiktokBody = JSON.parse((tiktokCall![1] as RequestInit).body as string);
     expect(tiktokBody.event_source_id).toBe(SNACK_QUEST.tiktokPixelCode);
-    expect(tiktokBody.data[0].event).toBe('CompletePayment');
+    expect(tiktokBody.data[0].event).toBe('Purchase');
     expect(tiktokBody.data[0].user.ttclid).toBe('tt-real-click-id');
     expect(tiktokBody.data[0].user.phone_numbers[0]).toMatch(/^[0-9a-f]{64}$/);
   });

@@ -7,8 +7,10 @@ import type { ConversionAttribution } from '@/types';
 
 /**
  * Dispatches ad-attribution events (PLATFORM_ARCHITECTURE_V2.md §11).
- * Only `Purchase`/`CompletePayment` is wired — it's the one event a
- * real completed order actually produces today.
+ * Only `Purchase` is wired — it's the one event a real completed
+ * order actually produces today. Both platforms use the same standard
+ * event name for it (TikTok's own onboarding docs list `Purchase`,
+ * not the older Pixel-era `CompletePayment`).
  *
  * `attribution` is `Conversation.attributionSnapshot`, threaded all
  * the way from `startWebCheckout` (§ close the loop: ad-conversion
@@ -64,19 +66,19 @@ class AdConversionService {
     try {
       await tiktokConversionGateway.sendEvent({
         businessId: input.businessId,
-        eventName: 'CompletePayment',
+        eventName: 'Purchase',
         params: { currency: 'KES', value: input.amountKes },
         advancedMatching: { phone: input.phoneNumber },
         eventSourceUrl,
         clickId: input.attribution.ttclid,
       });
       await publishEvent(input.businessId, 'ConversionDispatched', 'order', input.orderId, {
-        eventName: 'CompletePayment',
+        eventName: 'Purchase',
         provider: 'tiktok',
       });
     } catch (error) {
       await publishEvent(input.businessId, 'ConversionDispatchFailed', 'order', input.orderId, {
-        eventName: 'CompletePayment',
+        eventName: 'Purchase',
         provider: 'tiktok',
         reason: error instanceof Error ? error.message : 'unknown error',
       });
