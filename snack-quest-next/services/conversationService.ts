@@ -1752,6 +1752,7 @@ class ConversationService {
         snapshot,
         paymentIntentId: result.intentId,
         mpesaReceiptNumber: result.mpesaReceiptNumber,
+        attribution,
       });
     } catch (error) {
       if (error instanceof OutOfStockError) {

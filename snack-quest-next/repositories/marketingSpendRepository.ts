@@ -25,18 +25,33 @@ class MarketingSpendRepository {
     return byMonth;
   }
 
-  async set(businessId: string, month: string, amountKes: number, actor: string): Promise<void> {
+  async set(
+    businessId: string,
+    month: string,
+    amountKes: number,
+    actor: string,
+    channelSpend: { metaSpendKes?: number; tiktokSpendKes?: number } = {},
+  ): Promise<void> {
     await adminFirestore
       .collection(COLLECTION)
       .doc(docId(businessId, month))
-      .set({
-        businessId,
-        month,
-        amountKes,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: actor,
-      });
+      .set(
+        {
+          businessId,
+          month,
+          amountKes,
+          // Omitted entirely (not `undefined`) when unset — Firestore rejects an explicit `undefined` field value.
+          ...(typeof channelSpend.metaSpendKes === 'number' ? { metaSpendKes: channelSpend.metaSpendKes } : {}),
+          ...(typeof channelSpend.tiktokSpendKes === 'number' ? { tiktokSpendKes: channelSpend.tiktokSpendKes } : {}),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: actor,
+        },
+        // Merge, not replace — a save that only touches the blended
+        // total (or only the channel split) must never silently wipe
+        // whichever half of the form it didn't carry.
+        { merge: true },
+      );
   }
 }
 

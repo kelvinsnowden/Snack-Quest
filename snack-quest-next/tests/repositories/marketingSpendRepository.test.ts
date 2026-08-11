@@ -39,4 +39,27 @@ describe('marketingSpendRepository', () => {
     expect(byMonth.has('2025-12')).toBe(false);
     expect(byMonth.get('2026-01')?.amountKes).toBe(10000);
   });
+
+  it('stores the optional per-channel spend split', async () => {
+    await marketingSpendRepository.set(BUSINESS_ID, '2026-01', 10000, 'staff-1', {
+      metaSpendKes: 4000,
+      tiktokSpendKes: 6000,
+    });
+
+    const entry = await marketingSpendRepository.findByMonth(BUSINESS_ID, '2026-01');
+    expect(entry?.metaSpendKes).toBe(4000);
+    expect(entry?.tiktokSpendKes).toBe(6000);
+  });
+
+  it('never clobbers a previously-set channel split when a later save omits it (merge, not replace)', async () => {
+    await marketingSpendRepository.set(BUSINESS_ID, '2026-01', 10000, 'staff-1', { metaSpendKes: 4000, tiktokSpendKes: 6000 });
+    // A later save that only touches the blended total — the Analytics page's own
+    // form always sends all three, but the repository itself must be safe either way.
+    await marketingSpendRepository.set(BUSINESS_ID, '2026-01', 11000, 'staff-2');
+
+    const entry = await marketingSpendRepository.findByMonth(BUSINESS_ID, '2026-01');
+    expect(entry?.amountKes).toBe(11000);
+    expect(entry?.metaSpendKes).toBe(4000);
+    expect(entry?.tiktokSpendKes).toBe(6000);
+  });
 });

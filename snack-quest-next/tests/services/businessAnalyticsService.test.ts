@@ -29,7 +29,57 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('shipments'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('pageViews'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('refunds'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('paymentIntents'));
 });
+
+function seedRefund(overrides: {
+  businessId?: string;
+  orderId: string;
+  amountKes: number;
+  status?: 'pending' | 'processing' | 'succeeded' | 'failed';
+  createdAtMillis?: number;
+}) {
+  const now = FieldValue.serverTimestamp();
+  return adminFirestore.collection('refunds').add({
+    businessId: overrides.businessId ?? BUSINESS_ID,
+    orderId: overrides.orderId,
+    amountKes: overrides.amountKes,
+    reason: 'test refund',
+    status: overrides.status ?? 'succeeded',
+    auditTrail: [],
+    requestedBy: 'staff-1',
+    originalMpesaReceiptNumber: 'ABC123XYZ',
+    reversalOriginatorConversationId: null,
+    reversalConversationId: null,
+    reversalTransactionId: null,
+    completedAt: null,
+    createdAt: overrides.createdAtMillis !== undefined ? Timestamp.fromMillis(overrides.createdAtMillis) : now,
+    updatedAt: now,
+    createdBy: 'staff-1',
+    updatedBy: 'staff-1',
+    deletedAt: null,
+  });
+}
+
+function seedPaymentIntent(overrides: {
+  businessId?: string;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'expired';
+  createdAtMillis?: number;
+}) {
+  const now = FieldValue.serverTimestamp();
+  return adminFirestore.collection('paymentIntents').add({
+    businessId: overrides.businessId ?? BUSINESS_ID,
+    conversationId: 'conv-1',
+    conversationCheckoutSnapshotId: 'snapshot-1',
+    customerId: null,
+    phoneNumber: '254712345678',
+    amountKes: 2500,
+    status: overrides.status,
+    createdAt: overrides.createdAtMillis !== undefined ? Timestamp.fromMillis(overrides.createdAtMillis) : now,
+    updatedAt: now,
+  });
+}
 
 function seedPageView(overrides: {
   businessId?: string;
@@ -312,5 +362,299 @@ describe('BusinessAnalyticsService.getTraffic', () => {
     expect(traffic.totalVisits).toBe(0);
     expect(traffic.uniqueVisitors).toBe(0);
     expect(traffic.topPages).toEqual([]);
+  });
+});
+
+describe('BusinessAnalyticsService.getRevenueByChannel', () => {
+  it('buckets orders by acquisition channel, referral taking priority over an ad click id', async () => {
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 2500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 2500 },
+      referralLinkId: 'link-1',
+      attribution: { channel: 'web', ttclid: 'tt-abc' },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 3000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 3000 },
+      referralLinkId: null,
+      attribution: { channel: 'web', ttclid: 'tt-xyz' },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 1500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 1500 },
+      referralLinkId: null,
+      attribution: { channel: 'web', fbclid: 'fb-123' },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 1000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 1000 },
+      referralLinkId: null,
+      attribution: { channel: 'web' },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 500 },
+      referralLinkId: null,
+      attribution: null,
+    });
+
+    const result = await businessAnalyticsService.getRevenueByChannel(BUSINESS_ID, 30);
+
+    expect(result.channels).toEqual(
+      expect.arrayContaining([
+        { channel: 'referral', orderCount: 1, revenueKes: 2500 },
+        { channel: 'tiktok', orderCount: 1, revenueKes: 3000 },
+        { channel: 'meta', orderCount: 1, revenueKes: 1500 },
+        { channel: 'organic-web', orderCount: 1, revenueKes: 1000 },
+        { channel: 'other', orderCount: 1, revenueKes: 500 },
+      ]),
+    );
+  });
+
+  it('excludes cancelled orders and orders outside the window', async () => {
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'cancelled',
+      pricing: { subtotalKes: 9000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 9000 },
+      attribution: null,
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      createdAt: daysAgo(45),
+      pricing: { subtotalKes: 9000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 9000 },
+      attribution: null,
+    });
+
+    const result = await businessAnalyticsService.getRevenueByChannel(BUSINESS_ID, 30);
+
+    expect(result.channels).toEqual([]);
+  });
+});
+
+describe('BusinessAnalyticsService.getCacByChannel', () => {
+  it('computes CAC per platform from that platform\'s spend and new customers whose first order came through it', async () => {
+    const monthStart = new Date('2026-02-10T00:00:00.000Z').getTime();
+    await businessAnalyticsService.setMarketingSpend(BUSINESS_ID, '2026-02', 10000, 'staff-1', {
+      metaSpendKes: 4000,
+      tiktokSpendKes: 6000,
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      createdAt: Timestamp.fromMillis(monthStart) as unknown as Order['createdAt'],
+      customer: { customerId: null, phoneNumber: '254700000021', customerName: 'Meta Customer', county: 'Nairobi' },
+      attribution: { channel: 'web', fbclid: 'fb-1' },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      createdAt: Timestamp.fromMillis(monthStart) as unknown as Order['createdAt'],
+      customer: { customerId: null, phoneNumber: '254700000022', customerName: 'TikTok Customer 1', county: 'Nairobi' },
+      attribution: { channel: 'web', ttclid: 'tt-1' },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      createdAt: Timestamp.fromMillis(monthStart) as unknown as Order['createdAt'],
+      customer: { customerId: null, phoneNumber: '254700000023', customerName: 'TikTok Customer 2', county: 'Nairobi' },
+      attribution: { channel: 'web', ttclid: 'tt-2' },
+    });
+
+    const result = await businessAnalyticsService.getCacByChannel(BUSINESS_ID, '2026-02');
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { channel: 'meta', month: '2026-02', spendKes: 4000, newCustomers: 1, cacKes: 4000 },
+        { channel: 'tiktok', month: '2026-02', spendKes: 6000, newCustomers: 2, cacKes: 3000 },
+      ]),
+    );
+  });
+
+  it('returns a null CAC for a channel with no spend entered, never a fabricated zero', async () => {
+    const result = await businessAnalyticsService.getCacByChannel(BUSINESS_ID, '2026-03');
+
+    expect(result).toEqual([
+      { channel: 'meta', month: '2026-03', spendKes: null, newCustomers: 0, cacKes: null },
+      { channel: 'tiktok', month: '2026-03', spendKes: null, newCustomers: 0, cacKes: null },
+    ]);
+  });
+});
+
+describe('BusinessAnalyticsService.getCreatorRoi', () => {
+  it('sums real revenue and commission per creator and computes ROI', async () => {
+    await userRepository.create('creator-1', { email: 'a@example.com', roles: ['creator'], displayName: 'Alice', photoURL: null }, 'system');
+
+    const order1 = await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 2500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 2500 },
+    });
+    const order2 = await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 3500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 3500 },
+    });
+
+    await adminFirestore.runTransaction(async (tx) => {
+      createAttributionInTransaction(tx, { businessId: BUSINESS_ID, referralLinkId: 'l1', creatorId: 'creator-1', orderId: order1, conversationId: 'c1', discountKes: 0, commissionKes: 250 });
+    });
+    await adminFirestore.runTransaction(async (tx) => {
+      createAttributionInTransaction(tx, { businessId: BUSINESS_ID, referralLinkId: 'l1', creatorId: 'creator-1', orderId: order2, conversationId: 'c2', discountKes: 0, commissionKes: 350 });
+    });
+
+    const roi = await businessAnalyticsService.getCreatorRoi(BUSINESS_ID, 30);
+
+    expect(roi).toEqual([
+      { creatorId: 'creator-1', displayName: 'Alice', orderCount: 2, revenueKes: 6000, commissionKes: 600, roi: 10 },
+    ]);
+  });
+
+  it('reports a null ROI when no commission has been paid, never a fabricated infinity', async () => {
+    await userRepository.create('creator-1', { email: 'a@example.com', roles: ['creator'], displayName: 'Alice', photoURL: null }, 'system');
+    const order1 = await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed' });
+    await adminFirestore.runTransaction(async (tx) => {
+      createAttributionInTransaction(tx, { businessId: BUSINESS_ID, referralLinkId: 'l1', creatorId: 'creator-1', orderId: order1, conversationId: 'c1', discountKes: 0, commissionKes: 0 });
+    });
+
+    const roi = await businessAnalyticsService.getCreatorRoi(BUSINESS_ID, 30);
+
+    expect(roi[0].roi).toBeNull();
+  });
+});
+
+describe('BusinessAnalyticsService.getRefundRate', () => {
+  it('computes the refund rate from real succeeded refunds against real paid orders', async () => {
+    const order1 = await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'refunded',
+      pricing: { subtotalKes: 2500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 2500 },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      pricing: { subtotalKes: 7500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 7500 },
+    });
+    await seedRefund({ orderId: order1, amountKes: 2500, status: 'succeeded' });
+    // A pending refund must not count yet — no money has actually moved back.
+    await seedRefund({ orderId: order1, amountKes: 2500, status: 'pending' });
+
+    const result = await businessAnalyticsService.getRefundRate(BUSINESS_ID, 30);
+
+    expect(result.orderCount).toBe(2);
+    expect(result.revenueKes).toBe(10000);
+    expect(result.refundedOrderCount).toBe(1);
+    expect(result.refundedAmountKes).toBe(2500);
+    expect(result.refundRatePct).toBe(25);
+  });
+
+  it('excludes refunds outside the window', async () => {
+    const order1 = await seedOrder({ businessId: BUSINESS_ID, status: 'refunded' });
+    await seedRefund({ orderId: order1, amountKes: 2500, status: 'succeeded', createdAtMillis: daysAgo(45).toMillis() });
+
+    const result = await businessAnalyticsService.getRefundRate(BUSINESS_ID, 30);
+
+    expect(result.refundedOrderCount).toBe(0);
+    expect(result.refundedAmountKes).toBe(0);
+  });
+
+  it('reports zero rather than NaN when there is no revenue in the window', async () => {
+    const result = await businessAnalyticsService.getRefundRate(BUSINESS_ID, 30);
+    expect(result.refundRatePct).toBe(0);
+  });
+});
+
+describe('BusinessAnalyticsService.getRepeatPurchaseRate', () => {
+  it('counts a customer with 2+ orders in the window as repeat', async () => {
+    const repeatCustomer = { customerId: null, phoneNumber: '254700000031', customerName: 'Repeat Customer', county: 'Nairobi' };
+    const singleCustomer = { customerId: null, phoneNumber: '254700000032', customerName: 'One-time Customer', county: 'Nairobi' };
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', customer: repeatCustomer });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', customer: repeatCustomer });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', customer: singleCustomer });
+
+    const result = await businessAnalyticsService.getRepeatPurchaseRate(BUSINESS_ID, 30);
+
+    expect(result.customerCount).toBe(2);
+    expect(result.repeatCustomerCount).toBe(1);
+    expect(result.repeatRatePct).toBe(50);
+  });
+
+  it('reports zero rather than NaN with no orders in the window', async () => {
+    const result = await businessAnalyticsService.getRepeatPurchaseRate(BUSINESS_ID, 30);
+    expect(result.repeatRatePct).toBe(0);
+  });
+});
+
+describe('BusinessAnalyticsService.getCheckoutAbandonment', () => {
+  it('counts every non-succeeded payment intent as abandoned', async () => {
+    await seedPaymentIntent({ status: 'succeeded' });
+    await seedPaymentIntent({ status: 'succeeded' });
+    await seedPaymentIntent({ status: 'failed' });
+    await seedPaymentIntent({ status: 'expired' });
+    await seedPaymentIntent({ status: 'pending' });
+
+    const result = await businessAnalyticsService.getCheckoutAbandonment(BUSINESS_ID, 30);
+
+    expect(result.totalIntents).toBe(5);
+    expect(result.succeededIntents).toBe(2);
+    expect(result.abandonedIntents).toBe(3);
+    expect(result.abandonmentRatePct).toBe(60);
+  });
+
+  it('excludes intents outside the window', async () => {
+    await seedPaymentIntent({ status: 'failed', createdAtMillis: daysAgo(45).toMillis() });
+
+    const result = await businessAnalyticsService.getCheckoutAbandonment(BUSINESS_ID, 30);
+
+    expect(result.totalIntents).toBe(0);
+  });
+});
+
+describe('BusinessAnalyticsService.getLtv', () => {
+  it('averages real total revenue per distinct customer, all-time', async () => {
+    const customerA = { customerId: null, phoneNumber: '254700000041', customerName: 'Customer A', county: 'Nairobi' };
+    const customerB = { customerId: null, phoneNumber: '254700000042', customerName: 'Customer B', county: 'Nairobi' };
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      customer: customerA,
+      pricing: { subtotalKes: 1000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 1000 },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'delivered',
+      customer: customerA,
+      pricing: { subtotalKes: 1500, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 1500 },
+    });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      customer: customerB,
+      pricing: { subtotalKes: 2000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 2000 },
+    });
+    // Cancelled — never real revenue, must not count toward LTV.
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'cancelled',
+      customer: customerB,
+      pricing: { subtotalKes: 9000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 9000 },
+    });
+
+    const result = await businessAnalyticsService.getLtv(BUSINESS_ID);
+
+    expect(result.customerCount).toBe(2);
+    expect(result.totalRevenueKes).toBe(4500);
+    expect(result.averageRevenueKes).toBe(2250);
+  });
+
+  it('reports zero rather than NaN with no revenue orders yet', async () => {
+    const result = await businessAnalyticsService.getLtv(BUSINESS_ID);
+    expect(result.customerCount).toBe(0);
+    expect(result.averageRevenueKes).toBe(0);
   });
 });

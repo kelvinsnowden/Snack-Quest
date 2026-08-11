@@ -8,7 +8,7 @@ import {
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
 import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
-import type { ConversationCheckoutSnapshot, Order, OrderStatus } from '@/types';
+import type { ConversationCheckoutSnapshot, ConversionAttribution, Order, OrderStatus } from '@/types';
 
 /**
  * Owns order finalization (PLATFORM_ARCHITECTURE_V2.md §14/§16): an
@@ -29,6 +29,8 @@ export interface CreateOrderInput {
   snapshot: ConversationCheckoutSnapshot;
   paymentIntentId: string;
   mpesaReceiptNumber: string;
+  /** `Conversation.attributionSnapshot` (§ close the loop: ad-conversion attribution) — copied onto the order verbatim, null for a native WhatsApp-originated conversation. */
+  attribution: ConversionAttribution | null;
 }
 
 export class OrderNotFoundError extends Error {
@@ -47,7 +49,7 @@ export class InvalidOrderTransitionError extends Error {
 
 class OrderService {
   async createFromConversationSnapshot(input: CreateOrderInput): Promise<string> {
-    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber } = input;
+    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber, attribution } = input;
 
     // Absent on every snapshot frozen before the website checkout
     // existed, and on every WhatsApp one since — a conversation can
@@ -88,6 +90,7 @@ class OrderService {
           conversationId: snapshot.conversationId,
           conversationCheckoutSnapshotId: snapshotId,
           referralLinkId: snapshot.referralLinkId,
+          attribution: (attribution as Record<string, unknown> | null) ?? null,
           fulfillmentBatchId: null,
           fulfillment: null,
           packingRecipeVersionId: null,
