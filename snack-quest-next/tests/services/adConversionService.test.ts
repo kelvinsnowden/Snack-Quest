@@ -80,7 +80,7 @@ describe('AdConversionService.dispatchPurchase', () => {
     );
     expect(tiktokSendEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventName: 'CompletePayment',
+        eventName: 'Purchase',
         eventSourceUrl: 'https://snackquests.shop/checkout',
         clickId: 'tt-abc',
       }),
@@ -91,7 +91,7 @@ describe('AdConversionService.dispatchPurchase', () => {
       expect.objectContaining({ type: 'ConversionDispatched', payload: { eventName: 'Purchase', provider: 'meta' } }),
     );
     expect(events).toContainEqual(
-      expect.objectContaining({ type: 'ConversionDispatched', payload: { eventName: 'CompletePayment', provider: 'tiktok' } }),
+      expect.objectContaining({ type: 'ConversionDispatched', payload: { eventName: 'Purchase', provider: 'tiktok' } }),
     );
   });
 
@@ -124,7 +124,7 @@ describe('AdConversionService.dispatchPurchase', () => {
       expect.objectContaining({ type: 'ConversionDispatchFailed', payload: expect.objectContaining({ provider: 'meta' }) }),
     );
     expect(events).toContainEqual(
-      expect.objectContaining({ type: 'ConversionDispatched', payload: { eventName: 'CompletePayment', provider: 'tiktok' } }),
+      expect.objectContaining({ type: 'ConversionDispatched', payload: { eventName: 'Purchase', provider: 'tiktok' } }),
     );
   });
 

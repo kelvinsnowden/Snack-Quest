@@ -54,7 +54,7 @@ describe('tiktokConversionGateway.sendEvent', () => {
 
     await tiktokConversionGateway.sendEvent({
       businessId: BUSINESS_ID,
-      eventName: 'CompletePayment',
+      eventName: 'Purchase',
       params: { currency: 'KES', value: 2500 },
       advancedMatching: { phone: '254712345678' },
       eventSourceUrl: 'https://snackquests.shop/checkout',
@@ -63,7 +63,7 @@ describe('tiktokConversionGateway.sendEvent', () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
-    expect(body.data[0].event).toBe('CompletePayment');
+    expect(body.data[0].event).toBe('Purchase');
     expect(body.data[0].user.ttclid).toBe('tt-abc');
     expect(body.data[0].user.phone_numbers[0]).toMatch(/^[0-9a-f]{64}$/);
     expect(body.data[0].properties).toEqual({ currency: 'KES', value: 2500 });
@@ -77,7 +77,7 @@ describe('tiktokConversionGateway.sendEvent', () => {
 
     await tiktokConversionGateway.sendEvent({
       businessId: BUSINESS_ID,
-      eventName: 'CompletePayment',
+      eventName: 'Purchase',
       params: { currency: 'KES', value: 2500 },
       advancedMatching: { phone: '254712345678' },
     });
@@ -94,7 +94,7 @@ describe('tiktokConversionGateway.sendEvent', () => {
     await expect(
       tiktokConversionGateway.sendEvent({
         businessId: BUSINESS_ID,
-        eventName: 'CompletePayment',
+        eventName: 'Purchase',
         params: { currency: 'KES', value: 2500 },
       }),
     ).rejects.toThrow(/TikTok Events API dispatch failed/);
