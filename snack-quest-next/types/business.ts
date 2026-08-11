@@ -83,7 +83,7 @@ export interface LoyaltyConfig {
  * is unconditional deny, independent of whatever the parent
  * document's rule becomes.
  */
-export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta' | 'authEmail';
+export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta' | 'tiktok' | 'authEmail';
 
 /**
  * Shared status/audit fields every per-tenant integration secret now
@@ -192,6 +192,20 @@ export interface MetaIntegrationSecret extends IntegrationSecretMeta {
 }
 
 /**
+ * TikTok Events API (§ close the loop: ad-conversion attribution).
+ * `pixelCode` should be the same code the site's client-side TikTok
+ * Pixel loads with (`lib/config/tiktokPixel.ts`) — using one pixel for
+ * both the browser event and this server event is what lets TikTok
+ * de-duplicate and match them to the same visit.
+ */
+export interface TiktokIntegrationSecret extends IntegrationSecretMeta {
+  pixelCode: string;
+  accessToken: string;
+  /** From TikTok Events Manager → the pixel's Test Events tab — only needed for the Integration Portal's Test Connection button, never for real event dispatch. */
+  testEventCode?: string;
+}
+
+/**
  * The SMTP account Firebase Authentication sends password-reset mail
  * through. Stored here like any other credential, then pushed into the
  * project's Identity Platform config — Firebase, not this app, is what
@@ -214,6 +228,7 @@ export interface IntegrationSecretMap {
   whatchimp: WhatchimpIntegrationSecret;
   jumia: JumiaIntegrationSecret;
   meta: MetaIntegrationSecret;
+  tiktok: TiktokIntegrationSecret;
   authEmail: AuthEmailIntegrationSecret;
 }
 

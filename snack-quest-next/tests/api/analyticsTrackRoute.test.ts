@@ -96,4 +96,31 @@ describe('POST /api/analytics/track', () => {
     const response = await trackRoute(request({ path: 'not-a-path', referrer: null }));
     expect(response.status).toBe(400);
   });
+
+  it('captures ttclid and fbclid off the landing URL into first-party cookies, first visit', async () => {
+    const response = await trackRoute(request({ path: '/', referrer: null, ttclid: 'tt-abc', fbclid: 'fb-xyz' }));
+
+    const setCookies = response.headers.getSetCookie();
+    const byName = Object.fromEntries(setCookies.map((c) => [parseSetCookie(c).name, parseSetCookie(c)]));
+    expect(byName.sq_ttclid.value).toBe('tt-abc');
+    expect(byName.sq_ttclid.httpOnly).toBe(true);
+    expect(byName.sq_fbclid.value).toBe('fb-xyz');
+  });
+
+  it('never overwrites an already-set click-id cookie — first touch wins', async () => {
+    const response = await trackRoute(
+      request({ path: '/boxes', referrer: null, ttclid: 'tt-new' }, 'sq_visitor=known-visitor; sq_ttclid=tt-original'),
+    );
+
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies.some((c) => parseSetCookie(c).name === 'sq_ttclid')).toBe(false);
+  });
+
+  it('sets no click-id cookies when the landing URL has neither', async () => {
+    const response = await trackRoute(request({ path: '/', referrer: null }));
+
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies.some((c) => parseSetCookie(c).name === 'sq_ttclid')).toBe(false);
+    expect(setCookies.some((c) => parseSetCookie(c).name === 'sq_fbclid')).toBe(false);
+  });
 });

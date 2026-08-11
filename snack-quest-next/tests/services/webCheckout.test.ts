@@ -193,6 +193,22 @@ describe('startWebCheckout — pricing authority', () => {
     expect(snapshot).toMatchObject({ referralOwnerId: 'creator-1', referralCommissionKes: 300 });
   });
 
+  it('stores the captured ad-click attribution on the new conversation (§ close the loop: ad-conversion attribution)', async () => {
+    const attribution = { channel: 'web' as const, landingUrl: 'https://snackquests.shop/checkout', ttclid: 'tt-abc' };
+
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ attribution }));
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    expect(conversation?.attributionSnapshot).toEqual(attribution);
+  });
+
+  it('leaves attributionSnapshot null when the route captured no attribution at all', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    expect(conversation?.attributionSnapshot).toBeNull();
+  });
+
   it('charges nothing extra for an unknown referral code — it just does not apply', async () => {
     const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ referralCode: 'NOPE' }));
 

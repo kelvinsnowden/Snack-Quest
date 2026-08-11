@@ -8,6 +8,7 @@ import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
 import { SOCIAL_LINKS } from '@/lib/config/socialLinks';
 import { META_PIXEL_ID } from '@/lib/config/metaPixel';
+import { TIKTOK_PIXEL_CODE } from '@/lib/config/tiktokPixel';
 
 /**
  * Every marketing page reads live data (active boxes, the business's
@@ -93,6 +94,19 @@ export default async function MarketingLayout({
             src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
           />
         </noscript>
+        {/* TikTok Pixel — browser-side half of §close the loop: ad-conversion attribution. The server-side Events API half (lib/integrations/tiktok/tiktokConversionGateway.ts) reports the actual Purchase once a business connects a real access token in Admin > Settings > Integrations; this loads regardless, since it's the one that also captures ttclid for that later event via PageViewTracker. */}
+        <Script id="tiktok-pixel" strategy="afterInteractive">
+          {`
+            !function (w, d, t) {
+              w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
+            var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
+            ;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
+
+              ttq.load('${TIKTOK_PIXEL_CODE}');
+              ttq.page();
+            }(window, document, 'ttq');
+          `}
+        </Script>
         <a
           href="#main-content"
           className="focus:bg-primary focus:text-primary-foreground sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-4 focus:py-2 focus:text-sm focus:font-medium"

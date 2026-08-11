@@ -81,6 +81,34 @@ export interface ConversationStateBlob {
   discountKes?: number;
 }
 
+/**
+ * What `startWebCheckout` captures from the browser at the moment a
+ * website visitor starts checking out (§ close the loop: ad-conversion
+ * attribution) — the one point where this app still has the request's
+ * cookies/headers in hand, before the actual order confirmation
+ * happens asynchronously off a Daraja payment webhook with no browser
+ * context at all. Stored once, on `Conversation.attributionSnapshot`,
+ * and read back by `AdConversionService.dispatchPurchase` when the
+ * order completes.
+ *
+ * `channel: 'web'` is the field this whole feature hinges on: its
+ * presence is what tells `dispatchPurchase` to report the eventual
+ * Meta Purchase event with `action_source: 'website'` instead of
+ * `'chat'`, and whether to report to TikTok at all — a TikTok ad can
+ * only ever have driven a website visit, never a native WhatsApp
+ * message, so a conversation with no `attributionSnapshot` never
+ * reports to TikTok regardless of `ttclid`.
+ */
+export interface ConversionAttribution {
+  channel: 'web';
+  /** The checkout page's URL — Meta's `event_source_url`, TikTok's `page.url`. */
+  landingUrl?: string;
+  /** TikTok's click id, captured off the landing URL's `?ttclid=` the first time it appeared (§ PageViewTracker.tsx). */
+  ttclid?: string;
+  /** Meta's click id, same first-touch capture, off `?fbclid=`. Not yet used by `metaConversionGateway` (Advanced Matching there is phone-only today) — stored now so it's not lost before that's built. */
+  fbclid?: string;
+}
+
 export interface Conversation {
   businessId: string;
   phoneNumber: string;
