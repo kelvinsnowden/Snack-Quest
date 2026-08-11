@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { testMetaConnection } from '@/lib/integrations/meta/metaConversionGateway';
+import { metaConversionGateway, testMetaConnection } from '@/lib/integrations/meta/metaConversionGateway';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 
 const BUSINESS_ID = 'biz-meta-gateway-test';
@@ -43,5 +43,49 @@ describe('testMetaConnection', () => {
 
     await expect(testMetaConnection(BUSINESS_ID)).rejects.toThrow(/[Tt]est event code/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('metaConversionGateway.sendEvent', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('defaults to action_source "chat" with no event_source_url when the caller says nothing', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', SECRET);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await metaConversionGateway.sendEvent({
+      businessId: BUSINESS_ID,
+      eventName: 'Purchase',
+      params: { currency: 'KES', value: 2500 },
+      advancedMatching: { phone: '254712345678' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.data[0].action_source).toBe('chat');
+    expect(body.data[0].event_source_url).toBeUndefined();
+  });
+
+  it('reports action_source "website" with the checkout URL for a web-originated order', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', SECRET);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await metaConversionGateway.sendEvent({
+      businessId: BUSINESS_ID,
+      eventName: 'Purchase',
+      params: { currency: 'KES', value: 2500 },
+      advancedMatching: { phone: '254712345678' },
+      actionSource: 'website',
+      eventSourceUrl: 'https://snackquests.shop/checkout',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.data[0].action_source).toBe('website');
+    expect(body.data[0].event_source_url).toBe('https://snackquests.shop/checkout');
   });
 });

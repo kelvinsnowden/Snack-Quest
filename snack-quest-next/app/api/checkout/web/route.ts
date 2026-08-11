@@ -1,3 +1,4 @@
+import { parseCookie } from 'cookie';
 import {
   conversationService,
   WebCheckoutConflictError,
@@ -5,7 +6,9 @@ import {
 } from '@/services/conversationService';
 import { InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { FBCLID_COOKIE, TTCLID_COOKIE } from '@/lib/analytics/cookies';
 import type { WebCheckoutRequest, WebCheckoutResponse } from '@/types/webCheckout';
+import type { ConversionAttribution } from '@/types';
 
 /**
  * `POST /api/checkout/web` (§ Website Becomes the Primary Commerce
@@ -66,6 +69,19 @@ export async function POST(request: Request): Promise<Response> {
 
   const businessId = getCurrentBusinessId();
 
+  // Captured here, not later — order confirmation itself happens off
+  // an async Daraja webhook with no browser context at all (§ close
+  // the loop: ad-conversion attribution). This is the one moment this
+  // app has real cookies/headers to attribute the eventual order with.
+  const cookieHeader = request.headers.get('cookie');
+  const cookies = cookieHeader ? parseCookie(cookieHeader) : {};
+  const attribution: ConversionAttribution = {
+    channel: 'web',
+    landingUrl: request.headers.get('referer') ?? undefined,
+    ttclid: cookies[TTCLID_COOKIE],
+    fbclid: cookies[FBCLID_COOKIE],
+  };
+
   try {
     const result = await conversationService.startWebCheckout(businessId, {
       packageId,
@@ -80,6 +96,7 @@ export async function POST(request: Request): Promise<Response> {
       landmark: typeof landmark === 'string' ? landmark : undefined,
       contactPhone: typeof contactPhone === 'string' ? contactPhone : undefined,
       referralCode: typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
+      attribution,
     });
 
     const response: WebCheckoutResponse = {

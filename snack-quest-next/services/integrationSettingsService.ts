@@ -10,6 +10,7 @@ import { testDarajaConnection } from '@/lib/integrations/daraja/darajaGateway';
 import { testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { testJumiaConnection } from '@/lib/integrations/jumia/jumiaGateway';
 import { testMetaConnection } from '@/lib/integrations/meta/metaConversionGateway';
+import { testTiktokConnection } from '@/lib/integrations/tiktok/tiktokConversionGateway';
 import { testAuthEmailConnection } from '@/lib/integrations/email/smtpEmailGateway';
 import type { IntegrationProvider, IntegrationSecretMap, IntegrationSecretMeta } from '@/types';
 
@@ -54,13 +55,14 @@ export interface IntegrationSummary {
   secretsEncryptedAtRest: boolean | null;
 }
 
-const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta', 'authEmail'];
+const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta', 'tiktok', 'authEmail'];
 
 const TEST_CONNECTORS: Record<IntegrationProvider, (businessId: string) => Promise<void>> = {
   daraja: testDarajaConnection,
   whatchimp: testWhatchimpConnection,
   jumia: testJumiaConnection,
   meta: testMetaConnection,
+  tiktok: testTiktokConnection,
   authEmail: testAuthEmailConnection,
 };
 

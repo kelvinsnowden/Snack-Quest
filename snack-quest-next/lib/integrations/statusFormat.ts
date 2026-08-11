@@ -22,5 +22,6 @@ export const INTEGRATION_PROVIDER_LABELS: Record<string, string> = {
   whatchimp: 'Whatchimp (WhatsApp)',
   jumia: 'Jumia (Delivery)',
   meta: 'Meta (Pixel + Conversions API)',
+  tiktok: 'TikTok (Pixel + Events API)',
   authEmail: 'Email (SMTP)',
 };

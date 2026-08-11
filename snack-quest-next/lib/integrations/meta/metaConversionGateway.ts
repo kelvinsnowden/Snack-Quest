@@ -26,6 +26,8 @@ class MetaConversionGateway implements ConversionGateway {
     eventName: string;
     params: Record<string, unknown>;
     advancedMatching?: Record<string, string>;
+    actionSource?: string;
+    eventSourceUrl?: string;
   }): Promise<void> {
     const config = await getMetaConfig(input.businessId);
 
@@ -52,7 +54,13 @@ class MetaConversionGateway implements ConversionGateway {
                 {
                   event_name: input.eventName,
                   event_time: Math.floor(Date.now() / 1000),
-                  action_source: 'chat',
+                  // Defaults to 'chat' for any caller that doesn't say
+                  // otherwise — every conversion this codebase sends
+                  // predates the website checkout flow, and 'chat' was
+                  // always at least honest for those. Callers that know
+                  // better (a web-originated order) say so explicitly.
+                  action_source: input.actionSource ?? 'chat',
+                  ...(input.eventSourceUrl ? { event_source_url: input.eventSourceUrl } : {}),
                   user_data: userData,
                   custom_data: input.params,
                 },

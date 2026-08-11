@@ -53,6 +53,11 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
     { key: 'apiVersion', label: 'API version', secret: false, required: false, helpText: 'Defaults to the current Graph API version if left blank, e.g. v21.0.' },
     { key: 'testEventCode', label: 'Test event code', secret: false, required: false, helpText: 'From Meta Events Manager → Test Events. Not required for real orders to work — only needed to use the Test Connection button below.' },
   ],
+  tiktok: [
+    { key: 'pixelCode', label: 'Pixel code', secret: false, required: true, helpText: "From TikTok Events Manager → your Pixel. Use the same code the site's client-side pixel loads with — matching pixels is what lets TikTok match this event to the visit." },
+    { key: 'accessToken', label: 'Access token', secret: true, required: true, helpText: 'TikTok Events Manager → your Pixel → Settings → Generate Access Token.' },
+    { key: 'testEventCode', label: 'Test event code', secret: false, required: false, helpText: 'From TikTok Events Manager → Test Events. Not required for real orders to work — only needed to use the Test Connection button below.' },
+  ],
   // The SMTP account this app's own outbound mail goes out through —
   // order confirmations, creator notices, staff invites (§ Integration
   // Portal: auth email, smtpEmailGateway.ts) — once a business connects

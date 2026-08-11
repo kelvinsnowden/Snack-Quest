@@ -311,6 +311,20 @@ export interface ConversionGateway {
     eventName: string;
     params: Record<string, unknown>;
     advancedMatching?: Record<string, string>;
+    /**
+     * Where the conversion actually happened — Meta's `action_source`
+     * (`'website' | 'chat' | ...`). Determines whether the platform
+     * tries to correlate this server event with a browser Pixel
+     * session; a purchase that started on the website and is reported
+     * as `'chat'` (or vice versa) breaks that correlation even though
+     * the event itself still arrives. Gateways that have no such
+     * concept (none yet) ignore it.
+     */
+    actionSource?: string;
+    /** The page the conversion is attributed to, e.g. the checkout page's URL — required by some platforms (TikTok) for web events, optional context for others. */
+    eventSourceUrl?: string;
+    /** A platform's own ad-click id (TikTok's `ttclid`, Meta's `fbclid`-derived `fbc`) — unhashed, passed as-is, distinct from the hashed PII in `advancedMatching`. Absent when the order didn't originate from a tracked ad click. */
+    clickId?: string;
   }): Promise<void>;
 }
 

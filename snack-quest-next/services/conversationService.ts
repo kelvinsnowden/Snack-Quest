@@ -8,6 +8,7 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
+import type { ConversionAttribution } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
@@ -202,6 +203,16 @@ export interface WebCheckoutInput {
    * privileged path that can discount anything.
    */
   initiatedBy?: { staffUid: string; staffName: string };
+  /**
+   * Captured by the route from the request's cookies/Referer before
+   * calling here (§ close the loop: ad-conversion attribution) — the
+   * one moment this app still has real browser context, since order
+   * confirmation itself later happens off an async Daraja webhook with
+   * none. Absent for a staff-initiated order (there's no browser
+   * behind that one to attribute) and for anything that isn't a fresh
+   * conversation (see `startWebCheckout`'s own comment on `existing`).
+   */
+  attribution?: ConversionAttribution | null;
 }
 
 export interface WebCheckoutResult {
@@ -472,7 +483,11 @@ class ConversationService {
 
     const conversationId =
       existing?.id ??
-      (await conversationRepository.create({ businessId, phoneNumber }));
+      (await conversationRepository.create({
+        businessId,
+        phoneNumber,
+        attributionSnapshot: (input.attribution as Record<string, unknown> | null | undefined) ?? null,
+      }));
     if (!existing) {
       await publishEvent(businessId, 'ConversationStarted', 'conversation', conversationId, {
         phoneNumber,
@@ -1677,7 +1692,12 @@ class ConversationService {
     const businessId = conversation.businessId;
 
     if (result.status === 'succeeded') {
-      await this.completeOrder(businessId, result, conversation.phoneNumber);
+      await this.completeOrder(
+        businessId,
+        result,
+        conversation.phoneNumber,
+        conversation.attributionSnapshot as ConversionAttribution | null,
+      );
       return;
     }
 
@@ -1704,15 +1724,19 @@ class ConversationService {
    * The rest of the real journey once payment has actually succeeded:
    * create the order (with inventory reservation), credit any
    * referral commission, create the shipment with whichever courier
-   * `snapshot.delivery.provider` names, dispatch the Meta Purchase
-   * event, notify the admin, and confirm to the customer. Every step
-   * past order creation is best-effort — a courier outage or a missing
-   * Meta credential must never undo a paid, confirmed order.
+   * `snapshot.delivery.provider` names, dispatch ad-conversion events
+   * (`attribution` — see `handlePaymentResult`'s caller, which reads
+   * it off the `Conversation` before this ever runs, since a Daraja
+   * webhook has no browser context of its own to fall back on), notify
+   * the admin, and confirm to the customer. Every step past order
+   * creation is best-effort — a courier outage or a missing ad
+   * platform credential must never undo a paid, confirmed order.
    */
   private async completeOrder(
     businessId: string,
     result: Extract<ProcessCallbackResult, { status: 'succeeded' }>,
     phoneNumber: string,
+    attribution: ConversionAttribution | null,
   ): Promise<void> {
     const snapshot = await conversationCheckoutSnapshotRepository.findById(
       result.snapshotId,
@@ -1816,6 +1840,7 @@ class ConversationService {
       orderId,
       phoneNumber,
       amountKes: snapshot.totalKes,
+      attribution,
     });
 
     await this.notifications.notifyAdmin(

@@ -49,6 +49,7 @@ interface TenantConfig {
   shortcode: string;
   jumiaMerchantId: string;
   metaPixelId: string;
+  tiktokPixelCode: string;
 }
 
 const SNACK_QUEST: TenantConfig = {
@@ -59,6 +60,7 @@ const SNACK_QUEST: TenantConfig = {
   shortcode: '174379',
   jumiaMerchantId: 'jumia-snack-quest',
   metaPixelId: 'pixel-snack-quest',
+  tiktokPixelCode: 'ttpixel-snack-quest',
 };
 
 const RIVAL_SNACKS: TenantConfig = {
@@ -69,6 +71,7 @@ const RIVAL_SNACKS: TenantConfig = {
   shortcode: '555555',
   jumiaMerchantId: 'jumia-rival-snacks',
   metaPixelId: 'pixel-rival-snacks',
+  tiktokPixelCode: 'ttpixel-rival-snacks',
 };
 
 async function seedBusiness(tenant: TenantConfig) {
@@ -104,6 +107,10 @@ async function seedBusiness(tenant: TenantConfig) {
   await businessIntegrationSecretRepository.set(tenant.businessId, 'meta', {
     pixelId: tenant.metaPixelId,
     accessToken: `meta-token-${tenant.businessId}`,
+  });
+  await businessIntegrationSecretRepository.set(tenant.businessId, 'tiktok', {
+    pixelCode: tenant.tiktokPixelCode,
+    accessToken: `tiktok-token-${tenant.businessId}`,
   });
 }
 
@@ -187,6 +194,9 @@ function mockAllProviders() {
     }
     if (urlStr.includes('graph.facebook.com')) {
       return new Response(JSON.stringify({ events_received: 1 }), { status: 200 });
+    }
+    if (urlStr.includes('business-api.tiktok.com')) {
+      return new Response(JSON.stringify({ code: 0, message: 'OK' }), { status: 200 });
     }
     if (urlStr.includes('/whatsapp/')) {
       // Real WhatchimpGateway HTTP call — only hit when a Service uses the
@@ -348,6 +358,76 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(adminMessages[0].businessId).toBe(SNACK_QUEST.businessId);
 
     expect(gateway.sent.at(-1)?.text).toContain('Payment received');
+  });
+
+  it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {
+    const fetchMock = mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    // A dedicated station, not the shared `seedFreePickupStation` one
+    // — that fixture's `zone: 'Nairobi'` predates real Jumia zone
+    // pricing and only the native-bot selection path tolerates it;
+    // `startWebCheckout` validates against `isJumiaZone`, same as
+    // `webCheckout.test.ts`'s own fixtures.
+    const stationId = await pickupStationRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        courier: 'jumia',
+        name: 'Zone 1 Station',
+        latitude: -1.2833,
+        longitude: 36.8167,
+        description: 'Nairobi CBD',
+        county: 'Nairobi',
+        town: 'CBD',
+        zone: 'Zone 1',
+        shippingOrigin: 'Nairobi',
+        packageCategory: 'small',
+        deliveryFeeKes: 0,
+        isActive: true,
+        searchTokens: ['zone1'],
+      },
+      'system',
+    );
+
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Jane Doe',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      attribution: {
+        channel: 'web',
+        landingUrl: 'https://snackquests.shop/checkout',
+        ttclid: 'tt-real-click-id',
+      },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    expect(callback.status).toBe('succeeded');
+    await service.handlePaymentResult(callback);
+
+    const finalConversation = await conversationRepository.findById(checkout.checkoutSessionId);
+    expect(finalConversation?.status).toBe('completed');
+
+    const metaCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('graph.facebook.com'));
+    const metaBody = JSON.parse((metaCall![1] as RequestInit).body as string);
+    expect(metaBody.data[0].action_source).toBe('website');
+    expect(metaBody.data[0].event_source_url).toBe('https://snackquests.shop/checkout');
+
+    const tiktokCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('business-api.tiktok.com'));
+    expect(tiktokCall).toBeDefined();
+    const tiktokBody = JSON.parse((tiktokCall![1] as RequestInit).body as string);
+    expect(tiktokBody.event_source_id).toBe(SNACK_QUEST.tiktokPixelCode);
+    expect(tiktokBody.data[0].event).toBe('CompletePayment');
+    expect(tiktokBody.data[0].user.ttclid).toBe('tt-real-click-id');
+    expect(tiktokBody.data[0].user.phone_numbers[0]).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('validates a referral code, discounts the order, and credits the creator commission', async () => {
