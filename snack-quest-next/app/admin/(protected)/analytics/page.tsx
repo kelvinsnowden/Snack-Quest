@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
-import { Banknote, ClipboardList, Receipt } from 'lucide-react';
+import { Banknote, ClipboardList, Receipt, Users, Eye } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RevenueChart } from '@/components/admin/RevenueChart';
 import { FunnelChart } from '@/components/admin/FunnelChart';
+import { TrafficChart } from '@/components/admin/TrafficChart';
 import { MarketingSpendForm } from '@/components/admin/MarketingSpendForm';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { formatKes } from '@/lib/orders/format';
@@ -20,12 +21,13 @@ export default async function AdminAnalyticsPage() {
   const session = await requireStaffSession();
   const month = currentMonth();
 
-  const [revenue, funnel, topCreators, cac, delivery] = await Promise.all([
+  const [revenue, funnel, topCreators, cac, delivery, traffic] = await Promise.all([
     businessAnalyticsService.getRevenueOverview(session.businessId, 30),
     businessAnalyticsService.getFunnel(session.businessId),
     businessAnalyticsService.getTopCreators(session.businessId),
     businessAnalyticsService.getCac(session.businessId, month),
     businessAnalyticsService.getDeliveryPerformance(session.businessId),
+    businessAnalyticsService.getTraffic(session.businessId, 30),
   ]);
 
   const previousAverageOrderValueKes =
@@ -70,6 +72,86 @@ export default async function AdminAnalyticsPage() {
           <RevenueChart days={revenue.days} />
         </CardContent>
       </Card>
+
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Website traffic</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Real visits to the public site, tracked by a first-party beacon — not a third-party service.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TrendStatCard
+          label="Visitors (30 days)"
+          value={traffic.uniqueVisitors.toLocaleString('en-KE')}
+          icon={<Users className="size-5" />}
+          tone="secondary"
+          trend={computePeriodTrend(traffic.uniqueVisitors, traffic.previousPeriod.uniqueVisitors, 'vs previous 30 days')}
+          sparkline={traffic.days.map((d) => d.uniqueVisitors)}
+        />
+        <TrendStatCard
+          label="Page views (30 days)"
+          value={traffic.totalVisits.toLocaleString('en-KE')}
+          icon={<Eye className="size-5" />}
+          trend={computePeriodTrend(traffic.totalVisits, traffic.previousPeriod.totalVisits, 'vs previous 30 days')}
+          sparkline={traffic.days.map((d) => d.visits)}
+        />
+      </div>
+
+      {traffic.totalVisits > 0 ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Visits, last 30 days</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TrafficChart days={traffic.days} />
+              <div className="mt-3 flex items-center gap-4 text-caption text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span aria-hidden="true" className="size-2 rounded-full bg-primary" />
+                  Page views
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span aria-hidden="true" className="size-2 rounded-full bg-secondary" />
+                  Visitors
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Top pages</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[320px] text-sm">
+                  <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Page</th>
+                      <th className="px-4 py-3 font-medium">Views</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {traffic.topPages.map((page) => (
+                      <tr key={page.path} className="border-b border-border last:border-0">
+                        <td className="px-4 py-3 font-medium text-foreground">{page.path}</td>
+                        <td className="px-4 py-3 tabular-nums text-foreground">{page.visits}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+            No visits recorded yet — this fills in as people browse the site.
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

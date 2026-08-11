@@ -28,7 +28,23 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('marketingSpendEntries'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('shipments'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('pageViews'));
 });
+
+function seedPageView(overrides: {
+  businessId?: string;
+  path: string;
+  visitorId: string;
+  createdAtMillis?: number;
+}) {
+  return adminFirestore.collection('pageViews').add({
+    businessId: overrides.businessId ?? BUSINESS_ID,
+    path: overrides.path,
+    visitorId: overrides.visitorId,
+    referrer: null,
+    createdAt: Timestamp.fromMillis(overrides.createdAtMillis ?? Date.now()),
+  });
+}
 
 function seedShipment(overrides: {
   businessId?: string;
@@ -246,5 +262,55 @@ describe('BusinessAnalyticsService.getDeliveryPerformance', () => {
     const result = await businessAnalyticsService.getDeliveryPerformance(BUSINESS_ID);
 
     expect(result.medianDeliveryHours).toBe(4);
+  });
+});
+
+describe('BusinessAnalyticsService.getTraffic', () => {
+  it('counts total visits and distinct visitors within the window, scoped to the business', async () => {
+    await seedPageView({ path: '/', visitorId: 'visitor-1', createdAtMillis: daysAgo(1).toMillis() });
+    // Same visitor, a second page — counts as another visit, not another visitor.
+    await seedPageView({ path: '/boxes', visitorId: 'visitor-1', createdAtMillis: daysAgo(1).toMillis() });
+    await seedPageView({ path: '/', visitorId: 'visitor-2', createdAtMillis: daysAgo(2).toMillis() });
+    // Outside the 30-day window entirely.
+    await seedPageView({ path: '/', visitorId: 'visitor-3', createdAtMillis: daysAgo(45).toMillis() });
+    // A different business's traffic — must never leak in.
+    await seedPageView({ businessId: OTHER_BUSINESS_ID, path: '/', visitorId: 'visitor-4', createdAtMillis: daysAgo(1).toMillis() });
+
+    const traffic = await businessAnalyticsService.getTraffic(BUSINESS_ID, 30);
+
+    expect(traffic.totalVisits).toBe(3);
+    expect(traffic.uniqueVisitors).toBe(2);
+    expect(traffic.days).toHaveLength(30);
+  });
+
+  it('computes the previous equal-length window separately, same as revenue', async () => {
+    await seedPageView({ path: '/', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+    await seedPageView({ path: '/', visitorId: 'v2', createdAtMillis: daysAgo(35).toMillis() });
+    await seedPageView({ path: '/', visitorId: 'v3', createdAtMillis: daysAgo(40).toMillis() });
+
+    const traffic = await businessAnalyticsService.getTraffic(BUSINESS_ID, 30);
+
+    expect(traffic.totalVisits).toBe(1);
+    expect(traffic.previousPeriod.totalVisits).toBe(2);
+    expect(traffic.previousPeriod.uniqueVisitors).toBe(2);
+  });
+
+  it('ranks top pages by visit count', async () => {
+    await seedPageView({ path: '/boxes', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+    await seedPageView({ path: '/boxes', visitorId: 'v2', createdAtMillis: daysAgo(1).toMillis() });
+    await seedPageView({ path: '/', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+
+    const traffic = await businessAnalyticsService.getTraffic(BUSINESS_ID, 30);
+
+    expect(traffic.topPages[0]).toEqual({ path: '/boxes', visits: 2 });
+    expect(traffic.topPages[1]).toEqual({ path: '/', visits: 1 });
+  });
+
+  it('reports zeroes rather than throwing when nothing has been recorded', async () => {
+    const traffic = await businessAnalyticsService.getTraffic(BUSINESS_ID, 30);
+
+    expect(traffic.totalVisits).toBe(0);
+    expect(traffic.uniqueVisitors).toBe(0);
+    expect(traffic.topPages).toEqual([]);
   });
 });

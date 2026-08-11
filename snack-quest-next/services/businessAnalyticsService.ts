@@ -6,6 +6,7 @@ import { referralAttributionRepository } from '@/repositories/referralAttributio
 import { userRepository } from '@/repositories/userRepository';
 import { marketingSpendRepository } from '@/repositories/marketingSpendRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
+import { pageViewRepository } from '@/repositories/pageViewRepository';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import { SHIPMENT_STATUS_LABELS } from '@/lib/delivery/transitions';
 import type { Order, ShipmentStatus } from '@/types';
@@ -30,6 +31,7 @@ const REVENUE_ORDER_LIMIT = 1000;
 const FUNNEL_CONVERSATION_LIMIT = 500;
 const COMMISSION_ATTRIBUTION_LIMIT = 500;
 const SHIPMENT_ANALYTICS_LIMIT = 500;
+const TOP_PAGES_LIMIT = 10;
 
 // Orders that represent real, kept revenue — excludes pending (not
 // yet a completed sale), cancelled, and refund_requested (money that
@@ -40,6 +42,29 @@ export interface RevenueDay {
   date: string;
   revenueKes: number;
   orderCount: number;
+}
+
+export interface TrafficDay {
+  date: string;
+  visits: number;
+  uniqueVisitors: number;
+}
+
+export interface TopPage {
+  path: string;
+  visits: number;
+}
+
+export interface TrafficOverview {
+  totalVisits: number;
+  uniqueVisitors: number;
+  days: TrafficDay[];
+  topPages: TopPage[];
+  /** The equal-length window immediately before this one, same reasoning as `RevenueOverview.previousPeriod`. */
+  previousPeriod: {
+    totalVisits: number;
+    uniqueVisitors: number;
+  };
 }
 
 export interface RevenueOverview {
@@ -142,6 +167,64 @@ class BusinessAnalyticsService {
       previousPeriod: {
         totalRevenueKes: previousTotalRevenueKes,
         orderCount: inPreviousWindow.length,
+      },
+    };
+  }
+
+  /**
+   * Website traffic (§ Admin: Analytics, website traffic) — real page
+   * views from `PageViewTracker.tsx`'s beacon, not a fabricated or
+   * estimated number. "Unique visitors" counts distinct
+   * `visitorId` cookies, which undercounts anyone who cleared cookies
+   * or switched devices — the same honest caveat every cookie-based
+   * visitor count carries, not specific to this one.
+   */
+  async getTraffic(businessId: string, days = 30): Promise<TrafficOverview> {
+    const windowMs = days * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - windowMs;
+    const previousCutoff = cutoff - windowMs;
+
+    const views = await pageViewRepository.listSince(businessId, new Date(previousCutoff));
+    const inWindow = views.filter((v) => toMillis(v.createdAt) >= cutoff);
+    const inPreviousWindow = views.filter((v) => toMillis(v.createdAt) < cutoff);
+
+    const byDay = new Map<string, { date: string; visits: number; visitorIds: Set<string> }>();
+    for (let i = 0; i < days; i += 1) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      byDay.set(date, { date, visits: 0, visitorIds: new Set() });
+    }
+
+    const pageCounts = new Map<string, number>();
+    const uniqueVisitors = new Set<string>();
+    for (const view of inWindow) {
+      uniqueVisitors.add(view.visitorId);
+      pageCounts.set(view.path, (pageCounts.get(view.path) ?? 0) + 1);
+
+      const date = new Date(toMillis(view.createdAt)).toISOString().slice(0, 10);
+      const bucket = byDay.get(date);
+      if (bucket) {
+        bucket.visits += 1;
+        bucket.visitorIds.add(view.visitorId);
+      }
+    }
+
+    const previousUniqueVisitors = new Set(inPreviousWindow.map((v) => v.visitorId));
+
+    const topPages = Array.from(pageCounts.entries())
+      .map(([path, visits]) => ({ path, visits }))
+      .sort((a, b) => b.visits - a.visits)
+      .slice(0, TOP_PAGES_LIMIT);
+
+    return {
+      totalVisits: inWindow.length,
+      uniqueVisitors: uniqueVisitors.size,
+      days: Array.from(byDay.values())
+        .map(({ date, visits, visitorIds }) => ({ date, visits, uniqueVisitors: visitorIds.size }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      topPages,
+      previousPeriod: {
+        totalVisits: inPreviousWindow.length,
+        uniqueVisitors: previousUniqueVisitors.size,
       },
     };
   }

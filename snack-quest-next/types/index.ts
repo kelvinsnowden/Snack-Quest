@@ -37,3 +37,4 @@ export * from './featureFlag';
 export * from './fulfillmentBatch';
 export * from './webCheckout';
 export * from './review';
+export * from './pageView';
