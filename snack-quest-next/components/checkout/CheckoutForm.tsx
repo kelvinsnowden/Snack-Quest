@@ -12,6 +12,7 @@ import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
+import { MPESA_RECIPIENT_NAME } from '@/lib/config/mpesaRecipient';
 import { cn } from '@/lib/utils';
 import type { DeliveryMethod } from '@/types/delivery';
 import type { WebCheckoutQuote, WebCheckoutResponse } from '@/types/webCheckout';
@@ -405,6 +406,10 @@ export function CheckoutForm({
           {deliveryMethod === 'door'
             ? 'Bolt delivery is not included — it is arranged and paid separately after checkout.'
             : 'You’ll be prompted for exactly this amount on M-Pesa.'}
+        </p>
+        <p className="text-muted-foreground text-sm">
+          The M-Pesa prompt will show <span className="font-medium text-foreground">{MPESA_RECIPIENT_NAME}</span> as
+          the recipient — that’s Snack Quest’s registered payment account, so it’s expected.
         </p>
 
         {error ? (
