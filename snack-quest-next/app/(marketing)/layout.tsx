@@ -2,6 +2,7 @@ import Script from 'next/script';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { MarketingHeader } from '@/components/marketing/MarketingHeader';
 import { MarketingFooter } from '@/components/marketing/MarketingFooter';
+import { PageViewTracker } from '@/components/marketing/analytics/PageViewTracker';
 import { ActiveBoxNameProvider } from '@/components/marketing/design/ActiveBoxContext';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
@@ -62,6 +63,7 @@ export default async function MarketingLayout({
   return (
     <ActiveBoxNameProvider>
       <div className="flex min-h-full flex-col">
+        <PageViewTracker />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
