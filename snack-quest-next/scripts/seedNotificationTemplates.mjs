@@ -125,11 +125,20 @@ const TEMPLATES = [
   }),
   emailTemplate({
     templateCode: 'creator_status_approved_email',
-    subject: "You're approved — welcome to Snack Quest Creators, {{displayName}}",
-    heading: "You're approved!",
+    subject: 'Before Your First Post — Read This, {{displayName}}',
+    heading: 'Before your first post',
     bodyTemplate:
-      'Hi {{displayName}}, your Snack Quest Creator account is now active. Your referral code is {{referralCode}} — share your link to start earning commission on every order it brings in.',
-    ctaLabel: 'Open Creator Portal',
+      'Hey {{displayName}}, before you share your first Snack Quest link, I want to tell you why this program exists.\n\n' +
+      'Snack Quest needs to grow, and creators already have something valuable — an audience that trusts them. A lot of small creators have that audience but never had a real way to earn from it.\n\n' +
+      "Here's the honest deal: I need people to discover Snack Quest. You need a real way to earn from the audience you've already built. I built this program so both of those can be true.\n\n" +
+      'You earn KES 300 for every successful sale.\n\n' +
+      'Your audience gets KES 250 off when they buy through your link.\n\n' +
+      "I've also built resources for people who've never made money online before — how to market, understand your audience, and even how paid ads work. Skills that stay useful beyond Snack Quest.\n\n" +
+      "You don't need a shop, capital, inventory or a laptop. You can start with the phone already in your hand.\n\n" +
+      "I won't promise you overnight results or guaranteed income. This still takes real learning, effort and consistency.\n\n" +
+      "Your referral code is {{referralCode}} — it's already active. Open your Creator Portal below to grab your link and get started.\n\n" +
+      "I don't know exactly how far Snack Quest will go. But I want to build it with people, not just for them. You're one of those people now.",
+    ctaLabel: 'Start Your Quest',
     ctaUrl: '{{portalUrl}}',
     requiredParams: ['displayName', 'referralCode', 'portalUrl'],
   }),
