@@ -5,7 +5,7 @@ import { CreatorsHero } from '@/components/marketing/creators/CreatorsHero';
 import { CreatorFounderStory } from '@/components/marketing/creators/CreatorFounderStory';
 import { CreatorEconomics } from '@/components/marketing/creators/CreatorEconomics';
 import { CreatorPerks } from '@/components/marketing/creators/CreatorPerks';
-import { CreatorEducation } from '@/components/marketing/creators/CreatorEducation';
+import { CreatorPortfolio } from '@/components/marketing/creators/CreatorPortfolio';
 import { CreatorStartHere } from '@/components/marketing/creators/CreatorStartHere';
 import { CreatorRoute } from '@/components/marketing/creators/CreatorRoute';
 import { CreatorFounderSignoff } from '@/components/marketing/creators/CreatorFounderSignoff';
@@ -42,7 +42,7 @@ export default async function CreatorsPage() {
       <CreatorFounderStory founderImageUrl={founderImageUrl} />
       <CreatorEconomics />
       <CreatorPerks />
-      <CreatorEducation />
+      <CreatorPortfolio />
       <CreatorStartHere />
       <CreatorRoute />
       <CreatorFounderSignoff />
