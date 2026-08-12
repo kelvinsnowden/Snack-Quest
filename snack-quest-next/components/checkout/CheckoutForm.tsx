@@ -398,9 +398,13 @@ export function CheckoutForm({
             placeholder="SNACK10"
             autoCapitalize="characters"
           />
-          {referralCode.trim() && quote?.referralCodeApplied ? (
+          {referralCode.trim() && quote?.referralCodeApplied && quote.pricing.discountKes > 0 ? (
             <p className="text-success text-sm">
               Code applied — {formatKes(quote.pricing.discountKes)} off your order.
+            </p>
+          ) : referralCode.trim() && quote?.referralCodeApplied ? (
+            <p className="text-muted-foreground text-sm">
+              Your code is valid, but referral discounts don&apos;t apply to this one-time offer.
             </p>
           ) : referralCode.trim() && quote?.referralCodeRejected ? (
             <p className="text-warning text-sm">

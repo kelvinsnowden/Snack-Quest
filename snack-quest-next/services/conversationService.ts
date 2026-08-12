@@ -533,6 +533,7 @@ class ConversationService {
           customerName,
           county,
           referralCode: input.referralCode,
+          isRescueOffer: box.isRescueOffer,
         },
         delivery,
       );
@@ -781,7 +782,13 @@ class ConversationService {
     // Half-typed numbers are the norm here, so a rejection just means
     // "no credit shown yet", never an error.
     let availableWalletCreditKes = 0;
-    const rawDiscountKes = referral?.discountKes ?? 0;
+    // The rescue offer's price is already the one-time discount — a
+    // referral code is still validated (so the UI can tell the
+    // customer it worked) but never reduces this box's price. Kept in
+    // lockstep with the same rule `freezeSnapshot` applies at charge
+    // time, so this preview can never promise a discount the actual
+    // payment won't honor.
+    const rawDiscountKes = box.isRescueOffer ? 0 : (referral?.discountKes ?? 0);
     if (input.phone) {
       try {
         availableWalletCreditKes = await walletService.redeemableAmount(
@@ -934,6 +941,15 @@ class ConversationService {
       customerName: string;
       county: string;
       referralCode?: string;
+      /**
+       * The exit-intent rescue offer is already a one-time, deeply
+       * discounted price — stacking a referral discount on top of it
+       * would undercut the box's own margin in a way no referral link
+       * was priced for. A code still gets validated and recorded
+       * (the referring creator is credited normally), it just
+       * contributes nothing to the price on this box.
+       */
+      isRescueOffer?: boolean;
     },
     delivery: DeliveryDetails,
   ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
@@ -947,7 +963,7 @@ class ConversationService {
     // / Quest system). Only reserved here; the real debit happens in
     // `completeOrder()`, once payment for this reduced amount has
     // actually succeeded.
-    const rawDiscountKes = referral?.discountKes ?? 0;
+    const rawDiscountKes = common.isRescueOffer ? 0 : (referral?.discountKes ?? 0);
     const availableWalletCreditKes = await walletService.redeemableAmount(
       businessId,
       phoneNumber,
@@ -1133,6 +1149,7 @@ class ConversationService {
         customerName: stateBlob.customerName ?? '',
         county: stateBlob.county ?? '',
         referralCode: stateBlob.referralCode,
+        isRescueOffer: currentPackage?.isRescueOffer,
       },
       delivery,
     );
@@ -1577,6 +1594,7 @@ class ConversationService {
         customerName: stateBlob.customerName ?? '',
         county: stateBlob.county ?? '',
         referralCode: stateBlob.referralCode,
+        isRescueOffer: currentPackage?.isRescueOffer,
       },
       delivery,
     );

@@ -193,6 +193,60 @@ describe('startWebCheckout — pricing authority', () => {
     expect(snapshot).toMatchObject({ referralOwnerId: 'creator-1', referralCommissionKes: 300 });
   });
 
+  it('never discounts the exit-intent rescue offer, even with a valid referral code — but still credits the creator and still delivers by pickup station', async () => {
+    await seedReferralLink();
+    const rescueOfferId = await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: '7 assorted snacks',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+      },
+      'test',
+    );
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId: rescueOfferId,
+      quantity: 1,
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      referralCode: 'SAVE500',
+      phone: PHONE_TYPED,
+    });
+    expect(quote?.referralCodeApplied).toBe(true);
+    expect(quote?.pricing.discountKes).toBe(0);
+    expect(quote?.pricing.totalKes).toBe(1800);
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ packageId: rescueOfferId, referralCode: 'SAVE500' }),
+    );
+
+    expect(result.pricing).toMatchObject({
+      packageLabel: 'Test Box',
+      discountKes: 0,
+      deliveryFeeKes: 300,
+      totalKes: 1800,
+    });
+
+    // The referral is still recorded — the creator earns their
+    // commission for driving the sale, they just don't stack a
+    // discount on top of an already-discounted offer.
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot).toMatchObject({
+      referralOwnerId: 'creator-1',
+      referralCommissionKes: 300,
+      discountKes: 0,
+      delivery: expect.objectContaining({ method: 'pickup', pickupStationId: stationId }),
+    });
+  });
+
   it('stores the captured ad-click attribution on the new conversation (§ close the loop: ad-conversion attribution)', async () => {
     const attribution = { channel: 'web' as const, landingUrl: 'https://snackquests.shop/checkout', ttclid: 'tt-abc' };
 
