@@ -92,10 +92,13 @@ export function ExitIntentOffer({ packageId, name, priceKes, snackCountLabel, im
   const ctaClickedRef = useRef(false);
   const shownRef = useRef(false);
 
-  const onCheckoutPage = pathname?.startsWith('/checkout') ?? false;
+  // Never on `/checkout` itself, and never on `/try` — that page's own
+  // hero already leads with this exact offer, so popping it up on top
+  // would just interrupt a visitor who came here specifically for it.
+  const suppressed = (pathname?.startsWith('/checkout') || pathname === '/try') ?? false;
 
   useEffect(() => {
-    if (onCheckoutPage || alreadyHandledThisSession()) {
+    if (suppressed || alreadyHandledThisSession()) {
       return;
     }
 
@@ -168,7 +171,7 @@ export function ExitIntentOffer({ packageId, name, priceKes, snackCountLabel, im
       window.clearTimeout(armTimer);
       cleanup();
     };
-  }, [onCheckoutPage, packageId]);
+  }, [suppressed, packageId]);
 
   function onOpenChange(next: boolean) {
     setOpen(next);
@@ -182,7 +185,7 @@ export function ExitIntentOffer({ packageId, name, priceKes, snackCountLabel, im
     trackEvent(RESCUE_OFFER_EVENTS.offerClicked, { packageId });
   }
 
-  if (onCheckoutPage) {
+  if (suppressed) {
     return null;
   }
 
