@@ -64,10 +64,6 @@ export function CreatorFounderStory({ founderImageUrl }: { founderImageUrl: stri
           </h2>
         </Reveal>
 
-        <Reveal delayMs={100}>
-          <p className="mt-3 text-base text-foreground/60 italic md:text-lg">Not a policy page. Me, talking to you.</p>
-        </Reveal>
-
         <div className="mt-10 grid items-center gap-10 md:mt-14 md:grid-cols-2 md:gap-20">
           <Reveal delayMs={150}>
             <div className="relative mx-auto w-full max-w-[200px] md:max-w-[360px]">
@@ -130,24 +126,19 @@ export function CreatorFounderStory({ founderImageUrl }: { founderImageUrl: stri
         </div>
 
         <Reveal delayMs={200 + STORY_BEATS.length * 70 + 140}>
-          <div className="mt-12 md:mt-20">
-            <p className="text-caption font-bold tracking-[0.3em] text-foreground/60 uppercase">
-              Three reasons, honestly
-            </p>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {REASONS.map((reason) => (
-                <div
-                  key={reason.title}
-                  className="border-border bg-surface flex flex-col gap-2 rounded-2xl border p-5"
-                >
-                  <reason.icon className="size-5 text-secondary" strokeWidth={2.2} aria-hidden="true" />
-                  <h3 className="text-card-title font-display text-xl leading-[1.1] font-normal uppercase">
-                    {reason.title}
-                  </h3>
-                  <p className="text-small text-foreground/70">{reason.body}</p>
-                </div>
-              ))}
-            </div>
+          <div className="mt-12 grid gap-4 md:mt-20 md:grid-cols-3">
+            {REASONS.map((reason) => (
+              <div
+                key={reason.title}
+                className="border-border bg-surface flex flex-col gap-2 rounded-2xl border p-5"
+              >
+                <reason.icon className="size-5 text-secondary" strokeWidth={2.2} aria-hidden="true" />
+                <h3 className="text-card-title font-display text-xl leading-[1.1] font-normal uppercase">
+                  {reason.title}
+                </h3>
+                <p className="text-small text-foreground/70">{reason.body}</p>
+              </div>
+            ))}
           </div>
         </Reveal>
       </div>

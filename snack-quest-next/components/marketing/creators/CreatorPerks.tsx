@@ -58,7 +58,12 @@ const PERKS = [
     kicker: 'Your standing',
     title: 'A leaderboard worth topping',
     body: 'See exactly where you rank against every other Snack Quest creator by orders driven and commission earned.',
-    points: ['Updated as orders land', 'Clicks and conversions side by side', 'Campaigns you can opt into'],
+    points: [
+      'Updated as orders land',
+      'Clicks and conversions side by side',
+      'Campaigns you can opt into',
+      'Top 3 each month get a free box',
+    ],
     accent: {
       wash: 'from-background to-home-lime/20',
       border: 'border-foreground/5',
