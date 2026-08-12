@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { adminAuth } from '@/lib/firebase/admin';
 import { creatorRepository } from '@/repositories/creatorRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { CreatorNotFoundError } from '@/services/creatorDashboardService';
@@ -21,7 +22,20 @@ export class InvalidCreatorTransitionError extends Error {
 export interface CreatorListItem {
   uid: string;
   profile: CreatorProfile;
-  user: Pick<User, 'email' | 'displayName' | 'photoURL'> | null;
+  user: Pick<User, 'email' | 'displayName' | 'photoURL' | 'phoneNumber'> | null;
+}
+
+/** The single creator detail view (§ Admin: Creators) — everything the list row has, plus the two things only worth one extra Auth lookup for a single profile, not every row of a paginated list. */
+export interface CreatorDetail extends CreatorListItem {
+  registeredAt: string | null;
+  /** From Firebase Auth's own session metadata — `null` if they've never signed in (e.g. registered but never completed the flow) or the Auth record is gone. */
+  lastSignInAt: string | null;
+}
+
+function isoOrNull(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /**
@@ -46,12 +60,22 @@ class CreatorAdminService {
     return { creators: withIdentity, nextCursor };
   }
 
-  async getCreator(businessId: string, uid: string): Promise<CreatorListItem> {
+  async getCreator(businessId: string, uid: string): Promise<CreatorDetail> {
     const profile = await creatorRepository.findById(uid);
     if (!profile || profile.businessId !== businessId) {
       throw new CreatorNotFoundError(uid);
     }
-    return { uid, profile, user: await userRepository.findById(uid) };
+    const [user, authRecord] = await Promise.all([
+      userRepository.findById(uid),
+      adminAuth.getUser(uid).catch(() => null),
+    ]);
+    return {
+      uid,
+      profile,
+      user,
+      registeredAt: profile.createdAt?.toDate ? profile.createdAt.toDate().toISOString() : null,
+      lastSignInAt: isoOrNull(authRecord?.metadata.lastSignInTime),
+    };
   }
 
   async updateStatus(businessId: string, uid: string, next: CreatorStatus, actor: string): Promise<void> {

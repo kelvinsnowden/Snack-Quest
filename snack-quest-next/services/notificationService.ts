@@ -9,7 +9,7 @@ import { notificationRepository } from '@/repositories/notificationRepository';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { renderTemplate, assertRequiredParams } from '@/lib/notifications/renderTemplate';
 import type { WhatsAppGateway, EmailGateway, SmsGateway } from '@/lib/integrations/types';
-import type { NotificationChannel, NotificationRecipientType } from '@/types';
+import type { NotificationChannel, NotificationRecipientType, OutboundMessage } from '@/types';
 
 export class TemplateNotFoundError extends Error {
   constructor(templateCode: string, channel: NotificationChannel) {
@@ -118,6 +118,15 @@ class NotificationService {
     }
 
     await this.dispatch(businessId, outboundId, input.channel, input.recipientRef, renderedSubject, renderedBody, renderedHtmlBody);
+  }
+
+  /** § Admin: Creators — every real email/SMS ever dispatched to one person, newest first. See `outboundMessageRepository.listByRecipient()` for how `recipientRefs` is used. */
+  async listMessagesForRecipient(
+    businessId: string,
+    recipientRefs: string[],
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ messages: { id: string; data: OutboundMessage }[]; nextCursor: string | null }> {
+    return outboundMessageRepository.listByRecipient(businessId, recipientRefs, options);
   }
 
   async retrySweep(businessId: string, retryCeiling = DEFAULT_RETRY_CEILING): Promise<{ attempted: number }> {

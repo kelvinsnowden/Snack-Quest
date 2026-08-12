@@ -2,7 +2,11 @@ import 'server-only';
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { OutboundMessage } from '@/types';
+import type { OutboundMessage, OutboundMessageStatus } from '@/types';
+
+/** Statuses that count as a real, successful delivery attempt vs. a real failure, for stats purposes — `'queued'` is excluded from both since it means dispatch never actually resolved (normally transient; a message stuck there is its own signal, not a success or a failure). */
+const SUCCESS_STATUSES: OutboundMessageStatus[] = ['sent', 'delivered'];
+const FAILURE_STATUSES: OutboundMessageStatus[] = ['failed', 'bounced'];
 
 /**
  * `outboundMessages` reads/writes (§ Notification breadth,
@@ -91,6 +95,85 @@ class OutboundMessageRepository {
       .get();
 
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as OutboundMessage }));
+  }
+
+  /**
+   * § Admin: Creators — every real email/SMS ever dispatched to one
+   * person, newest first. `recipientRef` is the only per-recipient
+   * identifier this collection carries (email or phone, depending on
+   * channel — see `types/notification.ts`'s own doc comment), so the
+   * caller resolves the real addresses/numbers first (e.g. a creator's
+   * `user.email`) and passes them here; `in` lets one query cover more
+   * than one contact point (e.g. email today, a phone number once SMS
+   * is actually wired up) without a second round trip. Needs the
+   * `businessId ASC, recipientRef ASC, createdAt DESC` composite index
+   * (see firestore.indexes.json) — an equality filter plus an orderBy
+   * on a different field always needs one.
+   */
+  async listByRecipient(
+    businessId: string,
+    recipientRefs: string[],
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ messages: { id: string; data: OutboundMessage }[]; nextCursor: string | null }> {
+    if (recipientRefs.length === 0) {
+      return { messages: [], nextCursor: null };
+    }
+
+    const pageSize = options.limit ?? 50;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('recipientRef', 'in', recipientRefs)
+      .orderBy('createdAt', 'desc')
+      .limit(pageSize + 1) as FirebaseFirestore.Query;
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      messages: docs.map((doc) => ({ id: doc.id, data: doc.data() as OutboundMessage })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
+
+  /**
+   * § Admin: Notification Templates — real sent/failed/pending counts
+   * for one template, scoped to a business. Three `.count()`
+   * aggregation queries, not a document scan: cheap regardless of how
+   * many messages a template has ever sent. Equality-only filters
+   * (`businessId ==`, `templateCode ==`, `status in [...]`) never need
+   * a composite index — that requirement is specific to combining an
+   * equality/`in` filter with a range or `orderBy` on a different
+   * field, neither of which happens here.
+   */
+  async getTemplateStats(
+    businessId: string,
+    templateCode: string,
+  ): Promise<{ sent: number; failed: number; pending: number }> {
+    const base = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('templateCode', '==', templateCode);
+
+    const [sentSnap, failedSnap, pendingSnap] = await Promise.all([
+      base.where('status', 'in', SUCCESS_STATUSES).count().get(),
+      base.where('status', 'in', FAILURE_STATUSES).count().get(),
+      base.where('status', '==', 'queued').count().get(),
+    ]);
+
+    return {
+      sent: sentSnap.data().count,
+      failed: failedSnap.data().count,
+      pending: pendingSnap.data().count,
+    };
   }
 }
 

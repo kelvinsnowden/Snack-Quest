@@ -1,15 +1,27 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Mail } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { creatorAdminService, CreatorNotFoundError } from '@/services/creatorAdminService';
+import { notificationService } from '@/services/notificationService';
+import { templateEventLabel } from '@/lib/notifications/templateLabels';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { CreatorStatusBadge } from '@/components/admin/CreatorStatusBadge';
 import { CreatorStatusActions } from '@/components/admin/CreatorStatusActions';
 import { formatKes } from '@/lib/orders/format';
+import type { OutboundMessageStatus } from '@/types';
 
 export const metadata: Metadata = { title: 'Creator detail' };
+
+const MESSAGE_STATUS_VARIANT: Record<OutboundMessageStatus, 'success' | 'danger' | 'outline'> = {
+  sent: 'success',
+  delivered: 'success',
+  failed: 'danger',
+  bounced: 'danger',
+  queued: 'outline',
+};
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -18,6 +30,10 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
       <span className="text-right font-medium text-foreground">{value}</span>
     </div>
   );
+}
+
+function formatDateTime(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : '—';
 }
 
 export default async function AdminCreatorDetailPage({
@@ -38,7 +54,12 @@ export default async function AdminCreatorDetailPage({
     throw error;
   }
 
-  const { profile, user } = creator;
+  const { profile, user, registeredAt, lastSignInAt } = creator;
+
+  const recipientRefs = [user?.email, user?.phoneNumber].filter((ref): ref is string => Boolean(ref));
+  const { messages } = recipientRefs.length > 0
+    ? await notificationService.listMessagesForRecipient(session.businessId, recipientRefs)
+    : { messages: [] };
 
   return (
     <div className="flex flex-col gap-6">
@@ -92,6 +113,8 @@ export default async function AdminCreatorDetailPage({
             <DetailRow label="Niche" value={profile.niche || '—'} />
             <DetailRow label="Followers" value={profile.followersRange || '—'} />
             <DetailRow label="Onboarding" value={profile.onboardingCompleted ? 'Completed' : 'Incomplete'} />
+            <DetailRow label="Registered" value={formatDateTime(registeredAt)} />
+            <DetailRow label="Last login" value={formatDateTime(lastSignInAt)} />
           </CardContent>
         </Card>
 
@@ -122,6 +145,44 @@ export default async function AdminCreatorDetailPage({
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications sent</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+              <Mail className="size-6 text-muted-foreground" aria-hidden="true" />
+              <p className="text-sm text-muted-foreground">
+                {recipientRefs.length === 0
+                  ? 'No email or phone on file for this creator, so nothing could ever have been sent to them.'
+                  : 'Nothing sent to this creator yet.'}
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {messages.map(({ id, data }) => (
+                <li key={id} className="flex flex-col gap-1 px-6 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-foreground">{templateEventLabel(data.templateCode)}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="uppercase">
+                        {data.channel}
+                      </Badge>
+                      <Badge variant={MESSAGE_STATUS_VARIANT[data.status]}>{data.status}</Badge>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString() : '—'}
+                    {data.failureReason ? ` · ${data.failureReason}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

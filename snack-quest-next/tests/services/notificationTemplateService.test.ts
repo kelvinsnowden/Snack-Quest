@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import {
   notificationTemplateService,
   NotificationTemplateNotFoundError,
   NotificationTemplateValidationError,
 } from '@/services/notificationTemplateService';
+
+const BUSINESS_ID = 'biz-notification-template-service-test';
 
 /**
  * `NotificationTemplateService` (§ Admin: Notification Templates) —
@@ -16,6 +19,7 @@ import {
 
 beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
   await notificationTemplateRepository.upsert({
     templateCode: 'creator_registered_welcome_email',
     channel: 'email',
@@ -174,5 +178,46 @@ describe('NotificationTemplateService.updateTemplate — non-email channel', () 
         isActive: true,
       }),
     ).rejects.toBeInstanceOf(NotificationTemplateValidationError);
+  });
+});
+
+describe('NotificationTemplateService.getDeliveryStats', () => {
+  function baseMessage(overrides: Partial<Parameters<typeof outboundMessageRepository.create>[1]> = {}) {
+    return {
+      businessId: BUSINESS_ID,
+      notificationId: null,
+      channel: 'email' as const,
+      templateCode: 'creator_registered_welcome_email',
+      recipientRef: 'someone@example.com',
+      renderedSubject: null,
+      renderedBody: 'body',
+      renderedHtmlBody: null,
+      providerMessageId: null,
+      status: 'sent' as const,
+      failureReason: null,
+      sentAt: null,
+      deliveredAt: null,
+      retryCount: 0,
+      ...overrides,
+    };
+  }
+
+  it('reports a null successRate and zero counts for a template that has never been dispatched', async () => {
+    const stats = await notificationTemplateService.getDeliveryStats(BUSINESS_ID);
+
+    const welcome = stats.find((s) => s.templateCode === 'creator_registered_welcome_email');
+    expect(welcome).toEqual({ templateCode: 'creator_registered_welcome_email', sent: 0, failed: 0, pending: 0, successRate: null });
+  });
+
+  it('computes a real successRate from actual sent/failed counts, covering every template in the catalog', async () => {
+    await outboundMessageRepository.create('m1', baseMessage({ status: 'sent' }));
+    await outboundMessageRepository.create('m2', baseMessage({ status: 'sent' }));
+    await outboundMessageRepository.create('m3', baseMessage({ status: 'failed' }));
+
+    const stats = await notificationTemplateService.getDeliveryStats(BUSINESS_ID);
+
+    expect(stats.map((s) => s.templateCode)).toEqual(['creator_registered_welcome_email', 'withdrawal_paid_sms']);
+    const welcome = stats.find((s) => s.templateCode === 'creator_registered_welcome_email');
+    expect(welcome).toEqual({ templateCode: 'creator_registered_welcome_email', sent: 2, failed: 1, pending: 0, successRate: 67 });
   });
 });

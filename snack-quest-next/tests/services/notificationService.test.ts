@@ -3,7 +3,7 @@ import { adminFirestore } from '@/lib/firebase/admin';
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { notificationRepository } from '@/repositories/notificationRepository';
-import { NotificationService, TemplateNotFoundError } from '@/services/notificationService';
+import { NotificationService, TemplateNotFoundError, notificationService } from '@/services/notificationService';
 import { MissingTemplateParamsError } from '@/lib/notifications/renderTemplate';
 import type { WhatsAppGateway, EmailGateway, SmsGateway } from '@/lib/integrations/types';
 
@@ -277,5 +277,46 @@ describe('NotificationService.retrySweep', () => {
 
     expect(result).toEqual({ attempted: 0 });
     expect(sms.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationService.listMessagesForRecipient', () => {
+  it('returns messages matching any of the given recipientRefs, newest first, scoped to the business', async () => {
+    await outboundMessageRepository.create('email:1', {
+      businessId: BUSINESS_ID,
+      notificationId: null,
+      channel: 'email',
+      templateCode: 'creator_registered_welcome_email',
+      recipientRef: 'amina@example.com',
+      renderedSubject: 'Welcome',
+      renderedBody: 'body',
+      renderedHtmlBody: null,
+      providerMessageId: 'em-1',
+      status: 'sent',
+      failureReason: null,
+      sentAt: null,
+      deliveredAt: null,
+      retryCount: 0,
+    });
+    await outboundMessageRepository.create('email:2-other-recipient', {
+      businessId: BUSINESS_ID,
+      notificationId: null,
+      channel: 'email',
+      templateCode: 'creator_registered_welcome_email',
+      recipientRef: 'someone-else@example.com',
+      renderedSubject: 'Welcome',
+      renderedBody: 'body',
+      renderedHtmlBody: null,
+      providerMessageId: null,
+      status: 'sent',
+      failureReason: null,
+      sentAt: null,
+      deliveredAt: null,
+      retryCount: 0,
+    });
+
+    const { messages } = await notificationService.listMessagesForRecipient(BUSINESS_ID, ['amina@example.com']);
+
+    expect(messages.map((m) => m.id)).toEqual(['email:1']);
   });
 });
