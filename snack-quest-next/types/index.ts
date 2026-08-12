@@ -38,3 +38,4 @@ export * from './fulfillmentBatch';
 export * from './webCheckout';
 export * from './review';
 export * from './pageView';
+export * from './marketingEmail';
