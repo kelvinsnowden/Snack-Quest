@@ -359,6 +359,23 @@ describe('MarketingEmailService.send', () => {
     expect(campaign?.sentAt).not.toBeNull();
   });
 
+  it('captures the real per-recipient error instead of discarding it', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active' });
+    await userRepository.create('creator-1', { email: 'creator1@example.com', roles: ['creator'], displayName: 'C1', photoURL: null }, 'system');
+    const campaignId = await marketingEmailService.createDraft(BUSINESS_ID, VALID_DRAFT, 'staff-1');
+
+    const result = await marketingEmailService.send(BUSINESS_ID, campaignId, 'staff-1');
+
+    // Same fails-closed environment as the test above (no SMTP/SendGrid
+    // configured) — this time asserting the failure reason itself is
+    // captured, not just tallied.
+    expect(result.failedCount).toBe(1);
+    const campaign = await marketingEmailRepository.findById(campaignId);
+    expect(campaign?.failedRecipients).toHaveLength(1);
+    expect(campaign?.failedRecipients?.[0].email).toBe('creator1@example.com');
+    expect(campaign?.failedRecipients?.[0].error).toBeTruthy();
+  });
+
   it('refuses to resolve zero recipients rather than silently "sending" nothing', async () => {
     const campaignId = await marketingEmailService.createDraft(BUSINESS_ID, VALID_DRAFT, 'staff-1');
 
@@ -373,6 +390,49 @@ describe('MarketingEmailService.send', () => {
 
     await expect(marketingEmailService.send(BUSINESS_ID, campaignId, 'staff-1')).rejects.toBeInstanceOf(
       MarketingEmailNotEditableError,
+    );
+  });
+});
+
+describe('MarketingEmailService.resendFailed', () => {
+  it('retries only the previously-failed recipients and updates the tally without recomposing', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active' });
+    await userRepository.create('creator-1', { email: 'creator1@example.com', roles: ['creator'], displayName: 'C1', photoURL: null }, 'system');
+    const campaignId = await marketingEmailService.createDraft(BUSINESS_ID, VALID_DRAFT, 'staff-1');
+    await marketingEmailService.send(BUSINESS_ID, campaignId, 'staff-1');
+
+    const before = await marketingEmailRepository.findById(campaignId);
+    expect(before?.failedRecipients).toHaveLength(1);
+
+    const result = await marketingEmailService.resendFailed(BUSINESS_ID, campaignId, 'staff-1');
+
+    // Same fails-closed test environment — the retry attempt happens
+    // (proving the exact previously-failed address was dialed again),
+    // and the failure is captured again rather than silently dropped.
+    expect(result.recipientCount).toBe(1);
+    expect(result.sentCount + result.failedCount).toBe(1);
+    const after = await marketingEmailRepository.findById(campaignId);
+    expect(after?.failedRecipients).toHaveLength(result.failedCount);
+  });
+
+  it('rejects resending a draft that has never sent', async () => {
+    const campaignId = await marketingEmailService.createDraft(BUSINESS_ID, VALID_DRAFT, 'staff-1');
+
+    await expect(marketingEmailService.resendFailed(BUSINESS_ID, campaignId, 'staff-1')).rejects.toBeInstanceOf(
+      MarketingEmailValidationError,
+    );
+  });
+
+  it('rejects resending a campaign with nothing left to retry', async () => {
+    const campaignId = await marketingEmailService.createDraft(BUSINESS_ID, VALID_DRAFT, 'staff-1');
+    await marketingEmailRepository.update(campaignId, {
+      status: 'sent',
+      failedRecipients: null,
+      updatedBy: 'system',
+    });
+
+    await expect(marketingEmailService.resendFailed(BUSINESS_ID, campaignId, 'staff-1')).rejects.toBeInstanceOf(
+      MarketingEmailValidationError,
     );
   });
 });

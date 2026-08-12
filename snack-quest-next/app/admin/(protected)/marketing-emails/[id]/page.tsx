@@ -8,6 +8,7 @@ import { marketingEmailService, MarketingEmailNotFoundError } from '@/services/m
 import { SEGMENT_LABEL } from '@/lib/marketingEmails/segmentLabels';
 import { MarketingEmailForm } from '@/components/admin/MarketingEmailForm';
 import { MarketingEmailPreview } from '@/components/admin/MarketingEmailPreview';
+import { ResendFailedButton } from '@/components/admin/ResendFailedButton';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -128,6 +129,12 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
               testimonials={campaign.sentTestimonials ?? []}
             />
           </div>
+
+          {campaign.failedRecipients && campaign.failedRecipients.length > 0 ? (
+            <div className="lg:col-span-2">
+              <ResendFailedButton campaignId={id} failedRecipients={campaign.failedRecipients} />
+            </div>
+          ) : null}
         </div>
       )}
     </div>

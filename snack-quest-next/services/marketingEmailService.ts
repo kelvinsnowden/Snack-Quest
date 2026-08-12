@@ -11,7 +11,13 @@ import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
 import { brandedEmailHtml, paragraphsToHtml, type EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
 import { reviewService } from '@/services/reviewService';
 import { matchesQuery } from '@/lib/search/types';
-import type { CreatorProfile, CreatorStatus, MarketingEmailCampaign, MarketingEmailSegment } from '@/types';
+import type {
+  CreatorProfile,
+  CreatorStatus,
+  MarketingEmailCampaign,
+  MarketingEmailFailedRecipient,
+  MarketingEmailSegment,
+} from '@/types';
 
 /**
  * Owns staff-composed branded email blasts (§ Admin: Marketing
@@ -337,6 +343,7 @@ class MarketingEmailService {
       recipientCount: 0,
       sentCount: 0,
       failedCount: 0,
+      failedRecipients: null,
       sentAt: null,
     };
     return marketingEmailRepository.create(data, actor);
@@ -432,27 +439,86 @@ class MarketingEmailService {
     });
     const text = plainTextBody(campaign);
 
-    let sentCount = 0;
-    let failedCount = 0;
-    for (const to of recipients) {
-      try {
-        await smtpEmailGateway.send({ businessId, to, subject: campaign.subject, body: text, html });
-        sentCount += 1;
-      } catch {
-        failedCount += 1;
-      }
-    }
+    const { sentCount, failedRecipients } = await this.dispatchToRecipients(businessId, campaign, recipients, html, text);
 
     await marketingEmailRepository.update(campaignId, {
       status: sentCount > 0 ? 'sent' : 'failed',
       sentCount,
-      failedCount,
+      failedCount: failedRecipients.length,
+      failedRecipients: failedRecipients.length > 0 ? failedRecipients : null,
       sentTestimonials: testimonials.length > 0 ? testimonials : null,
       sentAt: FieldValue.serverTimestamp() as unknown as MarketingEmailCampaign['sentAt'],
       updatedBy: actor,
     });
 
-    return { recipientCount: recipients.length, sentCount, failedCount };
+    return { recipientCount: recipients.length, sentCount, failedCount: failedRecipients.length };
+  }
+
+  /**
+   * Retries exactly the recipients a prior send/resend failed for, with
+   * the exact same rendered content that originally went out (the
+   * stored `sentTestimonials` snapshot, never a fresh re-fetch) — same
+   * "resend what was actually composed" discipline as
+   * `NotificationService.retrySweep()`. Never re-composes: nothing here
+   * lets the subject/heading/body change, since that would make this a
+   * second, different campaign rather than a retry of the first one.
+   */
+  async resendFailed(businessId: string, campaignId: string, actor: string): Promise<MarketingEmailSendResult> {
+    const campaign = await this.requireOwned(businessId, campaignId);
+    if (campaign.status !== 'sent' && campaign.status !== 'failed') {
+      throw new MarketingEmailValidationError('Only a campaign that has already sent can be resent to its failed recipients.');
+    }
+    const previouslyFailed = campaign.failedRecipients ?? [];
+    if (previouslyFailed.length === 0) {
+      throw new MarketingEmailValidationError('This campaign has no failed recipients to resend to.');
+    }
+    const recipients = previouslyFailed.map((entry) => entry.email);
+
+    const html = brandedEmailHtml({
+      heading: campaign.heading,
+      bodyHtml: paragraphsToHtml(campaign.bodyText),
+      imageUrl: campaign.imageUrl,
+      ctaLabel: campaign.ctaLabel,
+      ctaUrl: campaign.ctaUrl,
+      featurePills: campaign.featurePills,
+      testimonials: campaign.sentTestimonials ?? [],
+    });
+    const text = plainTextBody(campaign);
+
+    const { sentCount, failedRecipients } = await this.dispatchToRecipients(businessId, campaign, recipients, html, text);
+
+    await marketingEmailRepository.update(campaignId, {
+      status: failedRecipients.length > 0 ? (campaign.sentCount + sentCount > 0 ? 'sent' : 'failed') : 'sent',
+      sentCount: campaign.sentCount + sentCount,
+      failedCount: failedRecipients.length,
+      failedRecipients: failedRecipients.length > 0 ? failedRecipients : null,
+      updatedBy: actor,
+    });
+
+    return { recipientCount: recipients.length, sentCount, failedCount: failedRecipients.length };
+  }
+
+  /** The one place that actually dials `smtpEmailGateway` — best-effort per recipient (one failure doesn't stop the rest), and the real gateway error is captured per recipient rather than discarded, both into the returned list and into the server log for this deployment's own debugging. */
+  private async dispatchToRecipients(
+    businessId: string,
+    campaign: Pick<MarketingEmailCampaign, 'subject'>,
+    recipients: string[],
+    html: string,
+    text: string,
+  ): Promise<{ sentCount: number; failedRecipients: MarketingEmailFailedRecipient[] }> {
+    let sentCount = 0;
+    const failedRecipients: MarketingEmailFailedRecipient[] = [];
+    for (const to of recipients) {
+      try {
+        await smtpEmailGateway.send({ businessId, to, subject: campaign.subject, body: text, html });
+        sentCount += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`MarketingEmailService: send failed for ${to}: ${message}`);
+        failedRecipients.push({ email: to, error: message });
+      }
+    }
+    return { sentCount, failedRecipients };
   }
 
   /** Real, published reviews only — see `ReviewService.listPublished`. A fresh read at send time, not whatever the composer happened to preview earlier. */

@@ -44,6 +44,12 @@ export interface MarketingEmailTestimonial {
   body: string;
 }
 
+/** One recipient a send attempt actually failed for, and the real gateway error — never silently discarded (§ Admin: Marketing Emails' "why did this fail" gap). */
+export interface MarketingEmailFailedRecipient {
+  email: string;
+  error: string;
+}
+
 /**
  * `marketingEmailCampaigns/{campaignId}` — a staff-composed branded
  * email blast (§ Admin: Marketing Emails). Deliberately its own
@@ -81,5 +87,7 @@ export interface MarketingEmailCampaign extends AuditFields {
   recipientCount: number;
   sentCount: number;
   failedCount: number;
+  /** Exactly who failed and why, from the most recent send/resend attempt — `null` once every recipient has succeeded, so "Resend to failed recipients" always has a real, current list to work from instead of a stale one. */
+  failedRecipients: MarketingEmailFailedRecipient[] | null;
   sentAt: Timestamp | null;
 }
