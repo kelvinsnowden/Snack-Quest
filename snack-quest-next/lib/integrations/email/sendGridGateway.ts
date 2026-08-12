@@ -27,10 +27,14 @@ class SendGridGateway implements EmailGateway {
   }
 
   /** `businessId` is accepted and ignored: this is the platform-wide fallback, one account for the whole deployment (see `smtpEmailGateway` for the per-business path). */
-  async send(input: { businessId?: string; to: string; subject: string; body: string }): Promise<EmailSendResult> {
+  async send(input: { businessId?: string; to: string; subject: string; body: string; html?: string }): Promise<EmailSendResult> {
     const { apiKey, fromEmail } = this.requireConfig();
 
     return withCircuitBreaker(GATEWAY_NAME, async () => {
+      const content = [{ type: 'text/plain', value: input.body }];
+      if (input.html) {
+        content.push({ type: 'text/html', value: input.html });
+      }
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
@@ -41,7 +45,7 @@ class SendGridGateway implements EmailGateway {
           personalizations: [{ to: [{ email: input.to }] }],
           from: { email: fromEmail },
           subject: input.subject,
-          content: [{ type: 'text/plain', value: input.body }],
+          content,
         }),
       });
 

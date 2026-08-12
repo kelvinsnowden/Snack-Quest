@@ -78,6 +78,7 @@ class NotificationService {
 
     const renderedBody = renderTemplate(template.bodyTemplate, input.params);
     const renderedSubject = template.subject ? renderTemplate(template.subject, input.params) : null;
+    const renderedHtmlBody = template.htmlBodyTemplate ? renderTemplate(template.htmlBodyTemplate, input.params) : null;
 
     const outboundId = `${input.channel}:${input.dedupeKey}`;
     const { created } = await outboundMessageRepository.create(outboundId, {
@@ -88,6 +89,7 @@ class NotificationService {
       recipientRef: input.recipientRef,
       renderedSubject,
       renderedBody,
+      renderedHtmlBody,
       providerMessageId: null,
       status: 'queued',
       failureReason: null,
@@ -115,7 +117,7 @@ class NotificationService {
       }
     }
 
-    await this.dispatch(businessId, outboundId, input.channel, input.recipientRef, renderedSubject, renderedBody);
+    await this.dispatch(businessId, outboundId, input.channel, input.recipientRef, renderedSubject, renderedBody, renderedHtmlBody);
   }
 
   async retrySweep(businessId: string, retryCeiling = DEFAULT_RETRY_CEILING): Promise<{ attempted: number }> {
@@ -123,7 +125,7 @@ class NotificationService {
 
     for (const { id, data } of retryable) {
       await outboundMessageRepository.incrementRetryCount(id);
-      await this.dispatch(businessId, id, data.channel, data.recipientRef, data.renderedSubject, data.renderedBody);
+      await this.dispatch(businessId, id, data.channel, data.recipientRef, data.renderedSubject, data.renderedBody, data.renderedHtmlBody);
     }
 
     return { attempted: retryable.length };
@@ -136,9 +138,10 @@ class NotificationService {
     recipientRef: string,
     subject: string | null,
     body: string,
+    htmlBody: string | null,
   ): Promise<void> {
     try {
-      const result = await this.sendViaChannel(businessId, channel, recipientRef, subject, body);
+      const result = await this.sendViaChannel(businessId, channel, recipientRef, subject, body, htmlBody);
       await outboundMessageRepository.markSent(outboundId, result.providerMessageId);
     } catch (error) {
       await outboundMessageRepository.markFailed(
@@ -154,12 +157,13 @@ class NotificationService {
     recipientRef: string,
     subject: string | null,
     body: string,
+    htmlBody: string | null,
   ): Promise<{ providerMessageId: string }> {
     switch (channel) {
       case 'whatsapp':
         return this.whatsapp.sendMessage({ businessId, phone: recipientRef, text: body });
       case 'email':
-        return this.email.send({ businessId, to: recipientRef, subject: subject ?? '', body });
+        return this.email.send({ businessId, to: recipientRef, subject: subject ?? '', body, html: htmlBody ?? undefined });
       case 'sms':
         return this.sms.send({ to: recipientRef, body });
       case 'in_app':

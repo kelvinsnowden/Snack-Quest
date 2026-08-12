@@ -37,6 +37,8 @@ export interface NotificationTemplate {
   subject: string | null;
   /** `{{token}}` placeholders, one per entry in `requiredParams`. */
   bodyTemplate: string;
+  /** Email only — the branded HTML alternative sent alongside `bodyTemplate`'s plain text. `null` for every non-email template, and for any email template that hasn't been given one yet (falls back to plain text only). */
+  htmlBodyTemplate: string | null;
   requiredParams: string[];
   version: number;
   isActive: boolean;
@@ -70,6 +72,8 @@ export interface OutboundMessage {
    */
   renderedSubject: string | null;
   renderedBody: string;
+  /** Email only — the rendered HTML alternative, `null` when the template has none (plain-text send). */
+  renderedHtmlBody: string | null;
   providerMessageId: string | null;
   status: OutboundMessageStatus;
   failureReason: string | null;

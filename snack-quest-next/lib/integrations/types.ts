@@ -437,7 +437,7 @@ export interface EmailGateway {
    * Admin sends from its own domain, and only one that hasn't falls
    * back to the platform-wide SendGrid account.
    */
-  send(input: { businessId: string; to: string; subject: string; body: string }): Promise<EmailSendResult>;
+  send(input: { businessId: string; to: string; subject: string; body: string; html?: string }): Promise<EmailSendResult>;
 }
 
 export interface SmsSendResult {

@@ -11,6 +11,8 @@ import { createInTransaction as createReferralLinkInTransaction } from '@/reposi
 import { generateUniqueReferralCode } from '@/lib/creators/referralCode';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 import {
   REFERRAL_DISCOUNT_KES,
   resolveCommissionRateKes,
@@ -196,6 +198,25 @@ class CreatorAuthService {
       decoded.uid,
       { referralCode },
     );
+
+    const recipientEmail = existingUser?.email ?? decoded.email ?? '';
+    if (recipientEmail) {
+      try {
+        await notificationService.send(businessId, {
+          channel: 'email',
+          templateCode: 'creator_registered_welcome_email',
+          recipientType: 'creator',
+          recipientId: decoded.uid,
+          recipientRef: recipientEmail,
+          params: { displayName: trimmedName, referralCode, portalUrl: `${getSiteUrl()}/creator` },
+          dedupeKey: `creator-welcome:${decoded.uid}`,
+        });
+      } catch {
+        // Real send failures are already recorded on the outboundMessage
+        // itself (NotificationService swallows dispatch errors) —
+        // registration must never fail just because the welcome email did.
+      }
+    }
 
     const cookie = await adminAuth.createSessionCookie(idToken, {
       expiresIn: SESSION_MAX_AGE_MS,
