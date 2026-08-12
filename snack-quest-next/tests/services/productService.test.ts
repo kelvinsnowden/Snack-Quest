@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { businessRepository } from '@/repositories/businessRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { ProductNotFoundError, productService } from '@/services/productService';
+import type { Package } from '@/types';
 
 /**
  * `productService` owns every product write (§ product catalog sync —
@@ -86,6 +88,31 @@ describe('ProductService.createProduct / updateProduct — catalog sync', () => 
    * `ProductCatalogSyncFailed` event branch stays for a future Gateway
    * that really can push items; no WhatChimp call can reach it today.
    */
+  it('never calls the WhatsApp catalog for the exit-intent rescue offer', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
+      apiKey: 'key',
+      phoneNumberId: 'wa-product-service-test',
+      catalogId: 'catalog-1',
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await productService.createProduct(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: 'Try before you commit',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+      },
+      'admin',
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('saves the product and logs nothing when the provider cannot push catalog items at all', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
       apiKey: 'key',
@@ -115,6 +142,80 @@ describe('ProductService.createProduct / updateProduct — catalog sync', () => 
     expect(stored?.name).toBe('Deluxe Box');
   });
 
+});
+
+describe('ProductService.getRescueOffer', () => {
+  it('returns null when no package is flagged as the rescue offer', async () => {
+    expect(await productService.getRescueOffer(BUSINESS_ID)).toBeNull();
+  });
+
+  it('returns null when the flagged package is inactive', async () => {
+    await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: 'desc',
+        priceKes: 1500,
+        isActive: false,
+        imageUrl: null,
+        isRescueOffer: true,
+      },
+      'admin',
+    );
+    expect(await productService.getRescueOffer(BUSINESS_ID)).toBeNull();
+  });
+
+  it('returns null once the offer has expired', async () => {
+    await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: 'desc',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+        offerExpiresAt: Timestamp.fromMillis(Date.now() - 1000) as unknown as Package['offerExpiresAt'],
+      },
+      'admin',
+    );
+    expect(await productService.getRescueOffer(BUSINESS_ID)).toBeNull();
+  });
+
+  it('returns the offer when active and not expired', async () => {
+    const packageId = await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: 'desc',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+        offerExpiresAt: Timestamp.fromMillis(Date.now() + 60 * 60 * 1000) as unknown as Package['offerExpiresAt'],
+      },
+      'admin',
+    );
+    const offer = await productService.getRescueOffer(BUSINESS_ID);
+    expect(offer?.id).toBe(packageId);
+    expect(offer?.data.priceKes).toBe(1500);
+  });
+
+  it('returns the offer when it has no expiration set at all', async () => {
+    const packageId = await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: 'desc',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+      },
+      'admin',
+    );
+    expect((await productService.getRescueOffer(BUSINESS_ID))?.id).toBe(packageId);
+  });
 });
 
 describe('ProductService.getCheckoutableProduct', () => {

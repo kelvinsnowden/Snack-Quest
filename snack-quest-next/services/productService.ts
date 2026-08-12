@@ -7,6 +7,7 @@ import {
   WhatchimpCapabilityNotSupportedError,
 } from '@/lib/integrations/whatchimp/config';
 import { publishEvent } from '@/lib/events/eventBus';
+import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import type { Package } from '@/types';
 
 export class ProductNotFoundError extends Error {
@@ -92,11 +93,37 @@ class ProductService {
     return product;
   }
 
+  /**
+   * The exit-intent rescue offer, if one is configured, currently
+   * active, and not expired (§ exit-intent rescue offer) — `null`
+   * otherwise, which is the caller's signal not to render or mount
+   * anything (the popup, the checkout-page direct-link fallback). This
+   * is the one place "is the rescue offer live right now" gets decided
+   * — never re-checked ad hoc at a call site.
+   */
+  async getRescueOffer(businessId: string): Promise<{ id: string; data: Package } | null> {
+    const found = await packageRepository.findRescueOffer(businessId);
+    if (!found || !found.data.isActive || isOfferExpired(found.data.offerExpiresAt)) {
+      return null;
+    }
+    return found;
+  }
+
   private async syncToCatalog(
     businessId: string,
     packageId: string,
-    data: Pick<PackageInput, 'name' | 'description' | 'priceKes' | 'imageUrl' | 'isActive' | 'stockCount'>,
+    data: Pick<
+      PackageInput,
+      'name' | 'description' | 'priceKes' | 'imageUrl' | 'isActive' | 'stockCount' | 'isRescueOffer'
+    >,
   ): Promise<void> {
+    // The rescue offer is deliberately never a WhatsApp catalog item —
+    // it's reachable only through its own direct checkout link, not
+    // something a WhatsApp customer should be able to browse to and
+    // order generally (§ exit-intent rescue offer).
+    if (data.isRescueOffer) {
+      return;
+    }
     const inStock = data.isActive && (data.stockCount === undefined || data.stockCount > 0);
     try {
       await whatchimpGateway.syncItem(businessId, {

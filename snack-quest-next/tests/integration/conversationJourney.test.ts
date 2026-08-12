@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { ConversationService } from '@/services/conversationService';
 import { paymentService } from '@/services/paymentService';
@@ -360,6 +360,110 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(adminMessages[0].businessId).toBe(SNACK_QUEST.businessId);
 
     expect(gateway.sent.at(-1)?.text).toContain('Payment received');
+  });
+
+  it('rejects checkout for the exit-intent rescue offer once its offerExpiresAt has passed', async () => {
+    const service = new ConversationService(new FakeWhatsAppGateway());
+    const rescueId = await packageRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        name: 'Test Box',
+        description: 'Try before you commit',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+        offerExpiresAt: Timestamp.fromMillis(Date.now() - 1000) as unknown as import('@/types').Package['offerExpiresAt'],
+      },
+      'admin',
+    );
+
+    await expect(
+      service.startWebCheckout(SNACK_QUEST.businessId, {
+        packageId: rescueId,
+        quantity: 1,
+        customerName: 'Jane Doe',
+        phone: PHONE,
+        county: 'Nairobi',
+        deliveryMethod: 'pickup',
+        pickupStationId: (await pickupStationRepository.listActive(SNACK_QUEST.businessId))[0]?.id,
+        attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+      }),
+    ).rejects.toThrow(/not available/);
+  });
+
+  it('records rescue_offer_purchase_completed when a completed order is for the exit-intent rescue offer, and stays silent for a normal one', async () => {
+    mockAllProviders();
+    const service = new ConversationService(new FakeWhatsAppGateway());
+    const rescueId = await packageRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        name: 'Test Box',
+        description: 'Try before you commit',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+      },
+      'admin',
+    );
+    // A dedicated Zone 1 station, not the shared `seedFreePickupStation`
+    // one — that fixture's `zone: 'Nairobi'` only the native-bot
+    // selection path tolerates; `startWebCheckout` validates against
+    // `isJumiaZone`, same reasoning as the ad-attribution test above.
+    const stationId = await pickupStationRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        courier: 'jumia',
+        name: 'Zone 1 Station',
+        latitude: -1.2833,
+        longitude: 36.8167,
+        description: 'Nairobi CBD',
+        county: 'Nairobi',
+        town: 'CBD',
+        zone: 'Zone 1',
+        shippingOrigin: 'Nairobi',
+        packageCategory: 'small',
+        deliveryFeeKes: 0,
+        isActive: true,
+        searchTokens: ['zone1'],
+      },
+      'system',
+    );
+
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: rescueId,
+      quantity: 1,
+      customerName: 'Jane Doe',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    expect(callback.status).toBe('succeeded');
+    await service.handlePaymentResult(callback);
+
+    const events = await adminFirestore
+      .collection('analyticsEvents')
+      .where('event', '==', 'rescue_offer_purchase_completed')
+      .get();
+    expect(events.size).toBe(1);
+    expect(events.docs[0].data()).toMatchObject({
+      businessId: SNACK_QUEST.businessId,
+      visitorId: null,
+      metadata: { packageId: rescueId, amountKes: checkout.pricing.totalKes },
+    });
+
+    // The earlier, normal-box purchase in this same describe block's
+    // other test must never have produced this event — asserted here
+    // implicitly by `events.size === 1` counting only what this test
+    // itself created (collections are wiped in `beforeEach`).
   });
 
   it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {

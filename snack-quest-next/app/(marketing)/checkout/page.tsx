@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { REFERRAL_COOKIE_NAME, resolveReferralCode } from '@/lib/creators/referralCookie';
 import { packageRepository } from '@/repositories/packageRepository';
+import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { CheckoutForm, type CheckoutBox } from '@/components/checkout/CheckoutForm';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
@@ -39,7 +40,23 @@ export default async function CheckoutPage({
   const referralCode = resolveReferralCode(refParam, cookieStore.get(REFERRAL_COOKIE_NAME)?.value);
 
   const active = await packageRepository.listActive(businessId);
-  const boxes: CheckoutBox[] = active.map(({ id, data }) => ({
+
+  // `listActive()` deliberately excludes the exit-intent rescue offer
+  // (§ exit-intent rescue offer) — it must never appear in this
+  // page's general box grid. But a visitor arriving via the offer's
+  // own `?box=<id>` link still needs to land on a working checkout
+  // for it, so it's fetched and spliced in only when it's the box
+  // actually being requested, active, and not expired.
+  let rescueBox: { id: string; data: NonNullable<Awaited<ReturnType<typeof packageRepository.findById>>> } | null =
+    null;
+  if (requestedBoxId && !active.some(({ id }) => id === requestedBoxId)) {
+    const candidate = await packageRepository.findById(businessId, requestedBoxId);
+    if (candidate?.isRescueOffer && candidate.isActive && !isOfferExpired(candidate.offerExpiresAt)) {
+      rescueBox = { id: requestedBoxId, data: candidate };
+    }
+  }
+
+  const boxes: CheckoutBox[] = [...active, ...(rescueBox ? [rescueBox] : [])].map(({ id, data }) => ({
     id,
     name: data.name,
     description: data.description,
@@ -49,6 +66,7 @@ export default async function CheckoutPage({
     // zero, which would render every box as sold out.
     stockCount: data.stockCount ?? null,
     snackCountLabel: data.snackCountLabel ?? null,
+    isRescueOffer: data.isRescueOffer ?? false,
   }));
 
   // Tighter on a phone than a marketing page would be: a hero-sized

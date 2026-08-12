@@ -3,6 +3,7 @@ import { CheckCircle2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
+import { PurchaseCompletedFlag } from './PurchaseCompletedFlag';
 import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
 
 /**
@@ -23,6 +24,7 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
 
   return (
     <div className="flex flex-col items-center gap-8 text-center">
+      <PurchaseCompletedFlag />
       <span className="bg-success/10 text-success flex size-20 items-center justify-center rounded-full">
         <CheckCircle2 className="size-10" aria-hidden="true" />
       </span>

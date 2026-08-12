@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Check, Minus, Plus, Store, Truck } from 'lucide-react';
@@ -14,6 +14,8 @@ import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
 import { MPESA_RECIPIENT_NAME } from '@/lib/config/mpesaRecipient';
 import { cn } from '@/lib/utils';
+import { trackEvent } from '@/lib/analytics/trackEvent';
+import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import type { DeliveryMethod } from '@/types/delivery';
 import type { WebCheckoutQuote, WebCheckoutResponse } from '@/types/webCheckout';
 
@@ -44,6 +46,7 @@ export interface CheckoutBox {
   imageUrl: string | null;
   stockCount: number | null;
   snackCountLabel: string | null;
+  isRescueOffer: boolean;
 }
 
 const MAX_QUANTITY = MAX_CHECKOUT_QUANTITY;
@@ -75,6 +78,22 @@ export function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
 
   const box = useMemo(() => boxes.find((candidate) => candidate.id === boxId) ?? null, [boxes, boxId]);
+
+  // Fires once, only when checkout actually loaded with the rescue
+  // offer as the box in play — i.e. the visitor arrived via its own
+  // direct link, not by picking it out of a general grid it never
+  // appears in (§ exit-intent rescue offer). Intentionally keyed off
+  // the *initial* box, not every later re-selection: switching away
+  // and back mid-session shouldn't recount as a fresh funnel entry.
+  const startedTrackingRef = useRef(false);
+  useEffect(() => {
+    if (startedTrackingRef.current) return;
+    if (boxId && boxes.find((candidate) => candidate.id === boxId)?.isRescueOffer) {
+      startedTrackingRef.current = true;
+      trackEvent(RESCUE_OFFER_EVENTS.checkoutStarted, { packageId: boxId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once for the box checkout loaded with, not on every boxId change.
+  }, []);
 
   const quote = useCheckoutQuote({
     packageId: boxId,

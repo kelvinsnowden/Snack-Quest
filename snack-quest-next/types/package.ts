@@ -1,3 +1,4 @@
+import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 
 /**
@@ -36,4 +37,25 @@ export interface Package extends AuditFields {
    * rather than showing a fabricated count.
    */
   snackCountLabel?: string;
+  /**
+   * Marks this as the exit-intent rescue offer (§ exit-intent rescue
+   * offer) — a normal package in every other respect, but excluded
+   * from `packageRepository.listActive()` (so it never appears in Pick
+   * Your Box, the WhatsApp numbered box list, or the checkout page's
+   * own grid) and from the WhatsApp catalog sync `ProductService` owns.
+   * It is still purchasable through the exact same checkout — only
+   * ever reachable via its direct `/checkout?box=<id>` link, which is
+   * what the exit-intent popup uses. At most one package should carry
+   * this at a time; that's a business rule, not something the schema
+   * enforces. Undefined/false everywhere else.
+   */
+  isRescueOffer?: boolean;
+  /**
+   * Real, optional expiration for a limited-time offer like the rescue
+   * box — checked both when deciding whether to show the offer and at
+   * the checkout gate itself (`ConversationService.startWebCheckout`),
+   * so a stale bookmarked link can't buy at an expired price. `null`/
+   * undefined = no expiration set, never treated as "already expired".
+   */
+  offerExpiresAt?: Timestamp | null;
 }
