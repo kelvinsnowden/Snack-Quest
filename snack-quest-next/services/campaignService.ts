@@ -3,7 +3,10 @@ import 'server-only';
 import { campaignRepository, type CampaignInput } from '@/repositories/campaignRepository';
 import { campaignSubmissionRepository } from '@/repositories/campaignSubmissionRepository';
 import { publishEvent } from '@/lib/events/eventBus';
+import { MAX_CAMPAIGN_IMAGES, MAX_SUBMISSION_IMAGES } from '@/lib/campaigns/limits';
 import type { Campaign, CampaignSubmission, CampaignStatus } from '@/types';
+
+export { MAX_CAMPAIGN_IMAGES, MAX_SUBMISSION_IMAGES };
 
 export class CampaignNotFoundError extends Error {
   constructor(campaignId: string) {
@@ -39,7 +42,8 @@ export interface SubmitDeliverableInput {
   campaignId: string;
   creatorId: string;
   submissionType: string;
-  fileUrl?: string | null;
+  imageUrls?: string[] | null;
+  documentUrl?: string | null;
   socialLink?: string | null;
   notes?: string;
 }
@@ -107,6 +111,28 @@ class CampaignService {
     ) {
       throw new InvalidCampaignInputError('"assetsUrl" must be a non-empty URL string or null.');
     }
+    if (input.imageUrls !== undefined) {
+      if (!Array.isArray(input.imageUrls) || input.imageUrls.some((url) => typeof url !== 'string' || !url.trim())) {
+        throw new InvalidCampaignInputError('"imageUrls" must be an array of non-empty URL strings.');
+      }
+      if (input.imageUrls.length > MAX_CAMPAIGN_IMAGES) {
+        throw new InvalidCampaignInputError(`"imageUrls" can hold at most ${MAX_CAMPAIGN_IMAGES} images.`);
+      }
+    }
+    if (
+      input.documentUrl !== undefined &&
+      input.documentUrl !== null &&
+      input.documentUrl.trim().length === 0
+    ) {
+      throw new InvalidCampaignInputError('"documentUrl" must be a non-empty URL string or null.');
+    }
+    if (
+      input.referenceLink !== undefined &&
+      input.referenceLink !== null &&
+      input.referenceLink.trim().length === 0
+    ) {
+      throw new InvalidCampaignInputError('"referenceLink" must be a non-empty URL string or null.');
+    }
   }
 
   async listSubmissionsForCreator(
@@ -114,6 +140,14 @@ class CampaignService {
     creatorId: string,
   ): Promise<{ id: string; data: CampaignSubmission }[]> {
     return campaignSubmissionRepository.listByCreator(businessId, creatorId);
+  }
+
+  /** § Admin: Campaigns submissions — every creator's proof for one campaign. */
+  async listSubmissionsForCampaign(
+    businessId: string,
+    campaignId: string,
+  ): Promise<{ id: string; data: CampaignSubmission }[]> {
+    return campaignSubmissionRepository.listByCampaign(businessId, campaignId);
   }
 
   async submitDeliverable(businessId: string, input: SubmitDeliverableInput): Promise<string> {
@@ -128,11 +162,15 @@ class CampaignService {
       throw new CampaignNotJoinableError(input.campaignId, 'deadline has passed');
     }
 
-    const fileUrl = input.fileUrl?.trim() || null;
+    const imageUrls = (input.imageUrls ?? []).map((url) => url.trim()).filter(Boolean);
+    if (imageUrls.length > MAX_SUBMISSION_IMAGES) {
+      throw new InvalidSubmissionError(`You can attach at most ${MAX_SUBMISSION_IMAGES} images.`);
+    }
+    const documentUrl = input.documentUrl?.trim() || null;
     const socialLink = input.socialLink?.trim() || null;
     const notes = input.notes?.trim() ?? '';
-    if (!fileUrl && !socialLink && !notes) {
-      throw new InvalidSubmissionError('Provide at least a social link, a file, or a note as proof.');
+    if (imageUrls.length === 0 && !documentUrl && !socialLink && !notes) {
+      throw new InvalidSubmissionError('Provide at least a social link, an image, a document, or a comment as proof.');
     }
     if (!input.submissionType.trim()) {
       throw new InvalidSubmissionError('"submissionType" is required.');
@@ -145,7 +183,8 @@ class CampaignService {
         campaignTitle: campaign.title,
         creatorId: input.creatorId,
         submissionType: input.submissionType.trim(),
-        fileUrl,
+        imageUrls,
+        documentUrl,
         socialLink,
         notes,
         status: 'pending',

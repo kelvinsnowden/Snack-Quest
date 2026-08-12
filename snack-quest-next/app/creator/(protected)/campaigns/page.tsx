@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Film, Megaphone } from 'lucide-react';
 import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { campaignService } from '@/services/campaignService';
@@ -48,30 +49,36 @@ export default async function CreatorCampaignsPage() {
                 key={id}
                 className="border-border bg-surface flex flex-col overflow-hidden rounded-lg border"
               >
-                {data.assetsUrl && !isVideo ? (
-                  <div className="bg-muted relative aspect-[16/9] w-full">
-                    <Image
-                      src={data.assetsUrl}
-                      alt={data.title}
-                      fill
-                      sizes="(min-width: 768px) 50vw, 100vw"
-                      className="object-cover"
-                    />
-                    <span className="bg-primary text-primary-foreground absolute top-3 left-3 rounded-full px-3 py-1 text-xs font-semibold shadow-sm">
-                      {formatKes(data.commissionRateKes)}
-                    </span>
-                    {isClosingSoon ? (
-                      <span className="bg-warning text-warning-foreground absolute top-3 right-3 rounded-full px-3 py-1 text-xs font-semibold shadow-sm">
-                        {urgencyLabel(daysLeft)}
+                <Link
+                  href={`/creator/campaigns/${id}`}
+                  className="focus-visible:ring-primary focus-visible:ring-offset-background block focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  {data.assetsUrl && !isVideo ? (
+                    <div className="bg-muted relative aspect-[16/9] w-full">
+                      <Image
+                        src={data.assetsUrl}
+                        alt={data.title}
+                        fill
+                        sizes="(min-width: 768px) 50vw, 100vw"
+                        className="object-cover"
+                      />
+                      <span className="bg-primary text-primary-foreground absolute top-3 left-3 rounded-full px-3 py-1 text-xs font-semibold shadow-sm">
+                        {formatKes(data.commissionRateKes)}
                       </span>
-                    ) : null}
-                  </div>
-                ) : null}
+                      {isClosingSoon ? (
+                        <span className="bg-warning text-warning-foreground absolute top-3 right-3 rounded-full px-3 py-1 text-xs font-semibold shadow-sm">
+                          {urgencyLabel(daysLeft)}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
 
-                <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-                  <h2 className="text-card-title text-foreground font-semibold">
+                  <h2 className="text-card-title text-foreground p-4 pb-0 font-semibold md:p-6 md:pb-0">
                     {data.title}
                   </h2>
+                </Link>
+
+                <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
                   <p className="text-muted-foreground text-sm">{data.rules}</p>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -131,9 +138,12 @@ export default async function CreatorCampaignsPage() {
               <li key={id} className="flex flex-col gap-2 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-foreground truncate font-medium">
+                    <Link
+                      href={`/creator/campaigns/${data.campaignId}`}
+                      className="text-foreground focus-visible:ring-primary focus-visible:ring-offset-background truncate font-medium hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    >
                       {data.campaignTitle}
-                    </p>
+                    </Link>
                     <p className="text-muted-foreground text-sm">
                       {data.submissionType} · {formatDate(data.createdAt)}
                     </p>

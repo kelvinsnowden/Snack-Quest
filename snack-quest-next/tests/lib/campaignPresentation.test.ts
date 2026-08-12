@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Timestamp } from 'firebase-admin/firestore';
-import { daysUntilDeadline, isVideoAsset, urgencyLabel } from '@/lib/creator/campaignPresentation';
+import { daysUntilDeadline, isDeadlinePassed, isVideoAsset, urgencyLabel } from '@/lib/creator/campaignPresentation';
 
 describe('isVideoAsset', () => {
   it('recognises common video extensions regardless of query string', () => {
@@ -29,6 +29,21 @@ describe('daysUntilDeadline', () => {
   it('returns a non-positive number for a deadline already passed', () => {
     const deadline = Timestamp.fromMillis(Date.now() - 1000 * 60 * 60 * 24);
     expect(daysUntilDeadline(deadline)).toBeLessThanOrEqual(0);
+  });
+});
+
+describe('isDeadlinePassed', () => {
+  it('returns false for an unset deadline', () => {
+    expect(isDeadlinePassed(null)).toBe(false);
+    expect(isDeadlinePassed(undefined)).toBe(false);
+  });
+
+  it('returns true once the deadline millis are behind now', () => {
+    expect(isDeadlinePassed(Timestamp.fromMillis(Date.now() - 1000))).toBe(true);
+  });
+
+  it('returns false while the deadline is still ahead of now', () => {
+    expect(isDeadlinePassed(Timestamp.fromMillis(Date.now() + 1000 * 60 * 60 * 24))).toBe(false);
   });
 });
 

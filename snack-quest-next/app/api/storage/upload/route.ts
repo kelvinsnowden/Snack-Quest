@@ -17,9 +17,12 @@ import { verifyCreatorSessionFromRequest } from '@/lib/auth/creatorSession';
  * whichever verified session made the request, never from the request
  * body, so a caller can never upload into another tenant's storage
  * path by supplying a different id. A creator-authenticated request is
- * additionally pinned to the `creators` directory — the only one this
- * route lets a non-staff caller write into.
+ * additionally pinned to `CREATOR_ALLOWED_DIRECTORIES` — the only
+ * directories this route lets a non-staff caller write into: `creators`
+ * (profile photo, campaign submission images) and `documents` (a
+ * campaign submission's supporting PDF).
  */
+const CREATOR_ALLOWED_DIRECTORIES = ['creators', 'documents'] as const;
 export async function POST(request: Request): Promise<Response> {
   const staffSession = await verifyStaffSessionFromRequest(request);
   const creatorSession = staffSession ? null : await verifyCreatorSessionFromRequest(request);
@@ -47,9 +50,9 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  if (creatorSession && directory !== 'creators') {
+  if (creatorSession && !CREATOR_ALLOWED_DIRECTORIES.includes(directory as (typeof CREATOR_ALLOWED_DIRECTORIES)[number])) {
     return Response.json(
-      { error: 'Creators can only upload to the "creators" directory.' },
+      { error: `Creators can only upload to: ${CREATOR_ALLOWED_DIRECTORIES.join(', ')}.` },
       { status: 403 },
     );
   }

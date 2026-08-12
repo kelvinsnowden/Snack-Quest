@@ -38,6 +38,21 @@ class CampaignSubmissionRepository {
 
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as CampaignSubmission }));
   }
+
+  /** § Admin: Campaigns submissions — every creator's proof for one campaign, newest first. */
+  async listByCampaign(
+    businessId: string,
+    campaignId: string,
+  ): Promise<{ id: string; data: CampaignSubmission }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('campaignId', '==', campaignId)
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as CampaignSubmission }));
+  }
 }
 
 export const campaignSubmissionRepository = new CampaignSubmissionRepository();

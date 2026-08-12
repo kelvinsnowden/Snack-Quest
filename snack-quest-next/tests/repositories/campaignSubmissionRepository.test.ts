@@ -12,7 +12,8 @@ async function seedSubmission(overrides: Partial<Parameters<typeof campaignSubmi
       campaignTitle: 'Back to School',
       creatorId: 'creator-1',
       submissionType: 'social_post',
-      fileUrl: null,
+      imageUrls: [],
+      documentUrl: null,
       socialLink: 'https://instagram.com/p/123',
       notes: '',
       status: 'pending',
@@ -40,5 +41,19 @@ describe('campaignSubmissionRepository.listByCreator', () => {
 
     expect(results).toHaveLength(2);
     expect(results.every((r) => r.data.creatorId === 'creator-1')).toBe(true);
+  });
+});
+
+describe('campaignSubmissionRepository.listByCampaign', () => {
+  it('returns only the given campaign’s submissions for the given business, newest first', async () => {
+    await seedSubmission({ campaignId: 'campaign-1' });
+    await seedSubmission({ campaignId: 'campaign-1', creatorId: 'creator-2' });
+    await seedSubmission({ campaignId: 'campaign-2' });
+    await seedSubmission({ businessId: 'other-business', campaignId: 'campaign-1' });
+
+    const results = await campaignSubmissionRepository.listByCampaign(BUSINESS_ID, 'campaign-1');
+
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.data.campaignId === 'campaign-1')).toBe(true);
   });
 });

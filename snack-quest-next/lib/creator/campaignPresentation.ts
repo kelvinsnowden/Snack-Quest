@@ -21,6 +21,13 @@ export function daysUntilDeadline(value: unknown): number | null {
   return Math.ceil((date.getTime() - Date.now()) / msPerDay);
 }
 
+/** Whether a campaign's deadline Timestamp has already passed — the same check `CampaignService.submitDeliverable` gates joining on, kept here so a Server Component never calls `Date.now()` directly in its own render body. */
+export function isDeadlinePassed(value: unknown): boolean {
+  const timestamp = value as { toMillis?: () => number } | undefined;
+  const millis = timestamp?.toMillis ? timestamp.toMillis() : null;
+  return millis !== null && millis < Date.now();
+}
+
 export function urgencyLabel(daysLeft: number): string {
   if (daysLeft <= 0) return 'Ends today';
   if (daysLeft === 1) return '1 day left';

@@ -22,9 +22,8 @@ type CampaignEntry = { id: string; data: Campaign };
  * The featured pick is real ranking, not editorial choice: soonest
  * real deadline first (genuinely time-sensitive beats everything),
  * falling back to the highest commission when no campaign has one.
- * Both surfaces link to `/creator/campaigns` rather than a per-
- * campaign URL — this app has no campaign detail route, so a deeper
- * link would be a dead end dressed up as a real destination.
+ * Both surfaces link straight to that campaign's own detail route
+ * (§ campaign attachments) rather than the plain list.
  */
 function pickFeatured(campaigns: CampaignEntry[]): CampaignEntry | null {
   if (campaigns.length === 0) return null;
@@ -49,7 +48,7 @@ export function FeaturedCampaignBanner({ campaigns }: { campaigns: CampaignEntry
 
   return (
     <Link
-      href="/creator/campaigns"
+      href={`/creator/campaigns/${featured.id}`}
       className="focus-visible:ring-primary focus-visible:ring-offset-background group relative block overflow-hidden rounded-2xl focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
     >
       <div className="from-foreground via-foreground/90 relative aspect-[16/9] w-full bg-gradient-to-br to-[#4a2e12] sm:aspect-[21/9]">
@@ -115,7 +114,7 @@ export function CampaignCarousel({ campaigns }: { campaigns: CampaignEntry[] }) 
           return (
             <li key={id} className="w-[72vw] shrink-0 snap-start sm:w-64">
               <Link
-                href="/creator/campaigns"
+                href={`/creator/campaigns/${id}`}
                 className="border-border bg-surface focus-visible:ring-primary focus-visible:ring-offset-background block h-full overflow-hidden rounded-lg border focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
                 <div className="bg-muted-foreground/10 relative aspect-[4/3] w-full">

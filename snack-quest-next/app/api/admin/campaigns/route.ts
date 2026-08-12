@@ -11,6 +11,9 @@ interface CreateCampaignBody {
   targetNiche?: unknown;
   deadline?: unknown;
   assetsUrl?: unknown;
+  imageUrls?: unknown;
+  documentUrl?: unknown;
+  referenceLink?: unknown;
 }
 
 const CAMPAIGN_STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
@@ -40,6 +43,18 @@ function validate(body: CreateCampaignBody): { error: string } | null {
   }
   if (body.assetsUrl !== undefined && body.assetsUrl !== null && typeof body.assetsUrl !== 'string') {
     return { error: '"assetsUrl" must be a string or null when provided.' };
+  }
+  if (
+    body.imageUrls !== undefined &&
+    (!Array.isArray(body.imageUrls) || body.imageUrls.some((url) => typeof url !== 'string'))
+  ) {
+    return { error: '"imageUrls" must be an array of strings when provided.' };
+  }
+  if (body.documentUrl !== undefined && body.documentUrl !== null && typeof body.documentUrl !== 'string') {
+    return { error: '"documentUrl" must be a string or null when provided.' };
+  }
+  if (body.referenceLink !== undefined && body.referenceLink !== null && typeof body.referenceLink !== 'string') {
+    return { error: '"referenceLink" must be a string or null when provided.' };
   }
   return null;
 }
@@ -72,6 +87,9 @@ export async function POST(request: Request): Promise<Response> {
     targetNiche: (body.targetNiche as string).trim(),
     deadline: new Date(body.deadline as string) as unknown as Campaign['deadline'],
     assetsUrl: (body.assetsUrl as string | null | undefined) ?? null,
+    imageUrls: (body.imageUrls as string[] | undefined) ?? [],
+    documentUrl: (body.documentUrl as string | null | undefined) ?? null,
+    referenceLink: (body.referenceLink as string | null | undefined) ?? null,
     schemaVersion: 1,
   };
 
