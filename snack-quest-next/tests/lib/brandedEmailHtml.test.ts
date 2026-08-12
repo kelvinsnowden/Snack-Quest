@@ -33,13 +33,19 @@ describe('brandedEmailHtml', () => {
     const html = brandedEmailHtml({ heading: 'Hi <you>', bodyHtml: '<p>Body</p>' });
     expect(html).toContain('Hi &lt;you&gt;');
     expect(html).toContain('<p>Body</p>');
-    expect(html).not.toContain('<img');
     expect(html).not.toContain('<a href');
   });
 
-  it('includes a hero image when given, escaping the URL', () => {
+  it('always renders the real logo in the header band, absolute URL', () => {
+    const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B' });
+    expect(html).toContain('<img src="https://www.snackquests.shop/logo.png"');
+    expect(html).toContain('alt="Snack Quest"');
+  });
+
+  it('includes a hero image when given, escaping the URL, alongside (not instead of) the logo', () => {
     const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B', imageUrl: 'https://example.com/a.png?x=1&y=2' });
     expect(html).toContain('<img src="https://example.com/a.png?x=1&amp;y=2"');
+    expect(html.match(/<img /g)).toHaveLength(2);
   });
 
   it('includes a CTA button only when both label and URL are given', () => {
@@ -54,10 +60,10 @@ describe('brandedEmailHtml', () => {
     expect(urlOnly).not.toContain('<a href');
   });
 
-  it('carries no external images, web fonts, or tracking pixels beyond an explicit hero image', () => {
+  it('carries no external images beyond the fixed logo and an explicit hero image, and no web fonts or tracking pixels', () => {
     const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B' });
     expect(html).not.toMatch(/fonts\.googleapis|<link/);
-    expect(html).not.toContain('<img');
+    expect(html.match(/<img /g)).toHaveLength(1);
   });
 
   it('gives every gradient background a solid background-color fallback for clients that ignore CSS gradients', () => {

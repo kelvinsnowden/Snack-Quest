@@ -40,6 +40,10 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
 
   const availableTestimonials =
     campaign.status === 'draft' ? await marketingEmailService.fetchTestimonials(session.businessId) : [];
+  const initialSpecificCreators =
+    campaign.status === 'draft' && campaign.specificCreatorIds
+      ? await marketingEmailService.getCreatorSummaries(session.businessId, campaign.specificCreatorIds)
+      : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,6 +78,7 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
             includeTestimonials: campaign.includeTestimonials,
             segment: campaign.segment,
             customRecipientsText: (campaign.customRecipients ?? []).join('\n'),
+            specificCreators: initialSpecificCreators,
           }}
         />
       ) : (

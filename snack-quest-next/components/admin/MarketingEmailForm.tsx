@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { MarketingEmailPreview } from '@/components/admin/MarketingEmailPreview';
+import { CreatorPicker, type CreatorPickerResult } from '@/components/admin/CreatorPicker';
 import type { EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
 import type { MarketingEmailSegment } from '@/types';
 
@@ -34,6 +35,7 @@ export interface MarketingEmailFormValues {
   includeTestimonials: boolean;
   segment: MarketingEmailSegment;
   customRecipientsText: string;
+  specificCreators: CreatorPickerResult[];
 }
 
 interface MarketingEmailFormProps {
@@ -56,6 +58,7 @@ const DEFAULTS: MarketingEmailFormValues = {
   includeTestimonials: true,
   segment: 'active_creators',
   customRecipientsText: '',
+  specificCreators: [],
 };
 
 interface SegmentOption {
@@ -74,6 +77,7 @@ const SEGMENT_OPTIONS: SegmentOption[] = [
   { value: 'first_sale_creators', label: 'Made their first sale', helpText: 'Exactly one referral conversion so far.', group: 'Sales activity' },
   { value: 'repeat_creators', label: 'Repeat sellers', helpText: 'Two or more referral conversions.', group: 'Sales activity' },
   { value: 'new_creators', label: 'New creators (last 30 days)', helpText: 'Registered within the last 30 days.', group: 'Sales activity' },
+  { value: 'specific_creators', label: 'Specific creators', helpText: 'Search and hand-pick one or more real creators by name or email.', group: 'Other' },
   { value: 'custom', label: 'Custom list', helpText: 'Paste specific email addresses, one per line or comma-separated.', group: 'Other' },
 ];
 
@@ -113,6 +117,8 @@ function toDraftPayload(values: MarketingEmailFormValues) {
     includeTestimonials: values.includeTestimonials,
     segment: values.segment,
     customRecipients: values.segment === 'custom' ? parseCustomRecipients(values.customRecipientsText) : null,
+    specificCreatorIds:
+      values.segment === 'specific_creators' ? values.specificCreators.map((c) => c.id) : null,
   };
 }
 
@@ -134,16 +140,22 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
   const [sendResult, setSendResult] = useState<{ recipientCount: number; sentCount: number; failedCount: number } | null>(null);
 
   const customRecipientCount = parseCustomRecipients(values.customRecipientsText).length;
-  const displayedRecipientCount = values.segment === 'custom' ? customRecipientCount : recipientCount;
-  const displayedCountLoading = values.segment === 'custom' ? false : countLoading;
+  const displayedRecipientCount =
+    values.segment === 'custom'
+      ? customRecipientCount
+      : values.segment === 'specific_creators'
+        ? values.specificCreators.length
+        : recipientCount;
+  const displayedCountLoading = values.segment === 'custom' || values.segment === 'specific_creators' ? false : countLoading;
 
-  // Live recipient count for non-custom segments — refetched from the
-  // real resolver whenever the segment changes, so the number shown
-  // is never an estimate. The custom segment counts client-side
-  // instantly instead (derived above at render time, no fetch needed)
-  // — nothing to look up server-side until send time.
+  // Live recipient count for segments backed by a server-side query —
+  // refetched from the real resolver whenever the segment changes, so
+  // the number shown is never an estimate. `custom` and
+  // `specific_creators` count client-side instantly instead (derived
+  // above at render time, no fetch needed) — both already have every
+  // recipient in hand on screen, nothing to look up until send time.
   useEffect(() => {
-    if (values.segment === 'custom') {
+    if (values.segment === 'custom' || values.segment === 'specific_creators') {
       return;
     }
     let cancelled = false;
@@ -202,6 +214,9 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
     if (!values.bodyText.trim()) return 'Message body is required.';
     if (values.segment === 'custom' && parseCustomRecipients(values.customRecipientsText).length === 0) {
       return 'Add at least one valid recipient email for a custom list.';
+    }
+    if (values.segment === 'specific_creators' && values.specificCreators.length === 0) {
+      return 'Pick at least one creator.';
     }
     if (Boolean(values.ctaLabel.trim()) !== Boolean(values.ctaUrl.trim())) {
       return 'A button needs both a label and a URL, or neither.';
@@ -484,6 +499,16 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
                   onChange={(event) => setValues((v) => ({ ...v, customRecipientsText: event.target.value }))}
                   placeholder={'amina@example.com\njoseph@example.com'}
                   rows={5}
+                />
+              </div>
+            ) : null}
+
+            {values.segment === 'specific_creators' ? (
+              <div className="flex flex-col gap-1.5">
+                <Label>Creators</Label>
+                <CreatorPicker
+                  selected={values.specificCreators}
+                  onChange={(next) => setValues((v) => ({ ...v, specificCreators: next }))}
                 />
               </div>
             ) : null}

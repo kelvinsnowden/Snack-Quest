@@ -1,14 +1,14 @@
 /**
  * The one branded email shell every outbound Snack Quest email uses —
- * table-based layout, inline CSS only, no external images/web fonts/
- * tracking pixels (§ Creator lifecycle emails, § Admin: Marketing
- * Emails). No external asset ever loads except the one optional hero
- * image a sender explicitly attaches — everything else (the gradient
- * header, feature pills, testimonial cards, the CTA button) is pure
- * color and typography, so the email stays a few KB and a low text-
- * to-markup ratio regardless of how rich it looks, which is what
- * actually keeps spam filters happy — "lightweight" was never a
- * synonym for "plain."
+ * table-based layout, inline CSS only, no web fonts/tracking pixels (§
+ * Creator lifecycle emails, § Admin: Marketing Emails). Exactly two
+ * image requests ever load: the fixed logo in the header band (below)
+ * and the one optional hero image a sender explicitly attaches —
+ * everything else (the gradient header, feature pills, testimonial
+ * cards, the CTA button) is pure color and typography, so the email
+ * stays a few KB and a low text-to-markup ratio regardless of how rich
+ * it looks, which is what actually keeps spam filters happy —
+ * "lightweight" was never a synonym for "plain."
  *
  * Every color-heavy property (`background: linear-gradient(...)`,
  * `border-radius`, `box-shadow`) is decorative and has a safe
@@ -36,6 +36,18 @@ const MUTED = '#8a8a8a';
 const PAGE_BG = '#f4f2fb';
 const CARD_BG = '#faf9fd';
 const FONT_STACK = "Arial,Helvetica,'Segoe UI',sans-serif";
+
+/**
+ * The real logo, absolute URL (email clients can't resolve a relative
+ * path). Hardcoded rather than imported from `lib/seo/siteUrl.ts` —
+ * this file is deliberately dependency-free and isomorphic (no
+ * `'server-only'`, used client-side by `MarketingEmailPreview` too),
+ * and `getSiteUrl()`'s Vercel-hostname fallback is documented as
+ * Server-Component-only. Same file `public/logo.png` already serves
+ * on every real page (`MarketingHeader`, `AdminSidebar`, etc.) — this
+ * is that value, not a second logo.
+ */
+const LOGO_URL = 'https://www.snackquests.shop/logo.png';
 
 /** Interpolating staff-authored (or customer-authored review) text into a hand-built HTML string always goes through this — never raw. */
 export function escapeHtml(value: string): string {
@@ -166,8 +178,11 @@ export function brandedEmailHtml({
     '<tr><td align="center">' +
     `<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;">` +
     // Header band — gradient with a solid fallback (see file doc comment).
-    `<tr><td style="background-color:${BRAND_ORANGE};background:linear-gradient(135deg,${BRAND_ORANGE} 0%,${BRAND_PURPLE} 100%);padding:26px 32px;text-align:center;">` +
-    `<span style="display:inline-block;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:0.3px;font-family:${FONT_STACK};">🍿 Snack Quest</span>` +
+    // The `alt` text is the fallback for the (common) case a client
+    // blocks images until the recipient opts in — the colored band
+    // still reads as branded even with the logo unloaded.
+    `<tr><td style="background-color:${BRAND_ORANGE};background:linear-gradient(135deg,${BRAND_ORANGE} 0%,${BRAND_PURPLE} 100%);padding:20px 32px;text-align:center;">` +
+    `<img src="${LOGO_URL}" width="64" height="64" alt="Snack Quest" style="display:block;margin:0 auto;width:64px;height:64px;border-radius:14px;border:0;" />` +
     '</td></tr>' +
     image +
     `<tr><td style="padding:32px 32px 4px;text-align:center;">` +
