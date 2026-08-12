@@ -53,7 +53,7 @@ export function CreatorsFinalCta() {
               size="lg"
               className="animate-pulse-glow from-primary to-home-orange-glow rounded-full bg-gradient-to-br px-8 text-lg"
             >
-              <Link href="/creator/register">Become a creator</Link>
+              <Link href="/creator/register">Start Your Quest</Link>
             </Button>
           </div>
 
