@@ -22,11 +22,28 @@ const MIN_BROWSE_MS = 15_000;
 const TOP_EDGE_PX = 8;
 
 /** Mobile: how far down (relative to viewport height) counts as "actually scrolled the page", not just a landing bounce. */
-const MEANINGFUL_SCROLL_RATIO = 0.6;
+const MEANINGFUL_SCROLL_RATIO = 0.5;
 /** Mobile: how close back to the top (relative to how far they'd scrolled) counts as "heading back up". */
 const NEAR_TOP_RATIO = 0.4;
-/** Mobile: upward scroll speed, in px/ms, past which it reads as a deliberate swipe back up rather than idle scrolling. */
-const FAST_UPWARD_VELOCITY = 0.9;
+/**
+ * Mobile: scroll position is sampled on this fixed cadence rather than
+ * reacting to native `scroll` events directly. Real touch browsers fire
+ * `scroll` at wildly inconsistent intervals — especially mid-momentum,
+ * where events can arrive in sparse, uneven bursts — so a velocity
+ * computed from two consecutive event timestamps is unreliable and, in
+ * practice, undercounts genuine fast swipes. Polling decouples the
+ * measurement from that jitter.
+ */
+const SCROLL_POLL_MS = 120;
+/** Mobile: how much of a viewport height moving upward within one poll tick reads as a deliberate swipe back up. */
+const FAST_UPWARD_VIEWPORT_FRACTION = 0.1;
+/**
+ * Mobile fallback: a visitor who scrolls back near the top and simply
+ * stops there — rather than swiping back up fast — is just as likely to
+ * be about to leave. Requiring speed alone missed this case entirely,
+ * so settling near the top for this long also counts.
+ */
+const NEAR_TOP_DWELL_MS = 550;
 
 const SESSION_SHOWN_KEY = 'sq_rescue_offer_shown';
 const SESSION_PURCHASED_KEY = 'sq_rescue_offer_purchased';
@@ -106,30 +123,42 @@ export function ExitIntentOffer({ packageId, name, priceKes, snackCountLabel, im
       }
     }
 
-    let lastY = window.scrollY;
-    let lastT = performance.now();
     let maxY = window.scrollY;
-    function onScroll() {
-      const y = window.scrollY;
-      const t = performance.now();
-      const dt = Math.max(1, t - lastT);
-      const velocity = (y - lastY) / dt; // negative while scrolling up
-      maxY = Math.max(maxY, y);
+    let lastPolledY = window.scrollY;
+    let nearTopSinceMs: number | null = null;
 
+    function onScroll() {
+      maxY = Math.max(maxY, window.scrollY);
+    }
+
+    const pollTimer = window.setInterval(() => {
+      const y = window.scrollY;
       const scrolledMeaningfully = maxY > window.innerHeight * MEANINGFUL_SCROLL_RATIO;
-      const nearTopNow = y < maxY * NEAR_TOP_RATIO;
-      const fastUpward = velocity < -FAST_UPWARD_VELOCITY;
-      if (scrolledMeaningfully && nearTopNow && fastUpward) {
-        trigger();
+      const nearTopNow = scrolledMeaningfully && y < maxY * NEAR_TOP_RATIO;
+
+      if (scrolledMeaningfully) {
+        const movedUpSincePoll = lastPolledY - y;
+        const fastUpward = movedUpSincePoll > window.innerHeight * FAST_UPWARD_VIEWPORT_FRACTION;
+        if (nearTopNow && fastUpward) {
+          trigger();
+        } else if (nearTopNow) {
+          if (nearTopSinceMs === null) {
+            nearTopSinceMs = performance.now();
+          } else if (performance.now() - nearTopSinceMs > NEAR_TOP_DWELL_MS) {
+            trigger();
+          }
+        } else {
+          nearTopSinceMs = null;
+        }
       }
 
-      lastY = y;
-      lastT = t;
-    }
+      lastPolledY = y;
+    }, SCROLL_POLL_MS);
 
     function cleanup() {
       document.removeEventListener('mouseout', onMouseOut);
       window.removeEventListener('scroll', onScroll);
+      window.clearInterval(pollTimer);
     }
 
     document.addEventListener('mouseout', onMouseOut);
