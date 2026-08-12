@@ -3,6 +3,7 @@ import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { MarketingHeader } from '@/components/marketing/MarketingHeader';
 import { MarketingFooter } from '@/components/marketing/MarketingFooter';
 import { PageViewTracker } from '@/components/marketing/analytics/PageViewTracker';
+import { ExitIntentOfferMount } from '@/components/marketing/ExitIntentOfferMount';
 import { ActiveBoxNameProvider } from '@/components/marketing/design/ActiveBoxContext';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
@@ -65,6 +66,7 @@ export default async function MarketingLayout({
     <ActiveBoxNameProvider>
       <div className="flex min-h-full flex-col">
         <PageViewTracker />
+        <ExitIntentOfferMount />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}

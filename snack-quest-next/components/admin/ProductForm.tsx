@@ -21,6 +21,9 @@ export interface ProductFormValues {
   lowStockThreshold?: number;
   imageUrl: string | null;
   snackCountLabel?: string;
+  isRescueOffer: boolean;
+  /** yyyy-mm-dd, same convention `CampaignForm`'s `deadline` field uses — empty string means unset. */
+  offerExpiresAt: string;
 }
 
 interface ProductFormProps {
@@ -38,6 +41,8 @@ const DEFAULTS: ProductFormValues = {
   lowStockThreshold: undefined,
   imageUrl: null,
   snackCountLabel: '',
+  isRescueOffer: false,
+  offerExpiresAt: '',
 };
 
 export function ProductForm({ mode, packageId, initialValues }: ProductFormProps) {
@@ -116,6 +121,8 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
         ...(trackStock && typeof values.lowStockThreshold === 'number'
           ? { lowStockThreshold: values.lowStockThreshold }
           : {}),
+        isRescueOffer: values.isRescueOffer,
+        offerExpiresAt: values.isRescueOffer && values.offerExpiresAt ? values.offerExpiresAt : null,
       };
 
       const response = await fetch(
@@ -287,6 +294,39 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
               onCheckedChange={(checked) => setValues((v) => ({ ...v, isActive: checked }))}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Exit-intent rescue offer</p>
+              <p className="text-caption text-muted-foreground">
+                Excluded from Pick Your Box, the full boxes page, the checkout page&apos;s own picker, and the
+                WhatsApp catalog — reachable only through the exit-intent popup&apos;s direct checkout link.
+              </p>
+            </div>
+            <Switch
+              checked={values.isRescueOffer}
+              onCheckedChange={(checked) => setValues((v) => ({ ...v, isRescueOffer: checked }))}
+            />
+          </div>
+
+          {values.isRescueOffer ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="offerExpiresAt">Offer expires (optional)</Label>
+              <Input
+                id="offerExpiresAt"
+                type="date"
+                value={values.offerExpiresAt}
+                onChange={(event) => setValues((v) => ({ ...v, offerExpiresAt: event.target.value }))}
+              />
+              <p className="text-caption text-muted-foreground">
+                Leave blank for no automatic expiry — you can always turn the offer off with Active above.
+              </p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

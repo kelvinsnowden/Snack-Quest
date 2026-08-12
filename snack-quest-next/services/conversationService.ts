@@ -13,11 +13,14 @@ import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { isJumiaZone } from '@/lib/delivery/jumiaZones';
+import { isOfferExpired } from '@/lib/packages/offerExpiry';
+import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
 import { deliveryService } from './deliveryService';
 import { adConversionService } from './adConversionService';
+import { analyticsEventService } from './analyticsEventService';
 import { walletService } from './walletService';
 import { featureFlagService } from './featureFlagService';
 import { NotificationService } from './notificationService';
@@ -454,7 +457,7 @@ class ConversationService {
     const phoneNumber = normalizeKenyanPhone(input.phone);
 
     const box = await packageRepository.findById(businessId, input.packageId);
-    if (!box || !box.isActive) {
+    if (!box || !box.isActive || isOfferExpired(box.offerExpiresAt)) {
       throw new WebCheckoutValidationError(`Box ${input.packageId} is not available`);
     }
     if (box.stockCount !== undefined && box.stockCount < quantity) {
@@ -1843,6 +1846,27 @@ class ConversationService {
       amountKes: snapshot.totalKes,
       attribution,
     });
+
+    // Best-effort, same as everything else past order creation — an
+    // analytics miss must never risk a paid, confirmed order. No
+    // browser/cookie context exists here (an async Daraja webhook, not
+    // a page load — see this function's own doc comment), so
+    // `visitorId` is null; `metadata.orderId` is the real join key.
+    try {
+      const purchasedPackage = await packageRepository.findById(businessId, snapshot.packageId);
+      if (purchasedPackage?.isRescueOffer) {
+        await analyticsEventService.record(businessId, {
+          event: RESCUE_OFFER_EVENTS.purchaseCompleted,
+          visitorId: null,
+          metadata: { orderId, packageId: snapshot.packageId, amountKes: snapshot.totalKes },
+        });
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'AnalyticsEventRecordFailed', 'order', orderId, {
+        event: RESCUE_OFFER_EVENTS.purchaseCompleted,
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
 
     await this.notifications.notifyAdmin(
       businessId,

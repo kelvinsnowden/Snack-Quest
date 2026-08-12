@@ -110,6 +110,15 @@ class PackageRepository {
    * Deluxe Box...") and a customer's reply of "1" is resolved back to
    * a package by that same order, so an unordered query here would
    * make the numbered options a customer sees unstable between reads.
+   *
+   * Excludes any `isRescueOffer` package (§ exit-intent rescue offer)
+   * — every caller of this method (Pick Your Box, the full /boxes
+   * catalog, the checkout page's own grid, the WhatsApp numbered box
+   * list) is a "here are the boxes" surface the rescue offer is
+   * deliberately absent from; it's reachable only via its own direct
+   * `/checkout?box=<id>` link. Filtered in application code, not the
+   * query, since a business has at most a handful of packages — no
+   * new composite index earns its cost here.
    */
   async listActive(businessId: string): Promise<{ id: string; data: Package }[]> {
     const snapshot = await adminFirestore
@@ -118,7 +127,32 @@ class PackageRepository {
       .where('isActive', '==', true)
       .orderBy('priceKes', 'asc')
       .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Package }));
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, data: doc.data() as Package }))
+      .filter(({ data }) => !data.isRescueOffer);
+  }
+
+  /**
+   * The exit-intent rescue offer, if one is currently configured (§
+   * exit-intent rescue offer) — `isActive`/expiration are left for the
+   * caller (`ProductService.getRescueOffer`) to check, same
+   * read/validate split as everywhere else in this repository. At most
+   * one package should carry `isRescueOffer: true`; the first match is
+   * returned if more than one somehow does. Equality-only filter — no
+   * composite index needed.
+   */
+  async findRescueOffer(businessId: string): Promise<{ id: string; data: Package } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('isRescueOffer', '==', true)
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() as Package };
   }
 
   /**

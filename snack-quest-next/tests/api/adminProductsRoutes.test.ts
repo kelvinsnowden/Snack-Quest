@@ -148,6 +148,69 @@ describe('POST /api/admin/products', () => {
     );
     expect(response.status).toBe(400);
   });
+
+  it('400s a non-boolean isRescueOffer', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    const response = await createRoute(
+      jsonRequest('http://localhost/api/admin/products', {
+        name: 'Box',
+        description: 'd',
+        priceKes: 100,
+        isRescueOffer: 'yes',
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('400s an invalid offerExpiresAt date string', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    const response = await createRoute(
+      jsonRequest('http://localhost/api/admin/products', {
+        name: 'Box',
+        description: 'd',
+        priceKes: 100,
+        offerExpiresAt: 'not-a-date',
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('creates the exit-intent rescue offer with isRescueOffer and offerExpiresAt', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    createProductMock.mockResolvedValue('pkg-rescue');
+
+    await createRoute(
+      jsonRequest('http://localhost/api/admin/products', {
+        name: 'Test Box',
+        description: 'Try before you commit',
+        priceKes: 1500,
+        isRescueOffer: true,
+        offerExpiresAt: '2026-08-20',
+      }),
+    );
+
+    const [input] = createProductMock.mock.calls.at(-1)!;
+    expect(input.isRescueOffer).toBe(true);
+    expect(input.offerExpiresAt).toBeInstanceOf(Date);
+  });
+
+  it('defaults isRescueOffer to false and offerExpiresAt to null when omitted', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    createProductMock.mockResolvedValue('pkg-normal');
+
+    await createRoute(
+      jsonRequest('http://localhost/api/admin/products', {
+        name: 'Deluxe Box',
+        description: 'd',
+        priceKes: 3500,
+      }),
+    );
+
+    expect(createProductMock).toHaveBeenCalledWith(
+      expect.objectContaining({ isRescueOffer: false, offerExpiresAt: null }),
+      'staff-1',
+    );
+  });
 });
 
 describe('PATCH /api/admin/products/[packageId]', () => {
@@ -218,5 +281,52 @@ describe('PATCH /api/admin/products/[packageId]', () => {
 
     expect(response.status).toBe(200);
     expect(updateProductMock).toHaveBeenCalledWith('biz-1', 'pkg-1', { snackCountLabel: '15+ snacks' }, 'staff-1');
+  });
+
+  it('400s a non-boolean isRescueOffer patch', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    findByIdMock.mockResolvedValue({ businessId: 'biz-1', name: 'Box' });
+    const response = await updateRoute(
+      jsonRequest('http://localhost/api/admin/products/pkg-1', { isRescueOffer: 'no' }),
+      { params: Promise.resolve({ packageId: 'pkg-1' }) },
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('applies an isRescueOffer + offerExpiresAt patch', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    findByIdMock
+      .mockResolvedValueOnce({ businessId: 'biz-1', name: 'Box' })
+      .mockResolvedValueOnce({ businessId: 'biz-1', name: 'Box', isRescueOffer: true });
+    updateProductMock.mockResolvedValue(undefined);
+
+    const response = await updateRoute(
+      jsonRequest('http://localhost/api/admin/products/pkg-1', {
+        isRescueOffer: true,
+        offerExpiresAt: '2026-08-20',
+      }),
+      { params: Promise.resolve({ packageId: 'pkg-1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    const [, , patch] = updateProductMock.mock.calls.at(-1)!;
+    expect(patch).toMatchObject({ isRescueOffer: true });
+    expect(patch.offerExpiresAt).toBeInstanceOf(Date);
+  });
+
+  it('clears offerExpiresAt when patched to null', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    findByIdMock
+      .mockResolvedValueOnce({ businessId: 'biz-1', name: 'Box', isRescueOffer: true })
+      .mockResolvedValueOnce({ businessId: 'biz-1', name: 'Box', isRescueOffer: true, offerExpiresAt: null });
+    updateProductMock.mockResolvedValue(undefined);
+
+    const response = await updateRoute(
+      jsonRequest('http://localhost/api/admin/products/pkg-1', { offerExpiresAt: null }),
+      { params: Promise.resolve({ packageId: 'pkg-1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateProductMock).toHaveBeenCalledWith('biz-1', 'pkg-1', { offerExpiresAt: null }, 'staff-1');
   });
 });

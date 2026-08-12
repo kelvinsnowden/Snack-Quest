@@ -2,6 +2,7 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
 import { packageRepository, type PackageInput } from '@/repositories/packageRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import type { Package } from '@/types';
 
 interface UpdateProductBody {
   name?: unknown;
@@ -12,6 +13,8 @@ interface UpdateProductBody {
   lowStockThreshold?: unknown;
   imageUrl?: unknown;
   snackCountLabel?: unknown;
+  isRescueOffer?: unknown;
+  offerExpiresAt?: unknown;
 }
 
 function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } | { error: string } {
@@ -68,6 +71,24 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
       return { error: '"snackCountLabel" must be a non-empty string when provided.' };
     }
     patch.snackCountLabel = body.snackCountLabel.trim();
+  }
+  if (body.isRescueOffer !== undefined) {
+    if (typeof body.isRescueOffer !== 'boolean') {
+      return { error: '"isRescueOffer" must be a boolean when provided.' };
+    }
+    patch.isRescueOffer = body.isRescueOffer;
+  }
+  if (body.offerExpiresAt !== undefined) {
+    if (body.offerExpiresAt !== null && typeof body.offerExpiresAt !== 'string') {
+      return { error: '"offerExpiresAt" must be a date string, null, or omitted.' };
+    }
+    if (typeof body.offerExpiresAt === 'string' && Number.isNaN(new Date(body.offerExpiresAt).getTime())) {
+      return { error: '"offerExpiresAt" must be a valid date string when provided.' };
+    }
+    patch.offerExpiresAt =
+      typeof body.offerExpiresAt === 'string'
+        ? (new Date(body.offerExpiresAt) as unknown as Package['offerExpiresAt'])
+        : null;
   }
 
   return { patch };

@@ -1,6 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import type { Package } from '@/types';
 
 interface CreateProductBody {
   name?: unknown;
@@ -11,6 +12,8 @@ interface CreateProductBody {
   lowStockThreshold?: unknown;
   imageUrl?: unknown;
   snackCountLabel?: unknown;
+  isRescueOffer?: unknown;
+  offerExpiresAt?: unknown;
 }
 
 function validate(body: CreateProductBody): { error: string } | null {
@@ -45,6 +48,16 @@ function validate(body: CreateProductBody): { error: string } | null {
   }
   if (body.snackCountLabel !== undefined && typeof body.snackCountLabel !== 'string') {
     return { error: '"snackCountLabel" must be a string when provided.' };
+  }
+  if (body.isRescueOffer !== undefined && typeof body.isRescueOffer !== 'boolean') {
+    return { error: '"isRescueOffer" must be a boolean when provided.' };
+  }
+  if (
+    body.offerExpiresAt !== undefined &&
+    body.offerExpiresAt !== null &&
+    (typeof body.offerExpiresAt !== 'string' || Number.isNaN(new Date(body.offerExpiresAt).getTime()))
+  ) {
+    return { error: '"offerExpiresAt" must be a valid date string, null, or omitted.' };
   }
   return null;
 }
@@ -86,6 +99,11 @@ export async function POST(request: Request): Promise<Response> {
     ...(typeof body.snackCountLabel === 'string' && body.snackCountLabel.trim().length > 0
       ? { snackCountLabel: body.snackCountLabel.trim() }
       : {}),
+    isRescueOffer: (body.isRescueOffer as boolean | undefined) ?? false,
+    offerExpiresAt:
+      typeof body.offerExpiresAt === 'string'
+        ? (new Date(body.offerExpiresAt) as unknown as Package['offerExpiresAt'])
+        : null,
   };
   const packageId = await productService.createProduct(productInput, session.uid);
 
