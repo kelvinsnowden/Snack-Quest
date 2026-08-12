@@ -83,7 +83,7 @@ export function CreatorPerks() {
             What you get
           </p>
           <h2 className="font-display mt-4 text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
-            Everything you need, <span className="text-secondary">nothing to pay.</span>
+            Everything you need.
           </h2>
           <p className="text-foreground/70 mx-auto mt-5 max-w-[576px] text-base md:text-lg">
             No application fee, no minimum audience, no exclusivity. Join, share, get paid.
