@@ -39,8 +39,7 @@ export function CreatorEconomics() {
     <section className="bg-white px-5 py-16 md:px-10 md:py-32">
       <Reveal>
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-caption text-secondary font-bold tracking-[0.3em] uppercase">The honest deal</p>
-          <h2 className="font-display mt-4 text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
+          <h2 className="font-display text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
             Everyone wins — <span className="text-secondary">here&apos;s exactly how.</span>
           </h2>
         </div>

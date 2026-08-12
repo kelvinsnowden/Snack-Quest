@@ -58,7 +58,12 @@ const PERKS = [
     kicker: 'Your standing',
     title: 'A leaderboard worth topping',
     body: 'See exactly where you rank against every other Snack Quest creator by orders driven and commission earned.',
-    points: ['Updated as orders land', 'Clicks and conversions side by side', 'Campaigns you can opt into'],
+    points: [
+      'Updated as orders land',
+      'Clicks and conversions side by side',
+      'Campaigns you can opt into',
+      'Top 3 each month get a free box',
+    ],
     accent: {
       wash: 'from-background to-home-lime/20',
       border: 'border-foreground/5',
@@ -78,7 +83,7 @@ export function CreatorPerks() {
             What you get
           </p>
           <h2 className="font-display mt-4 text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
-            Everything you need, <span className="text-secondary">nothing to pay.</span>
+            Everything you need.
           </h2>
           <p className="text-foreground/70 mx-auto mt-5 max-w-[576px] text-base md:text-lg">
             No application fee, no minimum audience, no exclusivity. Join, share, get paid.
