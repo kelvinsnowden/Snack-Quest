@@ -49,7 +49,7 @@ class MarketingEmailRepository {
     await adminFirestore.collection(COLLECTION).doc(campaignId).delete();
   }
 
-  /** Admin: Marketing Emails history — real cursor pagination, newest first, no composite index needed (single equality + orderBy on a different field). */
+  /** Admin: Marketing Emails history — real cursor pagination, newest first. Needs the `businessId ASC, createdAt DESC` composite index in firestore.indexes.json (an equality filter plus an orderBy on a different field always needs one). */
   async listByBusiness(
     businessId: string,
     options: { limit?: number; cursor?: string } = {},
