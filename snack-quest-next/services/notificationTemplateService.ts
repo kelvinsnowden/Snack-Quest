@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { brandedEmailHtml, paragraphsToHtml } from '@/lib/notifications/brandedEmailHtml';
 import type { NotificationTemplate } from '@/types';
 
@@ -70,10 +71,47 @@ function validate(existing: NotificationTemplate, input: NotificationTemplateUpd
   }
 }
 
+export interface TemplateDeliveryStats {
+  templateCode: string;
+  sent: number;
+  failed: number;
+  pending: number;
+  /** `null` when this template has never actually been dispatched — distinct from a real `0%`, so the UI can say "never sent" instead of implying every attempt failed. */
+  successRate: number | null;
+}
+
 class NotificationTemplateService {
   async listAll(): Promise<NotificationTemplate[]> {
     const templates = await notificationTemplateRepository.listAll();
     return templates.sort((a, b) => a.templateCode.localeCompare(b.templateCode));
+  }
+
+  /**
+   * Real sent/failed/pending counts per template (§ Admin: Notification
+   * Templates) — "otherwise I won't know when something fails" is
+   * exactly what this answers: a super admin can see, at a glance,
+   * which of these events are actually delivering and which are
+   * silently failing, without having to go hunting through Firestore.
+   */
+  async getDeliveryStats(businessId: string): Promise<TemplateDeliveryStats[]> {
+    const templates = await notificationTemplateRepository.listAll();
+    const stats = await Promise.all(
+      templates.map((template) => outboundMessageRepository.getTemplateStats(businessId, template.templateCode)),
+    );
+
+    return templates
+      .map((template, index) => {
+        const { sent, failed, pending } = stats[index];
+        const attempted = sent + failed;
+        return {
+          templateCode: template.templateCode,
+          sent,
+          failed,
+          pending,
+          successRate: attempted > 0 ? Math.round((sent / attempted) * 100) : null,
+        };
+      })
+      .sort((a, b) => a.templateCode.localeCompare(b.templateCode));
   }
 
   async getByCode(templateCode: string): Promise<NotificationTemplate> {

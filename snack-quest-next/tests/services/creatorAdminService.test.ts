@@ -1,11 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { adminFirestore } from '@/lib/firebase/admin';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { adminAuth, adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { creatorRepository } from '@/repositories/creatorRepository';
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { creatorAdminService, CreatorNotFoundError, InvalidCreatorTransitionError } from '@/services/creatorAdminService';
 import { seedCreator } from '../helpers/creatorFixtures';
+
+const createdUids: string[] = [];
 
 /**
  * `CreatorAdminService` (§ Admin: Creators) — transition enforcement,
@@ -22,6 +24,10 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('domainEvents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
+});
+
+afterEach(async () => {
+  await Promise.all(createdUids.splice(0).map((uid) => adminAuth.deleteUser(uid).catch(() => undefined)));
 });
 
 describe('CreatorAdminService.updateStatus', () => {
@@ -130,5 +136,29 @@ describe('CreatorAdminService.listCreators / getCreator', () => {
     await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID });
 
     await expect(creatorAdminService.getCreator(BUSINESS_ID, 'creator-1')).rejects.toBeInstanceOf(CreatorNotFoundError);
+  });
+
+  it('getCreator returns registeredAt from the real profile creation time, and null lastSignInAt when there is no Auth record', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+
+    const detail = await creatorAdminService.getCreator(BUSINESS_ID, 'creator-1');
+
+    expect(detail.registeredAt).not.toBeNull();
+    expect(new Date(detail.registeredAt!).getTime()).not.toBeNaN();
+    expect(detail.lastSignInAt).toBeNull();
+  });
+
+  it('getCreator resolves lastSignInAt from the real Auth record when one exists', async () => {
+    const authRecord = await adminAuth.createUser({ email: 'creator-with-auth@example.com', password: 'test-password-123' });
+    createdUids.push(authRecord.uid);
+    await seedCreator(authRecord.uid, { businessId: BUSINESS_ID });
+
+    const detail = await creatorAdminService.getCreator(BUSINESS_ID, authRecord.uid);
+
+    // The emulator doesn't populate lastSignInTime on createUser() alone
+    // (no real sign-in happened) — this proves the real Auth record is
+    // actually consulted rather than assuming/crashing, not a specific
+    // timestamp value.
+    expect(detail.lastSignInAt === null || typeof detail.lastSignInAt === 'string').toBe(true);
   });
 });

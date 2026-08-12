@@ -35,7 +35,11 @@ export default async function NotificationTemplatesPage() {
     );
   }
 
-  const templates = await notificationTemplateService.listAll();
+  const [templates, deliveryStats] = await Promise.all([
+    notificationTemplateService.listAll(),
+    notificationTemplateService.getDeliveryStats(session.businessId),
+  ]);
+  const statsByCode = new Map(deliveryStats.map((s) => [s.templateCode, s]));
   const byChannel = new Map<string, typeof templates>();
   for (const template of templates) {
     const list = byChannel.get(template.channel) ?? [];
@@ -60,25 +64,38 @@ export default async function NotificationTemplatesPage() {
             <h2 className="text-sm font-semibold text-foreground">{CHANNEL_LABEL[channel] ?? channel}</h2>
           </div>
           <ul className="divide-y divide-border">
-            {(byChannel.get(channel) ?? []).map((template) => (
-              <li key={template.templateCode}>
-                <Link
-                  href={`/admin/notification-templates/${template.templateCode}`}
-                  className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-border/10"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">{templateEventLabel(template.templateCode)}</span>
-                    <span className="text-xs text-muted-foreground">{template.templateCode}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant={template.isActive ? 'success' : 'outline'}>
-                      {template.isActive ? 'Active' : 'Disabled'}
-                    </Badge>
-                    <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                  </div>
-                </Link>
-              </li>
-            ))}
+            {(byChannel.get(channel) ?? []).map((template) => {
+              const stats = statsByCode.get(template.templateCode);
+              return (
+                <li key={template.templateCode}>
+                  <Link
+                    href={`/admin/notification-templates/${template.templateCode}`}
+                    className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-border/10"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-foreground">{templateEventLabel(template.templateCode)}</span>
+                      <span className="text-xs text-muted-foreground">{template.templateCode}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {stats && stats.successRate !== null ? (
+                        <span className="text-xs text-muted-foreground">
+                          {stats.sent} sent
+                          {stats.failed > 0 ? <span className="font-medium text-danger"> · {stats.failed} failed</span> : null}
+                          {' · '}
+                          {stats.successRate}%
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Never sent</span>
+                      )}
+                      <Badge variant={template.isActive ? 'success' : 'outline'}>
+                        {template.isActive ? 'Active' : 'Disabled'}
+                      </Badge>
+                      <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </Card>
       ))}
