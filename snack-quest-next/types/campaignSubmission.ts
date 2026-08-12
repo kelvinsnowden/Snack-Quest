@@ -11,7 +11,10 @@ export interface CampaignSubmission extends AuditFields {
   campaignTitle: string;
   creatorId: string;
   submissionType: string;
-  fileUrl: string | null;
+  /** Up to 3 proof images the creator attaches (§ campaign attachments). Defaults to `[]`; absent on any submission created before this field existed. */
+  imageUrls: string[];
+  /** A single supporting document (PDF only, via the `documents` storage directory). `null` if the creator didn't attach one. */
+  documentUrl: string | null;
   socialLink: string | null;
   notes: string;
   status: SubmissionStatus;

@@ -16,6 +16,9 @@ interface UpdateCampaignBody {
   targetNiche?: unknown;
   deadline?: unknown;
   assetsUrl?: unknown;
+  imageUrls?: unknown;
+  documentUrl?: unknown;
+  referenceLink?: unknown;
 }
 
 const CAMPAIGN_STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
@@ -68,6 +71,24 @@ function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> }
       return { error: '"assetsUrl" must be a string or null when provided.' };
     }
     patch.assetsUrl = body.assetsUrl;
+  }
+  if (body.imageUrls !== undefined) {
+    if (!Array.isArray(body.imageUrls) || body.imageUrls.some((url) => typeof url !== 'string')) {
+      return { error: '"imageUrls" must be an array of strings when provided.' };
+    }
+    patch.imageUrls = body.imageUrls;
+  }
+  if (body.documentUrl !== undefined) {
+    if (body.documentUrl !== null && typeof body.documentUrl !== 'string') {
+      return { error: '"documentUrl" must be a string or null when provided.' };
+    }
+    patch.documentUrl = body.documentUrl;
+  }
+  if (body.referenceLink !== undefined) {
+    if (body.referenceLink !== null && typeof body.referenceLink !== 'string') {
+      return { error: '"referenceLink" must be a string or null when provided.' };
+    }
+    patch.referenceLink = body.referenceLink;
   }
 
   return { patch };

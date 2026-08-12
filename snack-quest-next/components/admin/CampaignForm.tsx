@@ -3,12 +3,13 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ImagePlus } from 'lucide-react';
+import { FileText, ImagePlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
+import { MAX_CAMPAIGN_IMAGES } from '@/lib/campaigns/limits';
 import type { CampaignStatus } from '@/types';
 
 export interface CampaignFormValues {
@@ -19,6 +20,9 @@ export interface CampaignFormValues {
   targetNiche: string;
   deadline: string;
   assetsUrl: string | null;
+  imageUrls: string[];
+  documentUrl: string | null;
+  referenceLink: string | null;
 }
 
 interface CampaignFormProps {
@@ -35,17 +39,48 @@ const DEFAULTS: CampaignFormValues = {
   targetNiche: '',
   deadline: '',
   assetsUrl: null,
+  imageUrls: [],
+  documentUrl: null,
+  referenceLink: null,
 };
 
+async function uploadToStorage(directory: 'marketing' | 'documents', file: File): Promise<string> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('directory', directory);
+  const response = await fetch('/api/storage/upload', { method: 'POST', body: form });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? 'Upload failed.');
+  }
+  const body = (await response.json()) as { url: string };
+  return body.url;
+}
+
 const STATUS_OPTIONS: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
+
+function filenameFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    return decodeURIComponent(pathname.split('/').pop() || 'Document');
+  } catch {
+    return 'Document';
+  }
+}
 
 export function CampaignForm({ mode, campaignId, initialValues }: CampaignFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<CampaignFormValues>(initialValues ?? DEFAULTS);
   const [imagePreview, setImagePreview] = useState<string | null>(initialValues?.assetsUrl ?? null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<string[]>(initialValues?.imageUrls ?? []);
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(initialValues?.documentUrl ?? null);
+  const [documentUploading, setDocumentUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,18 +97,48 @@ export function CampaignForm({ mode, campaignId, initialValues }: CampaignFormPr
     }
     setUploadingImage(true);
     try {
-      const form = new FormData();
-      form.append('file', pendingFile);
-      form.append('directory', 'marketing');
-      const response = await fetch('/api/storage/upload', { method: 'POST', body: form });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? 'Image upload failed.');
-      }
-      const body = (await response.json()) as { url: string };
-      return body.url;
+      return await uploadToStorage('marketing', pendingFile);
     } finally {
       setUploadingImage(false);
+    }
+  }
+
+  async function onGalleryFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const room = MAX_CAMPAIGN_IMAGES - galleryImages.length;
+    const toUpload = files.slice(0, room);
+    setGalleryUploading(true);
+    setError(null);
+    try {
+      const uploaded = await Promise.all(toUpload.map((file) => uploadToStorage('marketing', file)));
+      setGalleryImages((prev) => [...prev, ...uploaded]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload an image.');
+    } finally {
+      setGalleryUploading(false);
+    }
+  }
+
+  function removeGalleryImage(url: string) {
+    setGalleryImages((prev) => prev.filter((u) => u !== url));
+  }
+
+  async function onDocumentSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setDocumentUploading(true);
+    setError(null);
+    try {
+      setDocumentUrl(await uploadToStorage('documents', file));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload the document.');
+    } finally {
+      setDocumentUploading(false);
     }
   }
 
@@ -114,6 +179,9 @@ export function CampaignForm({ mode, campaignId, initialValues }: CampaignFormPr
         targetNiche: values.targetNiche.trim(),
         deadline: values.deadline,
         assetsUrl,
+        imageUrls: galleryImages,
+        documentUrl,
+        referenceLink: values.referenceLink?.trim() || null,
       };
 
       const response = await fetch(
@@ -138,7 +206,7 @@ export function CampaignForm({ mode, campaignId, initialValues }: CampaignFormPr
     }
   }
 
-  const busy = submitting || uploadingImage;
+  const busy = submitting || uploadingImage || galleryUploading || documentUploading;
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-6">
@@ -248,6 +316,95 @@ export function CampaignForm({ mode, campaignId, initialValues }: CampaignFormPr
                 ))}
               </select>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-5 pt-6">
+          <div className="flex flex-col gap-1.5">
+            <Label>
+              Additional images <span className="text-muted-foreground">(up to {MAX_CAMPAIGN_IMAGES})</span>
+            </Label>
+            <div className="flex flex-wrap items-center gap-3">
+              {galleryImages.map((url) => (
+                <div key={url} className="relative size-20 overflow-hidden rounded-lg border border-border">
+                  <Image src={url} alt="" fill sizes="80px" className="object-cover" unoptimized />
+                  <button
+                    type="button"
+                    onClick={() => removeGalleryImage(url)}
+                    aria-label="Remove image"
+                    className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-foreground/70 text-white"
+                  >
+                    <X className="size-3" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {galleryImages.length < MAX_CAMPAIGN_IMAGES ? (
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  disabled={galleryUploading}
+                  className="flex size-20 items-center justify-center rounded-lg border border-dashed border-border bg-border/10 text-muted-foreground transition-colors hover:bg-border/20 disabled:cursor-wait disabled:opacity-70"
+                >
+                  <ImagePlus className="size-6" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
+              className="sr-only"
+              onChange={onGalleryFilesSelected}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Document</Label>
+            {documentUrl ? (
+              <div className="border-border bg-surface flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <FileText className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+                <span className="truncate">{filenameFromUrl(documentUrl)}</span>
+                <button
+                  type="button"
+                  onClick={() => setDocumentUrl(null)}
+                  aria-label="Remove document"
+                  className="text-muted-foreground ml-auto shrink-0 hover:text-foreground"
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                loading={documentUploading}
+                className="w-fit"
+                onClick={() => documentInputRef.current?.click()}
+              >
+                Attach a document
+              </Button>
+            )}
+            <input
+              ref={documentInputRef}
+              type="file"
+              accept="application/pdf"
+              className="sr-only"
+              onChange={onDocumentSelected}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="referenceLink">Reference link</Label>
+            <Input
+              id="referenceLink"
+              value={values.referenceLink ?? ''}
+              onChange={(event) => setValues((v) => ({ ...v, referenceLink: event.target.value }))}
+              placeholder="https://instagram.com/p/example"
+            />
           </div>
         </CardContent>
       </Card>

@@ -69,7 +69,8 @@ describe('POST /api/creator/campaign-submissions', () => {
       campaignId: 'campaign-1',
       creatorId: 'creator-1',
       submissionType: 'social_post',
-      fileUrl: undefined,
+      imageUrls: undefined,
+      documentUrl: undefined,
       socialLink: 'https://instagram.com/p/1',
       notes: undefined,
     });

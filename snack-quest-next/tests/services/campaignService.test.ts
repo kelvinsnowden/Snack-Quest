@@ -8,6 +8,8 @@ import {
   CampaignNotJoinableError,
   InvalidCampaignInputError,
   InvalidSubmissionError,
+  MAX_CAMPAIGN_IMAGES,
+  MAX_SUBMISSION_IMAGES,
 } from '@/services/campaignService';
 import type { Campaign } from '@/types';
 
@@ -26,6 +28,9 @@ async function seedCampaign(overrides: Partial<Parameters<typeof campaignReposit
       commissionRateKes: 100,
       rules: 'Post one reel.',
       assetsUrl: '',
+      imageUrls: [],
+      documentUrl: null,
+      referenceLink: null,
       deadline: deadline(7),
       targetNiche: 'food',
       schemaVersion: 1,
@@ -110,6 +115,40 @@ describe('CampaignService.submitDeliverable', () => {
       socialLink: 'https://instagram.com/p/1',
     });
   });
+
+  it('accepts images and a document as proof with no link or comment', async () => {
+    const campaignId = await seedCampaign();
+
+    const submissionId = await campaignService.submitDeliverable(BUSINESS_ID, {
+      campaignId,
+      creatorId: 'creator-1',
+      submissionType: 'photo',
+      imageUrls: ['https://blob.example/a.png', 'https://blob.example/b.png'],
+      documentUrl: 'https://blob.example/brief.pdf',
+    });
+
+    const [submission] = await campaignService.listSubmissionsForCreator(BUSINESS_ID, 'creator-1');
+    expect(submission.id).toBe(submissionId);
+    expect(submission.data).toMatchObject({
+      imageUrls: ['https://blob.example/a.png', 'https://blob.example/b.png'],
+      documentUrl: 'https://blob.example/brief.pdf',
+      socialLink: null,
+      notes: '',
+    });
+  });
+
+  it(`rejects more than ${MAX_SUBMISSION_IMAGES} images`, async () => {
+    const campaignId = await seedCampaign();
+
+    await expect(
+      campaignService.submitDeliverable(BUSINESS_ID, {
+        campaignId,
+        creatorId: 'creator-1',
+        submissionType: 'photo',
+        imageUrls: Array.from({ length: MAX_SUBMISSION_IMAGES + 1 }, (_, i) => `https://blob.example/${i}.png`),
+      }),
+    ).rejects.toBeInstanceOf(InvalidSubmissionError);
+  });
 });
 
 describe('CampaignService.listActiveCampaigns', () => {
@@ -139,6 +178,9 @@ describe('CampaignService.createCampaign', () => {
       commissionRateKes: 150,
       rules: 'Post a reel unboxing the Deluxe box.',
       assetsUrl: null,
+      imageUrls: [],
+      documentUrl: null,
+      referenceLink: null,
       deadline: deadline(14),
       targetNiche: 'food',
       schemaVersion: 1,
@@ -181,6 +223,59 @@ describe('CampaignService.createCampaign', () => {
     await expect(
       campaignService.createCampaign(validInput({ targetNiche: '  ' }), 'staff-1'),
     ).rejects.toBeInstanceOf(InvalidCampaignInputError);
+  });
+
+  it(`rejects more than ${MAX_CAMPAIGN_IMAGES} images`, async () => {
+    await expect(
+      campaignService.createCampaign(
+        validInput({
+          imageUrls: Array.from({ length: MAX_CAMPAIGN_IMAGES + 1 }, (_, i) => `https://blob.example/${i}.png`),
+        }),
+        'staff-1',
+      ),
+    ).rejects.toBeInstanceOf(InvalidCampaignInputError);
+  });
+
+  it('persists gallery images, a document, and a reference link', async () => {
+    const campaignId = await campaignService.createCampaign(
+      validInput({
+        imageUrls: ['https://blob.example/1.png', 'https://blob.example/2.png'],
+        documentUrl: 'https://blob.example/brief.pdf',
+        referenceLink: 'https://instagram.com/p/example',
+      }),
+      'staff-1',
+    );
+
+    const campaign = await campaignRepository.findById(BUSINESS_ID, campaignId);
+    expect(campaign).toMatchObject({
+      imageUrls: ['https://blob.example/1.png', 'https://blob.example/2.png'],
+      documentUrl: 'https://blob.example/brief.pdf',
+      referenceLink: 'https://instagram.com/p/example',
+    });
+  });
+});
+
+describe('CampaignService.listSubmissionsForCampaign', () => {
+  it("returns only the given campaign's submissions", async () => {
+    const campaignId = await seedCampaign();
+    const otherCampaignId = await seedCampaign({ title: 'Other' });
+    await campaignService.submitDeliverable(BUSINESS_ID, {
+      campaignId,
+      creatorId: 'creator-1',
+      submissionType: 'social_post',
+      socialLink: 'https://instagram.com/p/1',
+    });
+    await campaignService.submitDeliverable(BUSINESS_ID, {
+      campaignId: otherCampaignId,
+      creatorId: 'creator-2',
+      submissionType: 'social_post',
+      socialLink: 'https://instagram.com/p/2',
+    });
+
+    const results = await campaignService.listSubmissionsForCampaign(BUSINESS_ID, campaignId);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].data.campaignId).toBe(campaignId);
   });
 });
 

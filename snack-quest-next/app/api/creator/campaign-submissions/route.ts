@@ -9,7 +9,8 @@ import {
 interface SubmitDeliverableBody {
   campaignId?: unknown;
   submissionType?: unknown;
-  fileUrl?: unknown;
+  imageUrls?: unknown;
+  documentUrl?: unknown;
   socialLink?: unknown;
   notes?: unknown;
 }
@@ -34,8 +35,14 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof body.submissionType !== 'string' || !body.submissionType.trim()) {
     return Response.json({ error: '"submissionType" is required.' }, { status: 400 });
   }
-  if (body.fileUrl !== undefined && body.fileUrl !== null && typeof body.fileUrl !== 'string') {
-    return Response.json({ error: '"fileUrl" must be a string or null.' }, { status: 400 });
+  if (
+    body.imageUrls !== undefined &&
+    (!Array.isArray(body.imageUrls) || body.imageUrls.some((url) => typeof url !== 'string'))
+  ) {
+    return Response.json({ error: '"imageUrls" must be an array of strings.' }, { status: 400 });
+  }
+  if (body.documentUrl !== undefined && body.documentUrl !== null && typeof body.documentUrl !== 'string') {
+    return Response.json({ error: '"documentUrl" must be a string or null.' }, { status: 400 });
   }
   if (body.socialLink !== undefined && body.socialLink !== null && typeof body.socialLink !== 'string') {
     return Response.json({ error: '"socialLink" must be a string or null.' }, { status: 400 });
@@ -49,7 +56,8 @@ export async function POST(request: Request): Promise<Response> {
       campaignId: body.campaignId,
       creatorId: session.uid,
       submissionType: body.submissionType,
-      fileUrl: body.fileUrl as string | null | undefined,
+      imageUrls: body.imageUrls as string[] | undefined,
+      documentUrl: body.documentUrl as string | null | undefined,
       socialLink: body.socialLink as string | null | undefined,
       notes: body.notes as string | undefined,
     });
