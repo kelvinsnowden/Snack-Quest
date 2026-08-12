@@ -1,9 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
-import { marketingEmailService } from '@/services/marketingEmailService';
+import { marketingEmailService, MARKETING_EMAIL_SEGMENTS } from '@/services/marketingEmailService';
 import type { MarketingEmailSegment } from '@/types';
-
-const SEGMENTS: MarketingEmailSegment[] = ['all_creators', 'active_creators', 'pending_creators', 'suspended_creators', 'custom'];
 
 interface RecipientsBody {
   segment?: unknown;
@@ -26,8 +24,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
-  if (typeof body.segment !== 'string' || !SEGMENTS.includes(body.segment as MarketingEmailSegment)) {
-    return Response.json({ error: `"segment" must be one of: ${SEGMENTS.join(', ')}.` }, { status: 400 });
+  if (typeof body.segment !== 'string' || !MARKETING_EMAIL_SEGMENTS.includes(body.segment as MarketingEmailSegment)) {
+    return Response.json({ error: `"segment" must be one of: ${MARKETING_EMAIL_SEGMENTS.join(', ')}.` }, { status: 400 });
   }
   if (
     body.customRecipients !== undefined &&

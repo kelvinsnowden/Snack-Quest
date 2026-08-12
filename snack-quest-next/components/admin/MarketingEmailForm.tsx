@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { MarketingEmailPreview } from '@/components/admin/MarketingEmailPreview';
+import type { EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
 import type { MarketingEmailSegment } from '@/types';
 
 export interface MarketingEmailFormValues {
@@ -28,6 +30,8 @@ export interface MarketingEmailFormValues {
   imageUrl: string | null;
   ctaLabel: string;
   ctaUrl: string;
+  featurePillsText: string;
+  includeTestimonials: boolean;
   segment: MarketingEmailSegment;
   customRecipientsText: string;
 }
@@ -36,6 +40,8 @@ interface MarketingEmailFormProps {
   mode: 'create' | 'edit';
   campaignId?: string;
   initialValues?: MarketingEmailFormValues;
+  /** Up to 2 of the business's own real, published reviews — for previewing the testimonials section, not a promise these exact ones will still be featured when this campaign actually sends (the real send re-fetches fresh). */
+  availableTestimonials?: EmailTestimonial[];
 }
 
 const DEFAULTS: MarketingEmailFormValues = {
@@ -46,17 +52,32 @@ const DEFAULTS: MarketingEmailFormValues = {
   imageUrl: null,
   ctaLabel: '',
   ctaUrl: '',
+  featurePillsText: '',
+  includeTestimonials: true,
   segment: 'active_creators',
   customRecipientsText: '',
 };
 
-const SEGMENT_OPTIONS: { value: MarketingEmailSegment; label: string; helpText: string }[] = [
-  { value: 'active_creators', label: 'Active creators', helpText: 'Approved creators who can already earn commission.' },
-  { value: 'pending_creators', label: 'Pending creators', helpText: 'Applied but not yet approved.' },
-  { value: 'suspended_creators', label: 'Suspended creators', helpText: 'Currently suspended from the program.' },
-  { value: 'all_creators', label: 'All creators', helpText: 'Every creator regardless of status.' },
-  { value: 'custom', label: 'Custom list', helpText: 'Paste specific email addresses, one per line or comma-separated.' },
+interface SegmentOption {
+  value: MarketingEmailSegment;
+  label: string;
+  helpText: string;
+  group: 'Status' | 'Sales activity' | 'Other';
+}
+
+const SEGMENT_OPTIONS: SegmentOption[] = [
+  { value: 'active_creators', label: 'Active creators', helpText: 'Approved creators who can already earn commission.', group: 'Status' },
+  { value: 'pending_creators', label: 'Pending creators', helpText: 'Applied but not yet approved.', group: 'Status' },
+  { value: 'suspended_creators', label: 'Suspended creators', helpText: 'Currently suspended from the program.', group: 'Status' },
+  { value: 'all_creators', label: 'All creators', helpText: 'Every creator regardless of status.', group: 'Status' },
+  { value: 'no_sale_creators', label: 'No sale yet', helpText: 'Have never had a referral code used — a nudge to share their link.', group: 'Sales activity' },
+  { value: 'first_sale_creators', label: 'Made their first sale', helpText: 'Exactly one referral conversion so far.', group: 'Sales activity' },
+  { value: 'repeat_creators', label: 'Repeat sellers', helpText: 'Two or more referral conversions.', group: 'Sales activity' },
+  { value: 'new_creators', label: 'New creators (last 30 days)', helpText: 'Registered within the last 30 days.', group: 'Sales activity' },
+  { value: 'custom', label: 'Custom list', helpText: 'Paste specific email addresses, one per line or comma-separated.', group: 'Other' },
 ];
+
+const SEGMENT_GROUPS: SegmentOption['group'][] = ['Status', 'Sales activity', 'Other'];
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -71,6 +92,14 @@ function parseCustomRecipients(text: string): string[] {
   return Array.from(seen);
 }
 
+function parseFeaturePills(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 function toDraftPayload(values: MarketingEmailFormValues) {
   return {
     subject: values.subject.trim(),
@@ -80,12 +109,14 @@ function toDraftPayload(values: MarketingEmailFormValues) {
     imageUrl: values.imageUrl,
     ctaLabel: values.ctaLabel.trim() || null,
     ctaUrl: values.ctaUrl.trim() || null,
+    featurePills: parseFeaturePills(values.featurePillsText),
+    includeTestimonials: values.includeTestimonials,
     segment: values.segment,
     customRecipients: values.segment === 'custom' ? parseCustomRecipients(values.customRecipientsText) : null,
   };
 }
 
-export function MarketingEmailForm({ mode, campaignId, initialValues }: MarketingEmailFormProps) {
+export function MarketingEmailForm({ mode, campaignId, initialValues, availableTestimonials = [] }: MarketingEmailFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<MarketingEmailFormValues>(initialValues ?? DEFAULTS);
@@ -380,6 +411,36 @@ export function MarketingEmailForm({ mode, campaignId, initialValues }: Marketin
                 />
               </div>
             </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="me-pills">Highlights (optional, up to 3)</Label>
+              <Textarea
+                id="me-pills"
+                value={values.featurePillsText}
+                onChange={(event) => setValues((v) => ({ ...v, featurePillsText: event.target.value }))}
+                placeholder={'🚚 Nairobi delivery in 24h\n🎁 New boxes every month\n💬 Real support on WhatsApp'}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">One per line. Shown as pills below your message — type your own emoji.</p>
+            </div>
+
+            <div className="flex items-start gap-2.5">
+              <Checkbox
+                id="me-testimonials"
+                checked={values.includeTestimonials}
+                onCheckedChange={(checked) => setValues((v) => ({ ...v, includeTestimonials: checked === true }))}
+              />
+              <div className="flex flex-col gap-0.5">
+                <Label htmlFor="me-testimonials" className="cursor-pointer font-normal">
+                  Feature real customer reviews
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {availableTestimonials.length > 0
+                    ? `Adds up to ${availableTestimonials.length} of your published reviews as social proof — never fabricated.`
+                    : 'No published reviews yet, so this section is skipped even if checked.'}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -393,10 +454,14 @@ export function MarketingEmailForm({ mode, campaignId, initialValues }: Marketin
                 onChange={(event) => setValues((v) => ({ ...v, segment: event.target.value as MarketingEmailSegment }))}
                 className="flex h-10 rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                {SEGMENT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                {SEGMENT_GROUPS.map((group) => (
+                  <optgroup key={group} label={group}>
+                    {SEGMENT_OPTIONS.filter((option) => option.group === group).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <p className="text-xs text-muted-foreground">
@@ -454,6 +519,8 @@ export function MarketingEmailForm({ mode, campaignId, initialValues }: Marketin
           imageUrl={values.imageUrl}
           ctaLabel={values.ctaLabel || null}
           ctaUrl={values.ctaUrl || null}
+          featurePills={parseFeaturePills(values.featurePillsText)}
+          testimonials={values.includeTestimonials ? availableTestimonials : []}
         />
       </div>
 

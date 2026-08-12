@@ -11,6 +11,8 @@ export interface DraftBody {
   imageUrl?: unknown;
   ctaLabel?: unknown;
   ctaUrl?: unknown;
+  featurePills?: unknown;
+  includeTestimonials?: unknown;
   segment?: unknown;
   customRecipients?: unknown;
 }
@@ -48,6 +50,15 @@ export function parseDraftBody(body: DraftBody): { input: MarketingEmailDraftInp
   ) {
     return { error: '"customRecipients" must be an array of strings or null.' };
   }
+  if (
+    body.featurePills !== undefined &&
+    (!Array.isArray(body.featurePills) || body.featurePills.some((entry) => typeof entry !== 'string'))
+  ) {
+    return { error: '"featurePills" must be an array of strings.' };
+  }
+  if (body.includeTestimonials !== undefined && typeof body.includeTestimonials !== 'boolean') {
+    return { error: '"includeTestimonials" must be a boolean.' };
+  }
 
   return {
     input: {
@@ -58,6 +69,8 @@ export function parseDraftBody(body: DraftBody): { input: MarketingEmailDraftInp
       imageUrl: (body.imageUrl as string | null | undefined) ?? null,
       ctaLabel: (body.ctaLabel as string | null | undefined) ?? null,
       ctaUrl: (body.ctaUrl as string | null | undefined) ?? null,
+      featurePills: (body.featurePills as string[] | undefined) ?? [],
+      includeTestimonials: (body.includeTestimonials as boolean | undefined) ?? true,
       segment: body.segment as MarketingEmailSegment,
       customRecipients: (body.customRecipients as string[] | null | undefined) ?? null,
     },

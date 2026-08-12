@@ -5,6 +5,7 @@ import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { marketingEmailService, MarketingEmailNotFoundError } from '@/services/marketingEmailService';
+import { SEGMENT_LABEL } from '@/lib/marketingEmails/segmentLabels';
 import { MarketingEmailForm } from '@/components/admin/MarketingEmailForm';
 import { MarketingEmailPreview } from '@/components/admin/MarketingEmailPreview';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,9 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
     throw error;
   }
 
+  const availableTestimonials =
+    campaign.status === 'draft' ? await marketingEmailService.fetchTestimonials(session.businessId) : [];
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -57,6 +61,7 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
         <MarketingEmailForm
           mode="edit"
           campaignId={id}
+          availableTestimonials={availableTestimonials}
           initialValues={{
             subject: campaign.subject,
             preheader: campaign.preheader ?? '',
@@ -65,6 +70,8 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
             imageUrl: campaign.imageUrl,
             ctaLabel: campaign.ctaLabel ?? '',
             ctaUrl: campaign.ctaUrl ?? '',
+            featurePillsText: campaign.featurePills.join('\n'),
+            includeTestimonials: campaign.includeTestimonials,
             segment: campaign.segment,
             customRecipientsText: (campaign.customRecipients ?? []).join('\n'),
           }}
@@ -90,7 +97,7 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
               <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Segment</dt>
-                  <dd className="text-foreground">{campaign.segment.replace('_', ' ')}</dd>
+                  <dd className="text-foreground">{SEGMENT_LABEL[campaign.segment]}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Sent at</dt>
@@ -112,6 +119,8 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
               imageUrl={campaign.imageUrl}
               ctaLabel={campaign.ctaLabel}
               ctaUrl={campaign.ctaUrl}
+              featurePills={campaign.featurePills}
+              testimonials={campaign.sentTestimonials ?? []}
             />
           </div>
         </div>

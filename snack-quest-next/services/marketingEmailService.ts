@@ -8,8 +8,9 @@ import {
   type MarketingEmailCampaignInput,
 } from '@/repositories/marketingEmailRepository';
 import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
-import { brandedEmailHtml, paragraphsToHtml } from '@/lib/notifications/brandedEmailHtml';
-import type { CreatorStatus, MarketingEmailCampaign, MarketingEmailSegment } from '@/types';
+import { brandedEmailHtml, paragraphsToHtml, type EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
+import { reviewService } from '@/services/reviewService';
+import type { CreatorProfile, CreatorStatus, MarketingEmailCampaign, MarketingEmailSegment } from '@/types';
 
 /**
  * Owns staff-composed branded email blasts (§ Admin: Marketing
@@ -59,6 +60,8 @@ export interface MarketingEmailDraftInput {
   imageUrl: string | null;
   ctaLabel: string | null;
   ctaUrl: string | null;
+  featurePills: string[];
+  includeTestimonials: boolean;
   segment: MarketingEmailSegment;
   customRecipients: string[] | null;
 }
@@ -72,15 +75,32 @@ export interface MarketingEmailSendResult {
 /** A hard ceiling on one send — matches the codebase's existing bounded-scan discipline (e.g. `customerService`'s `AGGREGATION_LIMIT`) rather than an unbounded scan of every creator ever registered. */
 const RECIPIENT_SCAN_LIMIT = 2000;
 const MAX_CUSTOM_RECIPIENTS = 500;
+const MAX_FEATURE_PILLS = 3;
+const MAX_TESTIMONIALS = 2;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const SEGMENTS: MarketingEmailSegment[] = ['all_creators', 'active_creators', 'pending_creators', 'suspended_creators', 'custom'];
+/** Every real segment — exported so route handlers validate against the same list instead of keeping their own copy in sync by hand. */
+export const MARKETING_EMAIL_SEGMENTS: MarketingEmailSegment[] = [
+  'all_creators',
+  'active_creators',
+  'pending_creators',
+  'suspended_creators',
+  'no_sale_creators',
+  'first_sale_creators',
+  'repeat_creators',
+  'new_creators',
+  'custom',
+];
 
 const SEGMENT_STATUS: Partial<Record<MarketingEmailSegment, CreatorStatus>> = {
   active_creators: 'active',
   pending_creators: 'pending',
   suspended_creators: 'suspended',
 };
+
+const NEW_CREATOR_WINDOW_DAYS = 30;
+
+type CreatorPage = { creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null };
 
 function normalizeCustomRecipients(raw: string[]): string[] {
   const seen = new Set<string>();
@@ -99,6 +119,13 @@ function normalizeCustomRecipients(raw: string[]): string[] {
   return out;
 }
 
+function normalizeFeaturePills(raw: string[]): string[] {
+  return raw
+    .map((pill) => pill.trim())
+    .filter(Boolean)
+    .slice(0, MAX_FEATURE_PILLS);
+}
+
 function validateDraft(input: MarketingEmailDraftInput): void {
   if (!input.subject.trim()) {
     throw new MarketingEmailValidationError('"subject" is required.');
@@ -109,8 +136,8 @@ function validateDraft(input: MarketingEmailDraftInput): void {
   if (!input.bodyText.trim()) {
     throw new MarketingEmailValidationError('"bodyText" is required.');
   }
-  if (!SEGMENTS.includes(input.segment)) {
-    throw new MarketingEmailValidationError(`"segment" must be one of: ${SEGMENTS.join(', ')}.`);
+  if (!MARKETING_EMAIL_SEGMENTS.includes(input.segment)) {
+    throw new MarketingEmailValidationError(`"segment" must be one of: ${MARKETING_EMAIL_SEGMENTS.join(', ')}.`);
   }
   if (input.segment === 'custom' && normalizeCustomRecipients(input.customRecipients ?? []).length === 0) {
     throw new MarketingEmailValidationError('A custom segment needs at least one valid recipient email.');
@@ -121,8 +148,13 @@ function validateDraft(input: MarketingEmailDraftInput): void {
 }
 
 /** The plain-text alternative sent alongside the branded HTML — every real email client falls back to this when it can't (or won't) render HTML. */
-function plainTextBody(campaign: Pick<MarketingEmailCampaign, 'heading' | 'bodyText' | 'ctaLabel' | 'ctaUrl'>): string {
+function plainTextBody(
+  campaign: Pick<MarketingEmailCampaign, 'heading' | 'bodyText' | 'ctaLabel' | 'ctaUrl' | 'featurePills'>,
+): string {
   const parts = [campaign.heading, '', campaign.bodyText.trim()];
+  if (campaign.featurePills.length > 0) {
+    parts.push('', campaign.featurePills.map((pill) => `• ${pill}`).join('\n'));
+  }
   if (campaign.ctaLabel && campaign.ctaUrl) {
     parts.push('', `${campaign.ctaLabel}: ${campaign.ctaUrl}`);
   }
@@ -141,16 +173,12 @@ class MarketingEmailService {
       return normalizeCustomRecipients(customRecipients ?? []);
     }
 
-    const status = SEGMENT_STATUS[segment];
+    const fetchPage = this.pageFetcherForSegment(businessId, segment);
     const emails = new Set<string>();
     let cursor: string | undefined;
 
     while (emails.size < RECIPIENT_SCAN_LIMIT) {
-      const { creators, nextCursor } = await creatorRepository.listByBusiness(businessId, {
-        status,
-        cursor,
-        limit: 100,
-      });
+      const { creators, nextCursor } = await fetchPage(cursor);
       if (creators.length === 0) {
         break;
       }
@@ -167,6 +195,29 @@ class MarketingEmailService {
     }
 
     return Array.from(emails).slice(0, RECIPIENT_SCAN_LIMIT);
+  }
+
+  /** One page-fetcher per non-custom segment — each real behavioral segment is backed by its own indexed query, see `creatorRepository`. */
+  private pageFetcherForSegment(
+    businessId: string,
+    segment: MarketingEmailSegment,
+  ): (cursor?: string) => Promise<CreatorPage> {
+    switch (segment) {
+      case 'no_sale_creators':
+        return (cursor) => creatorRepository.listByConversionCount(businessId, { eq: 0 }, { cursor, limit: 100 });
+      case 'first_sale_creators':
+        return (cursor) => creatorRepository.listByConversionCount(businessId, { eq: 1 }, { cursor, limit: 100 });
+      case 'repeat_creators':
+        return (cursor) => creatorRepository.listByConversionCount(businessId, { gte: 2 }, { cursor, limit: 100 });
+      case 'new_creators': {
+        const since = new Date(Date.now() - NEW_CREATOR_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+        return (cursor) => creatorRepository.listRegisteredSince(businessId, since, { cursor, limit: 100 });
+      }
+      default: {
+        const status = SEGMENT_STATUS[segment];
+        return (cursor) => creatorRepository.listByBusiness(businessId, { status, cursor, limit: 100 });
+      }
+    }
   }
 
   async previewRecipientCount(
@@ -189,6 +240,9 @@ class MarketingEmailService {
       imageUrl: input.imageUrl,
       ctaLabel: input.ctaLabel?.trim() || null,
       ctaUrl: input.ctaUrl?.trim() || null,
+      featurePills: normalizeFeaturePills(input.featurePills),
+      includeTestimonials: input.includeTestimonials,
+      sentTestimonials: null,
       segment: input.segment,
       customRecipients: input.segment === 'custom' ? normalizeCustomRecipients(input.customRecipients ?? []) : null,
       status: 'draft',
@@ -219,6 +273,8 @@ class MarketingEmailService {
       imageUrl: input.imageUrl,
       ctaLabel: input.ctaLabel?.trim() || null,
       ctaUrl: input.ctaUrl?.trim() || null,
+      featurePills: normalizeFeaturePills(input.featurePills),
+      includeTestimonials: input.includeTestimonials,
       segment: input.segment,
       customRecipients: input.segment === 'custom' ? normalizeCustomRecipients(input.customRecipients ?? []) : null,
       updatedBy: actor,
@@ -268,12 +324,16 @@ class MarketingEmailService {
       updatedBy: actor,
     });
 
+    const testimonials = campaign.includeTestimonials ? await this.fetchTestimonials(businessId) : [];
+
     const html = brandedEmailHtml({
       heading: campaign.heading,
       bodyHtml: paragraphsToHtml(campaign.bodyText),
       imageUrl: campaign.imageUrl,
       ctaLabel: campaign.ctaLabel,
       ctaUrl: campaign.ctaUrl,
+      featurePills: campaign.featurePills,
+      testimonials,
     });
     const text = plainTextBody(campaign);
 
@@ -292,11 +352,18 @@ class MarketingEmailService {
       status: sentCount > 0 ? 'sent' : 'failed',
       sentCount,
       failedCount,
+      sentTestimonials: testimonials.length > 0 ? testimonials : null,
       sentAt: FieldValue.serverTimestamp() as unknown as MarketingEmailCampaign['sentAt'],
       updatedBy: actor,
     });
 
     return { recipientCount: recipients.length, sentCount, failedCount };
+  }
+
+  /** Real, published reviews only — see `ReviewService.listPublished`. A fresh read at send time, not whatever the composer happened to preview earlier. */
+  async fetchTestimonials(businessId: string): Promise<EmailTestimonial[]> {
+    const { reviews } = await reviewService.listPublished(businessId, MAX_TESTIMONIALS);
+    return reviews.map((review) => ({ customerName: review.customerName, rating: review.rating, body: review.body }));
   }
 
   private async requireOwned(businessId: string, campaignId: string): Promise<MarketingEmailCampaign> {
