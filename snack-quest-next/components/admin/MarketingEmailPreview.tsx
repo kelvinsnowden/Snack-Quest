@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { brandedEmailHtml, paragraphsToHtml } from '@/lib/notifications/brandedEmailHtml';
+import { brandedEmailHtml, paragraphsToHtml, type EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
 
 export interface MarketingEmailPreviewValues {
   heading: string;
@@ -9,6 +9,8 @@ export interface MarketingEmailPreviewValues {
   imageUrl: string | null;
   ctaLabel: string | null;
   ctaUrl: string | null;
+  featurePills?: string[];
+  testimonials?: EmailTestimonial[];
 }
 
 /**
@@ -16,9 +18,21 @@ export interface MarketingEmailPreviewValues {
  * sandboxed iframe — the same `brandedEmailHtml`/`paragraphsToHtml`
  * helpers the real send uses, so there is never a gap between what
  * staff previews and what actually goes out (§ Admin: Marketing
- * Emails).
+ * Emails). `testimonials` is the composer page's own server-fetched
+ * snapshot of real published reviews — the real send re-fetches fresh
+ * at send time (`MarketingEmailService.fetchTestimonials`), so this is
+ * a preview of the shape, not a promise those exact reviews will
+ * still be the featured ones later.
  */
-export function MarketingEmailPreview({ heading, bodyText, imageUrl, ctaLabel, ctaUrl }: MarketingEmailPreviewValues) {
+export function MarketingEmailPreview({
+  heading,
+  bodyText,
+  imageUrl,
+  ctaLabel,
+  ctaUrl,
+  featurePills = [],
+  testimonials = [],
+}: MarketingEmailPreviewValues) {
   const html = useMemo(
     () =>
       brandedEmailHtml({
@@ -27,8 +41,10 @@ export function MarketingEmailPreview({ heading, bodyText, imageUrl, ctaLabel, c
         imageUrl,
         ctaLabel,
         ctaUrl,
+        featurePills,
+        testimonials,
       }),
-    [heading, bodyText, imageUrl, ctaLabel, ctaUrl],
+    [heading, bodyText, imageUrl, ctaLabel, ctaUrl, featurePills, testimonials],
   );
 
   return (
@@ -36,7 +52,7 @@ export function MarketingEmailPreview({ heading, bodyText, imageUrl, ctaLabel, c
       title="Email preview"
       srcDoc={html}
       sandbox=""
-      className="h-[560px] w-full rounded-lg border border-border bg-white"
+      className="h-[720px] w-full rounded-lg border border-border bg-white"
     />
   );
 }

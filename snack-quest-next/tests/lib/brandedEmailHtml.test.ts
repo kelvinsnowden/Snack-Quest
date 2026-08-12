@@ -12,17 +12,19 @@ describe('escapeHtml', () => {
 describe('paragraphsToHtml', () => {
   it('splits on blank lines into escaped <p> tags', () => {
     const html = paragraphsToHtml('First paragraph.\n\nSecond paragraph with <b>tags</b>.');
-    expect(html).toBe('<p>First paragraph.</p><p>Second paragraph with &lt;b&gt;tags&lt;/b&gt;.</p>');
+    expect(html).toContain('First paragraph.</p>');
+    expect(html).toContain('Second paragraph with &lt;b&gt;tags&lt;/b&gt;.</p>');
+    expect(html.match(/<p /g)).toHaveLength(2);
   });
 
   it('preserves single line breaks within a paragraph as <br />', () => {
     const html = paragraphsToHtml('Line one\nLine two');
-    expect(html).toBe('<p>Line one<br />Line two</p>');
+    expect(html).toContain('Line one<br />Line two');
   });
 
   it('drops empty paragraphs from extra blank lines', () => {
     const html = paragraphsToHtml('First.\n\n\n\nSecond.');
-    expect(html).toBe('<p>First.</p><p>Second.</p>');
+    expect(html.match(/<p /g)).toHaveLength(2);
   });
 });
 
@@ -56,5 +58,66 @@ describe('brandedEmailHtml', () => {
     const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B' });
     expect(html).not.toMatch(/fonts\.googleapis|<link/);
     expect(html).not.toContain('<img');
+  });
+
+  it('gives every gradient background a solid background-color fallback for clients that ignore CSS gradients', () => {
+    const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B', ctaLabel: 'Shop', ctaUrl: 'https://example.com' });
+    const gradientCount = (html.match(/background:linear-gradient\([^)]*\)/g) ?? []).length;
+    const fallbackCount = (html.match(/background-color:#[0-9a-f]{6};background:linear-gradient/g) ?? []).length;
+    expect(gradientCount).toBeGreaterThan(0);
+    expect(fallbackCount).toBe(gradientCount);
+  });
+
+  it('renders up to 3 feature pills, dropping blanks and anything past the third', () => {
+    const html = brandedEmailHtml({
+      heading: 'H',
+      bodyHtml: 'B',
+      featurePills: ['🚚 Fast delivery', '', '  ', '🎁 Curated boxes', '💬 24/7 support', '🙅 Never shown'],
+    });
+    expect(html).toContain('🚚 Fast delivery');
+    expect(html).toContain('🎁 Curated boxes');
+    expect(html).toContain('💬 24/7 support');
+    expect(html).not.toContain('🙅 Never shown');
+  });
+
+  it('omits the feature-pill row entirely when no pills are given', () => {
+    const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B' });
+    expect(html).not.toContain('🚚');
+  });
+
+  it('renders real testimonials with star ratings, escaping customer-authored text', () => {
+    const html = brandedEmailHtml({
+      heading: 'H',
+      bodyHtml: 'B',
+      testimonials: [
+        { customerName: 'Amina <script>', rating: 4, body: 'Loved it, will buy again!' },
+        { customerName: 'Joseph', rating: 5, body: 'Best snacks in Nairobi.' },
+      ],
+    });
+    expect(html).toContain('What people are saying');
+    expect(html).toContain('★★★★☆');
+    expect(html).toContain('★★★★★');
+    expect(html).toContain('Amina &lt;script&gt;');
+    expect(html).toContain('Loved it, will buy again!');
+    expect(html).toContain('Best snacks in Nairobi.');
+  });
+
+  it('caps testimonials at 2 and truncates a long review body', () => {
+    const html = brandedEmailHtml({
+      heading: 'H',
+      bodyHtml: 'B',
+      testimonials: [
+        { customerName: 'A', rating: 5, body: 'x'.repeat(300) },
+        { customerName: 'B', rating: 5, body: 'short' },
+        { customerName: 'C', rating: 5, body: 'should not appear' },
+      ],
+    });
+    expect(html).not.toContain('should not appear');
+    expect(html).toContain('…');
+  });
+
+  it('omits the testimonials section entirely when none are given', () => {
+    const html = brandedEmailHtml({ heading: 'H', bodyHtml: 'B' });
+    expect(html).not.toContain('What people are saying');
   });
 });

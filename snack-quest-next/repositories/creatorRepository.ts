@@ -195,10 +195,12 @@ class CreatorRepository {
 
   /**
    * Admin: Creators (§ Admin: Creators) — real cursor pagination,
-   * newest-first, optionally narrowed to one status. The filtered
-   * shape (businessId + status + createdAt) needs a composite index
-   * — see firestore.indexes.json; the unfiltered shape (a single
-   * equality plus an orderBy on a different field) does not.
+   * newest-first, optionally narrowed to one status. Both the filtered
+   * shape (businessId + status + createdAt) and the unfiltered one
+   * (businessId + createdAt) need their own composite index — see
+   * firestore.indexes.json. An equality filter plus an `orderBy` on a
+   * different field always needs one; there is no exemption for the
+   * unfiltered case.
    */
   async listByBusiness(
     businessId: string,
@@ -293,6 +295,84 @@ class CreatorRepository {
       .count()
       .get();
     return snapshot.data().count;
+  }
+
+  /**
+   * § Admin: Marketing Emails segments — creators grouped by how many
+   * referral conversions they've ever driven (`totalConversions`,
+   * credited the instant a valid code is used — see
+   * `ReferralService.awardCommission`'s own doc comment for why that
+   * counts a `pending` creator's code too, not only `active` ones).
+   * `gte` is a real range filter, so it orders by `totalConversions`
+   * itself rather than `createdAt` — Firestore requires the first
+   * `orderBy` to match the inequality field. Needs the `businessId
+   * ASC, totalConversions ASC` composite index (see
+   * firestore.indexes.json) for both the `eq` and `gte` shapes.
+   */
+  async listByConversionCount(
+    businessId: string,
+    filter: { eq: number } | { gte: number },
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 100;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+
+    query = 'eq' in filter ? query.where('totalConversions', '==', filter.eq) : query.where('totalConversions', '>=', filter.gte);
+    query = query.orderBy('totalConversions', 'asc').limit(pageSize + 1);
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      creators: docs.map((doc) => ({ id: doc.id, data: doc.data() as CreatorProfile })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
+  }
+
+  /**
+   * § Admin: Marketing Emails segments — creators who registered on or
+   * after `since`. Reuses the same `businessId ASC, createdAt DESC`
+   * composite index `listByBusiness` already needs — a range filter on
+   * the same field the query already orders by, not a new shape.
+   */
+  async listRegisteredSince(
+    businessId: string,
+    since: Date,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null }> {
+    const pageSize = options.limit ?? 100;
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('createdAt', '>=', since)
+      .orderBy('createdAt', 'desc')
+      .limit(pageSize + 1) as FirebaseFirestore.Query;
+
+    if (options.cursor) {
+      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.docs.length > pageSize;
+
+    return {
+      creators: docs.map((doc) => ({ id: doc.id, data: doc.data() as CreatorProfile })),
+      nextCursor: hasMore ? docs[docs.length - 1].id : null,
+    };
   }
 }
 

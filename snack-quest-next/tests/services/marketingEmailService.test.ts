@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
+import { reviewRepository } from '@/repositories/reviewRepository';
 import { marketingEmailRepository } from '@/repositories/marketingEmailRepository';
 import {
   marketingEmailService,
@@ -34,6 +35,8 @@ const VALID_DRAFT: MarketingEmailDraftInput = {
   imageUrl: null,
   ctaLabel: 'Shop now',
   ctaUrl: 'https://www.snackquests.shop',
+  featurePills: ['🚚 Fast delivery', '🎁 Curated boxes'],
+  includeTestimonials: true,
   segment: 'active_creators',
   customRecipients: null,
 };
@@ -42,6 +45,7 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('marketingEmailCampaigns'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('reviews'));
 });
 
 describe('MarketingEmailService.createDraft', () => {
@@ -94,6 +98,16 @@ describe('MarketingEmailService.createDraft', () => {
     );
     const campaign = await marketingEmailRepository.findById(campaignId);
     expect(campaign?.customRecipients).toEqual(['amina@example.com', 'joseph@example.com']);
+  });
+
+  it('trims feature pills, drops blanks, and caps at 3', async () => {
+    const campaignId = await marketingEmailService.createDraft(
+      BUSINESS_ID,
+      { ...VALID_DRAFT, featurePills: ['  🚚 Fast delivery  ', '', '🎁 Curated boxes', '💬 Support', '🙅 Never kept'] },
+      'staff-1',
+    );
+    const campaign = await marketingEmailRepository.findById(campaignId);
+    expect(campaign?.featurePills).toEqual(['🚚 Fast delivery', '🎁 Curated boxes', '💬 Support']);
   });
 });
 
@@ -188,6 +202,57 @@ describe('MarketingEmailService.resolveRecipients', () => {
 
     expect(recipients).toEqual(['foo@example.com', 'bar@example.com']);
   });
+
+  it('resolves creators with zero referral conversions for no_sale_creators, regardless of status', async () => {
+    await seedCreator('creator-no-sale', { businessId: BUSINESS_ID, status: 'active', totalConversions: 0 });
+    await userRepository.create('creator-no-sale', { email: 'nosale@example.com', roles: ['creator'], displayName: 'N', photoURL: null }, 'system');
+    await seedCreator('creator-pending-no-sale', { businessId: BUSINESS_ID, status: 'pending', totalConversions: 0 });
+    await userRepository.create('creator-pending-no-sale', { email: 'pendingnosale@example.com', roles: ['creator'], displayName: 'PN', photoURL: null }, 'system');
+    await seedCreator('creator-has-sale', { businessId: BUSINESS_ID, status: 'active', totalConversions: 3 });
+    await userRepository.create('creator-has-sale', { email: 'hassale@example.com', roles: ['creator'], displayName: 'H', photoURL: null }, 'system');
+
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'no_sale_creators', null);
+
+    expect(recipients.sort()).toEqual(['nosale@example.com', 'pendingnosale@example.com']);
+  });
+
+  it('resolves creators with exactly one conversion for first_sale_creators', async () => {
+    await seedCreator('creator-first', { businessId: BUSINESS_ID, status: 'active', totalConversions: 1 });
+    await userRepository.create('creator-first', { email: 'first@example.com', roles: ['creator'], displayName: 'F', photoURL: null }, 'system');
+    await seedCreator('creator-zero', { businessId: BUSINESS_ID, status: 'active', totalConversions: 0 });
+    await userRepository.create('creator-zero', { email: 'zero@example.com', roles: ['creator'], displayName: 'Z', photoURL: null }, 'system');
+    await seedCreator('creator-two', { businessId: BUSINESS_ID, status: 'active', totalConversions: 2 });
+    await userRepository.create('creator-two', { email: 'two@example.com', roles: ['creator'], displayName: 'T', photoURL: null }, 'system');
+
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'first_sale_creators', null);
+
+    expect(recipients).toEqual(['first@example.com']);
+  });
+
+  it('resolves creators with two or more conversions for repeat_creators', async () => {
+    await seedCreator('creator-one', { businessId: BUSINESS_ID, status: 'active', totalConversions: 1 });
+    await userRepository.create('creator-one', { email: 'one@example.com', roles: ['creator'], displayName: 'O', photoURL: null }, 'system');
+    await seedCreator('creator-five', { businessId: BUSINESS_ID, status: 'active', totalConversions: 5 });
+    await userRepository.create('creator-five', { email: 'five@example.com', roles: ['creator'], displayName: 'F', photoURL: null }, 'system');
+    await seedCreator('creator-two', { businessId: BUSINESS_ID, status: 'active', totalConversions: 2 });
+    await userRepository.create('creator-two', { email: 'two@example.com', roles: ['creator'], displayName: 'T', photoURL: null }, 'system');
+
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'repeat_creators', null);
+
+    expect(recipients.sort()).toEqual(['five@example.com', 'two@example.com']);
+  });
+
+  it('resolves only creators registered within the last 30 days for new_creators', async () => {
+    await seedCreator('creator-new', { businessId: BUSINESS_ID, status: 'active' });
+    await userRepository.create('creator-new', { email: 'new@example.com', roles: ['creator'], displayName: 'N', photoURL: null }, 'system');
+
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'new_creators', null);
+
+    // seedCreator writes createdAt via FieldValue.serverTimestamp() at call time, so a
+    // freshly-seeded creator is always "new" — this proves the query actually resolves
+    // real, current data rather than throwing or silently returning nothing.
+    expect(recipients).toEqual(['new@example.com']);
+  });
 });
 
 describe('MarketingEmailService.send', () => {
@@ -240,5 +305,36 @@ describe('MarketingEmailService.listCampaigns', () => {
     const { campaigns } = await marketingEmailService.listCampaigns(BUSINESS_ID);
 
     expect(campaigns.map((c) => c.id)).toEqual([second, first]);
+  });
+});
+
+describe('MarketingEmailService.fetchTestimonials', () => {
+  async function seedReview(overrides: Partial<Parameters<typeof reviewRepository.create>[0]> = {}) {
+    return reviewRepository.create({
+      businessId: BUSINESS_ID,
+      customerName: 'Amina',
+      rating: 5,
+      body: 'Loved every box!',
+      photos: [],
+      video: null,
+      status: 'published',
+      contactPhone: null,
+      ...overrides,
+    });
+  }
+
+  it('returns only real, published reviews for this business', async () => {
+    await seedReview({ customerName: 'Amina', rating: 5, body: 'Loved every box!' });
+    await seedReview({ customerName: 'Pending Pete', status: 'pending' });
+    await seedReview({ customerName: 'Other Biz', businessId: OTHER_BUSINESS_ID });
+
+    const testimonials = await marketingEmailService.fetchTestimonials(BUSINESS_ID);
+
+    expect(testimonials).toEqual([{ customerName: 'Amina', rating: 5, body: 'Loved every box!' }]);
+  });
+
+  it('returns an empty array — never fabricated content — when nothing is published', async () => {
+    const testimonials = await marketingEmailService.fetchTestimonials(BUSINESS_ID);
+    expect(testimonials).toEqual([]);
   });
 });

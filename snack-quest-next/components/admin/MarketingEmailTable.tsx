@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { SerializedMarketingEmailCampaign } from '@/lib/marketingEmails/serialize';
+import { SEGMENT_LABEL } from '@/lib/marketingEmails/segmentLabels';
 import type { MarketingEmailStatus } from '@/types';
 
 const STATUS_VARIANT: Record<MarketingEmailStatus, 'outline' | 'warning' | 'success' | 'danger'> = {
@@ -16,14 +17,6 @@ const STATUS_VARIANT: Record<MarketingEmailStatus, 'outline' | 'warning' | 'succ
   sending: 'warning',
   sent: 'success',
   failed: 'danger',
-};
-
-const SEGMENT_LABEL: Record<string, string> = {
-  all_creators: 'All creators',
-  active_creators: 'Active creators',
-  pending_creators: 'Pending creators',
-  suspended_creators: 'Suspended creators',
-  custom: 'Custom list',
 };
 
 export function MarketingEmailTable({

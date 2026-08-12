@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { marketingEmailService } from '@/services/marketingEmailService';
 import { MarketingEmailForm } from '@/components/admin/MarketingEmailForm';
 import { Card } from '@/components/ui/card';
 
@@ -19,13 +20,15 @@ export default async function NewMarketingEmailPage() {
     );
   }
 
+  const availableTestimonials = await marketingEmailService.fetchTestimonials(session.businessId);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-page-title font-bold tracking-tight text-foreground">New campaign</h1>
         <p className="mt-1 text-sm text-muted-foreground">Saved as a draft first — nothing sends until you confirm.</p>
       </div>
-      <MarketingEmailForm mode="create" />
+      <MarketingEmailForm mode="create" availableTestimonials={availableTestimonials} />
     </div>
   );
 }
