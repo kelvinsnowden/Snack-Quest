@@ -35,9 +35,24 @@ export interface NotificationTemplate {
   channel: NotificationChannel;
   /** Email only — ignored for every other channel. */
   subject: string | null;
-  /** `{{token}}` placeholders, one per entry in `requiredParams`. */
+  /** `{{token}}` placeholders, one per entry in `requiredParams`. Also the source paragraphs `htmlBodyTemplate` is rendered from for email templates — see that field's comment. */
   bodyTemplate: string;
-  /** Email only — the branded HTML alternative sent alongside `bodyTemplate`'s plain text. `null` for every non-email template, and for any email template that hasn't been given one yet (falls back to plain text only). */
+  /** Email only — the bold headline shown above `bodyTemplate` in the branded HTML shell (§ Admin: Notification Templates). `null` for every non-email template. */
+  heading: string | null;
+  /** Email only — optional CTA button label/URL rendered into the branded shell. Both or neither. */
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  /**
+   * Email only — the branded HTML alternative sent alongside
+   * `bodyTemplate`'s plain text. `null` for every non-email template,
+   * and for any email template that hasn't been given one yet (falls
+   * back to plain text only). Derived, not hand-authored: whenever a
+   * super admin edits `heading`/`bodyTemplate`/`ctaLabel`/`ctaUrl` in
+   * Admin: Notification Templates, this is re-rendered from those
+   * fields via the same `brandedEmailHtml()` shell Marketing Emails
+   * uses (`services/notificationTemplateService.ts`) — the two email
+   * surfaces share one visual source of truth, logo included.
+   */
   htmlBodyTemplate: string | null;
   requiredParams: string[];
   version: number;

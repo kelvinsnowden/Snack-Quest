@@ -19,6 +19,9 @@ import type { AuditFields } from './common';
  *   own approval status, so this is a real sales-activity signal, not
  *   a proxy for status.
  * - `new_creators`: registered in the last 30 days.
+ * - `specific_creators`: one or more real, searched-and-picked
+ *   creators — distinct from `custom`, which is hand-typed email
+ *   addresses with no guarantee they belong to a real creator at all.
  */
 export type MarketingEmailSegment =
   | 'all_creators'
@@ -29,6 +32,7 @@ export type MarketingEmailSegment =
   | 'first_sale_creators'
   | 'repeat_creators'
   | 'new_creators'
+  | 'specific_creators'
   | 'custom';
 
 export type MarketingEmailStatus = 'draft' | 'sending' | 'sent' | 'failed';
@@ -70,6 +74,8 @@ export interface MarketingEmailCampaign extends AuditFields {
   segment: MarketingEmailSegment;
   /** Only meaningful when `segment === 'custom'` — validated, deduped email addresses. */
   customRecipients: string[] | null;
+  /** Only meaningful when `segment === 'specific_creators'` — real `creatorProfiles` uids picked via search, resolved to emails at send time the same way every other segment is. */
+  specificCreatorIds: string[] | null;
   status: MarketingEmailStatus;
   /** Recipients resolved at send time — 0 for a draft that has never been sent. */
   recipientCount: number;

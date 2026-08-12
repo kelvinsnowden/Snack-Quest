@@ -6,6 +6,7 @@ import type { MarketingEmailSegment } from '@/types';
 interface RecipientsBody {
   segment?: unknown;
   customRecipients?: unknown;
+  specificCreatorIds?: unknown;
 }
 
 /** A live recipient count for the composer's segment picker and its "Send to N recipients?" confirmation — resolves the real segment, never an estimate (§ Admin: Marketing Emails). */
@@ -34,11 +35,19 @@ export async function POST(request: Request): Promise<Response> {
   ) {
     return Response.json({ error: '"customRecipients" must be an array of strings or null.' }, { status: 400 });
   }
+  if (
+    body.specificCreatorIds !== undefined &&
+    body.specificCreatorIds !== null &&
+    (!Array.isArray(body.specificCreatorIds) || body.specificCreatorIds.some((entry) => typeof entry !== 'string'))
+  ) {
+    return Response.json({ error: '"specificCreatorIds" must be an array of strings or null.' }, { status: 400 });
+  }
 
   const count = await marketingEmailService.previewRecipientCount(
     session.businessId,
     body.segment as MarketingEmailSegment,
     (body.customRecipients as string[] | null | undefined) ?? null,
+    (body.specificCreatorIds as string[] | null | undefined) ?? null,
   );
   return Response.json({ count });
 }

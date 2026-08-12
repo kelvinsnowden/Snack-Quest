@@ -5,6 +5,15 @@
 // creatorAuthService.ts, creatorAdminService.ts, refundService.ts) that has
 // a real, identifiable recipient. Idempotent — `upsert` re-runs safely as
 // the catalog grows. Plain ESM, no build step: `npm run seed:notification-templates`.
+//
+// Every email template's `heading`/`bodyTemplate`/`ctaLabel`/`ctaUrl` here
+// is the STARTING content only — once a super admin edits and saves a
+// template in Admin: Notification Templates, `htmlBodyTemplate` is
+// re-rendered from those fields by `services/notificationTemplateService.ts`
+// (the real TS `brandedEmailHtml()`), not by this script. Re-running this
+// script after that point would overwrite those edits back to this
+// starting content, so treat it as first-bootstrap-only for any template
+// code that's already live, not a routine re-seed.
 import { initializeApp, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -35,106 +44,134 @@ function createApp() {
   });
 }
 
+// The real logo, absolute URL — same value as the deployed
+// `public/logo.png` and `lib/notifications/brandedEmailHtml.ts`'s own
+// `LOGO_URL` constant. Duplicated here (not imported) because this
+// script deliberately has no build step — see this file's own doc
+// comment on why it keeps a standalone copy of the shell.
+const LOGO_URL = 'https://www.snackquests.shop/logo.png';
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Blank-line-separated paragraphs of plain text into escaped `<p>` tags — matches `lib/notifications/brandedEmailHtml.ts`'s `paragraphsToHtml()` exactly, so a template's first render here looks the same as a re-render from Admin: Notification Templates later. */
+function paragraphsToHtml(text) {
+  return text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 14px;">${escapeHtml(p).replace(/\n/g, '<br />')}</p>`)
+    .join('');
+}
+
 // Lightweight branded shell for every creator-program email (§ Creator
 // lifecycle emails). Deliberately table-based with inline styles only —
-// no external images, web fonts, or tracking pixels — so the rendered
-// HTML stays a few KB and a low text-to-markup ratio never gives a spam
-// filter a "too heavy"/image-only signal to score against. The one
-// brand color matches `--color-creator-brand` in app/globals.css.
+// no web fonts or tracking pixels — so the rendered HTML stays a few KB
+// and a low text-to-markup ratio never gives a spam filter a "too heavy"
+// signal to score against. Kept in sync by hand with
+// `lib/notifications/brandedEmailHtml.ts`'s real TS version (same brand
+// colors, same logo, same structure) — this is the one-time seed value;
+// every subsequent edit renders through the real TS shell instead.
 function brandedEmailHtml({ heading, bodyHtml, ctaLabel, ctaHref }) {
   const cta = ctaLabel && ctaHref
-    ? `<tr><td style="padding:4px 32px 4px;"><a href="${ctaHref}" style="display:inline-block;background:#ff7a00;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:8px;font-family:Arial,Helvetica,sans-serif;">${ctaLabel}</a></td></tr>`
+    ? `<tr><td style="padding:12px 32px 8px;text-align:center;"><a href="${ctaHref}" style="display:inline-block;background-color:#ff7a00;background:linear-gradient(135deg,#ff7a00,#e56a00);color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 36px;border-radius:999px;font-family:Arial,Helvetica,sans-serif;">${ctaLabel}</a></td></tr>`
     : '';
   return (
-    '<!doctype html><html><body style="margin:0;padding:0;background:#f4f1ec;font-family:Arial,Helvetica,sans-serif;">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1ec;padding:24px 0;">' +
+    '<!doctype html><html><body style="margin:0;padding:0;background-color:#f4f2fb;font-family:Arial,Helvetica,sans-serif;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f2fb;padding:24px 0;">' +
     '<tr><td align="center">' +
-    '<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">' +
-    '<tr><td style="background:#ff7a00;padding:20px 32px;"><span style="color:#ffffff;font-size:18px;font-weight:700;">Snack Quest</span></td></tr>' +
-    `<tr><td style="padding:28px 32px 8px;"><h1 style="margin:0 0 12px;font-size:20px;color:#1f1105;">${heading}</h1>` +
-    `<div style="font-size:15px;line-height:1.6;color:#3a3a3a;">${bodyHtml}</div></td></tr>` +
+    '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;">' +
+    `<tr><td style="background-color:#ff7a00;background:linear-gradient(135deg,#ff7a00 0%,#6c3bff 100%);padding:20px 32px;text-align:center;"><img src="${LOGO_URL}" width="64" height="64" alt="Snack Quest" style="display:block;margin:0 auto;width:64px;height:64px;border-radius:14px;border:0;" /></td></tr>` +
+    `<tr><td style="padding:32px 32px 4px;text-align:center;"><h1 style="margin:0 0 16px;font-size:26px;line-height:1.28;color:#1f1105;font-weight:800;font-family:Arial,Helvetica,sans-serif;">${heading}</h1>` +
+    `<div style="font-size:15px;line-height:1.65;color:#3a3a3a;text-align:left;">${bodyHtml}</div></td></tr>` +
     cta +
-    '<tr><td style="padding:20px 32px 28px;"><p style="margin:0;font-size:12px;color:#8a8a8a;">Snack Quest Creator Program &middot; This is an automated message.</p></td></tr>' +
+    '<tr><td style="padding:24px 32px 26px;border-top:1px solid #eee6ff;text-align:center;"><p style="margin:0;font-size:12px;color:#8a8a8a;">Snack Quest &middot; This is an automated message.</p></td></tr>' +
     '</table></td></tr></table></body></html>'
   );
 }
 
+function emailTemplate({ templateCode, subject, heading, bodyTemplate, ctaLabel, ctaUrl, requiredParams }) {
+  return {
+    templateCode,
+    channel: 'email',
+    subject,
+    heading,
+    bodyTemplate,
+    ctaLabel,
+    ctaUrl,
+    htmlBodyTemplate: brandedEmailHtml({ heading, bodyHtml: paragraphsToHtml(bodyTemplate), ctaLabel, ctaHref: ctaUrl }),
+    requiredParams,
+    version: 1,
+    isActive: true,
+  };
+}
+
 const TEMPLATES = [
-  {
+  emailTemplate({
     templateCode: 'creator_registered_welcome_email',
-    channel: 'email',
     subject: 'Welcome to the Snack Quest Creator Program, {{displayName}}!',
+    heading: 'Welcome, {{displayName}}!',
     bodyTemplate:
-      "Hi {{displayName}},\n\nYour Snack Quest Creator account is set up. Your referral code is {{referralCode}} — share your link from the Creator Portal to start earning commission.\n\nWe'll review your application and let you know once you're approved to start earning.\n\n- Snack Quest",
-    htmlBodyTemplate: brandedEmailHtml({
-      heading: 'Welcome, {{displayName}}!',
-      bodyHtml:
-        '<p>Your Snack Quest Creator account is set up. Your referral code is <strong>{{referralCode}}</strong> — share your link from the Creator Portal to start earning commission.</p>' +
-        "<p>We'll review your application and let you know once you're approved to start earning.</p>",
-      ctaLabel: 'Open Creator Portal',
-      ctaHref: '{{portalUrl}}',
-    }),
+      'Your Snack Quest Creator account is set up. Your referral code is {{referralCode}} — share your link from the Creator Portal to start earning commission.\n\nWe’ll review your application and let you know once you’re approved to start earning.',
+    ctaLabel: 'Open Creator Portal',
+    ctaUrl: '{{portalUrl}}',
     requiredParams: ['displayName', 'referralCode', 'portalUrl'],
-    version: 1,
-    isActive: true,
-  },
-  {
+  }),
+  emailTemplate({
     templateCode: 'creator_status_approved_email',
-    channel: 'email',
     subject: "You're approved — welcome to Snack Quest Creators, {{displayName}}",
+    heading: "You're approved!",
     bodyTemplate:
-      'Hi {{displayName}},\n\nGreat news — your Snack Quest Creator account is approved and active. Your referral code is {{referralCode}}. Log in to the Creator Portal to share your link and start earning commission.\n\n- Snack Quest',
-    htmlBodyTemplate: brandedEmailHtml({
-      heading: "You're approved!",
-      bodyHtml:
-        '<p>Hi {{displayName}}, your Snack Quest Creator account is now <strong>active</strong>. Your referral code is <strong>{{referralCode}}</strong> — share your link to start earning commission on every order it brings in.</p>',
-      ctaLabel: 'Open Creator Portal',
-      ctaHref: '{{portalUrl}}',
-    }),
+      'Hi {{displayName}}, your Snack Quest Creator account is now active. Your referral code is {{referralCode}} — share your link to start earning commission on every order it brings in.',
+    ctaLabel: 'Open Creator Portal',
+    ctaUrl: '{{portalUrl}}',
     requiredParams: ['displayName', 'referralCode', 'portalUrl'],
-    version: 1,
-    isActive: true,
-  },
-  {
+  }),
+  emailTemplate({
     templateCode: 'referral_commission_earned_email',
-    channel: 'email',
     subject: 'You earned KES {{commissionKes}} — Snack Quest',
+    heading: 'You earned KES {{commissionKes}}',
     bodyTemplate:
-      "Hi {{displayName}},\n\nYou just earned KES {{commissionKes}} commission on a referred order. It's been added to your Creator Portal balance.\n\n- Snack Quest",
-    htmlBodyTemplate: brandedEmailHtml({
-      heading: 'You earned KES {{commissionKes}}',
-      bodyHtml:
-        '<p>Hi {{displayName}}, nice work — someone just used your referral code and you earned <strong>KES {{commissionKes}}</strong> commission. It\'s already reflected in your Creator Portal balance.</p>',
-      ctaLabel: 'View earnings',
-      ctaHref: '{{portalUrl}}',
-    }),
+      'Hi {{displayName}}, nice work — someone just used your referral code and you earned KES {{commissionKes}} commission. It’s already reflected in your Creator Portal balance.',
+    ctaLabel: 'View earnings',
+    ctaUrl: '{{portalUrl}}',
     requiredParams: ['displayName', 'commissionKes', 'portalUrl'],
-    version: 1,
-    isActive: true,
-  },
-  {
+  }),
+  emailTemplate({
     templateCode: 'withdrawal_approved_email',
-    channel: 'email',
     subject: 'Your KES {{amountKes}} withdrawal is on its way',
+    heading: 'Withdrawal approved',
     bodyTemplate:
-      "Hi {{displayName}},\n\nYour withdrawal of KES {{amountKes}} has been approved and is being processed via M-Pesa. You'll get an M-Pesa confirmation once it's paid.\n\n- Snack Quest",
-    htmlBodyTemplate: brandedEmailHtml({
-      heading: 'Withdrawal approved',
-      bodyHtml:
-        "<p>Hi {{displayName}}, your withdrawal of <strong>KES {{amountKes}}</strong> has been approved and is being processed via M-Pesa. You'll get an M-Pesa confirmation once it's paid out.</p>",
-      ctaLabel: 'View withdrawal history',
-      ctaHref: '{{portalUrl}}',
-    }),
+      'Hi {{displayName}}, your withdrawal of KES {{amountKes}} has been approved and is being processed via M-Pesa. You’ll get an M-Pesa confirmation once it’s paid out.',
+    ctaLabel: 'View withdrawal history',
+    ctaUrl: '{{portalUrl}}',
     requiredParams: ['displayName', 'amountKes', 'portalUrl'],
-    version: 1,
-    isActive: true,
-  },
+  }),
+  emailTemplate({
+    templateCode: 'staff_invited_email',
+    subject: "You've been added as staff on Snack Quest Admin",
+    heading: 'Welcome to Snack Quest Admin',
+    bodyTemplate:
+      'Hi {{displayName}}, a super admin has created a staff account for you on Snack Quest Admin, with the role of {{role}}.\n\nThis link is single-use and will expire — if it does, ask a super admin to send you a new one from Admin > Staff.',
+    ctaLabel: 'Set your password',
+    ctaUrl: '{{resetLink}}',
+    requiredParams: ['displayName', 'role', 'resetLink'],
+  }),
   {
     templateCode: 'creator_status_approved_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate:
       "Snack Quest: You're approved! Your creator account is now active — log in to the Creator Portal to share your referral link and start earning.",
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: [],
     htmlBodyTemplate: null,
     version: 1,
@@ -144,7 +181,10 @@ const TEMPLATES = [
     templateCode: 'creator_status_rejected_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: Your creator application was not approved this time. Reply to this number with questions.',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: [],
     htmlBodyTemplate: null,
     version: 1,
@@ -154,7 +194,10 @@ const TEMPLATES = [
     templateCode: 'referral_commission_earned_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: You earned KES {{commissionKes}} commission on a referred order. Check your balance in the Creator Portal.',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: ['commissionKes'],
     htmlBodyTemplate: null,
     version: 1,
@@ -164,7 +207,10 @@ const TEMPLATES = [
     templateCode: 'withdrawal_approved_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: Your withdrawal of KES {{amountKes}} has been approved and is being processed.',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: ['amountKes'],
     htmlBodyTemplate: null,
     version: 1,
@@ -174,7 +220,10 @@ const TEMPLATES = [
     templateCode: 'withdrawal_paid_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: Your withdrawal of KES {{amountKes}} has been paid via M-Pesa. Thank you for being a Snack Quest Creator!',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: ['amountKes'],
     htmlBodyTemplate: null,
     version: 1,
@@ -184,7 +233,10 @@ const TEMPLATES = [
     templateCode: 'withdrawal_rejected_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: Your withdrawal request of KES {{amountKes}} was rejected. Reason: {{reason}}',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: ['amountKes', 'reason'],
     htmlBodyTemplate: null,
     version: 1,
@@ -194,7 +246,10 @@ const TEMPLATES = [
     templateCode: 'withdrawal_failed_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: Your withdrawal of KES {{amountKes}} could not be completed. Your balance has been restored. We will follow up shortly.',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: ['amountKes'],
     htmlBodyTemplate: null,
     version: 1,
@@ -204,19 +259,11 @@ const TEMPLATES = [
     templateCode: 'refund_succeeded_sms',
     channel: 'sms',
     subject: null,
+    heading: null,
     bodyTemplate: 'Snack Quest: Your refund of KES {{amountKes}} for order {{orderId}} has been processed back to your M-Pesa number.',
+    ctaLabel: null,
+    ctaUrl: null,
     requiredParams: ['amountKes', 'orderId'],
-    htmlBodyTemplate: null,
-    version: 1,
-    isActive: true,
-  },
-  {
-    templateCode: 'staff_invited_email',
-    channel: 'email',
-    subject: "You've been added as staff on Snack Quest Admin",
-    bodyTemplate:
-      "Hi {{displayName}},\n\nA super admin has created a staff account for you on Snack Quest Admin, with the role of {{role}}.\n\nSet your password to sign in: {{resetLink}}\n\nThis link is single-use and will expire — if it does, ask a super admin to send you a new one from Admin > Staff.\n\n- Snack Quest",
-    requiredParams: ['displayName', 'role', 'resetLink'],
     htmlBodyTemplate: null,
     version: 1,
     isActive: true,

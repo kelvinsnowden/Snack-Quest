@@ -39,6 +39,7 @@ const VALID_DRAFT: MarketingEmailDraftInput = {
   includeTestimonials: true,
   segment: 'active_creators',
   customRecipients: null,
+  specificCreatorIds: null,
 };
 
 beforeEach(async () => {
@@ -82,6 +83,26 @@ describe('MarketingEmailService.createDraft', () => {
         'staff-1',
       ),
     ).rejects.toBeInstanceOf(MarketingEmailValidationError);
+  });
+
+  it('rejects a specific_creators segment with no creators picked', async () => {
+    await expect(
+      marketingEmailService.createDraft(
+        BUSINESS_ID,
+        { ...VALID_DRAFT, segment: 'specific_creators', specificCreatorIds: [] },
+        'staff-1',
+      ),
+    ).rejects.toBeInstanceOf(MarketingEmailValidationError);
+  });
+
+  it('dedupes a specific_creators id list and caps it', async () => {
+    const campaignId = await marketingEmailService.createDraft(
+      BUSINESS_ID,
+      { ...VALID_DRAFT, segment: 'specific_creators', specificCreatorIds: ['creator-a', 'creator-a', 'creator-b'] },
+      'staff-1',
+    );
+    const campaign = await marketingEmailRepository.findById(campaignId);
+    expect(campaign?.specificCreatorIds).toEqual(['creator-a', 'creator-b']);
   });
 
   it('rejects a CTA label without a URL', async () => {
@@ -252,6 +273,66 @@ describe('MarketingEmailService.resolveRecipients', () => {
     // freshly-seeded creator is always "new" — this proves the query actually resolves
     // real, current data rather than throwing or silently returning nothing.
     expect(recipients).toEqual(['new@example.com']);
+  });
+
+  it('for specific_creators, resolves exactly the picked ids by real uid lookup, ignoring status/segment membership', async () => {
+    await seedCreator('creator-picked', { businessId: BUSINESS_ID, status: 'suspended' });
+    await userRepository.create('creator-picked', { email: 'Picked@Example.com', roles: ['creator'], displayName: 'Picked', photoURL: null }, 'system');
+    await seedCreator('creator-not-picked', { businessId: BUSINESS_ID, status: 'active' });
+    await userRepository.create('creator-not-picked', { email: 'notpicked@example.com', roles: ['creator'], displayName: 'Not', photoURL: null }, 'system');
+
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'specific_creators', null, [
+      'creator-picked',
+    ]);
+
+    expect(recipients).toEqual(['picked@example.com']);
+  });
+
+  it('for specific_creators, silently drops an id with no resolvable email rather than failing', async () => {
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'specific_creators', null, [
+      'does-not-exist',
+    ]);
+
+    expect(recipients).toEqual([]);
+  });
+});
+
+describe('MarketingEmailService.searchCreators', () => {
+  it('matches by name, email, or referral code, scoped to the given business', async () => {
+    await seedCreator('creator-amina', { businessId: BUSINESS_ID, status: 'active', referralCode: 'AMINA10' });
+    await userRepository.create('creator-amina', { email: 'amina@example.com', roles: ['creator'], displayName: 'Amina Wanjiru', photoURL: null }, 'system');
+    await seedCreator('creator-other', { businessId: OTHER_BUSINESS_ID, status: 'active', referralCode: 'OTHER10' });
+    await userRepository.create('creator-other', { email: 'amina2@example.com', roles: ['creator'], displayName: 'Amina Other Biz', photoURL: null }, 'system');
+
+    const results = await marketingEmailService.searchCreators(BUSINESS_ID, 'amina');
+
+    expect(results).toEqual([
+      { id: 'creator-amina', displayName: 'Amina Wanjiru', email: 'amina@example.com', status: 'active' },
+    ]);
+  });
+
+  it('returns nothing for a query under 2 characters', async () => {
+    await seedCreator('creator-a', { businessId: BUSINESS_ID, status: 'active' });
+    await userRepository.create('creator-a', { email: 'a@example.com', roles: ['creator'], displayName: 'A', photoURL: null }, 'system');
+
+    expect(await marketingEmailService.searchCreators(BUSINESS_ID, 'a')).toEqual([]);
+  });
+});
+
+describe('MarketingEmailService.getCreatorSummaries', () => {
+  it('resolves picked ids back to display info, scoped to the given business', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'pending' });
+    await userRepository.create('creator-1', { email: 'one@example.com', roles: ['creator'], displayName: 'One', photoURL: null }, 'system');
+    await seedCreator('creator-other-biz', { businessId: OTHER_BUSINESS_ID, status: 'active' });
+    await userRepository.create('creator-other-biz', { email: 'other@example.com', roles: ['creator'], displayName: 'Other', photoURL: null }, 'system');
+
+    const summaries = await marketingEmailService.getCreatorSummaries(BUSINESS_ID, [
+      'creator-1',
+      'creator-other-biz',
+      'does-not-exist',
+    ]);
+
+    expect(summaries).toEqual([{ id: 'creator-1', displayName: 'One', email: 'one@example.com', status: 'pending' }]);
   });
 });
 

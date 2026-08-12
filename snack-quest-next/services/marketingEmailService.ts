@@ -10,6 +10,7 @@ import {
 import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
 import { brandedEmailHtml, paragraphsToHtml, type EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
 import { reviewService } from '@/services/reviewService';
+import { matchesQuery } from '@/lib/search/types';
 import type { CreatorProfile, CreatorStatus, MarketingEmailCampaign, MarketingEmailSegment } from '@/types';
 
 /**
@@ -64,6 +65,7 @@ export interface MarketingEmailDraftInput {
   includeTestimonials: boolean;
   segment: MarketingEmailSegment;
   customRecipients: string[] | null;
+  specificCreatorIds: string[] | null;
 }
 
 export interface MarketingEmailSendResult {
@@ -72,12 +74,24 @@ export interface MarketingEmailSendResult {
   failedCount: number;
 }
 
+export interface CreatorSearchResult {
+  id: string;
+  displayName: string;
+  email: string;
+  status: CreatorStatus;
+}
+
 /** A hard ceiling on one send — matches the codebase's existing bounded-scan discipline (e.g. `customerService`'s `AGGREGATION_LIMIT`) rather than an unbounded scan of every creator ever registered. */
 const RECIPIENT_SCAN_LIMIT = 2000;
 const MAX_CUSTOM_RECIPIENTS = 500;
+/** `specific_creators` is deliberately a hand-picked, small list — not a bulk segment — so its ceiling is much lower than `custom`'s. */
+const MAX_SPECIFIC_CREATORS = 50;
 const MAX_FEATURE_PILLS = 3;
 const MAX_TESTIMONIALS = 2;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Same bounded in-memory scan discipline as `globalSearchService.searchCreators()` — real and correct at this business's actual scale. */
+const CREATOR_SEARCH_SCAN_LIMIT = 500;
+const CREATOR_SEARCH_RESULT_LIMIT = 8;
 
 /** Every real segment — exported so route handlers validate against the same list instead of keeping their own copy in sync by hand. */
 export const MARKETING_EMAIL_SEGMENTS: MarketingEmailSegment[] = [
@@ -89,6 +103,7 @@ export const MARKETING_EMAIL_SEGMENTS: MarketingEmailSegment[] = [
   'first_sale_creators',
   'repeat_creators',
   'new_creators',
+  'specific_creators',
   'custom',
 ];
 
@@ -119,6 +134,23 @@ function normalizeCustomRecipients(raw: string[]): string[] {
   return out;
 }
 
+function normalizeSpecificCreatorIds(raw: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of raw) {
+    const id = entry.trim();
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    out.push(id);
+    if (out.length >= MAX_SPECIFIC_CREATORS) {
+      break;
+    }
+  }
+  return out;
+}
+
 function normalizeFeaturePills(raw: string[]): string[] {
   return raw
     .map((pill) => pill.trim())
@@ -141,6 +173,9 @@ function validateDraft(input: MarketingEmailDraftInput): void {
   }
   if (input.segment === 'custom' && normalizeCustomRecipients(input.customRecipients ?? []).length === 0) {
     throw new MarketingEmailValidationError('A custom segment needs at least one valid recipient email.');
+  }
+  if (input.segment === 'specific_creators' && normalizeSpecificCreatorIds(input.specificCreatorIds ?? []).length === 0) {
+    throw new MarketingEmailValidationError('Pick at least one creator for a specific-creator send.');
   }
   if (Boolean(input.ctaLabel?.trim()) !== Boolean(input.ctaUrl?.trim())) {
     throw new MarketingEmailValidationError('A CTA button needs both a label and a URL, or neither.');
@@ -168,9 +203,21 @@ class MarketingEmailService {
     businessId: string,
     segment: MarketingEmailSegment,
     customRecipients: string[] | null,
+    specificCreatorIds: string[] | null = null,
   ): Promise<string[]> {
     if (segment === 'custom') {
       return normalizeCustomRecipients(customRecipients ?? []);
+    }
+    if (segment === 'specific_creators') {
+      const ids = normalizeSpecificCreatorIds(specificCreatorIds ?? []);
+      const users = await Promise.all(ids.map((id) => userRepository.findById(id)));
+      const emails = new Set<string>();
+      for (const user of users) {
+        if (user?.email) {
+          emails.add(user.email.toLowerCase());
+        }
+      }
+      return Array.from(emails);
     }
 
     const fetchPage = this.pageFetcherForSegment(businessId, segment);
@@ -224,9 +271,48 @@ class MarketingEmailService {
     businessId: string,
     segment: MarketingEmailSegment,
     customRecipients: string[] | null,
+    specificCreatorIds: string[] | null = null,
   ): Promise<number> {
-    const recipients = await this.resolveRecipients(businessId, segment, customRecipients);
+    const recipients = await this.resolveRecipients(businessId, segment, customRecipients, specificCreatorIds);
     return recipients.length;
+  }
+
+  /** Substring search across real creators for the composer's "specific creators" picker (§ Admin: Marketing Emails) — never a raw email lookup, since the point is to find a real creator, not guess their address. */
+  async searchCreators(businessId: string, query: string): Promise<CreatorSearchResult[]> {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return [];
+    }
+
+    const { creators } = await creatorRepository.listByBusiness(businessId, { limit: CREATOR_SEARCH_SCAN_LIMIT });
+    const withIdentity = await Promise.all(
+      creators.map(async ({ id, data }) => ({ id, data, user: await userRepository.findById(id) })),
+    );
+
+    return withIdentity
+      .filter(({ data, user }) => user?.email && matchesQuery(trimmed, user.displayName, user.email, data.referralCode))
+      .slice(0, CREATOR_SEARCH_RESULT_LIMIT)
+      .map(({ id, data, user }) => ({
+        id,
+        displayName: user!.displayName || user!.email!,
+        email: user!.email!,
+        status: data.status,
+      }));
+  }
+
+  /** Resolves already-picked creator ids back to display info — hydrates the composer's chips when editing a draft that already has a `specific_creators` selection. Silently drops any id that no longer resolves (deleted account, etc.) rather than erroring the whole page. */
+  async getCreatorSummaries(businessId: string, ids: string[]): Promise<CreatorSearchResult[]> {
+    const profiles = await Promise.all(ids.map((id) => creatorRepository.findById(id)));
+    const users = await Promise.all(ids.map((id) => userRepository.findById(id)));
+    const summaries: CreatorSearchResult[] = [];
+    ids.forEach((id, index) => {
+      const profile = profiles[index];
+      const user = users[index];
+      if (profile && profile.businessId === businessId && user?.email) {
+        summaries.push({ id, displayName: user.displayName || user.email, email: user.email, status: profile.status });
+      }
+    });
+    return summaries;
   }
 
   async createDraft(businessId: string, input: MarketingEmailDraftInput, actor: string): Promise<string> {
@@ -245,6 +331,8 @@ class MarketingEmailService {
       sentTestimonials: null,
       segment: input.segment,
       customRecipients: input.segment === 'custom' ? normalizeCustomRecipients(input.customRecipients ?? []) : null,
+      specificCreatorIds:
+        input.segment === 'specific_creators' ? normalizeSpecificCreatorIds(input.specificCreatorIds ?? []) : null,
       status: 'draft',
       recipientCount: 0,
       sentCount: 0,
@@ -277,6 +365,8 @@ class MarketingEmailService {
       includeTestimonials: input.includeTestimonials,
       segment: input.segment,
       customRecipients: input.segment === 'custom' ? normalizeCustomRecipients(input.customRecipients ?? []) : null,
+      specificCreatorIds:
+        input.segment === 'specific_creators' ? normalizeSpecificCreatorIds(input.specificCreatorIds ?? []) : null,
       updatedBy: actor,
     });
   }
@@ -313,7 +403,12 @@ class MarketingEmailService {
       throw new MarketingEmailNotEditableError(campaign.status);
     }
 
-    const recipients = await this.resolveRecipients(businessId, campaign.segment, campaign.customRecipients);
+    const recipients = await this.resolveRecipients(
+      businessId,
+      campaign.segment,
+      campaign.customRecipients,
+      campaign.specificCreatorIds,
+    );
     if (recipients.length === 0) {
       throw new MarketingEmailValidationError('No recipients resolved for this segment — nothing was sent.');
     }
