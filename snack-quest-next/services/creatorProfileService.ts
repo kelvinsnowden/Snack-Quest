@@ -53,6 +53,9 @@ function assertValid(input: CompleteOnboardingInput): void {
   if (!VALID_PAYMENT_PREFERENCES.includes(input.paymentPreference)) {
     throw new InvalidOnboardingInputError('Payment preference must be "mpesa" or "bank"');
   }
+  if (!Object.values(input.socialHandles).some((handle) => handle.trim())) {
+    throw new InvalidOnboardingInputError('At least one social media handle is required');
+  }
 }
 
 export interface UpdateProfileInput {

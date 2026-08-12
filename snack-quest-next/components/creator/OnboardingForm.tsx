@@ -37,6 +37,12 @@ export function OnboardingForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+
+    if (!Object.values(socialHandles).some((handle) => handle.trim())) {
+      setError('Add at least one social media handle so brands and followers can find you.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -119,9 +125,8 @@ export function OnboardingForm() {
       </div>
 
       <fieldset className="flex flex-col gap-3">
-        <legend className="text-sm font-medium text-foreground">
-          Socials <span className="font-normal text-muted-foreground">(optional)</span>
-        </legend>
+        <legend className="text-sm font-medium text-foreground">Socials</legend>
+        <p className="-mt-1 text-caption text-muted-foreground">Add at least one so brands and followers can find you.</p>
         {SOCIAL_PLATFORMS.map(({ key, label }) => (
           <div key={key} className="flex flex-col gap-2">
             <Label htmlFor={key}>{label}</Label>
