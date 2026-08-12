@@ -5,7 +5,7 @@
 // creatorAuthService.ts, creatorAdminService.ts, refundService.ts) that has
 // a real, identifiable recipient. Idempotent — `upsert` re-runs safely as
 // the catalog grows. Plain ESM, no build step: `npm run seed:notification-templates`.
-import { initializeApp, cert } from 'firebase-admin/app';
+import { initializeApp, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const isEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true';
@@ -17,6 +17,14 @@ function createApp() {
   const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? 'demo-project';
   if (isEmulator) {
     return initializeApp({ projectId });
+  }
+  // A downloaded service-account JSON (the same path used for one-off
+  // `firebase deploy --only firestore:indexes` runs against production)
+  // is the standard `GOOGLE_APPLICATION_CREDENTIALS` convention — takes
+  // priority when set, since `.env.local`'s own admin vars are normally
+  // only populated for local/emulator use.
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    return initializeApp({ credential: applicationDefault(), projectId });
   }
   return initializeApp({
     credential: cert({
