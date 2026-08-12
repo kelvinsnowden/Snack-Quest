@@ -3,6 +3,8 @@ import { adminAuth, adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { creatorRepository } from '@/repositories/creatorRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
+import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import {
   creatorAuthService,
   CreatorAlreadyRegisteredError,
@@ -30,6 +32,8 @@ async function cleanCollections() {
     'creatorProfiles',
     'referralLinks',
     'domainEvents',
+    'outboundMessages',
+    'notificationTemplates',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
@@ -134,6 +138,30 @@ describe('CreatorAuthService.register', () => {
       roles: ['creator'],
       businessId: 'snack-quest',
     });
+  });
+
+  it('queues a welcome email once the notificationTemplates catalog has the template', async () => {
+    await notificationTemplateRepository.upsert({
+      templateCode: 'creator_registered_welcome_email',
+      channel: 'email',
+      subject: 'Welcome, {{displayName}}!',
+      bodyTemplate: 'Hi {{displayName}}, your code is {{referralCode}}. {{portalUrl}}',
+      htmlBodyTemplate: null,
+      requiredParams: ['displayName', 'referralCode', 'portalUrl'],
+      version: 1,
+      isActive: true,
+    });
+    const uid = await createAuthUser('welcome-email@example.com');
+    const idToken = await getIdTokenForUid(uid);
+
+    await creatorAuthService.register(idToken, 'Amina Yusuf');
+
+    const profile = await creatorRepository.findById(uid);
+    const outbound = await outboundMessageRepository.findById(`email:creator-welcome:${uid}`);
+    expect(outbound?.recipientRef).toBe('welcome-email@example.com');
+    expect(outbound?.renderedBody).toBe(
+      `Hi Amina Yusuf, your code is ${profile?.referralCode}. http://localhost:3000/creator`,
+    );
   });
 
   it('gives every creator the same commission, whenever they registered', async () => {

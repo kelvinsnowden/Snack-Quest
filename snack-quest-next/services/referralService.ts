@@ -16,6 +16,8 @@ import {
 } from '@/repositories/creatorRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 import type { ReferralAttribution, ReferralLink, User } from '@/types';
 
 /**
@@ -130,6 +132,27 @@ class ReferralService {
         commissionKes: input.commissionKes,
       },
     );
+
+    const creator = await userRepository.findById(input.ownerId);
+    if (creator?.email) {
+      try {
+        await notificationService.send(input.businessId, {
+          channel: 'email',
+          templateCode: 'referral_commission_earned_email',
+          recipientType: 'creator',
+          recipientId: input.ownerId,
+          recipientRef: creator.email,
+          params: {
+            displayName: creator.displayName,
+            commissionKes: String(input.commissionKes),
+            portalUrl: `${getSiteUrl()}/creator/earnings`,
+          },
+          dedupeKey: `commission:${input.orderId}:${input.ownerId}`,
+        });
+      } catch {
+        // Best-effort — the commission credit itself already succeeded above.
+      }
+    }
   }
 
   /**

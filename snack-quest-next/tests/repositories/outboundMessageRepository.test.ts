@@ -13,6 +13,7 @@ function baseInput(overrides: Partial<Parameters<typeof outboundMessageRepositor
     recipientRef: '254700000000',
     renderedSubject: null,
     renderedBody: 'Your withdrawal of KES 500 has been paid.',
+    renderedHtmlBody: null,
     providerMessageId: null,
     status: 'queued' as const,
     failureReason: null,

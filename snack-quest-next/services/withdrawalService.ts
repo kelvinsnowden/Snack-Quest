@@ -13,8 +13,11 @@ import {
   InsufficientCreatorBalanceError,
 } from '@/repositories/creatorRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
+import { userRepository } from '@/repositories/userRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 import type { Withdrawal, WithdrawalOwnerType, WithdrawalStatus } from '@/types';
 
 export { InsufficientCreatorBalanceError };
@@ -143,6 +146,28 @@ class WithdrawalService {
         actor,
         originatorConversationId: result.originatorConversationId,
       });
+
+      const owner = await userRepository.findById(withdrawal.ownerId);
+      if (owner?.email) {
+        try {
+          await notificationService.send(businessId, {
+            channel: 'email',
+            templateCode: 'withdrawal_approved_email',
+            recipientType: 'creator',
+            recipientId: withdrawal.ownerId,
+            recipientRef: owner.email,
+            params: {
+              displayName: owner.displayName,
+              amountKes: String(withdrawal.amountKes),
+              portalUrl: `${getSiteUrl()}/creator/withdrawals`,
+            },
+            dedupeKey: `withdrawal-approved:${withdrawalId}`,
+          });
+        } catch {
+          // Best-effort — the payout itself already succeeded above.
+        }
+      }
+
       return 'approved';
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown B2C initiation failure';

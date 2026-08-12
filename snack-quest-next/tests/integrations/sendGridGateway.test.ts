@@ -41,6 +41,27 @@ describe('SendGridGateway.send', () => {
     expect(body.personalizations[0].to[0].email).toBe('creator@example.com');
     expect(body.from.email).toBe('orders@snackquest.co');
     expect(body.subject).toBe('Welcome');
+    expect(body.content).toEqual([{ type: 'text/plain', value: 'Hi there' }]);
+  });
+
+  it('sends a text/html alternative alongside the plain text when html is given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, { status: 202, headers: { 'x-message-id': 'sg-msg-2' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await sendGridGateway.send({
+      to: 'creator@example.com',
+      subject: 'Welcome',
+      body: 'Hi there',
+      html: '<p>Hi there</p>',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.content).toEqual([
+      { type: 'text/plain', value: 'Hi there' },
+      { type: 'text/html', value: '<p>Hi there</p>' },
+    ]);
   });
 
   it('throws when SendGrid responds with a non-2xx status', async () => {

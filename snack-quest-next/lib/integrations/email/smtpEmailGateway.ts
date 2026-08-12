@@ -23,16 +23,40 @@ import type { EmailGateway, EmailSendResult } from '../types';
 
 const GATEWAY_NAME = 'smtp-email';
 
+/**
+ * 465 is implicit TLS and 587/25 are STARTTLS for essentially every
+ * real SMTP provider — so a saved `securityMode` that disagrees with
+ * one of those two well-known ports is treated as a stale/mistaken
+ * form choice rather than trusted verbatim. Trusting it produces
+ * exactly OpenSSL's "wrong version number": dialing a plaintext-first
+ * STARTTLS handshake against a TLS-only port (465 + START_TLS), or an
+ * immediate TLS handshake against a port expecting plaintext first
+ * (587 + SSL). The field manifest's own help text already tells the
+ * business which mode goes with which port; this makes that pairing
+ * load-bearing instead of merely advisory. A non-standard port (some
+ * providers offer alternates) still falls back to trusting the
+ * explicit choice, since there is no well-known convention to correct it by.
+ */
+function resolveTls(config: AuthEmailConfig): { secure: boolean; requireTLS: boolean } {
+  if (config.port === 465) {
+    return { secure: true, requireTLS: false };
+  }
+  if (config.port === 587 || config.port === 25) {
+    return { secure: false, requireTLS: true };
+  }
+  return {
+    secure: config.securityMode === 'SSL',
+    requireTLS: config.securityMode === 'START_TLS',
+  };
+}
+
 function buildTransport(config: AuthEmailConfig) {
+  const { secure, requireTLS } = resolveTls(config);
   return nodemailer.createTransport({
     host: config.host,
     port: config.port,
-    // `secure` means "TLS from the first byte", which is what SSL
-    // on 465 is. STARTTLS opens in the clear and upgrades, so it
-    // is `secure: false` plus `requireTLS` — false alone would let
-    // a downgrade pass silently.
-    secure: config.securityMode === 'SSL',
-    requireTLS: config.securityMode === 'START_TLS',
+    secure,
+    requireTLS,
     auth: { user: config.username, pass: config.password },
   });
 }
@@ -43,6 +67,7 @@ class SmtpEmailGateway implements EmailGateway {
     to: string;
     subject: string;
     body: string;
+    html?: string;
   }): Promise<EmailSendResult> {
     const configured = await businessIntegrationSecretRepository.find(
       input.businessId,
@@ -68,6 +93,7 @@ class SmtpEmailGateway implements EmailGateway {
         to: input.to,
         subject: input.subject,
         text: input.body,
+        html: input.html,
       });
 
       return { providerMessageId: info.messageId };

@@ -3,6 +3,9 @@ import { adminFirestore } from '@/lib/firebase/admin';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { creatorRepository } from '@/repositories/creatorRepository';
 import { withdrawalRepository } from '@/repositories/withdrawalRepository';
+import { userRepository } from '@/repositories/userRepository';
+import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import {
   withdrawalService,
   InsufficientCreatorBalanceError,
@@ -73,6 +76,9 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('withdrawals'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('webhookEvents'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
   await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
 });
 
@@ -206,6 +212,39 @@ describe('WithdrawalService.approveWithdrawal', () => {
     expect(status).toBe('failed');
     const creator = await creatorRepository.findById('creator-1');
     expect(creator?.availableCashKes).toBe(5000); // refunded
+  });
+
+  it('queues a withdrawal-approved email for the owner', async () => {
+    await notificationTemplateRepository.upsert({
+      templateCode: 'withdrawal_approved_email',
+      channel: 'email',
+      subject: 'Your KES {{amountKes}} withdrawal is on its way',
+      bodyTemplate: 'Hi {{displayName}}, KES {{amountKes}} approved. {{portalUrl}}',
+      htmlBodyTemplate: null,
+      requiredParams: ['displayName', 'amountKes', 'portalUrl'],
+      version: 1,
+      isActive: true,
+    });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await userRepository.create(
+      'creator-1',
+      { email: 'creator@example.com', roles: ['creator'], displayName: 'Cool Creator', photoURL: null },
+      'system',
+    );
+    const id = await withdrawalService.requestWithdrawal({
+      businessId: BUSINESS_ID,
+      ownerId: 'creator-1',
+      ownerType: 'creator',
+      amountKes: 2000,
+      phoneNumber: '254712345678',
+    });
+    stubB2CSuccess();
+
+    await withdrawalService.approveWithdrawal(BUSINESS_ID, id, 'staff-1');
+
+    const outbound = await outboundMessageRepository.findById(`email:withdrawal-approved:${id}`);
+    expect(outbound?.recipientRef).toBe('creator@example.com');
+    expect(outbound?.renderedBody).toBe('Hi Cool Creator, KES 2000 approved. http://localhost:3000/creator/withdrawals');
   });
 
   it('throws WithdrawalNotFoundError for a withdrawal in a different business', async () => {

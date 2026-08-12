@@ -4,6 +4,8 @@ import { userRepository } from '@/repositories/userRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
 import { creatorRepository } from '@/repositories/creatorRepository';
 import { createInTransaction as createAttributionInTransaction } from '@/repositories/referralAttributionRepository';
+import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import {
   referralService,
   ReferralLinkNotFoundError,
@@ -54,6 +56,8 @@ beforeEach(async () => {
     adminFirestore.collection('creatorProfiles'),
   );
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
 });
 
 describe('ReferralService.setActive', () => {
@@ -167,6 +171,40 @@ describe('ReferralService.awardCommission', () => {
     const creator = await creatorRepository.findById('creator-1');
     expect(creator?.totalConversions).toBe(1);
     expect(creator?.availableCashKes).toBe(500);
+  });
+
+  it('queues a commission-earned email for the credited creator', async () => {
+    await notificationTemplateRepository.upsert({
+      templateCode: 'referral_commission_earned_email',
+      channel: 'email',
+      subject: 'You earned KES {{commissionKes}}',
+      bodyTemplate: 'Hi {{displayName}}, you earned KES {{commissionKes}}. {{portalUrl}}',
+      htmlBodyTemplate: null,
+      requiredParams: ['displayName', 'commissionKes', 'portalUrl'],
+      version: 1,
+      isActive: true,
+    });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    await userRepository.create(
+      'creator-1',
+      { email: 'creator@example.com', roles: ['creator'], displayName: 'Cool Creator', photoURL: null },
+      'system',
+    );
+    const linkId = await seedLink();
+
+    await referralService.awardCommission({
+      businessId: BUSINESS_ID,
+      referralLinkId: linkId,
+      ownerId: 'creator-1',
+      orderId: 'order-1',
+      conversationId: 'conv-1',
+      discountKes: 250,
+      commissionKes: 500,
+    });
+
+    const outbound = await outboundMessageRepository.findById('email:commission:order-1:creator-1');
+    expect(outbound?.recipientRef).toBe('creator@example.com');
+    expect(outbound?.renderedBody).toBe('Hi Cool Creator, you earned KES 500. http://localhost:3000/creator/earnings');
   });
 });
 

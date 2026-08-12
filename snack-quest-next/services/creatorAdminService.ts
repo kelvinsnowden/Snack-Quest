@@ -4,6 +4,8 @@ import { creatorRepository } from '@/repositories/creatorRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { CreatorNotFoundError } from '@/services/creatorDashboardService';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { VALID_CREATOR_TRANSITIONS } from '@/lib/creators/transitions';
 import type { CreatorProfile, CreatorStatus, User } from '@/types';
 
@@ -67,6 +69,29 @@ class CreatorAdminService {
       to: next,
       actor,
     });
+
+    if (next === 'active') {
+      const user = await userRepository.findById(uid);
+      if (user?.email) {
+        try {
+          await notificationService.send(businessId, {
+            channel: 'email',
+            templateCode: 'creator_status_approved_email',
+            recipientType: 'creator',
+            recipientId: uid,
+            recipientRef: user.email,
+            params: {
+              displayName: user.displayName,
+              referralCode: profile.referralCode,
+              portalUrl: `${getSiteUrl()}/creator`,
+            },
+            dedupeKey: `creator-approved:${uid}`,
+          });
+        } catch {
+          // Best-effort — the status change itself already succeeded above.
+        }
+      }
+    }
   }
 }
 
