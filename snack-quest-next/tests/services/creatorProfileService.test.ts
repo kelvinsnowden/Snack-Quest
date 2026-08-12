@@ -89,6 +89,20 @@ describe('CreatorProfileService.completeOnboarding', () => {
     ).rejects.toBeInstanceOf(InvalidOnboardingInputError);
   });
 
+  it('rejects onboarding with no social media handle filled in', async () => {
+    await seedPendingCreator();
+
+    await expect(
+      creatorProfileService.completeOnboarding(UID, {
+        bio: 'Bio',
+        niche: 'Food',
+        followersRange: '1k-5k',
+        paymentPreference: 'mpesa',
+        socialHandles: { instagram: '   ' },
+      }),
+    ).rejects.toBeInstanceOf(InvalidOnboardingInputError);
+  });
+
   it('completes onboarding and persists the profile fields', async () => {
     await seedPendingCreator();
 
