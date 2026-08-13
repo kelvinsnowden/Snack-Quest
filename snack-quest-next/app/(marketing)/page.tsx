@@ -10,6 +10,7 @@ import { FounderStory } from '@/components/marketing/home/FounderStory';
 import { WhatsInside } from '@/components/marketing/home/WhatsInside';
 import { TheRoute } from '@/components/marketing/home/TheRoute';
 import { PickYourBox } from '@/components/marketing/home/PickYourBox';
+import { PartnersMarquee } from '@/components/marketing/PartnersMarquee';
 import { FinalCta } from '@/components/marketing/home/FinalCta';
 import { FaqSection } from '@/components/marketing/home/FaqSection';
 import { ReviewsSection } from '@/components/marketing/home/ReviewsSection';
@@ -64,6 +65,7 @@ export default async function MarketingHomePage() {
       />
       <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
       <PickYourBox packages={featured} />
+      <PartnersMarquee label="M-Pesa accepted · Jumia pickup countrywide · Bolt door delivery" />
       <TheRoute />
       {/*
         Founder story moved below pricing and how-it-works (§ CRO

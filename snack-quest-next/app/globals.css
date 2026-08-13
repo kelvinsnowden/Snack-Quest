@@ -407,6 +407,36 @@ body {
   }
 
   /*
+   * Infinite logo marquee (§ Creator Program partner marquee) — the
+   * track renders its logo set twice back to back and scrolls exactly
+   * one set's width (-50%), so the loop point is invisible: the moment
+   * the first copy has scrolled fully offscreen, the second copy is
+   * sitting in the exact start position the first began in. `linear`
+   * timing is deliberate — an eased loop visibly speeds up/slows down
+   * at the seam, which is the one thing that would give a "fake" loop
+   * away. Paused on hover so a visitor can actually read a logo they
+   * stopped to look at; already covered by the platform-wide
+   * `prefers-reduced-motion` rule above, which forces every animation
+   * (this one included) to finish instantly.
+   */
+  @keyframes marqueeScroll {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-marquee {
+    animation: marqueeScroll 28s linear infinite;
+  }
+
+  .marquee-pause-on-hover:hover .animate-marquee {
+    animation-play-state: paused;
+  }
+
+  /*
    * Reveal-on-scroll wrapper state (components/marketing/design/Reveal.tsx)
    * — starts hidden/offset so JS can toggle `.reveal-visible` once an
    * IntersectionObserver fires; server-rendered markup stays fully

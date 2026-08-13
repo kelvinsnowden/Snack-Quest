@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowRight, Clock, MapPin, Truck } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Button } from '@/components/ui/button';
+import { MpesaBadge } from '@/components/icons/MpesaBadge';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
@@ -96,7 +97,7 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
               Delivered in 24–48 hrs
             </span>
             <span className="inline-flex items-center gap-1.5">
-              💳 M-Pesa accepted
+              <MpesaBadge /> accepted
             </span>
           </div>
         </Reveal>

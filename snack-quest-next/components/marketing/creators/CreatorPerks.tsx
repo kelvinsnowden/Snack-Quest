@@ -15,6 +15,16 @@ import { Reveal } from '../design/Reveal';
  * credit, a real leaderboard — because those are the three things this
  * platform genuinely does. No invented creator counts, no earnings
  * screenshots, nothing that would need a disclaimer.
+ *
+ * § Creator Program CRO pass — "Your money" used to say "with nobody
+ * approving it first", true of the commission credit itself
+ * (`ReferralService.awardCommission` has no approval gate) but
+ * dangerously easy to misread as "no approval anywhere on this
+ * program", which is false (§ business rule: creator accounts do go
+ * through approval). Reworded to name the real two-step sequence —
+ * credited to balance automatically, paid out to M-Pesa on request —
+ * so "no approval" only ever attaches to the thing it's actually true
+ * of.
  */
 const PERKS = [
   {
@@ -39,7 +49,7 @@ const PERKS = [
     icon: Wallet,
     kicker: 'Your money',
     title: `${formatKes(CREATOR_COMMISSION_KES)} an order, right away`,
-    body: 'The commission lands in your balance the second the payment clears — not at the end of the month, and with nobody approving it first.',
+    body: 'Credited to your available balance automatically the second a customer’s payment clears — no separate approval queue per sale. Request a withdrawal whenever you want, paid out to M-Pesa.',
     points: ['Same rate for every creator', 'Every order itemised in your dashboard'],
     accent: {
       wash: 'from-background to-primary/10',

@@ -199,13 +199,6 @@ export function PickYourBox({
         })}
       </div>
 
-      <Reveal delayMs={200}>
-        <p className="text-small text-foreground/60 mx-auto mt-10 max-w-xl text-center">
-          M-Pesa accepted · Jumia pickup countrywide · Bolt Package home
-          delivery in Nairobi.
-        </p>
-      </Reveal>
-
       <div className="mt-6 text-center">
         <Link
           href="/boxes"

@@ -36,8 +36,7 @@ export function CreatorPortfolio() {
       <Reveal delayMs={150}>
         <div className="border-border bg-surface mx-auto mt-10 max-w-3xl rounded-3xl border p-7 md:mt-16 md:p-10">
           <p className="text-foreground/70 text-[15px] leading-[1.65] md:text-base">
-            Every campaign you run, sale you generate, and result you achieve can become part of your portfolio —
-            something you can show other brands when you&apos;re ready to work with them.
+            Every sale and result you generate can become part of a portfolio you show other brands later.
           </p>
 
           <div className="mt-6 flex flex-col gap-2">
