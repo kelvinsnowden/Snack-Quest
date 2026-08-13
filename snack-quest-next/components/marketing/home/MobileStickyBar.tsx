@@ -12,7 +12,9 @@ import { Boxes, ShoppingBag } from 'lucide-react';
  * larger screens and the support CTAs elsewhere still carry the
  * "talk to us" path.
  */
-export function MobileStickyBar() {
+export function MobileStickyBar({ packageId }: { packageId?: string } = {}) {
+  const buyHref = packageId ? `/checkout?box=${encodeURIComponent(packageId)}` : '/checkout';
+
   return (
     <div className="border-foreground/10 fixed inset-x-0 bottom-0 z-50 border-t bg-white/95 backdrop-blur-sm md:hidden">
       <div
@@ -29,7 +31,7 @@ export function MobileStickyBar() {
           Pick a box
         </Link>
         <Link
-          href="/checkout"
+          href={buyHref}
           className="bg-primary text-small flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 font-semibold text-white shadow-[0_20px_60px_-15px_rgb(255_122_0/0.5)]"
         >
           <ShoppingBag className="size-4" aria-hidden="true" />

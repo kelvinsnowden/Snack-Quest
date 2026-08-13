@@ -2,7 +2,7 @@ import { Compass } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Reveal } from '../design/Reveal';
 
-export function FinalCta() {
+export function FinalCta({ packageId }: { packageId?: string } = {}) {
   return (
     <section className="bg-home-purple-deep relative overflow-hidden px-5 py-16 text-white md:px-10 md:py-40">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
@@ -49,6 +49,7 @@ export function FinalCta() {
         <Reveal delayMs={350}>
           <div className="mt-10">
             <BuyNowButton
+              packageId={packageId}
               size="lg"
               className="animate-pulse-glow from-primary to-home-orange-glow rounded-full bg-gradient-to-br px-8 text-lg"
             >

@@ -10,7 +10,7 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  * rebuild spec §6.1/§20.7) — the hero is typographic on purpose, so
  * the Founder Story section below is the page's first photograph.
  */
-export function HomeHero() {
+export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {}) {
   return (
     <section className="bg-background relative overflow-hidden px-5 py-16 md:px-10 md:py-40">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
@@ -68,7 +68,7 @@ export function HomeHero() {
 
         <Reveal delayMs={300}>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <BuyNowButton size="lg" className={PRIMARY_CTA_CLASS}>
+            <BuyNowButton packageId={primaryPackageId} size="lg" className={PRIMARY_CTA_CLASS}>
               Start your quest
             </BuyNowButton>
             <Button
