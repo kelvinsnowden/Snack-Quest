@@ -33,13 +33,19 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  * `CreatorAnnouncementMarquee` sits above the "Creator program" pill,
  * in the section's own top padding rather than a new section on top
  * of it — same "fill existing space" move as the home hero's compact
- * `PartnersMarquee` (`pt-8 pb-16 md:pt-10 md:pb-32` instead of the
- * original symmetric `py-16 md:py-32`), full-bleed via negative
- * margins that cancel the section's own horizontal padding.
+ * `PartnersMarquee`. The first attempt at this (`pt-8 md:pt-10`) only
+ * accounted for the marquee bar's own height, not the margin below it
+ * too, and the hero measurably grew — corrected by budgeting the
+ * marquee bar (`py-2.5` + `text-caption`'s 0.75rem/1.35 line height ≈
+ * 37px) plus its own `mb-3 md:mb-4` against the padding removed
+ * (`py-16 md:py-32` → `pt-4 pb-16 md:pt-16 md:pb-32`), so the total
+ * space above the pill lands at or under what it was before, never
+ * over. Full-bleed via negative margins that cancel the section's own
+ * horizontal padding.
  */
 export function CreatorsHero() {
   return (
-    <section className="bg-background relative overflow-hidden px-5 pt-8 pb-16 md:px-10 md:pt-10 md:pb-32">
+    <section className="bg-background relative overflow-hidden px-5 pt-4 pb-16 md:px-10 md:pt-16 md:pb-32">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="bg-secondary/25 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
         <div className="bg-primary/20 absolute top-40 -right-32 size-[420px] rounded-full blur-3xl" />
@@ -60,7 +66,7 @@ export function CreatorsHero() {
         </svg>
       </div>
 
-      <div className="relative -mx-5 mb-8 md:-mx-10 md:mb-10">
+      <div className="relative -mx-5 mb-3 md:-mx-10 md:mb-4">
         <CreatorAnnouncementMarquee />
       </div>
 

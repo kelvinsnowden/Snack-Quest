@@ -433,14 +433,17 @@ body {
   }
 
   /*
-   * Same seamless loop as `animate-marquee`, deliberately faster — for
-   * an attention-grabbing announcement strip rather than a calm,
-   * read-the-logos partner strip (§ Creator Program hero announcement
-   * marquee). Still `linear` for the same reason: an eased loop gives
-   * its seam away.
+   * Same seamless loop as `animate-marquee` (§ Creator Program hero
+   * announcement marquee) — originally 16s, which paired with four
+   * text repeats per track came out to roughly 200px/s, too fast to
+   * actually read. 30s (with the repeat count trimmed too, see
+   * `CreatorAnnouncementMarquee`) lands closer to 80px/s, brisk enough
+   * to still read as "in motion" without outrunning a reader. Still
+   * `linear` for the same reason as `animate-marquee`: an eased loop
+   * gives its seam away.
    */
   .animate-marquee-fast {
-    animation: marqueeScroll 16s linear infinite;
+    animation: marqueeScroll 30s linear infinite;
   }
 
   .marquee-pause-on-hover:hover .animate-marquee,

@@ -5,10 +5,14 @@ import { Sparkles } from 'lucide-react';
  * placed above the "Creator program" pill, this is the very first
  * thing a visitor's eye catches on the page. Unlike `PartnersMarquee`
  * (a calm, read-the-logos strip), this one is built to be loud: a
- * saturated brand-gradient bar, bold uppercase white text, and a
- * faster scroll (`animate-marquee-fast`, see its doc comment in
- * `globals.css` for the seamless-loop mechanics it shares with the
- * partner marquee).
+ * saturated brand-gradient bar and bold uppercase white text — but
+ * still readable, which the first pass wasn't (`animate-marquee-fast`
+ * doc comment in `globals.css` has the actual px/s math). Speed is a
+ * function of both animation duration and how much text has to
+ * travel in it, so `REPEAT_COUNT` came down from 4 to 3 as well —
+ * still comfortably enough copies to cover an ultra-wide viewport
+ * with no gap, just not so many that the same 30s duration had to
+ * cover more ground per second than a reader could follow.
  *
  * Sentence-cased in source, `uppercase` applied via class — same
  * convention every heading on this site follows, so a screen reader
@@ -16,7 +20,7 @@ import { Sparkles } from 'lucide-react';
  */
 const MESSAGE_LEAD = 'Stop waiting for brands to notice you';
 const MESSAGE_TAIL = 'Buy one box, create content & start monetizing your audience';
-const REPEAT_COUNT = 4;
+const REPEAT_COUNT = 3;
 
 function AnnouncementUnit() {
   return (
