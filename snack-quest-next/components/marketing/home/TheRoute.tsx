@@ -7,18 +7,20 @@ import { JumiaIcon } from '@/components/icons/JumiaIcon';
 import { BoltIcon } from '@/components/icons/BoltIcon';
 
 /**
- * What each checkpoint badge shows (§ real-logo pass) — `emoji` stays
- * for checkpoints with no real brand behind them (there's no "Begin
- * Your Snack Adventure" logo to show), while `logo`/`mpesa`/`jumia`/
- * `bolt` render the actual brand: the Snack Quest mark for step 1, and
- * the real payment/delivery partners for the steps that are genuinely
- * about them — step 2 is the M-Pesa prompt, step 3 is fulfilled by
- * either Jumia pickup or Bolt door delivery, hence two badges there
- * instead of one.
+ * What each checkpoint badge shows (§ real-logo pass) — `logo`/
+ * `mpesa`/`jumia`/`bolt` render the actual brand: the Snack Quest mark
+ * for step 1, and the real payment/delivery partners for the steps
+ * that are genuinely about them — step 2 is the M-Pesa prompt, step 3
+ * is fulfilled by either Jumia pickup or Bolt door delivery, hence two
+ * badges there instead of one. `photo` is a real unboxing — an actual
+ * table of Snack Quest contents, not a stock or generated image — for
+ * step 4, which has no logo of its own to show but has the realest
+ * possible answer to "what does the adventure look like".
  */
 type Badge =
   | { kind: 'emoji'; value: string }
   | { kind: 'logo'; src: string; alt: string }
+  | { kind: 'photo'; src: string; alt: string }
   | { kind: 'mpesa' }
   | { kind: 'jumia' }
   | { kind: 'bolt' };
@@ -46,7 +48,7 @@ const CHECKPOINTS: Checkpoint[] = [
     body: 'Hand-packed within 24 hours. Jumia pickup stations countrywide, or Bolt Package to your door in Nairobi.',
   },
   {
-    badges: [{ kind: 'emoji', value: '🎉' }],
+    badges: [{ kind: 'photo', src: '/route-unboxing.jpg', alt: 'A real Snack Quest box, unboxed' }],
     title: 'Begin Your Snack Adventure',
     body: 'Unbox it yourself, or hand it to someone who needs a good surprise. Either way, the reaction is the best part.',
   },
@@ -106,6 +108,16 @@ function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
           alt={badge.alt}
           width={80}
           height={80}
+          className="size-full rounded-full object-cover"
+        />
+      );
+    case 'photo':
+      return (
+        <Image
+          src={badge.src}
+          alt={badge.alt}
+          width={160}
+          height={160}
           className="size-full rounded-full object-cover"
         />
       );
