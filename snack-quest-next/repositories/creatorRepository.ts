@@ -271,6 +271,14 @@ class CreatorRepository {
    * a given lifetime-earnings figure; `rank = count + 1`. A cheap
    * aggregation query (`.count()`), not a full document read of every
    * competing creator.
+   *
+   * Needs its own `businessId ASC, status ASC, lifetimeEarningsKes
+   * ASC` composite index (firestore.indexes.json) — a distinct index
+   * from `listTopByBusiness`'s `lifetimeEarningsKes DESC` one, since
+   * this query has no `orderBy` and Firestore requires ASCENDING for
+   * a bare inequality filter. The two do not satisfy each other; this
+   * page previously 500'd in production because only the DESC index
+   * had ever been deployed.
    */
   async countActiveAboveEarnings(
     businessId: string,
