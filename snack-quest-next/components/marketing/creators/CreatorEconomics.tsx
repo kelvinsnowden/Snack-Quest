@@ -59,19 +59,6 @@ export function CreatorEconomics() {
           </Reveal>
         ))}
       </div>
-
-      <Reveal delayMs={400}>
-        <div className="border-border bg-surface mx-auto mt-10 max-w-2xl rounded-3xl border p-7 text-center md:mt-14 md:p-10">
-          <p className="text-foreground text-lg leading-snug font-semibold md:text-xl">
-            I need people to discover Snack Quest.
-            <br />
-            You need a real way to earn from the audience you&apos;ve built.
-          </p>
-          <p className="mt-3 text-foreground/70 text-base md:text-lg">
-            So why not build something where both of us win?
-          </p>
-        </div>
-      </Reveal>
     </section>
   );
 }
