@@ -31,6 +31,12 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  * The whole strip is `aria-hidden`, with one static, unduplicated list
  * for screen readers — a scrolling, doubled DOM list has nothing
  * useful to announce twice.
+ *
+ * `compact` drops the caption, the white background, and most of the
+ * vertical padding — for `HomeHero`, which wanted the marquee inside
+ * its own existing top padding rather than as another full section
+ * stacked on top of it. No new vertical space, just that space filled
+ * with something instead of being empty.
  */
 const PARTNERS = [
   { Icon: BoltIcon, name: 'Bolt', className: 'h-6 sm:h-7' },
@@ -48,15 +54,23 @@ function LogoTrack() {
   );
 }
 
-export function PartnersMarquee({ label = 'Real partners behind every order' }: { label?: string }) {
+export function PartnersMarquee({
+  label = 'Real partners behind every order',
+  compact = false,
+}: {
+  label?: string;
+  compact?: boolean;
+}) {
   return (
-    <section className="bg-white py-10 md:py-14">
-      <p className="text-caption text-foreground/50 mx-auto max-w-2xl text-center font-bold tracking-[0.3em] uppercase">
-        {label}
-      </p>
+    <section className={compact ? undefined : 'bg-white py-10 md:py-14'}>
+      {compact ? null : (
+        <p className="text-caption text-foreground/50 mx-auto max-w-2xl text-center font-bold tracking-[0.3em] uppercase">
+          {label}
+        </p>
+      )}
 
       <div
-        className="marquee-pause-on-hover relative mt-7 overflow-hidden md:mt-9"
+        className={`marquee-pause-on-hover relative overflow-hidden ${compact ? '' : 'mt-7 md:mt-9'}`}
         style={{
           maskImage:
             'linear-gradient(to right, transparent, black 10%, black 90%, transparent)',
