@@ -18,7 +18,7 @@ describe('AnalyticsEventService.record', () => {
 
   it('records a known event with its metadata', async () => {
     await analyticsEventService.record(BUSINESS_ID, {
-      event: RESCUE_OFFER_EVENTS.popupShown,
+      event: RESCUE_OFFER_EVENTS.checkoutStarted,
       visitorId: 'visitor-1',
       metadata: { packageId: 'pkg-1' },
     });
@@ -27,7 +27,7 @@ describe('AnalyticsEventService.record', () => {
     expect(snapshot.size).toBe(1);
     expect(snapshot.docs[0].data()).toMatchObject({
       businessId: BUSINESS_ID,
-      event: RESCUE_OFFER_EVENTS.popupShown,
+      event: RESCUE_OFFER_EVENTS.checkoutStarted,
       visitorId: 'visitor-1',
       metadata: { packageId: 'pkg-1' },
     });
@@ -46,7 +46,7 @@ describe('AnalyticsEventService.record', () => {
 
   it('drops metadata entries beyond the string/number/boolean types and truncates long strings', async () => {
     await analyticsEventService.record(BUSINESS_ID, {
-      event: RESCUE_OFFER_EVENTS.offerClicked,
+      event: RESCUE_OFFER_EVENTS.checkoutStarted,
       visitorId: 'visitor-1',
       metadata: {
         packageId: 'a'.repeat(500),

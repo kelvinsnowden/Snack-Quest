@@ -4,8 +4,8 @@ import type { Timestamp } from 'firebase/firestore';
  * `analyticsEvents/{analyticsEventId}` — one named funnel event (§
  * exit-intent rescue offer), sibling to `PageView` rather than a
  * replacement for it: a page view is "someone looked at a URL", this
- * is "someone did a specific thing" (saw the rescue popup, clicked its
- * CTA, reached checkout, completed the purchase). Same visitor-cookie
+ * is "someone did a specific thing" (reached checkout for the rescue
+ * offer, completed the purchase). Same visitor-cookie
  * identity as `PageView` (`VISITOR_COOKIE`) so the two can be joined by
  * `visitorId` later if needed, same public/unauthenticated,
  * light-validation posture as `pageViewService` — this is funnel

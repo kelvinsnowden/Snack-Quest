@@ -13,22 +13,3 @@ export function isOfferExpired(offerExpiresAt: unknown): boolean {
   const millis = timestamp?.toMillis ? timestamp.toMillis() : null;
   return millis !== null && millis < Date.now();
 }
-
-/**
- * Hours from now until `offerExpiresAt`, or `null` when unset — kept
- * here rather than inlined at its one call site
- * (`ExitIntentOfferMount.tsx`) so that Server Component's render body
- * never calls `Date.now()` directly (the same reasoning
- * `lib/creator/campaignPresentation.ts`'s `isDeadlinePassed` already
- * documents). Can be negative for an already-expired offer — the
- * caller only ever reaches this after confirming the offer is still
- * live, but this function itself makes no such assumption.
- */
-export function hoursUntilOfferExpiry(offerExpiresAt: unknown): number | null {
-  const timestamp = offerExpiresAt as { toMillis?: () => number } | null | undefined;
-  const millis = timestamp?.toMillis ? timestamp.toMillis() : null;
-  if (millis === null) {
-    return null;
-  }
-  return (millis - Date.now()) / (60 * 60 * 1000);
-}
