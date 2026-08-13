@@ -3,6 +3,7 @@ import { ArrowRight, Clock, MapPin, Truck } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Button } from '@/components/ui/button';
 import { MpesaBadge } from '@/components/icons/MpesaBadge';
+import { PartnersMarquee } from '@/components/marketing/PartnersMarquee';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
@@ -12,10 +13,19 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  * whatever section follows carries the page's first photograph. Today
  * that's `ReviewsSection`'s real customer photos (§ CRO audit — funnel
  * order), stronger, earlier proof than an illustrated placeholder.
+ *
+ * The compact `PartnersMarquee` above "Delivered across Kenya" sits in
+ * the section's own top padding rather than adding a new one — top
+ * padding dropped from `py-16 md:py-40` to an asymmetric
+ * `pt-8 pb-16 md:pt-12 md:pb-40` by exactly the marquee's own height,
+ * so the hero doesn't grow taller, it just uses that space for
+ * something instead of leaving it empty. `-mx-5 md:-mx-10` cancels the
+ * section's own horizontal padding so the marquee still bleeds edge to
+ * edge rather than sitting inset like the rest of the hero's content.
  */
 export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {}) {
   return (
-    <section className="bg-background relative overflow-hidden px-5 py-16 md:px-10 md:py-40">
+    <section className="bg-background relative overflow-hidden px-5 pt-8 pb-16 md:px-10 md:pt-12 md:pb-40">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="bg-primary/20 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
         <div className="bg-secondary/20 absolute top-40 -right-32 size-[420px] rounded-full blur-3xl" />
@@ -40,6 +50,10 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
         <div className="border-primary/40 text-caption text-primary/70 absolute bottom-8 left-8 hidden rotate-6 items-center gap-1 rounded-lg border-2 px-3 py-1 font-bold tracking-wide uppercase md:flex">
           ★ Tokyo · Seoul · Bangkok
         </div>
+      </div>
+
+      <div className="relative -mx-5 mb-8 md:-mx-10 md:mb-12">
+        <PartnersMarquee compact />
       </div>
 
       <div className="relative mx-auto max-w-3xl text-center">

@@ -5,9 +5,7 @@ import { CreatorsHero } from '@/components/marketing/creators/CreatorsHero';
 import { PartnersMarquee } from '@/components/marketing/PartnersMarquee';
 import { CreatorEconomics } from '@/components/marketing/creators/CreatorEconomics';
 import { CreatorEarningsExamples } from '@/components/marketing/creators/CreatorEarningsExamples';
-import { CreatorStartHere } from '@/components/marketing/creators/CreatorStartHere';
 import { CreatorRoute } from '@/components/marketing/creators/CreatorRoute';
-import { CreatorWhatToPost } from '@/components/marketing/creators/CreatorWhatToPost';
 import { CreatorPerks } from '@/components/marketing/creators/CreatorPerks';
 import { CreatorPortfolio } from '@/components/marketing/creators/CreatorPortfolio';
 import { CreatorFounderStory } from '@/components/marketing/creators/CreatorFounderStory';
@@ -37,14 +35,18 @@ export const metadata: Metadata = buildPageMetadata({
  *
  * § Creator Program CRO pass reordered this funnel around the
  * questions a prospective creator actually arrives with — "what's in
- * it for me" before "why did the founder build this" — and added three
- * sections the audit found missing: earnings examples, a "no minimum
- * following" hook, and a content-ideas section. See each component's
- * own doc comment for what changed and why. Deliberately not added: a
- * standalone "real creator proof" section (brief item 11) — this
- * codebase has no real creator testimonials, earnings screenshots, or
- * campaign-result data anywhere, and the brief is explicit that only
- * real proof belongs here, never invented numbers.
+ * it for me" before "why did the founder build this" — and added an
+ * earnings-examples section the audit found missing. See each
+ * component's own doc comment for what changed and why. Deliberately
+ * not added: a standalone "real creator proof" section (brief item
+ * 11) — this codebase has no real creator testimonials, earnings
+ * screenshots, or campaign-result data anywhere, and the brief is
+ * explicit that only real proof belongs here, never invented numbers.
+ *
+ * The "no minimum following" hook and the "what can you post"
+ * content-ideas section (both from the same CRO pass) were removed
+ * afterward at the requester's direction — no longer part of this
+ * funnel.
  */
 export default async function CreatorsPage() {
   const business = await getCurrentBusiness();
@@ -56,9 +58,7 @@ export default async function CreatorsPage() {
       <PartnersMarquee />
       <CreatorEconomics />
       <CreatorEarningsExamples />
-      <CreatorStartHere />
       <CreatorRoute />
-      <CreatorWhatToPost />
       <CreatorPerks />
       <CreatorPortfolio />
       <CreatorFounderStory founderImageUrl={founderImageUrl} />
