@@ -5,10 +5,10 @@ import {
   Smartphone,
   CheckCircle2,
   Compass,
-  MessageCircle,
 } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { PageShell } from '@/components/marketing/design/PageShell';
 import { PageHero } from '@/components/marketing/design/PageHero';
 import { SurfaceCard } from '@/components/marketing/design/SurfaceCard';
@@ -98,10 +98,7 @@ export default async function HowItWorksPage() {
       <Reveal delayMs={120}>
         <SurfaceCard className="mt-14 flex flex-col gap-4">
           <div className="flex items-start gap-3">
-            <MessageCircle
-              className="text-secondary mt-0.5 size-6 shrink-0"
-              aria-hidden="true"
-            />
+            <WhatsAppIcon className="text-secondary mt-0.5 size-6 shrink-0" />
             <div>
               <h2 className="text-card-title text-foreground font-semibold">
                 And if you need a human?

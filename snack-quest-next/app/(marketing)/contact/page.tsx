@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { MessageCircle, HelpCircle, Share2, Mail } from 'lucide-react';
+import { HelpCircle, Share2, Mail } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { SocialLinks } from '@/components/marketing/SocialLinks';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Contact us',
@@ -30,7 +31,7 @@ export default async function ContactPage() {
 
       <div className="mt-6 grid gap-4 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
         <Card className="flex flex-col gap-3 p-5 sm:gap-4 sm:p-6">
-          <MessageCircle className="text-primary size-7 sm:size-8" aria-hidden="true" />
+          <WhatsAppIcon className="text-primary size-7 sm:size-8" />
           <div>
             <p className="text-base font-semibold text-foreground sm:text-card-title">
               Message us on WhatsApp
