@@ -6,6 +6,7 @@ import { PageViewTracker } from '@/components/marketing/analytics/PageViewTracke
 import { ActiveBoxNameProvider } from '@/components/marketing/design/ActiveBoxContext';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
+import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 import { SOCIAL_LINKS } from '@/lib/config/socialLinks';
 import { META_PIXEL_ID } from '@/lib/config/metaPixel';
 import { TIKTOK_PIXEL_CODE } from '@/lib/config/tiktokPixel';
@@ -45,6 +46,7 @@ export default async function MarketingLayout({
           {
             '@type': 'ContactPoint',
             telephone: `+${WHATSAPP_CTA_NUMBER}`,
+            email: SUPPORT_EMAIL_ADDRESS,
             contactType: 'customer service',
           },
         ],

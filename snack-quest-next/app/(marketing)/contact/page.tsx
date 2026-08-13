@@ -1,15 +1,16 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { MessageCircle, HelpCircle, Share2 } from 'lucide-react';
+import { MessageCircle, HelpCircle, Share2, Mail } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { SocialLinks } from '@/components/marketing/SocialLinks';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
+import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Contact us',
   description:
-    'Reach Snack Quest on WhatsApp for delivery updates, order changes, or any question. Ordering itself happens on the website.',
+    'Reach Snack Quest on WhatsApp or by email for delivery updates, order changes, or any question. Ordering itself happens on the website.',
   path: '/contact',
 });
 
@@ -24,7 +25,7 @@ export default async function ContactPage() {
         <Link href="/checkout" className="text-primary font-medium hover:underline">
           on the site
         </Link>
-        , in about a minute. Everything else, a real person on WhatsApp.
+        , in about a minute. Everything else, a real person on WhatsApp or email.
       </p>
 
       <div className="mt-6 grid gap-4 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
@@ -45,6 +46,24 @@ export default async function ContactPage() {
           >
             Chat with us
           </WhatsAppOrderButton>
+        </Card>
+
+        <Card className="flex flex-col gap-3 p-5 sm:gap-4 sm:p-6">
+          <Mail className="text-primary size-7 sm:size-8" aria-hidden="true" />
+          <div>
+            <p className="text-base font-semibold text-foreground sm:text-card-title">
+              Email us
+            </p>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Prefer email? Write to us and we&apos;ll get back to you.
+            </p>
+          </div>
+          <a
+            href={`mailto:${SUPPORT_EMAIL_ADDRESS}`}
+            className="text-primary mt-auto text-sm font-medium hover:underline"
+          >
+            {SUPPORT_EMAIL_ADDRESS}
+          </a>
         </Card>
 
         <Card className="flex flex-col gap-3 p-5 sm:gap-4 sm:p-6">
