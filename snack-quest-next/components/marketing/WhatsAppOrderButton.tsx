@@ -1,8 +1,8 @@
-import { MessageCircle } from 'lucide-react';
 import { Button, type ButtonProps } from '@/components/ui/button';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 import { cn } from '@/lib/utils';
 import { WHATSAPP_CTA_CLASS } from './design/ctaStyles';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 
 /**
  * The site-wide "talk to a human" CTA — a real `wa.me` deep link to the
@@ -40,7 +40,7 @@ export function WhatsAppOrderButton({
         target="_blank"
         rel="noopener noreferrer"
       >
-        <MessageCircle className="size-4" aria-hidden="true" />
+        <WhatsAppIcon className="size-4" />
         {children}
       </a>
     </Button>

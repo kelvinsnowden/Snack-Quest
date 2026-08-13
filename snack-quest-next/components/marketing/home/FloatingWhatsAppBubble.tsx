@@ -1,5 +1,5 @@
-import { MessageCircle } from 'lucide-react';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 
 /**
  * Persistent desktop support CTA (§ spec §7.9) — visible ≥768px only,
@@ -25,7 +25,7 @@ export function FloatingWhatsAppBubble() {
         className="animate-pulse-glow absolute inset-0 rounded-full"
         aria-hidden="true"
       />
-      <MessageCircle className="relative size-7" aria-hidden="true" />
+      <WhatsAppIcon className="relative size-7" />
     </a>
   );
 }

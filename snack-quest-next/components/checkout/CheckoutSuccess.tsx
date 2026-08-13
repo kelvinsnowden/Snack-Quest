@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { CheckCircle2, MessageCircle } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
 
 /**
@@ -80,7 +81,7 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
               target="_blank"
               rel="noopener noreferrer"
             >
-              <MessageCircle aria-hidden="true" />
+              <WhatsAppIcon className="size-4" />
               Arrange Bolt Delivery on WhatsApp
             </a>
           </Button>
