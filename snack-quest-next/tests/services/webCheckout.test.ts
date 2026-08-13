@@ -247,6 +247,75 @@ describe('startWebCheckout — pricing authority', () => {
     });
   });
 
+  it('applies the creator discount when the checkout carries a verified creator session, and the quote matches the charge (§ Creator-Only Offers)', async () => {
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      phone: PHONE_TYPED,
+      isCreatorCheckout: true,
+    });
+    expect(quote?.pricing.discountKes).toBe(500);
+    expect(quote?.pricing.totalKes).toBe(2300);
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ isCreatorCheckout: true }),
+    );
+    expect(result.pricing.discountKes).toBe(500);
+    expect(result.pricing.totalKes).toBe(2300);
+  });
+
+  it('never applies the creator discount without isCreatorCheckout set — a route that never verified a session cannot grant one', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    expect(result.pricing.discountKes).toBe(0);
+  });
+
+  it('stacks the creator discount with a valid referral code — a creator buying through their own link still gets both', async () => {
+    await seedReferralLink();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ referralCode: 'SAVE500', isCreatorCheckout: true }),
+    );
+
+    expect(result.pricing.discountKes).toBe(1000);
+    expect(result.pricing.totalKes).toBe(1800);
+  });
+
+  it('never applies the creator discount to the exit-intent rescue offer — it is already a one-time discounted price', async () => {
+    const rescueOfferId = await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Test Box',
+        description: '7 assorted snacks',
+        priceKes: 1500,
+        isActive: true,
+        imageUrl: null,
+        isRescueOffer: true,
+      },
+      'test',
+    );
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId: rescueOfferId,
+      quantity: 1,
+      deliveryMethod: 'pickup',
+      pickupStationId: stationId,
+      phone: PHONE_TYPED,
+      isCreatorCheckout: true,
+    });
+    expect(quote?.pricing.discountKes).toBe(0);
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ packageId: rescueOfferId, isCreatorCheckout: true }),
+    );
+    expect(result.pricing.discountKes).toBe(0);
+    expect(result.pricing.totalKes).toBe(1800);
+  });
+
   it('stores the captured ad-click attribution on the new conversation (§ close the loop: ad-conversion attribution)', async () => {
     const attribution = { channel: 'web' as const, landingUrl: 'https://snackquests.shop/checkout', ttclid: 'tt-abc' };
 

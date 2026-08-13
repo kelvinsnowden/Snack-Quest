@@ -532,7 +532,16 @@ function OrderSummary({
 
       {pricing.discountKes > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="text-success text-sm">Referral discount</dt>
+          {/*
+            Generic on purpose (§ Creator-Only Offers) — `discountKes`
+            can now come from a referral code, a signed-in creator's
+            own checkout discount, or both stacked, and this summary
+            line has no way to tell which without threading extra
+            source flags through just for a label. "Referral discount"
+            was accurate before there was a second source; it would
+            mislabel a creator's own discount now.
+          */}
+          <dt className="text-success text-sm">Discount</dt>
           <dd className="text-success text-sm tabular-nums">−{formatKes(pricing.discountKes)}</dd>
         </div>
       ) : null}

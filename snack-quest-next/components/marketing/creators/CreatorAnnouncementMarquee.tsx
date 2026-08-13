@@ -1,5 +1,3 @@
-import { Sparkles } from 'lucide-react';
-
 /**
  * The hero's opening hook, in motion (§ Creator Program CRO pass) —
  * placed above the "Creator program" pill, this is the very first
@@ -14,6 +12,9 @@ import { Sparkles } from 'lucide-react';
  * with no gap, just not so many that the same 30s duration had to
  * cover more ground per second than a reader could follow.
  *
+ * Plain "•" separators, not an icon — a sparkle between every repeat
+ * across three copies read as visual noise rather than emphasis.
+ *
  * Sentence-cased in source, `uppercase` applied via class — same
  * convention every heading on this site follows, so a screen reader
  * gets normal words instead of letter-by-letter shouting.
@@ -26,9 +27,9 @@ function AnnouncementUnit() {
   return (
     <span className="flex shrink-0 items-center gap-3 px-4 whitespace-nowrap">
       <span>{MESSAGE_LEAD}</span>
-      <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
+      <span aria-hidden="true">•</span>
       <span>{MESSAGE_TAIL}</span>
-      <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
+      <span aria-hidden="true">•</span>
     </span>
   );
 }

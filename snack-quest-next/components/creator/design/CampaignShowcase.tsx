@@ -14,77 +14,16 @@ type CampaignEntry = { id: string; data: Campaign };
 
 /**
  * Dashboard campaign discovery (§ Creator Portal premium rebuild,
- * reference-image quality pass). Two pieces sharing one job: surface
- * "what's the best opportunity right now" without leaving the home
- * screen, matching how the car-rental reference fronts its "top pick"
- * before the full browsable list.
+ * reference-image quality pass) — a horizontal preview of active
+ * campaigns, linking to the full browsable list on `/creator/campaigns`.
  *
- * The featured pick is real ranking, not editorial choice: soonest
- * real deadline first (genuinely time-sensitive beats everything),
- * falling back to the highest commission when no campaign has one.
- * Both surfaces link straight to that campaign's own detail route
- * (§ campaign attachments) rather than the plain list.
+ * Used to sit below a `FeaturedCampaignBanner` picking one campaign to
+ * lead with; that banner was replaced by `CreatorOffers` (§
+ * Creator-Only Offers) and removed here as dead code, along with the
+ * `pickFeatured` ranking helper only it used. This carousel and every
+ * other campaign surface (`/creator/campaigns`, campaign detail pages)
+ * are unchanged.
  */
-function pickFeatured(campaigns: CampaignEntry[]): CampaignEntry | null {
-  if (campaigns.length === 0) return null;
-  const withDeadline = campaigns
-    .map((c) => ({ c, daysLeft: daysUntilDeadline(c.data.deadline) }))
-    .filter((x): x is { c: CampaignEntry; daysLeft: number } => x.daysLeft !== null)
-    .sort((a, b) => a.daysLeft - b.daysLeft);
-  if (withDeadline.length > 0) return withDeadline[0].c;
-  return [...campaigns].sort(
-    (a, b) => b.data.commissionRateKes - a.data.commissionRateKes,
-  )[0];
-}
-
-export function FeaturedCampaignBanner({ campaigns }: { campaigns: CampaignEntry[] }) {
-  const featured = pickFeatured(campaigns);
-  if (!featured) return null;
-
-  const { data } = featured;
-  const daysLeft = daysUntilDeadline(data.deadline);
-  const isClosingSoon = daysLeft !== null && daysLeft <= CLOSING_SOON_WINDOW_DAYS;
-  const hasPhoto = Boolean(data.assetsUrl) && !isVideoAsset(data.assetsUrl ?? '');
-
-  return (
-    <Link
-      href={`/creator/campaigns/${featured.id}`}
-      className="focus-visible:ring-primary focus-visible:ring-offset-background group relative block overflow-hidden rounded-2xl focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-    >
-      <div className="from-foreground via-foreground/90 relative aspect-[16/9] w-full bg-gradient-to-br to-[#4a2e12] sm:aspect-[21/9]">
-        {hasPhoto ? (
-          <Image
-            src={data.assetsUrl as string}
-            alt=""
-            fill
-            sizes="(min-width: 768px) 50vw, 100vw"
-            className="object-cover opacity-70 transition-opacity duration-200 group-hover:opacity-60"
-          />
-        ) : null}
-        <div className="from-foreground/95 absolute inset-0 bg-gradient-to-t via-transparent to-transparent" />
-
-        <div className="absolute inset-0 flex flex-col justify-end gap-2 p-5 md:p-7">
-          <p className="text-caption font-bold tracking-[0.2em] text-white/70 uppercase">
-            {isClosingSoon ? urgencyLabel(daysLeft as number) : 'Featured campaign'}
-          </p>
-          <h3 className="text-card-title max-w-md font-semibold text-white">
-            {data.title}
-          </h3>
-          <div className="mt-2 flex items-center gap-3">
-            <span className="bg-primary text-primary-foreground inline-flex items-center rounded-full px-3 py-1.5 text-sm font-semibold">
-              {formatKes(data.commissionRateKes)} commission
-            </span>
-            <span className="inline-flex items-center gap-1 text-sm font-semibold text-white">
-              View campaign
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </span>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 export function CampaignCarousel({ campaigns }: { campaigns: CampaignEntry[] }) {
   if (campaigns.length === 0) return null;
 

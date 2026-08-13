@@ -5,15 +5,15 @@ import { requireCreatorSession } from '@/lib/auth/creatorSession';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
 import { referralService } from '@/services/referralService';
 import { campaignService } from '@/services/campaignService';
+import { productService } from '@/services/productService';
+import { packageRepository } from '@/repositories/packageRepository';
 import { PortalHero } from '@/components/creator/design/PortalHero';
 import { PortalCard } from '@/components/creator/design/PortalCard';
 import { PortalSection } from '@/components/creator/design/PortalSection';
 import { QuickActionRow } from '@/components/creator/design/QuickActionRow';
 import { NextStepCard } from '@/components/creator/design/NextStepCard';
-import {
-  CampaignCarousel,
-  FeaturedCampaignBanner,
-} from '@/components/creator/design/CampaignShowcase';
+import { CreatorOffers } from '@/components/creator/design/CreatorOffers';
+import { CampaignCarousel } from '@/components/creator/design/CampaignShowcase';
 import { CREATOR_STATUS_LABELS } from '@/lib/creators/transitions';
 import { CREATOR_TIER_LABELS } from '@/lib/creators/tier';
 import { resolveNextStep } from '@/lib/creator/nextStep';
@@ -65,15 +65,17 @@ const QUICK_ACTIONS = [
  * remains the at-a-glance signal; `canWithdraw` still disables the
  * withdraw CTA for anyone without full access.
  *
- * Campaign discovery (a featured pick plus a horizontal carousel) sits
- * between the quick actions and the performance stats — reference-
- * image quality pass. It's entirely optional: both pieces render
- * nothing when there are no active campaigns, since an empty promo
- * banner would be worse than no banner at all.
+ * The old featured-campaign banner between quick actions and
+ * performance stats is now `CreatorOffers` (§ Creator-Only Offers) —
+ * a creator's first login leads with the pricing perk that's true
+ * every time, not whichever campaign happens to be active. Campaign
+ * discovery itself is untouched: `CampaignCarousel` still renders
+ * right after it, unchanged, and still renders nothing when there are
+ * no active campaigns.
  */
 export default async function CreatorHomePage() {
   const session = await requireCreatorSession();
-  const [{ profile, accessLevel }, { attributions }, { links }, campaigns] =
+  const [{ profile, accessLevel }, { attributions }, { links }, campaigns, rescueOffer, packages] =
     await Promise.all([
       creatorDashboardService.getDashboard(session.uid),
       referralService.listCommissionsForCreator(
@@ -82,6 +84,8 @@ export default async function CreatorHomePage() {
       ),
       referralService.listLinksForCreator(session.businessId, session.uid),
       campaignService.listActiveCampaigns(session.businessId),
+      productService.getRescueOffer(session.businessId),
+      packageRepository.listActive(session.businessId),
     ]);
 
   const recent = attributions.slice(0, 5);
@@ -117,12 +121,9 @@ export default async function CreatorHomePage() {
 
       <QuickActionRow actions={QUICK_ACTIONS} />
 
-      {campaigns.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          <FeaturedCampaignBanner campaigns={campaigns} />
-          <CampaignCarousel campaigns={campaigns} />
-        </div>
-      ) : null}
+      <CreatorOffers rescueOffer={rescueOffer} packages={packages} />
+
+      {campaigns.length > 0 ? <CampaignCarousel campaigns={campaigns} /> : null}
 
       <PortalSection id="performance" title="How you're performing">
         <PortalCard>

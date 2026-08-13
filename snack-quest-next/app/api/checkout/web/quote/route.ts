@@ -1,5 +1,6 @@
 import { conversationService } from '@/services/conversationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
+import { verifyCreatorSessionFromRequest } from '@/lib/auth/creatorSession';
 import type { WebCheckoutQuote } from '@/types/webCheckout';
 
 /**
@@ -35,6 +36,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "deliveryMethod must be 'pickup' or 'door'" }, { status: 400 });
   }
 
+  // Same server-verified source as the real charge (§ Creator-Only
+  // Offers) — the quote has to show the discount the charge will
+  // actually apply, or a customer sees one number and pays another.
+  const creatorSession = await verifyCreatorSessionFromRequest(request);
+
   const quote: WebCheckoutQuote | null = await conversationService.quoteWebCheckout(
     getCurrentBusinessId(),
     {
@@ -45,6 +51,7 @@ export async function POST(request: Request): Promise<Response> {
       referralCode:
         typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
       phone: typeof phone === 'string' ? phone : undefined,
+      isCreatorCheckout: Boolean(creatorSession),
     },
   );
 
