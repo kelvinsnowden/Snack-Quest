@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { ArrowRight, Coins, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Coins, Sparkles, Tag, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
-import { CREATOR_COMMISSION_KES } from '@/lib/creators/referralEconomics';
+import { CREATOR_COMMISSION_KES, REFERRAL_DISCOUNT_KES } from '@/lib/creators/referralEconomics';
+import { MpesaBadge } from '@/components/icons/MpesaBadge';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
@@ -16,6 +17,17 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  *
  * Every number on this page is the real one from
  * `referralEconomics.ts`, not marketing rounding.
+ *
+ * § Creator Program CRO pass — the subhead used to say "no waiting for
+ * approval", which was false: a signup starts `status: 'pending'` and
+ * only an admin's approval moves it to `'active'`
+ * (`creatorAdminService.updateStatus`). It read that way because
+ * commission crediting itself genuinely has no approval gate
+ * (`ReferralService.awardCommission` docblock) — a real fact, just the
+ * wrong one to lead with, since a visitor reads "approval" as "can I
+ * start" not "does someone approve each payout". The stat strip below
+ * replaces a `💸` glyph with `MpesaBadge`, the same real-icon standard
+ * the rest of the site now holds every WhatsApp/payment reference to.
  */
 export function CreatorsHero() {
   return (
@@ -50,20 +62,19 @@ export function CreatorsHero() {
 
         <Reveal delayMs={120}>
           <h1 className="font-display mt-6 text-[clamp(2.5rem,7.5vw,5rem)] leading-[0.9] font-normal tracking-tight text-balance uppercase">
-            <span className="text-foreground">Get paid for </span>
-            <span className="text-secondary">introducing</span>
-            <span className="text-foreground"> people to </span>
-            <span className="text-primary">Snack Quest.</span>
+            <span className="text-foreground">Turn your audience </span>
+            <span className="text-primary">into income.</span>
           </h1>
         </Reveal>
 
         <Reveal delayMs={200}>
           <p className="text-subtitle text-foreground/75 mx-auto mt-6 max-w-xl">
-            Share your link, and every order it brings in earns you{' '}
+            Earn{' '}
             <span className="text-foreground font-semibold">
               {formatKes(CREATOR_COMMISSION_KES)}
-            </span>
-            . No minimum following, nothing to pay, no waiting for approval.
+            </span>{' '}
+            for every successful order made through your link. No minimum following, free to
+            apply — approval usually takes under a working day.
           </p>
         </Reveal>
 
@@ -71,7 +82,7 @@ export function CreatorsHero() {
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button asChild size="lg" className={PRIMARY_CTA_CLASS}>
               <Link href="/creator/register">
-                Become a creator
+                Apply to become a creator
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
             </Button>
@@ -86,10 +97,15 @@ export function CreatorsHero() {
               {formatKes(CREATOR_COMMISSION_KES)} per order
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Zap className="text-secondary size-4" aria-hidden="true" />
-              Credited instantly
+              <Tag className="text-secondary size-4" aria-hidden="true" />
+              {formatKes(REFERRAL_DISCOUNT_KES)} off for them
             </span>
-            <span className="inline-flex items-center gap-1.5">💸 Withdraw to M-Pesa</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="text-foreground/60 size-4" aria-hidden="true" />0 minimum followers
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <MpesaBadge /> withdrawals
+            </span>
           </div>
         </Reveal>
       </div>

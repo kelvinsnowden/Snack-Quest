@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { Compass, TrendingUp, Sprout, Megaphone } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import { Reveal } from '../design/Reveal';
 
 /**
@@ -8,6 +8,18 @@ import { Reveal } from '../design/Reveal';
  * grammar as that component (photo + short rail of beats) so a visitor
  * who's already seen the home page recognises this as the same founder
  * talking, not a different brand voice grafted onto the creators page.
+ *
+ * § Creator Program CRO pass (brief item 10) — moved from right after
+ * the hero to here, after the opportunity, economics, how-it-works,
+ * and content ideas: a visitor arrives asking "what's in it for me",
+ * and the founder's reasoning lands better once that's answered, not
+ * before it. The heading changed with the move — "Before you promote
+ * Snack Quest, read this" read as a gate you had to clear before
+ * getting to the offer, which is backwards once the offer already
+ * came first. The `REASONS` card grid that used to follow is gone: it
+ * restated the same three points `STORY_BEATS` already makes, just in
+ * card form (§ remove repetition) — this section keeps the beats, not
+ * both copies of them.
  *
  * `beat: true` marks the short declarative lines, same convention as
  * home's `FounderStory` — a reader skimming just the bold lines still
@@ -27,27 +39,9 @@ const STORY_BEATS: { text: string; beat?: boolean }[] = [
   },
 ];
 
-const REASONS = [
-  {
-    icon: TrendingUp,
-    title: 'Grow Snack Quest',
-    body: 'Help more people across Kenya discover Snack Quest — and eventually, beyond.',
-  },
-  {
-    icon: Sprout,
-    title: 'Create real opportunities',
-    body: "I can't create a thousand jobs. I can create one real opportunity, for someone ready to start.",
-  },
-  {
-    icon: Megaphone,
-    title: 'Help creators earn',
-    body: 'If you’ve already built an audience, this is a real way to earn from it.',
-  },
-] as const;
-
 export function CreatorFounderStory({ founderImageUrl }: { founderImageUrl: string | null }) {
   return (
-    <section className="relative overflow-hidden bg-background px-5 py-16 md:px-10 md:py-32">
+    <section className="relative overflow-hidden bg-white px-5 py-16 md:px-10 md:py-32">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden md:block">
         <div className="absolute -top-32 -left-24 size-[420px] rounded-full bg-secondary/10 blur-3xl" />
         <div className="absolute -bottom-24 -right-24 size-[420px] rounded-full bg-primary/10 blur-3xl" />
@@ -60,7 +54,7 @@ export function CreatorFounderStory({ founderImageUrl }: { founderImageUrl: stri
 
         <Reveal delayMs={60}>
           <h2 className="mt-4 max-w-2xl text-balance font-display text-4xl leading-[1.05] font-normal uppercase md:text-6xl">
-            Before you promote Snack Quest, <span className="text-secondary">read this.</span>
+            Why I built the <span className="text-secondary">Creator Program.</span>
           </h2>
         </Reveal>
 
@@ -124,23 +118,6 @@ export function CreatorFounderStory({ founderImageUrl }: { founderImageUrl: stri
             </Reveal>
           </div>
         </div>
-
-        <Reveal delayMs={200 + STORY_BEATS.length * 70 + 140}>
-          <div className="mt-12 grid gap-4 md:mt-20 md:grid-cols-3">
-            {REASONS.map((reason) => (
-              <div
-                key={reason.title}
-                className="border-border bg-surface flex flex-col gap-2 rounded-2xl border p-5"
-              >
-                <reason.icon className="size-5 text-secondary" strokeWidth={2.2} aria-hidden="true" />
-                <h3 className="text-card-title font-display text-xl leading-[1.1] font-normal uppercase">
-                  {reason.title}
-                </h3>
-                <p className="text-small text-foreground/70">{reason.body}</p>
-              </div>
-            ))}
-          </div>
-        </Reveal>
       </div>
     </section>
   );

@@ -1,36 +1,60 @@
+import { FileCheck2, ShieldCheck, Link2, Megaphone, Coins, Wallet } from 'lucide-react';
+import { formatKes } from '@/lib/orders/format';
+import { CREATOR_COMMISSION_KES } from '@/lib/creators/referralEconomics';
 import { Reveal } from '../design/Reveal';
 
 /**
- * The creator's four steps, in the same dark "expedition" treatment the
- * home page uses for the customer's four steps (§ brand consistency
+ * The creator's real six steps, in the same dark "expedition" treatment
+ * the home page uses for the customer's four steps (§ brand consistency
  * pass) — same radial jungle gradient, same lime kicker, same drifting
  * fireflies, same numbered checkpoints.
  *
- * A server component, unlike the home page's `TheRoute`: that one is a
- * client component only because of its scroll-linked trail SVG, and
- * four short steps do not need one. The `Reveal` stagger carries the
- * same sense of the page unfolding without shipping the JavaScript.
+ * § Creator Program CRO pass rewrote this from four steps to the
+ * actual flow: the old copy ("Sign up... two minutes and you're in")
+ * skipped approval entirely, which is exactly the false "instant"
+ * impression the audit exists to remove. Every step here matches a
+ * real system transition — `status: 'pending'` at registration
+ * (`CreatorAuthService.register`), `'active'` only after an admin
+ * approves (`creatorAdminService.updateStatus`), the "usually under a
+ * working day" line straight from the dashboard's own
+ * `lib/creator/nextStep.ts` copy so this page never claims a faster or
+ * slower SLA than the product itself states.
+ *
+ * Emoji step icons are gone too, replaced with real lucide glyphs —
+ * generic concepts (apply, approve, link, share, earn, withdraw), not
+ * a brand mark, so lucide is the right tool here (unlike WhatsApp or
+ * M-Pesa elsewhere on this page, which need real brand icons).
  */
 const STEPS = [
   {
-    emoji: '✍️',
-    title: 'Sign up',
-    body: 'Name, email, password. Two minutes and you’re in.',
+    icon: FileCheck2,
+    title: 'Apply',
+    body: 'Submit your creator application — name, email, a password. Two minutes.',
   },
   {
-    emoji: '🔗',
-    title: 'Grab your link',
-    body: 'Copy it from your dashboard and drop it wherever your audience already hangs out.',
+    icon: ShieldCheck,
+    title: 'Get approved',
+    body: 'We review every application. Approval usually takes under a working day.',
   },
   {
-    emoji: '📈',
+    icon: Link2,
+    title: 'Get your link',
+    body: 'Your permanent referral link is waiting in your dashboard the moment you’re approved.',
+  },
+  {
+    icon: Megaphone,
+    title: 'Share it',
+    body: 'Drop it wherever your audience already hangs out — bio, story, WhatsApp, a DM.',
+  },
+  {
+    icon: Coins,
     title: 'They order, you earn',
-    body: 'Their discount applies itself at checkout. Your commission lands the moment they pay.',
+    body: `Their discount applies at checkout. Your ${formatKes(CREATOR_COMMISSION_KES)} lands in your balance the moment they pay.`,
   },
   {
-    emoji: '💸',
-    title: 'Cash out to M-Pesa',
-    body: 'Request a withdrawal from your dashboard whenever your balance is worth moving.',
+    icon: Wallet,
+    title: 'Withdraw to M-Pesa',
+    body: 'Request a payout from your dashboard whenever you want — any amount, no minimum.',
   },
 ];
 
@@ -75,17 +99,18 @@ export function CreatorRoute() {
           From your post to your <span className="text-home-lime">M-Pesa.</span>
         </h2>
         <p className="mx-auto mt-5 max-w-[512px] text-base text-white/70 md:text-lg">
-          Four steps. The longest one is choosing what to say about us.
+          Apply, get approved, then share. The longest step is usually choosing what to say about
+          us.
         </p>
       </div>
 
-      <ol className="relative mx-auto mt-10 grid max-w-5xl gap-6 md:mt-16 md:grid-cols-4">
+      <ol className="relative mx-auto mt-10 grid max-w-5xl gap-6 md:mt-16 md:grid-cols-3">
         {STEPS.map((step, index) => (
           <Reveal key={step.title} as="li" delayMs={index * 90}>
             <div className="flex h-full flex-col items-center gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 text-center backdrop-blur-sm md:items-start md:text-left">
               <div className="relative">
-                <span className="border-home-lime bg-foreground flex size-14 items-center justify-center rounded-full border-2 text-2xl shadow-[0_0_40px_-5px_rgb(200_255_0/0.7)]">
-                  <span aria-hidden="true">{step.emoji}</span>
+                <span className="border-home-lime bg-foreground flex size-14 items-center justify-center rounded-full border-2 shadow-[0_0_40px_-5px_rgb(200_255_0/0.7)]">
+                  <step.icon className="text-home-lime size-6" strokeWidth={2.2} aria-hidden="true" />
                 </span>
                 <span className="bg-secondary text-caption absolute -right-1.5 -bottom-1.5 flex size-6 items-center justify-center rounded-full font-bold text-white">
                   {index + 1}
