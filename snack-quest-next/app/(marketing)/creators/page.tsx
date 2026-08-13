@@ -8,7 +8,6 @@ import { CreatorPerks } from '@/components/marketing/creators/CreatorPerks';
 import { CreatorPortfolio } from '@/components/marketing/creators/CreatorPortfolio';
 import { CreatorStartHere } from '@/components/marketing/creators/CreatorStartHere';
 import { CreatorRoute } from '@/components/marketing/creators/CreatorRoute';
-import { CreatorFounderSignoff } from '@/components/marketing/creators/CreatorFounderSignoff';
 import { CreatorsFinalCta } from '@/components/marketing/creators/CreatorsFinalCta';
 
 export const metadata: Metadata = buildPageMetadata({
@@ -45,7 +44,6 @@ export default async function CreatorsPage() {
       <CreatorPortfolio />
       <CreatorStartHere />
       <CreatorRoute />
-      <CreatorFounderSignoff />
       <CreatorsFinalCta />
     </div>
   );
