@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
 import { CREATOR_COMMISSION_KES, REFERRAL_DISCOUNT_KES } from '@/lib/creators/referralEconomics';
 import { MpesaBadge } from '@/components/icons/MpesaBadge';
+import { CreatorAnnouncementMarquee } from './CreatorAnnouncementMarquee';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
@@ -28,10 +29,17 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  * start" not "does someone approve each payout". The stat strip below
  * replaces a `💸` glyph with `MpesaBadge`, the same real-icon standard
  * the rest of the site now holds every WhatsApp/payment reference to.
+ *
+ * `CreatorAnnouncementMarquee` sits above the "Creator program" pill,
+ * in the section's own top padding rather than a new section on top
+ * of it — same "fill existing space" move as the home hero's compact
+ * `PartnersMarquee` (`pt-8 pb-16 md:pt-10 md:pb-32` instead of the
+ * original symmetric `py-16 md:py-32`), full-bleed via negative
+ * margins that cancel the section's own horizontal padding.
  */
 export function CreatorsHero() {
   return (
-    <section className="bg-background relative overflow-hidden px-5 py-16 md:px-10 md:py-32">
+    <section className="bg-background relative overflow-hidden px-5 pt-8 pb-16 md:px-10 md:pt-10 md:pb-32">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="bg-secondary/25 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
         <div className="bg-primary/20 absolute top-40 -right-32 size-[420px] rounded-full blur-3xl" />
@@ -50,6 +58,10 @@ export function CreatorsHero() {
           <circle cx="40" cy="720" r="6" fill="var(--color-secondary)" />
           <circle cx="790" cy="60" r="6" fill="var(--color-primary)" />
         </svg>
+      </div>
+
+      <div className="relative -mx-5 mb-8 md:-mx-10 md:mb-10">
+        <CreatorAnnouncementMarquee />
       </div>
 
       <div className="relative mx-auto max-w-3xl text-center">

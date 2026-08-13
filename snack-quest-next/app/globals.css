@@ -432,7 +432,19 @@ body {
     animation: marqueeScroll 28s linear infinite;
   }
 
-  .marquee-pause-on-hover:hover .animate-marquee {
+  /*
+   * Same seamless loop as `animate-marquee`, deliberately faster — for
+   * an attention-grabbing announcement strip rather than a calm,
+   * read-the-logos partner strip (§ Creator Program hero announcement
+   * marquee). Still `linear` for the same reason: an eased loop gives
+   * its seam away.
+   */
+  .animate-marquee-fast {
+    animation: marqueeScroll 16s linear infinite;
+  }
+
+  .marquee-pause-on-hover:hover .animate-marquee,
+  .marquee-pause-on-hover:hover .animate-marquee-fast {
     animation-play-state: paused;
   }
 
