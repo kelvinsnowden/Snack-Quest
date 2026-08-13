@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { CreatorsHero } from '@/components/marketing/creators/CreatorsHero';
-import { CreatorPartnersMarquee } from '@/components/marketing/creators/CreatorPartnersMarquee';
+import { PartnersMarquee } from '@/components/marketing/PartnersMarquee';
 import { CreatorEconomics } from '@/components/marketing/creators/CreatorEconomics';
 import { CreatorEarningsExamples } from '@/components/marketing/creators/CreatorEarningsExamples';
 import { CreatorStartHere } from '@/components/marketing/creators/CreatorStartHere';
@@ -53,7 +53,7 @@ export default async function CreatorsPage() {
   return (
     <div className="flex flex-col overflow-x-hidden">
       <CreatorsHero />
-      <CreatorPartnersMarquee />
+      <PartnersMarquee />
       <CreatorEconomics />
       <CreatorEarningsExamples />
       <CreatorStartHere />
