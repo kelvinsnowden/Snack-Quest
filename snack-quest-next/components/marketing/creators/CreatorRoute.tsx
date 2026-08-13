@@ -15,17 +15,17 @@ const STEPS = [
   {
     emoji: '✍️',
     title: 'Sign up',
-    body: 'Name, email, password. Two minutes, no application to wait on and nothing to pay.',
+    body: 'Name, email, password. Two minutes and you’re in.',
   },
   {
     emoji: '🔗',
     title: 'Grab your link',
-    body: 'It is generated for you the moment you join, and it never changes. Put it wherever your people already are.',
+    body: 'Copy it from your dashboard and drop it wherever your audience already hangs out.',
   },
   {
     emoji: '📈',
     title: 'They order, you earn',
-    body: 'Your audience gets their discount automatically. Your commission is credited the second their payment clears.',
+    body: 'Their discount applies itself at checkout. Your commission lands the moment they pay.',
   },
   {
     emoji: '💸',

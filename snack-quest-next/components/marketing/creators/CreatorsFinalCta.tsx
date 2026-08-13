@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import { Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatKes } from '@/lib/orders/format';
-import { CREATOR_COMMISSION_KES } from '@/lib/creators/referralEconomics';
 import { Reveal } from '../design/Reveal';
 
 /**
@@ -37,13 +35,6 @@ export function CreatorsFinalCta() {
             <br />
             be your <span className="text-home-lime">first payout.</span>
           </h2>
-        </Reveal>
-
-        <Reveal delayMs={250}>
-          <p className="mx-auto mt-6 max-w-xl text-base text-white/70 md:text-lg">
-            {formatKes(CREATOR_COMMISSION_KES)} for every order you send our way. Free to join, and you can
-            start sharing the minute you sign up.
-          </p>
         </Reveal>
 
         <Reveal delayMs={350}>

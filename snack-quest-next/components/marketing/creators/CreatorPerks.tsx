@@ -40,11 +40,7 @@ const PERKS = [
     kicker: 'Your money',
     title: `${formatKes(CREATOR_COMMISSION_KES)} an order, right away`,
     body: 'The commission lands in your balance the second the payment clears — not at the end of the month, and with nobody approving it first.',
-    points: [
-      'Same rate for every creator',
-      'Withdraw straight to M-Pesa',
-      'Every order itemised in your dashboard',
-    ],
+    points: ['Same rate for every creator', 'Every order itemised in your dashboard'],
     accent: {
       wash: 'from-background to-primary/10',
       border: 'border-primary/30',
@@ -85,9 +81,6 @@ export function CreatorPerks() {
           <h2 className="font-display mt-4 text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
             Everything you need.
           </h2>
-          <p className="text-foreground/70 mx-auto mt-5 max-w-[576px] text-base md:text-lg">
-            No application fee, no minimum audience, no exclusivity. Join, share, get paid.
-          </p>
         </div>
       </Reveal>
 
