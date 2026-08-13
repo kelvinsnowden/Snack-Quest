@@ -25,9 +25,9 @@ export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
             What&apos;s <span className="text-secondary">inside?</span>
           </h2>
           <p className="mt-5 text-base text-foreground/70 md:text-lg">
-            Snacks imported directly from{' '}
-            <span className="font-semibold text-foreground">Japan, Korea, China &amp; Thailand</span>. Every box is
-            hand-curated so no two adventures are ever the same.
+            Snacks sourced from{' '}
+            <span className="font-semibold text-foreground">Japan, Korea, China &amp; Thailand</span>, hand-curated
+            so no two adventures are ever the same.
           </p>
         </div>
       </Reveal>

@@ -8,7 +8,9 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 /**
  * Deliberately no hero photograph (§ jungle-adventure landing page
  * rebuild spec §6.1/§20.7) — the hero is typographic on purpose, so
- * the Founder Story section below is the page's first photograph.
+ * whatever section follows carries the page's first photograph. Today
+ * that's `ReviewsSection`'s real customer photos (§ CRO audit — funnel
+ * order), stronger, earlier proof than an illustrated placeholder.
  */
 export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {}) {
   return (
@@ -58,7 +60,7 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
 
         <Reveal delayMs={200}>
           <p className="text-subtitle text-foreground/75 mx-auto mt-6 max-w-xl">
-            Hand-picked snacks from Japan, Korea, China &amp; Thailand.{' '}
+            Hand-picked mystery snacks from across Asia.{' '}
             <span className="text-foreground font-semibold">
               You&apos;re about to take the first step into a very delicious
               adventure.

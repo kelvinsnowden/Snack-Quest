@@ -1,28 +1,23 @@
 import Image from 'next/image';
-import Link from 'next/link';
-import { Compass, Globe2, Rocket } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Compass, Globe2 } from 'lucide-react';
 import { Reveal } from '../design/Reveal';
-import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 
 /**
  * `beat: true` marks the short declarative lines that were already
- * the story's own rhythm — "Sometimes the flavours completely
- * surprised me." reads as a beat, the sentence explaining *why*
- * doesn't. Rendering beats larger/bolder is derived from the copy
- * itself (line length), not an arbitrary style choice: a reader
- * skimming just the beats still gets the whole arc.
+ * the story's own rhythm — a reader skimming just the beats still
+ * gets the whole arc.
+ *
+ * Trimmed to three beats (§ CRO audit — founder story) now that this
+ * section sits lower in the funnel, after pricing and how-it-works
+ * have already done the persuading: it no longer needs to carry as
+ * much weight, just the strongest emotional thread.
  */
 const STORY_BEATS: { text: string; beat?: boolean }[] = [
   { text: 'I never planned to start a snack company.', beat: true },
   {
-    text: "Working alongside my Chinese colleagues introduced me to a world of snacks I'd never seen before. Every time they handed me something new, I had no idea what to expect.",
+    text: "Working alongside my Chinese colleagues introduced me to a world of snacks I'd never seen before — sometimes they surprised me, sometimes they became an instant favourite.",
   },
-  { text: 'Sometimes the flavours completely surprised me.', beat: true },
-  { text: 'Sometimes they became instant favourites.', beat: true },
-  {
-    text: 'That feeling of discovering something unexpected was exciting and I realized it would be nice to offer the same experience to someone else.',
-  },
+  { text: 'That feeling of discovering something unexpected was worth sharing.', beat: true },
 ];
 
 /**
@@ -129,9 +124,8 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
                   That&apos;s why I created Snack Quest.
                 </p>
                 <p className="text-foreground/70 mt-3 text-[15px] leading-[1.65] md:text-base">
-                  Today, every snack that makes it into a Snack Quest box has been personally tasted and carefully
-                  selected, because I want every customer to experience that same excitement, curiosity and
-                  unforgettable sense of discovery.
+                  Today, every snack in a Snack Quest box has been personally tasted and selected — because I want
+                  you to feel that same sense of discovery.
                 </p>
               </div>
             </Reveal>
@@ -143,15 +137,6 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
                   Founder, Snack Quest
                 </p>
               </div>
-            </Reveal>
-
-            <Reveal delayMs={STORY_BEATS.length * 70 + 200}>
-              <Button asChild size="lg" className={`mt-8 ${PRIMARY_CTA_CLASS}`}>
-                <Link href="#boxes">
-                  <Rocket className="size-5" aria-hidden="true" />
-                  Start Your Snack Quest
-                </Link>
-              </Button>
             </Reveal>
           </div>
         </div>

@@ -27,7 +27,7 @@ const CHECKPOINTS: Checkpoint[] = [
   {
     emoji: '🎉',
     title: 'Begin Your Snack Adventure',
-    body: 'Open, film & share to earn discounts on your next order. Complete every Snack Quest challenge and unlock a free box.',
+    body: 'Unbox it yourself, or hand it to someone who needs a good surprise. Either way, the reaction is the best part.',
   },
 ];
 
