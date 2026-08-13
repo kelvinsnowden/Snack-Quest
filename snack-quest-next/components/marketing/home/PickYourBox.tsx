@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatKes } from '@/lib/orders/format';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
+import { OfferCountdown } from './OfferCountdown';
 import type { Package } from '@/types';
 
 const ACCENTS = [
@@ -82,6 +83,11 @@ export function PickYourBox({
         {packages.map((pkg, index) => {
           const accent = ACCENTS[index % ACCENTS.length];
           const isEmphasized = packages.length === 3 && index === 1;
+          // Only the exit-intent rescue offer carries a real
+          // expiration — never a fabricated deadline on an ordinary
+          // box (§ exit-intent rescue offer).
+          const expiresAtMs =
+            pkg.data.isRescueOffer && pkg.data.offerExpiresAt ? pkg.data.offerExpiresAt.toMillis() : null;
           return (
             <Reveal key={pkg.id} delayMs={index * 120}>
               <div
@@ -140,6 +146,11 @@ export function PickYourBox({
                   <p className="text-foreground mt-3 text-2xl font-bold md:mt-4 md:text-4xl">
                     {formatKes(pkg.data.priceKes)}
                   </p>
+                  {expiresAtMs !== null ? (
+                    <div className="mt-1.5">
+                      <OfferCountdown expiresAtMs={expiresAtMs} />
+                    </div>
+                  ) : null}
                   {pkg.data.description ? (
                     <p className="text-small text-foreground/70 mt-1">
                       {pkg.data.description}

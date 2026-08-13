@@ -5,12 +5,13 @@ import { VISITOR_COOKIE } from '@/lib/analytics/cookies';
 
 /**
  * `POST /api/analytics/event` (§ exit-intent rescue offer) — where the
- * rescue-offer popup's client-side beacons land. Sibling to
- * `POST /api/analytics/track`, not a replacement: that route is
- * `PageViewTracker`'s "what page is this" beacon, this one is "what
- * did the visitor just do". Same public/unauthenticated posture, same
- * `VISITOR_COOKIE` identity (read-only here — the page-view route owns
- * setting it, since it always fires first on any real page load).
+ * rescue offer's client-side funnel beacons land (e.g. checkout
+ * started). Sibling to `POST /api/analytics/track`, not a replacement:
+ * that route is `PageViewTracker`'s "what page is this" beacon, this
+ * one is "what did the visitor just do". Same public/unauthenticated
+ * posture, same `VISITOR_COOKIE` identity (read-only here — the
+ * page-view route owns setting it, since it always fires first on any
+ * real page load).
  */
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
