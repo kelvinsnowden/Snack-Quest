@@ -9,6 +9,12 @@ import { BuyNowButton } from './BuyNowButton';
 import { useActiveBox } from './design/ActiveBoxContext';
 import { cn } from '@/lib/utils';
 
+// Deliberately just the customer journey (§ CRO audit — nav). Creator
+// program and Contact are real, useful pages, but a visitor who
+// arrived from an ad to buy a box shouldn't have to weigh them against
+// "Boxes" for attention in the one nav row they'll actually scan —
+// both stay one click away in the footer, which every page already
+// has.
 const NAV_LINKS = [
   // The logo goes home, but that is a convention people have to know
   // rather than see — and on mobile it competes with a hamburger for
@@ -18,9 +24,7 @@ const NAV_LINKS = [
   { href: '/boxes', label: 'Boxes' },
   { href: '/how-it-works', label: 'How it works' },
   { href: '/reviews', label: 'Reviews' },
-  { href: '/creators', label: 'Creator program' },
   { href: '/faq', label: 'FAQ' },
-  { href: '/contact', label: 'Contact' },
 ];
 
 export function MarketingHeader({ businessName }: { businessName: string }) {

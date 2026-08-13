@@ -47,18 +47,33 @@ export default async function MarketingHomePage() {
   return (
     <div className="flex flex-col overflow-x-hidden">
       <HomeHero />
-      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
-      <FounderStory
-        founderImageUrl={homepageContent?.founderImageUrl ?? null}
-      />
-      <PickYourBox packages={featured} />
+      {/*
+        Social proof moved up to run right after the hero (§ CRO audit
+        — funnel order): real customer photos and reviews are stronger,
+        earlier trust evidence than an illustrated founder placeholder,
+        and a visitor deciding whether to keep scrolling should see
+        other people's reactions before being asked to read anyone's
+        origin story. Renders nothing when there are no published
+        reviews yet, so this is a no-op until real ones exist.
+      */}
       <ReviewsSection
         reviews={reviews.reviews}
         totalCount={reviews.totalCount}
         averageRating={reviews.averageRating}
         ratingCounts={reviews.ratingCounts}
       />
+      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
+      <PickYourBox packages={featured} />
       <TheRoute />
+      {/*
+        Founder story moved below pricing and how-it-works (§ CRO
+        audit) — trust and authenticity still matter, but they no
+        longer need to carry the visitor's attention before they've
+        even seen what a box costs or how ordering works.
+      */}
+      <FounderStory
+        founderImageUrl={homepageContent?.founderImageUrl ?? null}
+      />
       <FinalCta />
       <FaqSection faqs={faqs.map((entry) => entry.data)} />
 
