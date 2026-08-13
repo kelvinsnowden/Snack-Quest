@@ -1,31 +1,52 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
+import { MpesaLogo } from '@/components/icons/MpesaLogo';
+import { JumiaIcon } from '@/components/icons/JumiaIcon';
+import { BoltIcon } from '@/components/icons/BoltIcon';
+
+/**
+ * What each checkpoint badge shows (§ real-logo pass) — `emoji` stays
+ * for checkpoints with no real brand behind them (there's no "Begin
+ * Your Snack Adventure" logo to show), while `logo`/`mpesa`/`jumia`/
+ * `bolt` render the actual brand: the Snack Quest mark for step 1, and
+ * the real payment/delivery partners for the steps that are genuinely
+ * about them — step 2 is the M-Pesa prompt, step 3 is fulfilled by
+ * either Jumia pickup or Bolt door delivery, hence two badges there
+ * instead of one.
+ */
+type Badge =
+  | { kind: 'emoji'; value: string }
+  | { kind: 'logo'; src: string; alt: string }
+  | { kind: 'mpesa' }
+  | { kind: 'jumia' }
+  | { kind: 'bolt' };
 
 interface Checkpoint {
-  emoji: string;
+  badges: Badge[];
   title: string;
   body: string;
 }
 
 const CHECKPOINTS: Checkpoint[] = [
   {
-    emoji: '🧭',
+    badges: [{ kind: 'logo', src: '/logo.png', alt: 'Snack Quest' }],
     title: 'Choose Your Box',
     body: 'Starter, Deluxe, or Premium. Pick your size, takes about 30 seconds.',
   },
   {
-    emoji: '📲',
+    badges: [{ kind: 'mpesa' }],
     title: 'Check Out & Pay',
     body: 'Fill in where it goes, see your total, and approve the M-Pesa prompt on your phone. No account needed.',
   },
   {
-    emoji: '🚚',
+    badges: [{ kind: 'jumia' }, { kind: 'bolt' }],
     title: 'Fast Delivery Across Kenya',
     body: 'Hand-packed within 24 hours. Jumia pickup stations countrywide, or Bolt Package to your door in Nairobi.',
   },
   {
-    emoji: '🎉',
+    badges: [{ kind: 'emoji', value: '🎉' }],
     title: 'Begin Your Snack Adventure',
     body: 'Unbox it yourself, or hand it to someone who needs a good surprise. Either way, the reaction is the best part.',
   },
@@ -75,6 +96,59 @@ function TrailSvg({ progress }: { progress: number }) {
   );
 }
 
+/** The one thing that renders inside a badge circle — logo image, real brand mark, or the emoji fallback. */
+function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
+  switch (badge.kind) {
+    case 'logo':
+      return (
+        <Image
+          src={badge.src}
+          alt={badge.alt}
+          width={80}
+          height={80}
+          className="size-full rounded-full object-cover"
+        />
+      );
+    case 'mpesa':
+      return <MpesaLogo className={wide} />;
+    case 'jumia':
+      return <JumiaIcon className={wide} />;
+    case 'bolt':
+      return <BoltIcon className={wide} />;
+    case 'emoji':
+      return (
+        <span className="text-2xl md:text-3xl" aria-hidden="true">
+          {badge.value}
+        </span>
+      );
+  }
+}
+
+/**
+ * A real logo (mpesa/jumia/bolt) is designed for a white background —
+ * unlike the Snack Quest mark, which already carries its own dark
+ * backdrop, or the emoji, which reads fine on the section's own dark
+ * green. `bg-white` plus padding only applies to those three, so
+ * nothing gets recoloured to fit the dark "expedition" palette.
+ */
+function BadgeCircle({ badge, active, dual }: { badge: Badge; active: boolean; dual: boolean }) {
+  const isRealLogo = badge.kind === 'mpesa' || badge.kind === 'jumia' || badge.kind === 'bolt';
+  return (
+    <div
+      className={[
+        'flex items-center justify-center overflow-hidden rounded-full border-2 transition-all duration-700',
+        dual ? 'size-12 md:size-16' : 'size-16 md:size-20',
+        isRealLogo ? (dual ? 'bg-white p-2' : 'bg-white p-2.5 md:p-3') : '',
+        active
+          ? `scale-100 border-home-lime shadow-[0_0_40px_-5px_rgb(200_255_0/0.7)] ${isRealLogo ? '' : 'bg-foreground'}`
+          : `scale-90 border-white/20 ${isRealLogo ? '' : 'bg-foreground/60'}`,
+      ].join(' ')}
+    >
+      <BadgeGlyph badge={badge} wide={dual ? 'w-8 md:w-10' : 'w-11 md:w-14'} />
+    </div>
+  );
+}
+
 function CheckpointItem({ checkpoint, index }: { checkpoint: Checkpoint; index: number }) {
   const ref = useRef<HTMLLIElement>(null);
   const [active, setActive] = useState(false);
@@ -107,16 +181,15 @@ function CheckpointItem({ checkpoint, index }: { checkpoint: Checkpoint; index: 
       }`}
     >
       <div className={`relative z-10 flex justify-center ${isRightSide ? 'md:order-2' : ''}`}>
-        <div
-          className={`relative flex size-16 items-center justify-center rounded-full border-2 transition-all duration-700 md:size-20 ${
-            active
-              ? 'scale-100 border-home-lime bg-foreground shadow-[0_0_40px_-5px_rgb(200_255_0/0.7)]'
-              : 'scale-90 border-white/20 bg-foreground/60'
-          }`}
-        >
-          <span className="text-2xl md:text-3xl" aria-hidden="true">
-            {checkpoint.emoji}
-          </span>
+        <div className="relative flex items-center gap-2 md:gap-3">
+          {checkpoint.badges.map((badge, badgeIndex) => (
+            <BadgeCircle
+              key={badgeIndex}
+              badge={badge}
+              active={active}
+              dual={checkpoint.badges.length > 1}
+            />
+          ))}
           <span className="absolute -right-2 -bottom-2 flex size-7 items-center justify-center rounded-full bg-primary text-caption font-bold text-white shadow-[0_20px_60px_-15px_rgb(255_122_0/0.5)]">
             {index + 1}
           </span>
