@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { startWebCheckoutMock, getCurrentBusinessIdMock } = vi.hoisted(() => ({
+const { startWebCheckoutMock, getCurrentBusinessIdMock, verifyCreatorSessionFromRequestMock } = vi.hoisted(() => ({
   startWebCheckoutMock: vi.fn(),
   getCurrentBusinessIdMock: vi.fn(),
+  verifyCreatorSessionFromRequestMock: vi.fn(),
 }));
 
 vi.mock('@/services/conversationService', async () => {
@@ -15,6 +16,10 @@ vi.mock('@/services/conversationService', async () => {
 
 vi.mock('@/lib/business/currentBusinessId', () => ({
   getCurrentBusinessId: getCurrentBusinessIdMock,
+}));
+
+vi.mock('@/lib/auth/creatorSession', () => ({
+  verifyCreatorSessionFromRequest: verifyCreatorSessionFromRequestMock,
 }));
 
 import { POST as checkoutWebRoute } from '@/app/api/checkout/web/route';
@@ -39,11 +44,54 @@ function request(body: unknown, headers: Record<string, string> = {}): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   getCurrentBusinessIdMock.mockReturnValue('biz-1');
+  verifyCreatorSessionFromRequestMock.mockResolvedValue(null);
   startWebCheckoutMock.mockResolvedValue({
     checkoutSessionId: 'session-1',
     pricing: { totalKes: 2500 },
     stkPushSent: true,
     payingPhone: '254712345678',
+  });
+});
+
+/**
+ * `POST /api/checkout/web` (§ Creator-Only Offers) — the creator
+ * discount is derived from `verifyCreatorSessionFromRequest`, which
+ * itself re-verifies the httpOnly session cookie against Firestore
+ * (see `lib/auth/creatorSession.ts`), never from anything the request
+ * body claims. These tests only prove the route wires that result
+ * through correctly; the cookie verification itself is covered by
+ * `creatorAuthService`'s own tests.
+ */
+describe('POST /api/checkout/web creator discount', () => {
+  it('marks the checkout as a creator checkout when a valid creator session is present', async () => {
+    verifyCreatorSessionFromRequestMock.mockResolvedValue({ uid: 'creator-1' });
+
+    await checkoutWebRoute(request(VALID_BODY, { cookie: 'sq_creator_session=valid-cookie' }));
+
+    expect(startWebCheckoutMock).toHaveBeenCalledWith(
+      'biz-1',
+      expect.objectContaining({ isCreatorCheckout: true }),
+    );
+  });
+
+  it('never marks the checkout as a creator checkout without a verified session — a missing or forged cookie cannot grant the discount', async () => {
+    verifyCreatorSessionFromRequestMock.mockResolvedValue(null);
+
+    await checkoutWebRoute(request(VALID_BODY, { cookie: 'sq_creator_session=forged-or-expired' }));
+
+    expect(startWebCheckoutMock).toHaveBeenCalledWith(
+      'biz-1',
+      expect.objectContaining({ isCreatorCheckout: false }),
+    );
+  });
+
+  it('never marks a customer with no cookies at all as a creator checkout', async () => {
+    await checkoutWebRoute(request(VALID_BODY));
+
+    expect(startWebCheckoutMock).toHaveBeenCalledWith(
+      'biz-1',
+      expect.objectContaining({ isCreatorCheckout: false }),
+    );
   });
 });
 

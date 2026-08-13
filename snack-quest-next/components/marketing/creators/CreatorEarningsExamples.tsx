@@ -1,4 +1,3 @@
-import { Calculator } from 'lucide-react';
 import { formatKes } from '@/lib/orders/format';
 import { CREATOR_COMMISSION_KES } from '@/lib/creators/referralEconomics';
 import { Reveal } from '../design/Reveal';
@@ -11,11 +10,7 @@ import { Reveal } from '../design/Reveal';
  * an otherwise-interested creator.
  *
  * Every figure is `orders * CREATOR_COMMISSION_KES`, computed here
- * rather than typed, so it can never drift from the real rate — and
- * the disclaimer is load-bearing, not boilerplate: these are
- * arithmetic examples of a real, fixed per-order rate, never a
- * forecast or a promise of how many orders a creator will actually
- * generate.
+ * rather than typed, so it can never drift from the real rate.
  */
 const ORDER_COUNTS = [1, 5, 10, 25, 50, 100] as const;
 
@@ -53,14 +48,6 @@ export function CreatorEarningsExamples() {
             </div>
           ))}
         </div>
-      </Reveal>
-
-      <Reveal delayMs={220}>
-        <p className="text-foreground/50 mx-auto mt-6 flex max-w-md items-start justify-center gap-2 text-center text-sm md:mt-10">
-          <Calculator className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          Mathematical examples of a fixed per-order rate — not a forecast or a guarantee of what
-          you&apos;ll sell.
-        </p>
       </Reveal>
     </section>
   );

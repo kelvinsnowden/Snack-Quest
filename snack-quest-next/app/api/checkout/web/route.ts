@@ -7,6 +7,7 @@ import {
 import { InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { FBCLID_COOKIE, TTCLID_COOKIE } from '@/lib/analytics/cookies';
+import { verifyCreatorSessionFromRequest } from '@/lib/auth/creatorSession';
 import type { WebCheckoutRequest, WebCheckoutResponse } from '@/types/webCheckout';
 import type { ConversionAttribution } from '@/types';
 
@@ -82,6 +83,12 @@ export async function POST(request: Request): Promise<Response> {
     fbclid: cookies[FBCLID_COOKIE],
   };
 
+  // The creator discount (§ Creator-Only Offers) is derived from the
+  // real session cookie, never from anything the request body claims —
+  // a customer who isn't signed in as a creator simply has no such
+  // cookie to verify.
+  const creatorSession = await verifyCreatorSessionFromRequest(request);
+
   try {
     const result = await conversationService.startWebCheckout(businessId, {
       packageId,
@@ -96,6 +103,7 @@ export async function POST(request: Request): Promise<Response> {
       landmark: typeof landmark === 'string' ? landmark : undefined,
       contactPhone: typeof contactPhone === 'string' ? contactPhone : undefined,
       referralCode: typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
+      isCreatorCheckout: Boolean(creatorSession),
       attribution,
     });
 

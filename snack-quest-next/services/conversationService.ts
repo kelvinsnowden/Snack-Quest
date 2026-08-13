@@ -15,6 +15,7 @@ import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } fr
 import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
+import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -193,6 +194,15 @@ export interface WebCheckoutInput {
   contactPhone?: string;
   referralCode?: string;
   /**
+   * Set by the route from a verified `sq_creator_session` cookie (§
+   * Creator-Only Offers), never from anything the client's JSON body
+   * claims — a creator buying for themselves gets
+   * `CREATOR_PACKAGE_DISCOUNT_KES` off, same as any other discount
+   * source, and stacks with a referral code the same way (both are
+   * additive, neither is a special case in `computeCheckoutTotals`).
+   */
+  isCreatorCheckout?: boolean;
+  /**
    * Set when a staff member is placing this order on the customer's
    * behalf (§ staff-initiated orders) — an order taken over the phone,
    * at an event, or in a DM. Absent for a customer checking out
@@ -234,6 +244,8 @@ export interface WebCheckoutQuoteInput {
   referralCode?: string;
   /** Optional — only used to look up wallet credit, and ignored when it isn't yet a valid number. */
   phone?: string;
+  /** Same server-verified meaning as `WebCheckoutInput.isCreatorCheckout` — the quote and the charge must show the same discount, or a customer would pay more than they were quoted. */
+  isCreatorCheckout?: boolean;
 }
 
 class ConversationService {
@@ -534,6 +546,7 @@ class ConversationService {
           county,
           referralCode: input.referralCode,
           isRescueOffer: box.isRescueOffer,
+          isCreatorCheckout: input.isCreatorCheckout,
         },
         delivery,
       );
@@ -784,11 +797,15 @@ class ConversationService {
     let availableWalletCreditKes = 0;
     // The rescue offer's price is already the one-time discount — a
     // referral code is still validated (so the UI can tell the
-    // customer it worked) but never reduces this box's price. Kept in
+    // customer it worked) but never reduces this box's price, and
+    // neither does the creator discount, same reasoning. Kept in
     // lockstep with the same rule `freezeSnapshot` applies at charge
     // time, so this preview can never promise a discount the actual
     // payment won't honor.
-    const rawDiscountKes = box.isRescueOffer ? 0 : (referral?.discountKes ?? 0);
+    const creatorDiscountKes = input.isCreatorCheckout ? CREATOR_PACKAGE_DISCOUNT_KES : 0;
+    const rawDiscountKes = box.isRescueOffer
+      ? 0
+      : (referral?.discountKes ?? 0) + creatorDiscountKes;
     if (input.phone) {
       try {
         availableWalletCreditKes = await walletService.redeemableAmount(
@@ -943,13 +960,16 @@ class ConversationService {
       referralCode?: string;
       /**
        * The exit-intent rescue offer is already a one-time, deeply
-       * discounted price — stacking a referral discount on top of it
-       * would undercut the box's own margin in a way no referral link
-       * was priced for. A code still gets validated and recorded
-       * (the referring creator is credited normally), it just
-       * contributes nothing to the price on this box.
+       * discounted price — stacking a referral discount (or the
+       * creator discount) on top of it would undercut the box's own
+       * margin in a way no referral link was priced for. A code still
+       * gets validated and recorded (the referring creator is
+       * credited normally), it just contributes nothing to the price
+       * on this box.
        */
       isRescueOffer?: boolean;
+      /** Same server-verified meaning as `WebCheckoutInput.isCreatorCheckout`. */
+      isCreatorCheckout?: boolean;
     },
     delivery: DeliveryDetails,
   ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
@@ -963,7 +983,10 @@ class ConversationService {
     // / Quest system). Only reserved here; the real debit happens in
     // `completeOrder()`, once payment for this reduced amount has
     // actually succeeded.
-    const rawDiscountKes = common.isRescueOffer ? 0 : (referral?.discountKes ?? 0);
+    const creatorDiscountKes = common.isCreatorCheckout ? CREATOR_PACKAGE_DISCOUNT_KES : 0;
+    const rawDiscountKes = common.isRescueOffer
+      ? 0
+      : (referral?.discountKes ?? 0) + creatorDiscountKes;
     const availableWalletCreditKes = await walletService.redeemableAmount(
       businessId,
       phoneNumber,
