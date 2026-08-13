@@ -131,6 +131,9 @@ export default async function BoxDetailPage({
           <p className="text-subtitle text-muted-foreground mt-4">
             {box.description}
           </p>
+          {box.snackCountLabel ? (
+            <p className="text-foreground mt-2 text-base font-medium">{box.snackCountLabel}</p>
+          ) : null}
           <p className="text-muted-foreground mt-2 text-sm">
             All snacks have passed the taste test. I have tasted each of them.
           </p>

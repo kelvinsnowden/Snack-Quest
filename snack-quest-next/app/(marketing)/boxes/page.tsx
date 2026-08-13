@@ -66,6 +66,9 @@ export default async function BoxesPage() {
                 <CardContent className="p-5">
                   <p className="text-card-title font-semibold text-foreground">{data.name}</p>
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{data.description}</p>
+                  {data.snackCountLabel ? (
+                    <p className="mt-1 text-sm font-medium text-foreground">{data.snackCountLabel}</p>
+                  ) : null}
                   <p className="mt-1 text-xs text-muted-foreground">
                     All snacks have passed the taste test. I have tasted each of them.
                   </p>
