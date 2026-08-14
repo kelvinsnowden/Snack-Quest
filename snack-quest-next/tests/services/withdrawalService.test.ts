@@ -13,6 +13,7 @@ import {
   UnsupportedWithdrawalOwnerTypeError,
   WithdrawalNotFoundError,
   InvalidWithdrawalTransitionError,
+  WithdrawalBelowMinimumError,
 } from '@/services/withdrawalService';
 import { seedCreator } from '../helpers/creatorFixtures';
 
@@ -129,7 +130,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
         businessId: BUSINESS_ID,
         ownerId: 'creator-1',
         ownerType: 'creator',
-        amountKes: 100,
+        amountKes: 300,
         phoneNumber: '254712345678',
       }),
     ).rejects.toBeInstanceOf(CreatorNotEligibleForWithdrawalError);
@@ -141,10 +142,42 @@ describe('WithdrawalService.requestWithdrawal', () => {
         businessId: BUSINESS_ID,
         ownerId: 'customer-1',
         ownerType: 'customer',
-        amountKes: 100,
+        amountKes: 300,
         phoneNumber: '254712345678',
       }),
     ).rejects.toBeInstanceOf(UnsupportedWithdrawalOwnerTypeError);
+  });
+
+  it('rejects an amount below the minimum withdrawal, reserving nothing', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+
+    await expect(
+      withdrawalService.requestWithdrawal({
+        businessId: BUSINESS_ID,
+        ownerId: 'creator-1',
+        ownerType: 'creator',
+        amountKes: 299,
+        phoneNumber: '254712345678',
+      }),
+    ).rejects.toBeInstanceOf(WithdrawalBelowMinimumError);
+
+    const creator = await creatorRepository.findById('creator-1');
+    expect(creator?.availableCashKes).toBe(5000);
+  });
+
+  it('allows a withdrawal request for exactly the minimum', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+
+    const id = await withdrawalService.requestWithdrawal({
+      businessId: BUSINESS_ID,
+      ownerId: 'creator-1',
+      ownerType: 'creator',
+      amountKes: 300,
+      phoneNumber: '254712345678',
+    });
+
+    const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
+    expect(withdrawal?.status).toBe('pending');
   });
 });
 
@@ -156,14 +189,14 @@ describe('WithdrawalService.listWithdrawalsForOwner', () => {
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',
       ownerType: 'creator',
-      amountKes: 100,
+      amountKes: 300,
       phoneNumber: '254712345678',
     });
     await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-2',
       ownerType: 'creator',
-      amountKes: 100,
+      amountKes: 300,
       phoneNumber: '254712345678',
     });
 
@@ -256,7 +289,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
       businessId: OTHER_BUSINESS_ID,
       ownerId: 'creator-1',
       ownerType: 'creator',
-      amountKes: 100,
+      amountKes: 300,
       phoneNumber: '254712345678',
     });
 

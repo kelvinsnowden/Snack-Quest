@@ -3,6 +3,7 @@ import {
   withdrawalService,
   InsufficientCreatorBalanceError,
   CreatorNotEligibleForWithdrawalError,
+  WithdrawalBelowMinimumError,
 } from '@/services/withdrawalService';
 
 const PHONE_PATTERN = /^254\d{9}$/;
@@ -44,6 +45,9 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof InsufficientCreatorBalanceError) {
       return Response.json({ error: 'You don’t have enough available balance for that amount.' }, { status: 400 });
+    }
+    if (error instanceof WithdrawalBelowMinimumError) {
+      return Response.json({ error: error.message }, { status: 400 });
     }
     if (error instanceof CreatorNotEligibleForWithdrawalError) {
       return Response.json({ error: 'Your account is not eligible to request a withdrawal.' }, { status: 400 });

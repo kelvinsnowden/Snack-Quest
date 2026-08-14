@@ -18,6 +18,8 @@ import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { MIN_WITHDRAWAL_KES } from '@/lib/withdrawals/rules';
+import { formatKes } from '@/lib/orders/format';
 import type { Withdrawal, WithdrawalOwnerType, WithdrawalStatus } from '@/types';
 
 export { InsufficientCreatorBalanceError };
@@ -40,6 +42,15 @@ export class CreatorNotEligibleForWithdrawalError extends Error {
   constructor(creatorId: string) {
     super(`${creatorId} is not an active creator for this business`);
     this.name = 'CreatorNotEligibleForWithdrawalError';
+  }
+}
+
+export class WithdrawalBelowMinimumError extends Error {
+  constructor(amountKes: number) {
+    super(
+      `Withdrawal amount ${formatKes(amountKes)} is below the minimum of ${formatKes(MIN_WITHDRAWAL_KES)}.`,
+    );
+    this.name = 'WithdrawalBelowMinimumError';
   }
 }
 
@@ -76,6 +87,9 @@ class WithdrawalService {
   }): Promise<string> {
     if (input.ownerType !== 'creator') {
       throw new UnsupportedWithdrawalOwnerTypeError(input.ownerType);
+    }
+    if (input.amountKes < MIN_WITHDRAWAL_KES) {
+      throw new WithdrawalBelowMinimumError(input.amountKes);
     }
 
     const creator = await creatorRepository.findById(input.ownerId);

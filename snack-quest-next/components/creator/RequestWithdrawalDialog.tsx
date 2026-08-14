@@ -16,6 +16,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { formatKes } from '@/lib/orders/format';
+import { MIN_WITHDRAWAL_KES } from '@/lib/withdrawals/rules';
 
 /** A creator requesting a withdrawal from their own available balance (§ Creator Portal withdrawals). */
 export function RequestWithdrawalDialog({
@@ -42,6 +43,10 @@ export function RequestWithdrawalDialog({
     const amount = Number(amountKes);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter a valid amount.');
+      return;
+    }
+    if (amount < MIN_WITHDRAWAL_KES) {
+      setError(`Minimum withdrawal is ${formatKes(MIN_WITHDRAWAL_KES)}.`);
       return;
     }
     if (amount > availableCashKes) {
@@ -84,7 +89,7 @@ export function RequestWithdrawalDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button disabled={availableCashKes <= 0}>
+        <Button disabled={availableCashKes < MIN_WITHDRAWAL_KES}>
           <Wallet aria-hidden="true" />
           Withdraw
         </Button>
@@ -92,7 +97,10 @@ export function RequestWithdrawalDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Request a withdrawal</DialogTitle>
-          <DialogDescription>{formatKes(availableCashKes)} available. Paid out via M-Pesa.</DialogDescription>
+          <DialogDescription>
+            {formatKes(availableCashKes)} available. Paid out via M-Pesa. Minimum withdrawal is{' '}
+            {formatKes(MIN_WITHDRAWAL_KES)}.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="mt-4 flex flex-col gap-4">
@@ -101,7 +109,7 @@ export function RequestWithdrawalDialog({
             <Input
               id="amountKes"
               type="number"
-              min={1}
+              min={MIN_WITHDRAWAL_KES}
               max={availableCashKes}
               step={1}
               value={amountKes}
