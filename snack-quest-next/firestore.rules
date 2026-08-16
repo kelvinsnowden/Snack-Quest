@@ -12,35 +12,36 @@ service cloud.firestore {
     function hasRole(role) {
       return isSignedIn() && role in request.auth.token.roles;
     }
-    function isAdmin() {
-      return hasRole('admin') || hasRole('super_admin');
-    }
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
     function isNotDeleted() {
       return resource.data.deletedAt == null;
     }
-    // NOT enforced yet, deliberately — see the note below.
     function belongsToBusiness(businessId) {
       return isSignedIn() && businessId == request.auth.token.businessId;
     }
-
-    // Multi-tenancy note (platform architecture direction): every
-    // document that should belong to exactly one business now carries
-    // a `businessId` field, and every Service scopes its queries and
-    // writes by it (see repositories/*). What these rules do NOT yet
-    // do is enforce `businessId` on admin/owner *reads* — `isAdmin()`
-    // below is still a platform-wide role, not scoped to one tenant,
-    // because no mechanism exists yet to put a `businessId` custom
-    // claim on a staff account (that's real, separate auth/onboarding
-    // work). Wiring `belongsToBusiness()` into `isAdmin()` before that
-    // claim-issuing mechanism exists would just lock today's real
-    // Snack Quest admins out of their own data — a regression, not a
-    // security improvement. This is the honest state of Open Question
-    // 6 in PLATFORM_ARCHITECTURE_V2.md §21: data model and Services
-    // are tenant-aware now; Security Rule tenant isolation is the
-    // next, explicitly-tracked step, gated on staff-claim issuance.
+    // A staff member is only ever an admin for *their own* tenant — see
+    // `services/staffAuthService.ts`'s `establishSession()`, which sets
+    // the `businessId` custom claim on every staff login. Every
+    // `isAdmin()` call below that gates a business-owned collection
+    // pairs it with `belongsToBusiness(resource.data.businessId)` (or
+    // `request.resource.data.businessId` on create), so an admin from
+    // one tenant can never read or write another tenant's data through
+    // the client SDK. This closes what used to be Open Question 6 in
+    // PLATFORM_ARCHITECTURE_V2.md §21 — the claim this was gated on is
+    // now issued, so the gap is live, not deferred. Collections with no
+    // `businessId` field at all (`users` — the shared identity root
+    // every role sits on top of; `webhookInspections` — a temporary
+    // diagnostic collection already marked for deletion) keep the
+    // platform-wide `isAdmin()` check unchanged, since there is no
+    // tenant field to scope them by.
+    function isAdmin() {
+      return hasRole('admin') || hasRole('super_admin');
+    }
+    function isTenantAdmin(businessId) {
+      return isAdmin() && belongsToBusiness(businessId);
+    }
 
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
@@ -62,7 +63,7 @@ service cloud.firestore {
     }
 
     match /creatorProfiles/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
+      allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
       allow create: if false; // server-created at sign-up (see §8 automation)
       allow update: if (isOwner(uid) &&
                           // creators may edit their own profile fields,
@@ -71,59 +72,68 @@ service cloud.firestore {
                             .affectedKeys()
                             .hasAny(['availableCashKes','pendingEarningsKes',
                                      'lifetimeEarningsKes','status',
-                                     'commissionRateKes'])) || isAdmin();
+                                     'commissionRateKes'])) || isTenantAdmin(resource.data.businessId);
       allow delete: if false;
 
       // earningsLedger: the immutable source of truth behind
       // availableCashKes/lifetimeEarningsKes above — server-written
       // only, same discipline as customerWallets' ledger.
       match /earningsLedger/{entryId} {
-        allow read: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
         allow write: if false;
       }
     }
 
     match /customerProfiles/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
+      allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
       allow update: if (isOwner(uid) &&
                           !request.resource.data.diff(resource.data)
                             .affectedKeys()
-                            .hasAny(['walletBalanceKes','lifetimeCreditsEarnedKes'])) || isAdmin();
+                            .hasAny(['walletBalanceKes','lifetimeCreditsEarnedKes'])) || isTenantAdmin(resource.data.businessId);
       allow create, delete: if false;
     }
 
     match /staffProfiles/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow write: if hasRole('super_admin'); // only super admins manage staff
+      allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
+      // only super admins manage staff, and only their own tenant's —
+      // `resource.data` doesn't exist yet on create, so that half of
+      // the check only applies to update/delete.
+      allow create: if hasRole('super_admin') && belongsToBusiness(request.resource.data.businessId);
+      allow update: if hasRole('super_admin') &&
+                       belongsToBusiness(resource.data.businessId) &&
+                       belongsToBusiness(request.resource.data.businessId);
+      allow delete: if hasRole('super_admin') && belongsToBusiness(resource.data.businessId);
     }
 
     match /campaigns/{campaignId} {
-      allow read: if isSignedIn() && resource.data.status == 'active' || isAdmin();
-      allow write: if isAdmin();
+      allow read: if (isSignedIn() && resource.data.status == 'active') || isTenantAdmin(resource.data.businessId);
+      allow create: if isTenantAdmin(request.resource.data.businessId);
+      allow update: if isTenantAdmin(resource.data.businessId) && isTenantAdmin(request.resource.data.businessId);
+      allow delete: if isTenantAdmin(resource.data.businessId);
     }
 
     match /campaignSubmissions/{submissionId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (hasRole('creator') && resource.data.creatorId == request.auth.uid);
       allow create: if hasRole('creator') &&
                        request.resource.data.creatorId == request.auth.uid &&
                        request.resource.data.status == 'pending'; // cannot self-approve
-      allow update: if isAdmin(); // status transitions are admin/server-only
+      allow update: if isTenantAdmin(resource.data.businessId); // status transitions are admin/server-only
       allow delete: if false;
     }
 
     match /withdrawals/{withdrawalId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (isSignedIn() && resource.data.ownerId == request.auth.uid);
       allow create: if isSignedIn() &&
                        request.resource.data.ownerId == request.auth.uid &&
                        request.resource.data.status == 'pending';
-      allow update: if isAdmin(); // approve/reject/pay is admin/server-only
+      allow update: if isTenantAdmin(resource.data.businessId); // approve/reject/pay is admin/server-only
       allow delete: if false;
     }
 
     match /refunds/{refundId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false; // Admin SDK only — RefundService is the only writer
     }
 
@@ -136,11 +146,11 @@ service cloud.firestore {
     // `earningsLedger` above, until a real Auth-based customer
     // identity exists to revisit this against.
     match /customerWallets/{walletId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false; // WalletService (Admin SDK) only, always
 
       match /ledger/{entryId} {
-        allow read: if isAdmin();
+        allow read: if isTenantAdmin(get(/databases/$(database)/documents/customerWallets/$(walletId)).data.businessId);
         allow write: if false;
       }
     }
@@ -149,13 +159,13 @@ service cloud.firestore {
     // (product/customer/delivery/payment/pricing) — `customerId` now
     // lives at `customer.customerId`, not the document root.
     match /orders/{orderId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (isSignedIn() && resource.data.customer.customerId == request.auth.uid);
       allow create: if false; // orders created via Route Handler (payment validation)
-      allow update: if isAdmin();
+      allow update: if isTenantAdmin(resource.data.businessId);
 
       match /items/{itemId} {
-        allow read: if isAdmin() ||
+        allow read: if isTenantAdmin(get(/databases/$(database)/documents/orders/$(orderId)).data.businessId) ||
                        (isSignedIn() &&
                         get(/databases/$(database)/documents/orders/$(orderId)).data.customer.customerId == request.auth.uid);
         allow write: if false;
@@ -163,7 +173,7 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (isSignedIn() && resource.data.recipientId == request.auth.uid);
       allow update: if isSignedIn() &&
                        resource.data.recipientId == request.auth.uid &&
@@ -172,7 +182,7 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false; // Cloud Function / Admin SDK only, immutable
     }
 
@@ -213,15 +223,17 @@ service cloud.firestore {
     // presentation step (§5) — same public-read/admin-write shape as
     // campaigns' active-only rule.
     match /packages/{packageId} {
-      allow read: if resource.data.isActive == true || isAdmin();
-      allow write: if isAdmin();
+      allow read: if resource.data.isActive == true || isTenantAdmin(resource.data.businessId);
+      allow create: if isTenantAdmin(request.resource.data.businessId);
+      allow update, delete: if isTenantAdmin(resource.data.businessId);
     }
 
     // faqs: public FAQ entries for the homepage FAQ section and /faq
     // page (§ Admin: FAQ) — same public-read/admin-write shape as packages.
     match /faqs/{faqId} {
-      allow read: if resource.data.isActive == true || isAdmin();
-      allow write: if isAdmin();
+      allow read: if resource.data.isActive == true || isTenantAdmin(resource.data.businessId);
+      allow create: if isTenantAdmin(request.resource.data.businessId);
+      allow update, delete: if isTenantAdmin(resource.data.businessId);
     }
 
     // reviews: customer reviews (§ homepage reviews). Writes are
@@ -237,7 +249,7 @@ service cloud.firestore {
     // submissions awaiting moderation, rejected ones, and the
     // `contactPhone` a reviewer gave for follow-up — is admin-only.
     match /reviews/{reviewId} {
-      allow read: if resource.data.status == 'published' || isAdmin();
+      allow read: if resource.data.status == 'published' || isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
@@ -246,7 +258,7 @@ service cloud.firestore {
     // is the sole writer, always inside the same transaction as the
     // packages.stockCount update it records).
     match /inventoryMovements/{movementId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
@@ -256,22 +268,22 @@ service cloud.firestore {
     // inventoryMovements above; SupplierService/PurchaseOrderService/
     // InventoryService are the sole writers.
     match /suppliers/{supplierId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
     match /purchaseOrders/{purchaseOrderId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
     match /inventoryBatches/{batchId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
     // fulfillmentBatches: one real shopping trip covering several orders
     // at once (§ Fulfillment Batches) — same admin-read/Admin-SDK-only
     // write shape as purchaseOrders/inventoryBatches.
     match /fulfillmentBatches/{batchId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
@@ -279,7 +291,11 @@ service cloud.firestore {
     // WhatChimp inbound webhook, so parseIncomingMessage can be written
     // from fact rather than guessed. Delete this block along with
     // app/api/webhooks/whatchimp/inspect. Admin-read/Admin-SDK-only
-    // write, same shape as every other server-owned collection.
+    // write, same shape as every other server-owned collection. Stays
+    // platform-wide `isAdmin()`, not `isTenantAdmin()` — this
+    // diagnostic doc has no `businessId` field at all (see
+    // `repositories/webhookInspectionRepository.ts`), and it's already
+    // marked for deletion rather than worth retrofitting.
     match /webhookInspections/{inspectionId} {
       allow read: if isAdmin();
       allow write: if false;
@@ -289,7 +305,7 @@ service cloud.firestore {
     // input § Admin: Analytics computes CAC from — admin-only, same
     // Admin-SDK-only-write discipline as everything else here.
     match /marketingSpendEntries/{entryId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
@@ -297,19 +313,19 @@ service cloud.firestore {
     // conversations — the frozen pre-payment snapshot has no client
     // reader in the WhatsApp-first flow.
     match /conversationCheckoutSnapshots/{snapshotId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
     // paymentIntents: a signed-in customer may read their own intent's
     // status; every transition is server-verified (§7).
     match /paymentIntents/{intentId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (isSignedIn() && resource.data.customerId == request.auth.uid);
       allow write: if false;
 
       match /attempts/{attemptId} {
-        allow read: if isAdmin() ||
+        allow read: if isTenantAdmin(get(/databases/$(database)/documents/paymentIntents/$(intentId)).data.businessId) ||
                        (isSignedIn() &&
                         get(/databases/$(database)/documents/paymentIntents/$(intentId)).data.customerId == request.auth.uid);
         allow write: if false;
@@ -319,7 +335,7 @@ service cloud.firestore {
     // domainEvents: internal event log (§14) — admin-visible for
     // debugging, never client-written.
     match /domainEvents/{eventId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
@@ -327,7 +343,7 @@ service cloud.firestore {
     // Observability) — same admin-visible/server-write-only discipline
     // as domainEvents above.
     match /scheduledJobRuns/{runId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
 
@@ -335,22 +351,24 @@ service cloud.firestore {
     // Admin-only for now — no customer-facing web read of shipment
     // status exists yet (tracking updates go out over WhatsApp).
     match /shipments/{shipmentId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false; // DeliveryService (Admin SDK) only
     }
 
     // referralLinks: a creator's own referral code (§8) — the owning
     // creator can see their own link, never anyone else's.
     match /referralLinks/{linkId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (isSignedIn() && resource.data.ownerId == request.auth.uid);
-      allow write: if isAdmin(); // creator onboarding creates these server-side
+      // creator onboarding creates these server-side
+      allow create: if isTenantAdmin(request.resource.data.businessId);
+      allow update, delete: if isTenantAdmin(resource.data.businessId);
     }
 
     // referralAttributions: the ledger proving why a commission was
     // paid (§8) — server-written only, same discipline as customerWallets' ledger.
     match /referralAttributions/{attributionId} {
-      allow read: if isAdmin() ||
+      allow read: if isTenantAdmin(resource.data.businessId) ||
                      (isSignedIn() && resource.data.creatorId == request.auth.uid);
       allow write: if false;
     }
@@ -362,23 +380,27 @@ service cloud.firestore {
     // Admin SDK), but nothing here is sensitive, so the pattern still
     // holds for any future direct client read.
     match /pickupStations/{stationId} {
-      allow read: if resource.data.isActive == true || isAdmin();
-      allow write: if isAdmin(); // seed script / Admin SDK only in practice
+      allow read: if resource.data.isActive == true || isTenantAdmin(resource.data.businessId);
+      // seed script / Admin SDK only in practice
+      allow create: if isTenantAdmin(request.resource.data.businessId);
+      allow update, delete: if isTenantAdmin(resource.data.businessId);
     }
 
     // deliveryZoneRules: per-zone Jumia pricing. Admin-only — this is
     // the flat delivery fee a customer's total is computed from, never
     // a client-writable value.
     match /deliveryZoneRules/{ruleId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin(); // seed script / Admin SDK only in practice
+      allow read: if isTenantAdmin(resource.data.businessId);
+      // seed script / Admin SDK only in practice
+      allow create: if isTenantAdmin(request.resource.data.businessId);
+      allow update, delete: if isTenantAdmin(resource.data.businessId);
     }
 
-    // businesses: the tenant profile itself. Admin-only for now (same
-    // caveat as belongsToBusiness() above — not yet scoped to "your
-    // own business's admin" because that claim doesn't exist yet).
+    // businesses: the tenant profile itself. The document ID *is* the
+    // businessId, so this is the one collection scoped directly off
+    // the path variable rather than a `businessId` field.
     match /businesses/{businessId} {
-      allow read: if isAdmin();
+      allow read: if isTenantAdmin(businessId);
       allow write: if false; // provisioned via seed script / Admin SDK only
 
       // integrationSecrets: provider credentials (Daraja, Whatchimp,
@@ -394,8 +416,10 @@ service cloud.firestore {
       // Not secret, so admin-readable — still server/Admin SDK-only to
       // write, same as every other business-config mutation in this
       // app (`FeatureFlagService`, via `app/api/admin/feature-flags`).
+      // `businessId` here is the parent match's path variable, same
+      // reasoning as `businesses/{businessId}` above.
       match /featureFlags/{key} {
-        allow read: if isAdmin();
+        allow read: if isTenantAdmin(businessId);
         allow write: if false;
       }
     }

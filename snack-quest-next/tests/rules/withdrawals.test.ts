@@ -24,6 +24,7 @@ const OTHER_UID = 'creator-2';
 const WITHDRAWAL_ID = 'withdrawal-1';
 
 const seedWithdrawal = {
+  businessId: 'biz-1',
   ownerId: CREATOR_UID,
   ownerType: 'creator',
   amountKes: 500,
@@ -115,7 +116,7 @@ describe('withdrawals security rules', () => {
         seedWithdrawal,
       );
     });
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(
       updateDoc(doc(ctx.firestore(), 'withdrawals', WITHDRAWAL_ID), {
         status: 'approved',
@@ -182,6 +183,7 @@ describe('customerWallets security rules (§ Phase 4: Customer loyalty / Quest s
     });
     const ctx = testEnv.authenticatedContext(CREATOR_UID, {
       roles: ['admin'],
+      businessId: 'biz-1',
     });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'customerWallets', WALLET_ID)));
   });

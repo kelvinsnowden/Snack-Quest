@@ -54,9 +54,10 @@ describe('shipments security rules', () => {
       await setDoc(doc(context.firestore(), 'shipments', 'shipment-1'), {
         orderId: 'order-1',
         status: 'pending',
+        businessId: 'biz-1',
       });
     });
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'shipments', 'shipment-1')));
   });
 });

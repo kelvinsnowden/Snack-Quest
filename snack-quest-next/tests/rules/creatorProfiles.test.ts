@@ -21,6 +21,7 @@ const CREATOR_UID = 'creator-1';
 const OTHER_UID = 'creator-2';
 
 const seedProfile = {
+  businessId: 'biz-1',
   referralCode: 'ABC123',
   tier: 'bronze',
   availableCashKes: 1000,
@@ -93,7 +94,7 @@ describe('creatorProfiles security rules', () => {
   });
 
   it('lets an admin read any creator profile', async () => {
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(
       getDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID)),
     );
@@ -133,10 +134,22 @@ describe('creatorProfiles security rules', () => {
   });
 
   it('lets an admin write to financial fields', async () => {
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(
       updateDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID), {
         availableCashKes: 5000,
+      }),
+    );
+  });
+
+  // § security audit — an admin from a different business must not be
+  // able to read or edit this creator's real earnings.
+  it('blocks an admin from a different business', async () => {
+    const ctx = testEnv.authenticatedContext('admin-2', { roles: ['admin'], businessId: 'biz-2' });
+    await assertFails(getDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID)));
+    await assertFails(
+      updateDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID), {
+        availableCashKes: 999999,
       }),
     );
   });
