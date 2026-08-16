@@ -162,3 +162,55 @@ describe('CreatorAdminService.listCreators / getCreator', () => {
     expect(detail.lastSignInAt === null || typeof detail.lastSignInAt === 'string').toBe(true);
   });
 });
+
+describe('CreatorAdminService.listCreators — search (§ Creator Marketplace)', () => {
+  it('matches on niche, case-insensitively', async () => {
+    await seedCreator('creator-food', { businessId: BUSINESS_ID, niche: 'Food & Snacks' });
+    await seedCreator('creator-fitness', { businessId: BUSINESS_ID, niche: 'Fitness' });
+
+    const { creators, nextCursor } = await creatorAdminService.listCreators(BUSINESS_ID, { q: 'food' });
+
+    expect(creators.map((c) => c.uid)).toEqual(['creator-food']);
+    expect(nextCursor).toBeNull();
+  });
+
+  it('matches on the joined displayName, not just niche', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, niche: 'Comedy' });
+    await userRepository.create('creator-1', { email: 'a@example.com', roles: ['creator'], displayName: 'Wanjiru Kamau', photoURL: null }, 'system');
+    await seedCreator('creator-2', { businessId: BUSINESS_ID, niche: 'Comedy' });
+    await userRepository.create('creator-2', { email: 'b@example.com', roles: ['creator'], displayName: 'Otieno Omondi', photoURL: null }, 'system');
+
+    const { creators } = await creatorAdminService.listCreators(BUSINESS_ID, { q: 'wanjiru' });
+
+    expect(creators.map((c) => c.uid)).toEqual(['creator-1']);
+  });
+
+  it('combines a text search with the followersRange filter', async () => {
+    await seedCreator('creator-match', { businessId: BUSINESS_ID, niche: 'Food', followersRange: '100,000+' });
+    await seedCreator('creator-wrong-range', { businessId: BUSINESS_ID, niche: 'Food', followersRange: 'Under 1,000' });
+
+    const { creators } = await creatorAdminService.listCreators(BUSINESS_ID, {
+      q: 'food',
+      followersRange: '100,000+',
+    });
+
+    expect(creators.map((c) => c.uid)).toEqual(['creator-match']);
+  });
+
+  it('never returns another business’s creators from a search', async () => {
+    await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID, niche: 'Food' });
+
+    const { creators } = await creatorAdminService.listCreators(BUSINESS_ID, { q: 'food' });
+
+    expect(creators).toHaveLength(0);
+  });
+
+  it('a blank query falls back to the normal paginated listing', async () => {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+
+    const { creators, nextCursor } = await creatorAdminService.listCreators(BUSINESS_ID, { q: '   ' });
+
+    expect(creators).toHaveLength(1);
+    expect(nextCursor).toBeNull();
+  });
+});

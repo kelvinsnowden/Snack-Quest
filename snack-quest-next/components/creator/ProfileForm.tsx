@@ -8,8 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { PaymentPreference } from '@/types';
-
-const FOLLOWER_RANGES = ['Under 1,000', '1,000–5,000', '5,000–20,000', '20,000–100,000', '100,000+'];
+import { FOLLOWER_RANGES } from '@/lib/creators/followerRanges';
 
 const SOCIAL_PLATFORMS = [
   { key: 'instagram', label: 'Instagram handle' },

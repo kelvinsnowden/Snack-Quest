@@ -109,6 +109,48 @@ describe('creatorRepository.listByBusiness', () => {
     expect(secondPage.creators).toHaveLength(1);
     expect(secondPage.nextCursor).toBeNull();
   });
+
+  it('filters by followersRange (§ Creator Marketplace, admin creator search)', async () => {
+    await seedCreator('creator-small', {
+      businessId: BUSINESS_ID,
+      followersRange: 'Under 1,000',
+    });
+    await seedCreator('creator-big', {
+      businessId: BUSINESS_ID,
+      followersRange: '100,000+',
+    });
+
+    const { creators } = await creatorRepository.listByBusiness(BUSINESS_ID, {
+      followersRange: '100,000+',
+    });
+
+    expect(creators.map((c) => c.id)).toEqual(['creator-big']);
+  });
+
+  it('combines status and followersRange filters', async () => {
+    await seedCreator('creator-match', {
+      businessId: BUSINESS_ID,
+      status: 'active',
+      followersRange: '100,000+',
+    });
+    await seedCreator('creator-wrong-status', {
+      businessId: BUSINESS_ID,
+      status: 'pending',
+      followersRange: '100,000+',
+    });
+    await seedCreator('creator-wrong-range', {
+      businessId: BUSINESS_ID,
+      status: 'active',
+      followersRange: 'Under 1,000',
+    });
+
+    const { creators } = await creatorRepository.listByBusiness(BUSINESS_ID, {
+      status: 'active',
+      followersRange: '100,000+',
+    });
+
+    expect(creators.map((c) => c.id)).toEqual(['creator-match']);
+  });
 });
 
 describe('creatorRepository.incrementClickCount', () => {

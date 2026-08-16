@@ -195,16 +195,19 @@ class CreatorRepository {
 
   /**
    * Admin: Creators (§ Admin: Creators) — real cursor pagination,
-   * newest-first, optionally narrowed to one status. Both the filtered
-   * shape (businessId + status + createdAt) and the unfiltered one
-   * (businessId + createdAt) need their own composite index — see
+   * newest-first, optionally narrowed to one status and/or one
+   * follower-range bucket (§ Creator Marketplace, admin creator
+   * search). Every filtered shape (businessId + status + createdAt,
+   * businessId + followersRange + createdAt, businessId + status +
+   * followersRange + createdAt) and the unfiltered one (businessId +
+   * createdAt) needs its own composite index — see
    * firestore.indexes.json. An equality filter plus an `orderBy` on a
    * different field always needs one; there is no exemption for the
    * unfiltered case.
    */
   async listByBusiness(
     businessId: string,
-    options: { status?: CreatorStatus; limit?: number; cursor?: string } = {},
+    options: { status?: CreatorStatus; followersRange?: string; limit?: number; cursor?: string } = {},
   ): Promise<{
     creators: { id: string; data: CreatorProfile }[];
     nextCursor: string | null;
@@ -216,6 +219,9 @@ class CreatorRepository {
 
     if (options.status) {
       query = query.where('status', '==', options.status);
+    }
+    if (options.followersRange) {
+      query = query.where('followersRange', '==', options.followersRange);
     }
     query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
 
