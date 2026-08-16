@@ -8,7 +8,7 @@ import { CREATOR_SESSION_COOKIE } from '@/lib/auth/cookieName';
  * right after `createUserWithEmailAndPassword` succeeds — the account
  * itself already exists by the time an ID token reaches here; what
  * this route adds is the two Firestore documents (`users/{uid}`,
- * `creatorProfiles/{uid}`) that a client can never create directly,
+ * `businesses/{businessId}/creatorMemberships/{uid}`) that a client can never create directly,
  * plus the session cookie that lets a Server Component trust the
  * result on every later request.
  */

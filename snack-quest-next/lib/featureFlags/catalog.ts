@@ -29,6 +29,13 @@ export const FEATURE_FLAG_CATALOG: readonly FeatureFlagDefinition[] = [
     description: 'Admin-wide search across orders, customers, products, inventory, suppliers, purchase orders, conversations, and creators (§ Phase 7).',
     defaultEnabled: true,
   },
+  {
+    key: 'creator_financial_writes_frozen',
+    name: 'Freeze creator financial writes',
+    description:
+      'Temporary maintenance switch for the creatorProfiles → creatorMemberships schema migration — blocks new withdrawal requests/approvals/rejections and referral commission crediting while the production data copy runs, so balances stay consistent during the cutover. Leave off outside of a scheduled migration window.',
+    defaultEnabled: false,
+  },
 ] as const;
 
 const CATALOG_BY_KEY = new Map(FEATURE_FLAG_CATALOG.map((flag) => [flag.key, flag]));

@@ -24,6 +24,7 @@ import { creatorRepository } from '@/repositories/creatorRepository';
  * would be the same fraud with extra steps.
  */
 export async function isSelfReferral(input: {
+  businessId: string;
   referralOwnerId: string;
   buyerCreatorUid?: string | null;
   buyerPhone: string | null;
@@ -34,6 +35,6 @@ export async function isSelfReferral(input: {
   if (!input.buyerPhone) {
     return false;
   }
-  const owner = await creatorRepository.findById(input.referralOwnerId);
+  const owner = await creatorRepository.findById(input.businessId, input.referralOwnerId);
   return Boolean(owner?.payoutPhoneNumber && owner.payoutPhoneNumber === input.buyerPhone);
 }

@@ -248,7 +248,6 @@ async function cleanCollections() {
     'shipments',
     'referralLinks',
     'referralAttributions',
-    'creatorProfiles',
     'outboundGatewayCalls',
     'pickupStations',
     'customerWallets',
@@ -551,29 +550,34 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     mockAllProviders();
 
     const creatorId = 'creator-1';
-    await adminFirestore.collection('creatorProfiles').doc(creatorId).set({
-      businessId: SNACK_QUEST.businessId,
-      referralCode: 'CREATOR10',
-      tier: 'bronze',
-      availableCashKes: 0,
-      pendingEarningsKes: 0,
-      lifetimeEarningsKes: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      bio: '',
-      niche: '',
-      followersRange: '',
-      paymentPreference: 'mpesa',
-      socialHandles: {},
-      onboardingCompleted: true,
-      status: 'active',
-      schemaVersion: 1,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      createdBy: 'system',
-      updatedBy: 'system',
-      deletedAt: null,
-    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
+      .doc(creatorId)
+      .set({
+        businessId: SNACK_QUEST.businessId,
+        referralCode: 'CREATOR10',
+        tier: 'bronze',
+        availableCashKes: 0,
+        pendingEarningsKes: 0,
+        lifetimeEarningsKes: 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        bio: '',
+        niche: '',
+        followersRange: '',
+        paymentPreference: 'mpesa',
+        socialHandles: {},
+        onboardingCompleted: true,
+        status: 'active',
+        schemaVersion: 1,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: 'system',
+        updatedBy: 'system',
+        deletedAt: null,
+      });
     await adminFirestore.collection('referralLinks').add({
       businessId: SNACK_QUEST.businessId,
       code: 'CREATOR10',
@@ -609,7 +613,9 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     await service.handlePaymentResult(callback);
 
     const creatorSnapshot = await adminFirestore
-      .collection('creatorProfiles')
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
       .doc(creatorId)
       .get();
     expect(creatorSnapshot.data()?.availableCashKes).toBe(300);
@@ -975,29 +981,34 @@ describe('platform proof: a second, independent tenant', () => {
     // A referral code that means something for Snack Quest and
     // literally does not exist for Rival Snacks.
     const creatorId = 'creator-snack-quest-1';
-    await adminFirestore.collection('creatorProfiles').doc(creatorId).set({
-      businessId: SNACK_QUEST.businessId,
-      referralCode: 'SQ10',
-      tier: 'bronze',
-      availableCashKes: 0,
-      pendingEarningsKes: 0,
-      lifetimeEarningsKes: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      bio: '',
-      niche: '',
-      followersRange: '',
-      paymentPreference: 'mpesa',
-      socialHandles: {},
-      onboardingCompleted: true,
-      status: 'active',
-      schemaVersion: 1,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      createdBy: 'system',
-      updatedBy: 'system',
-      deletedAt: null,
-    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
+      .doc(creatorId)
+      .set({
+        businessId: SNACK_QUEST.businessId,
+        referralCode: 'SQ10',
+        tier: 'bronze',
+        availableCashKes: 0,
+        pendingEarningsKes: 0,
+        lifetimeEarningsKes: 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        bio: '',
+        niche: '',
+        followersRange: '',
+        paymentPreference: 'mpesa',
+        socialHandles: {},
+        onboardingCompleted: true,
+        status: 'active',
+        schemaVersion: 1,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: 'system',
+        updatedBy: 'system',
+        deletedAt: null,
+      });
     await adminFirestore.collection('referralLinks').add({
       businessId: SNACK_QUEST.businessId,
       code: 'SQ10',
@@ -1105,7 +1116,12 @@ describe('platform proof: a second, independent tenant', () => {
 
     // The creator only got credited for the Snack Quest order — Rival
     // Snacks never touched Snack Quest's referral program.
-    const creatorSnapshot = await adminFirestore.collection('creatorProfiles').doc(creatorId).get();
+    const creatorSnapshot = await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
+      .doc(creatorId)
+      .get();
     expect(creatorSnapshot.data()?.availableCashKes).toBe(150);
     const attributions = await adminFirestore.collection('referralAttributions').get();
     expect(attributions.size).toBe(1);

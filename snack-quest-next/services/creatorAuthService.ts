@@ -23,22 +23,25 @@ import type { CreatorStatus, User } from '@/types';
  * Owns the Creator Portal's own sign-up/sign-in handshake (§ Creator
  * Portal auth) — unlike staff, creators genuinely self-register
  * (TDD §4.2), but `firestore.rules` still blocks a client from
- * creating `creatorProfiles/{uid}` directly (`allow create: if
- * false`) and from self-granting the `creator` role on `users/{uid}`
- * (client self-create there is pinned to `roles == ['customer']`).
- * So the real account (Firebase Auth) is created client-side —
- * that's plain Firebase Auth and always allowed — but the two
- * Firestore documents that actually grant creator access only ever
- * get written here, via the Admin SDK, after verifying the ID token
- * that Auth account produced.
+ * creating `businesses/{businessId}/creatorMemberships/{uid}` directly
+ * (`allow create: if false`) and from self-granting the `creator` role
+ * on `users/{uid}` (client self-create there is pinned to `roles ==
+ * ['customer']`). So the real account (Firebase Auth) is created
+ * client-side — that's plain Firebase Auth and always allowed — but
+ * the two Firestore documents that actually grant creator access only
+ * ever get written here, via the Admin SDK, after verifying the ID
+ * token that Auth account produced.
  *
- * `register()` is idempotent on `creatorProfiles/{uid}` existence
- * rather than on the Firebase Auth account: that's what lets a
- * customer who already has a `users/{uid}` doc (from ordering over
- * WhatsApp) join the creator program without a second account (TDD
- * §7's multi-role handling), and it's also what makes a partial
- * failure recoverable — a client that created the Auth account but
- * never got a 200 back can safely resubmit the same idToken.
+ * `register()` is idempotent on `businesses/{businessId}/creatorMemberships/{uid}`
+ * existence for the *current* business, rather than on the Firebase
+ * Auth account globally — that's what lets a customer who already has
+ * a `users/{uid}` doc (from ordering over WhatsApp) join the creator
+ * program without a second account (TDD §7's multi-role handling),
+ * what makes a partial failure recoverable (a client that created the
+ * Auth account but never got a 200 back can safely resubmit the same
+ * idToken), and — since the membership check is scoped to one business
+ * — what lets the same uid register as a creator independently in more
+ * than one business (§ Creator Marketplace migration).
  */
 
 const SESSION_MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days, matches staff sessions
@@ -107,7 +110,7 @@ class CreatorAuthService {
     const decoded = await adminAuth.verifyIdToken(idToken);
     const businessId = getCurrentBusinessId();
 
-    const existingProfile = await creatorRepository.findById(decoded.uid);
+    const existingProfile = await creatorRepository.findById(businessId, decoded.uid);
     if (existingProfile) {
       throw new CreatorAlreadyRegisteredError(decoded.uid);
     }
@@ -241,9 +244,10 @@ class CreatorAuthService {
     idToken: string,
   ): Promise<{ cookie: string; maxAgeMs: number; session: CreatorSession }> {
     const decoded = await adminAuth.verifyIdToken(idToken);
+    const businessId = getCurrentBusinessId();
     const [user, profile] = await Promise.all([
       userRepository.findById(decoded.uid),
-      creatorRepository.findById(decoded.uid),
+      creatorRepository.findById(businessId, decoded.uid),
     ]);
 
     if (!user || user.deletedAt || !profile) {
@@ -274,9 +278,10 @@ class CreatorAuthService {
       return null;
     }
 
+    const businessId = getCurrentBusinessId();
     const [user, profile] = await Promise.all([
       userRepository.findById(decoded.uid),
-      creatorRepository.findById(decoded.uid),
+      creatorRepository.findById(businessId, decoded.uid),
     ]);
     if (!user || user.deletedAt || !profile) {
       return null;

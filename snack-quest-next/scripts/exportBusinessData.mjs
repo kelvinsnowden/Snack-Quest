@@ -66,7 +66,6 @@ const TENANT_COLLECTIONS = [
   'referralLinks',
   'referralAttributions',
   'deliveryZoneRules',
-  'creatorProfiles',
 ];
 
 /** Subcollections worth carrying along with their parent — financial/audit trails that can't be reconstructed from anywhere else. */
@@ -75,7 +74,6 @@ const SUBCOLLECTIONS_BY_PARENT = {
   orders: ['items'],
   conversations: ['messages'],
   paymentIntents: ['attempts'],
-  creatorProfiles: ['earningsLedger'],
 };
 
 /** Recursively converts Firestore `Timestamp`/`GeoPoint`/`DocumentReference` values to plain JSON-safe values. */
@@ -124,19 +122,36 @@ async function main() {
   }
   const featureFlagsSnapshot = await businessDoc.ref.collection('featureFlags').get();
 
+  // creatorMemberships: nested under the business (like featureFlags
+  // above), not a flat `businessId`-filtered top-level collection like
+  // the rest of TENANT_COLLECTIONS — see the creatorProfiles →
+  // creatorMemberships schema migration.
+  const creatorMembershipsSnapshot = await businessDoc.ref.collection('creatorMemberships').get();
+  const creatorMemberships = [];
+  for (const doc of creatorMembershipsSnapshot.docs) {
+    const ledgerSnapshot = await doc.ref.collection('earningsLedger').get();
+    creatorMemberships.push({
+      id: doc.id,
+      ...toPlain(doc.data()),
+      earningsLedger: ledgerSnapshot.docs.map((sub) => ({ id: sub.id, ...toPlain(sub.data()) })),
+    });
+  }
+  console.log(`  creatorMemberships: ${creatorMemberships.length} document(s)`);
+
   const snapshot = {
     exportedAt: new Date().toISOString(),
     businessId,
     business: { id: businessDoc.id, ...toPlain(businessDoc.data()) },
     featureFlags: featureFlagsSnapshot.docs.map((doc) => ({ id: doc.id, ...toPlain(doc.data()) })),
+    creatorMemberships,
     collections: {},
   };
 
-  const uidsToResolve = new Set();
+  const uidsToResolve = new Set(creatorMemberships.map((doc) => doc.id));
   for (const collectionName of TENANT_COLLECTIONS) {
     const docs = await dumpCollection(db, businessId, collectionName);
     snapshot.collections[collectionName] = docs;
-    if (collectionName === 'staffProfiles' || collectionName === 'creatorProfiles') {
+    if (collectionName === 'staffProfiles') {
       for (const doc of docs) uidsToResolve.add(doc.id);
     }
     console.log(`  ${collectionName}: ${docs.length} document(s)`);

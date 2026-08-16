@@ -10,7 +10,7 @@ import {
   MarketingEmailNotEditableError,
   type MarketingEmailDraftInput,
 } from '@/services/marketingEmailService';
-import { seedCreator } from '../helpers/creatorFixtures';
+import { clearCreatorMemberships, seedCreator } from '../helpers/creatorFixtures';
 
 /**
  * `MarketingEmailService` end to end (§ Admin: Marketing Emails) —
@@ -43,7 +43,7 @@ const VALID_DRAFT: MarketingEmailDraftInput = {
 };
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('marketingEmailCampaigns'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('reviews'));

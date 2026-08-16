@@ -15,7 +15,7 @@ import {
   InvalidWithdrawalTransitionError,
   WithdrawalBelowMinimumError,
 } from '@/services/withdrawalService';
-import { seedCreator } from '../helpers/creatorFixtures';
+import { clearCreatorMemberships, seedCreator } from '../helpers/creatorFixtures';
 
 /**
  * `WithdrawalService` end to end (§ Admin: Withdrawals): balance
@@ -75,7 +75,7 @@ function stubB2CFailure() {
 
 beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('withdrawals'));
-  await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   await adminFirestore.recursiveDelete(adminFirestore.collection('webhookEvents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
@@ -101,7 +101,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
 
     const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
     expect(withdrawal?.status).toBe('pending');
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(3000);
   });
 
@@ -118,7 +118,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
       }),
     ).rejects.toBeInstanceOf(InsufficientCreatorBalanceError);
 
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(500);
   });
 
@@ -161,7 +161,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
       }),
     ).rejects.toBeInstanceOf(WithdrawalBelowMinimumError);
 
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(5000);
   });
 
@@ -225,7 +225,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
     const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
     expect(withdrawal?.status).toBe('approved');
     expect(withdrawal?.b2cOriginatorConversationId).toBe('orig-approve-1');
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(3000); // still reserved, not refunded
   });
 
@@ -243,7 +243,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
     const status = await withdrawalService.approveWithdrawal(BUSINESS_ID, id, 'staff-1');
 
     expect(status).toBe('failed');
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(5000); // refunded
   });
 
@@ -332,7 +332,7 @@ describe('WithdrawalService.rejectWithdrawal', () => {
     const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
     expect(withdrawal?.status).toBe('rejected');
     expect(withdrawal?.rejectionReason).toBe('Could not verify phone number');
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(5000);
   });
 });
@@ -388,7 +388,7 @@ describe('WithdrawalService.handleB2CResult', () => {
 
     const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
     expect(withdrawal?.status).toBe('failed');
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(5000);
   });
 
@@ -407,7 +407,7 @@ describe('WithdrawalService.handleB2CResult', () => {
     await withdrawalService.handleB2CResult(BUSINESS_ID, payload);
     await withdrawalService.handleB2CResult(BUSINESS_ID, payload);
 
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.availableCashKes).toBe(5000); // refunded exactly once
     const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
     expect(withdrawal?.auditTrail.filter((e) => e.action === 'b2c_failed')).toHaveLength(1);

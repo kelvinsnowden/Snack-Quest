@@ -62,28 +62,6 @@ service cloud.firestore {
       allow delete: if false; // soft delete only, via server
     }
 
-    match /creatorProfiles/{uid} {
-      allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
-      allow create: if false; // server-created at sign-up (see §8 automation)
-      allow update: if (isOwner(uid) &&
-                          // creators may edit their own profile fields,
-                          // but never the financial fields directly
-                          !request.resource.data.diff(resource.data)
-                            .affectedKeys()
-                            .hasAny(['availableCashKes','pendingEarningsKes',
-                                     'lifetimeEarningsKes','status',
-                                     'commissionRateKes'])) || isTenantAdmin(resource.data.businessId);
-      allow delete: if false;
-
-      // earningsLedger: the immutable source of truth behind
-      // availableCashKes/lifetimeEarningsKes above — server-written
-      // only, same discipline as customerWallets' ledger.
-      match /earningsLedger/{entryId} {
-        allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
-        allow write: if false;
-      }
-    }
-
     match /customerProfiles/{uid} {
       allow read: if isOwner(uid) || isTenantAdmin(resource.data.businessId);
       allow update: if (isOwner(uid) &&
@@ -421,6 +399,36 @@ service cloud.firestore {
       match /featureFlags/{key} {
         allow read: if isTenantAdmin(businessId);
         allow write: if false;
+      }
+
+      // creatorMemberships: creator business-relationship data, keyed
+      // by Firebase Auth uid (§ Creator Marketplace migration) —
+      // nested under the owning business so the same uid can hold an
+      // independent membership in more than one business. Formerly a
+      // flat top-level `creatorProfiles/{uid}` collection, which
+      // structurally pinned one uid to exactly one business
+      // platform-wide. `businessId` here is the parent match's path
+      // variable, same reasoning as `featureFlags` above.
+      match /creatorMemberships/{uid} {
+        allow read: if isOwner(uid) || isTenantAdmin(businessId);
+        allow create: if false; // server-created at sign-up (see §8 automation)
+        allow update: if (isOwner(uid) &&
+                            // creators may edit their own profile fields,
+                            // but never the financial fields directly
+                            !request.resource.data.diff(resource.data)
+                              .affectedKeys()
+                              .hasAny(['availableCashKes','pendingEarningsKes',
+                                       'lifetimeEarningsKes','status',
+                                       'commissionRateKes'])) || isTenantAdmin(businessId);
+        allow delete: if false;
+
+        // earningsLedger: the immutable source of truth behind
+        // availableCashKes/lifetimeEarningsKes above — server-written
+        // only, same discipline as customerWallets' ledger.
+        match /earningsLedger/{entryId} {
+          allow read: if isOwner(uid) || isTenantAdmin(businessId);
+          allow write: if false;
+        }
       }
     }
   }

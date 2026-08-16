@@ -109,7 +109,7 @@ class CreatorAdminService {
   }
 
   async getCreator(businessId: string, uid: string): Promise<CreatorDetail> {
-    const profile = await creatorRepository.findById(uid);
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile || profile.businessId !== businessId) {
       throw new CreatorNotFoundError(uid);
     }
@@ -127,7 +127,7 @@ class CreatorAdminService {
   }
 
   async updateStatus(businessId: string, uid: string, next: CreatorStatus, actor: string): Promise<void> {
-    const profile = await creatorRepository.findById(uid);
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile || profile.businessId !== businessId) {
       throw new CreatorNotFoundError(uid);
     }
@@ -135,7 +135,7 @@ class CreatorAdminService {
       throw new InvalidCreatorTransitionError(profile.status, next);
     }
 
-    await creatorRepository.update(uid, { status: next, updatedBy: actor });
+    await creatorRepository.update(businessId, uid, { status: next, updatedBy: actor });
     await publishEvent(businessId, 'CreatorStatusChanged', 'creatorProfile', uid, {
       from: profile.status,
       to: next,

@@ -9,6 +9,7 @@ import {
   OnboardingAlreadyCompletedError,
 } from '@/services/creatorProfileService';
 import { CreatorNotFoundError } from '@/services/creatorDashboardService';
+import { clearCreatorMemberships } from '../helpers/creatorFixtures';
 
 const UID = 'creator-onboarding-test';
 const BUSINESS_ID = 'biz-onboarding-test';
@@ -40,9 +41,7 @@ async function seedPendingCreator(
 }
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(
-    adminFirestore.collection('creatorProfiles'),
-  );
+  await clearCreatorMemberships(BUSINESS_ID);
   await adminFirestore.recursiveDelete(
     adminFirestore.collection('domainEvents'),
   );
@@ -51,7 +50,7 @@ beforeEach(async () => {
 describe('CreatorProfileService.completeOnboarding', () => {
   it('throws for a uid with no creator profile', async () => {
     await expect(
-      creatorProfileService.completeOnboarding('no-such-creator', {
+      creatorProfileService.completeOnboarding(BUSINESS_ID, 'no-such-creator', {
         bio: 'Bio',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -65,7 +64,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
     await seedPendingCreator();
 
     await expect(
-      creatorProfileService.completeOnboarding(UID, {
+      creatorProfileService.completeOnboarding(BUSINESS_ID, UID, {
         bio: '   ',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -79,7 +78,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
     await seedPendingCreator();
 
     await expect(
-      creatorProfileService.completeOnboarding(UID, {
+      creatorProfileService.completeOnboarding(BUSINESS_ID, UID, {
         bio: 'Bio',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -93,7 +92,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
     await seedPendingCreator();
 
     await expect(
-      creatorProfileService.completeOnboarding(UID, {
+      creatorProfileService.completeOnboarding(BUSINESS_ID, UID, {
         bio: 'Bio',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -106,7 +105,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
   it('completes onboarding and persists the profile fields', async () => {
     await seedPendingCreator();
 
-    await creatorProfileService.completeOnboarding(UID, {
+    await creatorProfileService.completeOnboarding(BUSINESS_ID, UID, {
       bio: '  Food and lifestyle creator  ',
       niche: '  Food  ',
       followersRange: '1,000–5,000',
@@ -114,7 +113,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
       socialHandles: { instagram: '@amina' },
     });
 
-    const profile = await creatorRepository.findById(UID);
+    const profile = await creatorRepository.findById(BUSINESS_ID, UID);
     expect(profile).toMatchObject({
       bio: 'Food and lifestyle creator',
       niche: 'Food',
@@ -130,7 +129,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
     await seedPendingCreator({ onboardingCompleted: true });
 
     await expect(
-      creatorProfileService.completeOnboarding(UID, {
+      creatorProfileService.completeOnboarding(BUSINESS_ID, UID, {
         bio: 'Bio',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -144,7 +143,7 @@ describe('CreatorProfileService.completeOnboarding', () => {
 describe('CreatorProfileService.updateProfile', () => {
   it('throws for a uid with no creator profile', async () => {
     await expect(
-      creatorProfileService.updateProfile('no-such-creator', {
+      creatorProfileService.updateProfile(BUSINESS_ID, 'no-such-creator', {
         bio: 'Bio',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -159,7 +158,7 @@ describe('CreatorProfileService.updateProfile', () => {
     await seedPendingCreator({ onboardingCompleted: true });
 
     await expect(
-      creatorProfileService.updateProfile(UID, {
+      creatorProfileService.updateProfile(BUSINESS_ID, UID, {
         bio: 'Bio',
         niche: 'Food',
         followersRange: '1k-5k',
@@ -173,7 +172,7 @@ describe('CreatorProfileService.updateProfile', () => {
   it('updates the profile fields, including a valid payout phone number', async () => {
     await seedPendingCreator({ onboardingCompleted: true });
 
-    await creatorProfileService.updateProfile(UID, {
+    await creatorProfileService.updateProfile(BUSINESS_ID, UID, {
       bio: 'Updated bio',
       niche: 'Beauty',
       followersRange: '20,000–100,000',
@@ -182,7 +181,7 @@ describe('CreatorProfileService.updateProfile', () => {
       socialHandles: { tiktok: '@amina.tt' },
     });
 
-    const profile = await creatorRepository.findById(UID);
+    const profile = await creatorRepository.findById(BUSINESS_ID, UID);
     expect(profile).toMatchObject({
       bio: 'Updated bio',
       niche: 'Beauty',
@@ -195,7 +194,7 @@ describe('CreatorProfileService.updateProfile', () => {
   it('can be called more than once, unlike completeOnboarding', async () => {
     await seedPendingCreator({ onboardingCompleted: true });
 
-    await creatorProfileService.updateProfile(UID, {
+    await creatorProfileService.updateProfile(BUSINESS_ID, UID, {
       bio: 'First edit',
       niche: 'Food',
       followersRange: '1k-5k',
@@ -203,7 +202,7 @@ describe('CreatorProfileService.updateProfile', () => {
       payoutPhoneNumber: null,
       socialHandles: {},
     });
-    await creatorProfileService.updateProfile(UID, {
+    await creatorProfileService.updateProfile(BUSINESS_ID, UID, {
       bio: 'Second edit',
       niche: 'Food',
       followersRange: '1k-5k',
@@ -212,7 +211,7 @@ describe('CreatorProfileService.updateProfile', () => {
       socialHandles: {},
     });
 
-    const profile = await creatorRepository.findById(UID);
+    const profile = await creatorRepository.findById(BUSINESS_ID, UID);
     expect(profile?.bio).toBe('Second edit');
   });
 });
@@ -220,7 +219,7 @@ describe('CreatorProfileService.updateProfile', () => {
 describe('CreatorProfileService.updatePhoto', () => {
   it('throws for a uid with no creator profile', async () => {
     await expect(
-      creatorProfileService.updatePhoto('no-such-creator', 'https://example.com/a.png'),
+      creatorProfileService.updatePhoto(BUSINESS_ID, 'no-such-creator', 'https://example.com/a.png'),
     ).rejects.toBeInstanceOf(CreatorNotFoundError);
   });
 
@@ -228,7 +227,7 @@ describe('CreatorProfileService.updatePhoto', () => {
     await seedPendingCreator({ onboardingCompleted: true });
     await userRepository.create(UID, { email: 'creator@example.com', roles: ['creator'], displayName: 'Creator', photoURL: null }, UID);
 
-    await expect(creatorProfileService.updatePhoto(UID, '   ')).rejects.toBeInstanceOf(
+    await expect(creatorProfileService.updatePhoto(BUSINESS_ID, UID, '   ')).rejects.toBeInstanceOf(
       InvalidProfileUpdateError,
     );
   });
@@ -237,7 +236,7 @@ describe('CreatorProfileService.updatePhoto', () => {
     await seedPendingCreator({ onboardingCompleted: true });
     await userRepository.create(UID, { email: 'creator@example.com', roles: ['creator'], displayName: 'Creator', photoURL: null }, UID);
 
-    await creatorProfileService.updatePhoto(UID, 'https://example.com/a.png');
+    await creatorProfileService.updatePhoto(BUSINESS_ID, UID, 'https://example.com/a.png');
 
     const user = await userRepository.findById(UID);
     expect(user?.photoURL).toBe('https://example.com/a.png');
@@ -247,7 +246,7 @@ describe('CreatorProfileService.updatePhoto', () => {
     await seedPendingCreator({ onboardingCompleted: true });
     await userRepository.create(UID, { email: 'creator@example.com', roles: ['creator'], displayName: 'Creator', photoURL: 'https://example.com/a.png' }, UID);
 
-    await creatorProfileService.updatePhoto(UID, null);
+    await creatorProfileService.updatePhoto(BUSINESS_ID, UID, null);
 
     const user = await userRepository.findById(UID);
     expect(user?.photoURL).toBeNull();

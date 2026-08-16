@@ -134,17 +134,19 @@ describe('referralAttributions security rules', () => {
   });
 });
 
-describe('creatorProfiles/earningsLedger security rules', () => {
+describe('creatorMemberships/earningsLedger security rules', () => {
+  const BUSINESS_ID = 'biz-1';
+
   it('lets the owning creator read their own ledger entry', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(
-        doc(context.firestore(), 'creatorProfiles', CREATOR_UID, 'earningsLedger', 'entry-1'),
+        doc(context.firestore(), 'businesses', BUSINESS_ID, 'creatorMemberships', CREATOR_UID, 'earningsLedger', 'entry-1'),
         { type: 'referral_commission', amountKes: 300 },
       );
     });
     const ctx = testEnv.authenticatedContext(CREATOR_UID, { roles: ['creator'] });
     await assertSucceeds(
-      getDoc(doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID, 'earningsLedger', 'entry-1')),
+      getDoc(doc(ctx.firestore(), 'businesses', BUSINESS_ID, 'creatorMemberships', CREATOR_UID, 'earningsLedger', 'entry-1')),
     );
   });
 
@@ -152,7 +154,7 @@ describe('creatorProfiles/earningsLedger security rules', () => {
     const ctx = testEnv.authenticatedContext(CREATOR_UID, { roles: ['creator'] });
     await assertFails(
       setDoc(
-        doc(ctx.firestore(), 'creatorProfiles', CREATOR_UID, 'earningsLedger', 'entry-1'),
+        doc(ctx.firestore(), 'businesses', BUSINESS_ID, 'creatorMemberships', CREATOR_UID, 'earningsLedger', 'entry-1'),
         { type: 'referral_commission', amountKes: 300 },
       ),
     );

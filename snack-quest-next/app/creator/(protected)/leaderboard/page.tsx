@@ -38,7 +38,7 @@ export const metadata: Metadata = { title: 'Leaderboard' };
 export default async function CreatorLeaderboardPage() {
   const session = await requireCreatorSession();
   const [{ profile }, leaderboard] = await Promise.all([
-    creatorDashboardService.getDashboard(session.uid),
+    creatorDashboardService.getDashboard(session.businessId, session.uid),
     creatorDashboardService.getLeaderboard(session.businessId, session.uid),
   ]);
 

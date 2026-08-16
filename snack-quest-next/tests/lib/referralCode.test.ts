@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { adminFirestore } from '@/lib/firebase/admin';
 import { creatorRepository } from '@/repositories/creatorRepository';
 import { generateUniqueReferralCode } from '@/lib/creators/referralCode';
+import { clearCreatorMemberships } from '../helpers/creatorFixtures';
 
 const BUSINESS_ID = 'biz-referral-code-test';
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(
-    adminFirestore.collection('creatorProfiles'),
-  );
+  await clearCreatorMemberships(BUSINESS_ID, 'a-different-business');
 });
 
 async function seedCreatorWithCode(uid: string, referralCode: string) {

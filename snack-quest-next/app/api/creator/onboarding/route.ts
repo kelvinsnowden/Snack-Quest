@@ -45,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
   );
 
   try {
-    await creatorProfileService.completeOnboarding(session.uid, {
+    await creatorProfileService.completeOnboarding(session.businessId, session.uid, {
       bio,
       niche,
       followersRange,

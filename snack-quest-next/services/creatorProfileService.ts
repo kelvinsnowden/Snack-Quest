@@ -98,8 +98,8 @@ function assertValidUpdate(input: UpdateProfileInput): void {
  * state-changing creator action does (§8).
  */
 class CreatorProfileService {
-  async completeOnboarding(uid: string, input: CompleteOnboardingInput): Promise<void> {
-    const profile = await creatorRepository.findById(uid);
+  async completeOnboarding(businessId: string, uid: string, input: CompleteOnboardingInput): Promise<void> {
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile) {
       throw new CreatorNotFoundError(uid);
     }
@@ -108,7 +108,7 @@ class CreatorProfileService {
     }
     assertValid(input);
 
-    await creatorRepository.update(uid, {
+    await creatorRepository.update(businessId, uid, {
       bio: input.bio.trim(),
       niche: input.niche.trim(),
       followersRange: input.followersRange.trim(),
@@ -122,14 +122,14 @@ class CreatorProfileService {
   }
 
   /** § Creator Portal profile management — editing after onboarding, unlike `completeOnboarding` this can be called any number of times. */
-  async updateProfile(uid: string, input: UpdateProfileInput): Promise<void> {
-    const profile = await creatorRepository.findById(uid);
+  async updateProfile(businessId: string, uid: string, input: UpdateProfileInput): Promise<void> {
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile) {
       throw new CreatorNotFoundError(uid);
     }
     assertValidUpdate(input);
 
-    await creatorRepository.update(uid, {
+    await creatorRepository.update(businessId, uid, {
       bio: input.bio.trim(),
       niche: input.niche.trim(),
       followersRange: input.followersRange.trim(),
@@ -149,8 +149,8 @@ class CreatorProfileService {
    * just returned from an actual upload to this creator's own
    * `creators/{businessId}/` prefix.
    */
-  async updatePhoto(uid: string, photoURL: string | null): Promise<void> {
-    const profile = await creatorRepository.findById(uid);
+  async updatePhoto(businessId: string, uid: string, photoURL: string | null): Promise<void> {
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile) {
       throw new CreatorNotFoundError(uid);
     }

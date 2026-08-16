@@ -5,7 +5,7 @@ import { creatorRepository } from '@/repositories/creatorRepository';
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { creatorAdminService, CreatorNotFoundError, InvalidCreatorTransitionError } from '@/services/creatorAdminService';
-import { seedCreator } from '../helpers/creatorFixtures';
+import { clearCreatorMemberships, seedCreator } from '../helpers/creatorFixtures';
 
 const createdUids: string[] = [];
 
@@ -19,7 +19,7 @@ const BUSINESS_ID = 'biz-creator-admin-service-test';
 const OTHER_BUSINESS_ID = 'biz-creator-admin-service-other';
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('domainEvents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
@@ -36,7 +36,7 @@ describe('CreatorAdminService.updateStatus', () => {
 
     await creatorAdminService.updateStatus(BUSINESS_ID, 'creator-1', 'active', 'staff-1');
 
-    const updated = await creatorRepository.findById('creator-1');
+    const updated = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(updated?.status).toBe('active');
 
     const events = await adminFirestore.collection('domainEvents').get();

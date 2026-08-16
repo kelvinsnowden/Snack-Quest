@@ -62,8 +62,8 @@ export interface CreatorLeaderboard {
 }
 
 class CreatorDashboardService {
-  async getDashboard(uid: string): Promise<CreatorDashboardView> {
-    const profile = await creatorRepository.findById(uid);
+  async getDashboard(businessId: string, uid: string): Promise<CreatorDashboardView> {
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile) {
       throw new CreatorNotFoundError(uid);
     }
@@ -81,7 +81,7 @@ class CreatorDashboardService {
    */
   async getLeaderboard(businessId: string, uid: string): Promise<CreatorLeaderboard> {
     const [profile, top, totalActiveCreators] = await Promise.all([
-      creatorRepository.findById(uid),
+      creatorRepository.findById(businessId, uid),
       creatorRepository.listTopByBusiness(businessId, 10),
       creatorRepository.countActive(businessId),
     ]);

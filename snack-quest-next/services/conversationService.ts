@@ -831,6 +831,7 @@ class ConversationService {
       }
       if (
         await isSelfReferral({
+          businessId,
           referralOwnerId: referral.ownerId,
           buyerCreatorUid: input.creatorUid,
           buyerPhone: normalizedPhone,
@@ -1030,6 +1031,7 @@ class ConversationService {
     if (
       referral &&
       (await isSelfReferral({
+        businessId,
         referralOwnerId: referral.ownerId,
         buyerCreatorUid: common.creatorUid,
         buyerPhone: phoneNumber,

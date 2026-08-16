@@ -20,9 +20,10 @@ import { notificationService } from '@/services/notificationService';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { MIN_WITHDRAWAL_KES } from '@/lib/withdrawals/rules';
 import { formatKes } from '@/lib/orders/format';
+import { assertCreatorFinancialWritesNotFrozen, CreatorFinancialWritesFrozenError } from '@/lib/creators/creatorFinancialFreeze';
 import type { Withdrawal, WithdrawalOwnerType, WithdrawalStatus } from '@/types';
 
-export { InsufficientCreatorBalanceError };
+export { InsufficientCreatorBalanceError, CreatorFinancialWritesFrozenError };
 
 export class WithdrawalNotFoundError extends Error {
   constructor(withdrawalId: string) {
@@ -91,14 +92,15 @@ class WithdrawalService {
     if (input.amountKes < MIN_WITHDRAWAL_KES) {
       throw new WithdrawalBelowMinimumError(input.amountKes);
     }
+    await assertCreatorFinancialWritesNotFrozen(input.businessId);
 
-    const creator = await creatorRepository.findById(input.ownerId);
+    const creator = await creatorRepository.findById(input.businessId, input.ownerId);
     if (!creator || creator.businessId !== input.businessId || creator.status !== 'active') {
       throw new CreatorNotEligibleForWithdrawalError(input.ownerId);
     }
 
     return adminFirestore.runTransaction(async (tx) => {
-      await reserveBalanceInTransaction(tx, input.ownerId, input.amountKes);
+      await reserveBalanceInTransaction(tx, input.businessId, input.ownerId, input.amountKes);
       return withdrawalRepository.createInTransaction(
         tx,
         {
@@ -133,6 +135,7 @@ class WithdrawalService {
    * left short with no payout in flight.
    */
   async approveWithdrawal(businessId: string, withdrawalId: string, actor: string): Promise<WithdrawalStatus> {
+    await assertCreatorFinancialWritesNotFrozen(businessId);
     const withdrawal = await this.requirePending(businessId, withdrawalId, 'approve');
 
     try {
@@ -186,7 +189,7 @@ class WithdrawalService {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown B2C initiation failure';
       await adminFirestore.runTransaction(async (tx) => {
-        refundBalanceInTransaction(tx, withdrawal.ownerId, withdrawal.amountKes);
+        refundBalanceInTransaction(tx, businessId, withdrawal.ownerId, withdrawal.amountKes);
         withdrawalRepository.applyTransitionInTransaction(
           tx,
           withdrawalId,
@@ -201,10 +204,11 @@ class WithdrawalService {
   }
 
   async rejectWithdrawal(businessId: string, withdrawalId: string, actor: string, reason: string): Promise<void> {
+    await assertCreatorFinancialWritesNotFrozen(businessId);
     const withdrawal = await this.requirePending(businessId, withdrawalId, 'reject');
 
     await adminFirestore.runTransaction(async (tx) => {
-      refundBalanceInTransaction(tx, withdrawal.ownerId, withdrawal.amountKes);
+      refundBalanceInTransaction(tx, businessId, withdrawal.ownerId, withdrawal.amountKes);
       withdrawalRepository.applyTransitionInTransaction(
         tx,
         withdrawalId,
@@ -266,7 +270,7 @@ class WithdrawalService {
       });
     } else {
       await adminFirestore.runTransaction(async (tx) => {
-        refundBalanceInTransaction(tx, match.data.ownerId, match.data.amountKes);
+        refundBalanceInTransaction(tx, businessId, match.data.ownerId, match.data.amountKes);
         withdrawalRepository.applyTransitionInTransaction(
           tx,
           match.id,

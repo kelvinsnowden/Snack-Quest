@@ -18,6 +18,7 @@ import { userRepository } from '@/repositories/userRepository';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { assertCreatorFinancialWritesNotFrozen } from '@/lib/creators/creatorFinancialFreeze';
 import type { ReferralAttribution, ReferralLink, User } from '@/types';
 
 /**
@@ -101,6 +102,8 @@ class ReferralService {
     discountKes: number;
     commissionKes: number;
   }): Promise<void> {
+    await assertCreatorFinancialWritesNotFrozen(input.businessId);
+
     await adminFirestore.runTransaction(async (tx) => {
       createAttributionInTransaction(tx, {
         businessId: input.businessId,
@@ -111,14 +114,14 @@ class ReferralService {
         discountKes: input.discountKes,
         commissionKes: input.commissionKes,
       });
-      creditCreatorInTransaction(tx, input.ownerId, {
+      creditCreatorInTransaction(tx, input.businessId, input.ownerId, {
         type: 'referral_commission',
         orderId: input.orderId,
         referralLinkId: input.referralLinkId,
         amountKes: input.commissionKes,
       });
       incrementLinkConversionInTransaction(tx, input.referralLinkId);
-      incrementCreatorConversionInTransaction(tx, input.ownerId);
+      incrementCreatorConversionInTransaction(tx, input.businessId, input.ownerId);
     });
 
     await publishEvent(
@@ -221,7 +224,7 @@ class ReferralService {
     }
     await Promise.all([
       referralLinkRepository.incrementClickCount(match.id),
-      creatorRepository.incrementClickCount(match.data.ownerId),
+      creatorRepository.incrementClickCount(businessId, match.data.ownerId),
     ]);
     return match.data;
   }
