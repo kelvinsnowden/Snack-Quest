@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { formatKes } from '@/lib/orders/format';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Our boxes',
@@ -37,7 +38,7 @@ export default async function BoxesPage() {
       {packages.length > 0 ? (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(itemListJsonLd) }}
         />
       ) : null}
       <div className="max-w-2xl">

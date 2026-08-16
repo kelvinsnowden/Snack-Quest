@@ -36,6 +36,42 @@ const nextConfig: NextConfig = {
     // images instead of the `unoptimized` escape hatch other surfaces use.
     remotePatterns: [{ protocol: 'https', hostname: '*.public.blob.vercel-storage.com' }],
   },
+  // § security audit — no response headers were set anywhere in this
+  // app, which made clickjacking on the Admin/Creator/Finance/Agent/
+  // Warehouse portals' real action buttons (approve a withdrawal,
+  // issue a refund, mark an order dispatched) plausible: embed the
+  // portal in an invisible iframe on an attacker's page and trick a
+  // logged-in staff/creator into clicking through an overlay. Nothing
+  // in this app legitimately gets embedded in another site's iframe,
+  // so `frame-ancestors 'self'` (with `X-Frame-Options: SAMEORIGIN` as
+  // a fallback for the handful of older browsers that don't read the
+  // CSP form) has zero functional cost. `X-Content-Type-Options` stops
+  // a browser from executing an upload/response as a different content
+  // type than declared — also zero functional cost.
+  //
+  // Deliberately NOT a full Content-Security-Policy here: this app
+  // loads the Meta Pixel and TikTok Pixel via inline `<Script>` tags
+  // that both execute inline JS and load from `connect.facebook.net`/
+  // `analytics.tiktok.com`, on top of Firebase Auth/Firestore and
+  // Vercel Blob origins — a CSP strict enough to matter needs each of
+  // those enumerated and verified page-by-page in a browser (nonces
+  // for the inline scripts, exact `connect-src`/`img-src` origins) or
+  // it silently breaks conversion tracking or the checkout flow in
+  // production. That's real, scoped follow-up work, not something to
+  // ship unverified inside a broader fix.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

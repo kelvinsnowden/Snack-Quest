@@ -4,6 +4,7 @@ import { REFERRAL_COOKIE_MAX_AGE_SECONDS } from '@/lib/creators/referralCookie';
 import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { Reveal } from '../design/Reveal';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 
 /**
  * Objection-handling FAQ (§ Creator Program CRO pass, brief item 13) —
@@ -136,7 +137,7 @@ export function CreatorFaq() {
     <section className="bg-background px-5 py-16 md:px-10 md:py-32">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }}
       />
       <Reveal>
         <div className="mx-auto max-w-xl text-center">

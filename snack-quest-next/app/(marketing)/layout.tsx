@@ -10,6 +10,7 @@ import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 import { SOCIAL_LINKS } from '@/lib/config/socialLinks';
 import { META_PIXEL_ID } from '@/lib/config/metaPixel';
 import { TIKTOK_PIXEL_CODE } from '@/lib/config/tiktokPixel';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 
 /**
  * Every marketing page reads live data (active boxes, the business's
@@ -69,7 +70,7 @@ export default async function MarketingLayout({
         <PageViewTracker />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLdGraph) }}
         />
         {/* Meta Pixel — public marketing pages only, never the internal Admin/Finance/Warehouse/Agent/Creator portals. */}
         <Script id="meta-pixel" strategy="afterInteractive">
