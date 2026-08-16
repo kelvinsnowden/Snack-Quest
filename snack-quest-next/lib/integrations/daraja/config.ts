@@ -74,6 +74,33 @@ export class DarajaReversalNotConfiguredError extends Error {
   }
 }
 
+/**
+ * Transaction Status Query credentials (§ Daraja B2C production
+ * readiness — stuck-withdrawal reconciliation) — reuses the same B2C
+ * operator credentials as `DarajaB2CConfig`/`DarajaReversalConfig`
+ * (Safaricom authorizes this query under the same ORG API Initiator
+ * role as B2C itself), with its own dedicated ResultURL/QueueTimeOutURL
+ * path so a status-query result is never confused with a real B2C
+ * payout result at the routing level.
+ */
+export interface DarajaTransactionStatusConfig {
+  consumerKey: string;
+  consumerSecret: string;
+  shortcode: string;
+  initiatorName: string;
+  securityCredential: string;
+  baseUrl: string;
+  resultUrl: string;
+  queueTimeoutUrl: string;
+}
+
+export class DarajaTransactionStatusNotConfiguredError extends Error {
+  constructor(businessId: string) {
+    super(`Business ${businessId} has no Daraja operator credentials configured — cannot query transaction status.`);
+    this.name = 'DarajaTransactionStatusNotConfiguredError';
+  }
+}
+
 function toBaseUrl(secret: DarajaIntegrationSecret): string {
   return secret.env === 'production'
     ? 'https://api.safaricom.co.ke'
@@ -133,5 +160,26 @@ export async function getDarajaReversalConfig(businessId: string): Promise<Daraj
     baseUrl: toBaseUrl(secret),
     resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-result`, webhookSecret),
     queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-timeout`, webhookSecret),
+  };
+}
+
+export async function getDarajaTransactionStatusConfig(businessId: string): Promise<DarajaTransactionStatusConfig> {
+  const secret = await businessIntegrationSecretRepository.get(businessId, 'daraja');
+  assertIntegrationEnabled(businessId, 'daraja', secret);
+  if (!secret.b2cInitiatorName || !secret.b2cSecurityCredential) {
+    throw new DarajaTransactionStatusNotConfiguredError(businessId);
+  }
+  const webhookSecret = await businessIntegrationSecretRepository.ensureWebhookSecret(businessId, 'daraja', secret.webhookSecret);
+
+  const origin = new URL(secret.callbackUrl).origin;
+  return {
+    consumerKey: secret.consumerKey,
+    consumerSecret: secret.consumerSecret,
+    shortcode: secret.shortcode,
+    initiatorName: secret.b2cInitiatorName,
+    securityCredential: secret.b2cSecurityCredential,
+    baseUrl: toBaseUrl(secret),
+    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/transaction-status-result`, webhookSecret),
+    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/transaction-status-timeout`, webhookSecret),
   };
 }

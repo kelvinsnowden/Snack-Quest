@@ -857,6 +857,20 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "pendingStatusQueryOriginatorConversationId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "withdrawals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "businessId",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "ownerId",
           "order": "ASCENDING"
         },

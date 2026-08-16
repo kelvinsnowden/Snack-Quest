@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/reconcile-stk-payments",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-stuck-withdrawals",
+      "schedule": "0 3 * * *"
     }
   ]
 }

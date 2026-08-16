@@ -24,6 +24,9 @@ function withdrawalInput(overrides: Partial<WithdrawalInput> = {}): WithdrawalIn
     paidAt: null,
     b2cOriginatorConversationId: null,
     b2cConversationId: null,
+    failureCategory: null,
+    pendingStatusQueryOriginatorConversationId: null,
+    statusQueryAttemptCount: 0,
     ...overrides,
   };
 }

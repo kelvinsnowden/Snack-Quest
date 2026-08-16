@@ -1,6 +1,12 @@
 import 'server-only';
 
-import { getDarajaConfig, getDarajaB2CConfig, getDarajaReversalConfig, type DarajaConfig } from './config';
+import {
+  getDarajaConfig,
+  getDarajaB2CConfig,
+  getDarajaReversalConfig,
+  getDarajaTransactionStatusConfig,
+  type DarajaConfig,
+} from './config';
 import { withRetry } from '../shared/withRetry';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
 import type {
@@ -14,6 +20,8 @@ import type {
   ReversalResultCallback,
   StkPushResult,
   StkQueryResult,
+  TransactionStatusQueryAck,
+  TransactionStatusResult,
 } from '../types';
 
 const GATEWAY_NAME = 'daraja';
@@ -112,10 +120,11 @@ interface B2CResultParameter {
   Value: string | number;
 }
 
-// Shared shape: B2C and Transaction Reversal results both come back as
-// the same `Result` envelope (ResultCode/ResultDesc/conversation ids/
-// TransactionID/ResultParameters) — one interface, reused by
-// `verifyB2CResult` and `verifyReversalResult` below, not two
+// Shared shape: B2C, Transaction Reversal, and Transaction Status Query
+// results all come back as the same `Result` envelope (ResultCode/
+// ResultDesc/conversation ids/TransactionID/ResultParameters) — one
+// interface, reused by `verifyB2CResult`, `verifyReversalResult`, and
+// `verifyTransactionStatusResult` below, not three
 // structurally-identical copies.
 interface RawDarajaB2CResult {
   Result?: {
@@ -292,9 +301,19 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
   /**
    * Initiates a real M-Pesa B2C disbursement (`CommandID: BusinessPayment`
    * — a business paying an individual, not a salary or promotion
-   * payout, matching a withdrawal). Same non-retry discipline as
-   * `initiateStkPush`: Safaricom has no dedup key for this request, so
-   * a blind retry after a network failure risks paying out twice.
+   * payout, matching a withdrawal), against the B2C **v3** endpoint —
+   * v1 is a different, older contract; verified against the Daraja B2C
+   * documentation this was built to (§ Daraja B2C production
+   * readiness). Same non-retry discipline as `initiateStkPush`: a blind
+   * retry after a network failure risks paying out twice — but unlike
+   * the v1 contract (where Safaricom minted the correlation id and
+   * only returned it in the response), v3 requires *us* to supply
+   * `OriginatorConversationID` as a real request field. That value is
+   * never generated here — the caller (`WithdrawalService`) generates
+   * and durably persists it *before* calling this method, specifically
+   * so a crash between "Daraja accepted the request" and "we recorded
+   * the response" still leaves a real correlation id on record to
+   * reconcile against later (`queryTransactionStatus`).
    * `WithdrawalService` owns the decision of what to do after an
    * ambiguous failure, not this Gateway.
    */
@@ -304,18 +323,20 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
     amountKes: number;
     remarks: string;
     occasion?: string;
+    originatorConversationId: string;
   }): Promise<B2CPaymentResult> {
     const config = await getDarajaB2CConfig(input.businessId);
     const accessToken = await fetchAccessToken(input.businessId, config);
 
     return withCircuitBreaker(`${GATEWAY_NAME}-b2c:${input.businessId}`, async () => {
-      const response = await fetch(`${config.baseUrl}/mpesa/b2c/v1/paymentrequest`, {
+      const response = await fetch(`${config.baseUrl}/mpesa/b2c/v3/paymentrequest`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          OriginatorConversationID: input.originatorConversationId,
           InitiatorName: config.initiatorName,
           SecurityCredential: config.securityCredential,
           CommandID: 'BusinessPayment',
@@ -325,7 +346,11 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
           Remarks: input.remarks,
           QueueTimeOutURL: config.queueTimeoutUrl,
           ResultURL: config.resultUrl,
-          Occasion: input.occasion ?? '',
+          // Safaricom's own B2C v3 field is spelled "Occassion" (not
+          // the more conventional "Occasion" the Reversal API below
+          // uses) — a real, documented inconsistency between the two
+          // products, not a typo introduced here.
+          Occassion: input.occasion ?? '',
         }),
       });
 
@@ -452,6 +477,111 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
       transactionId: succeeded ? result.TransactionID : undefined,
       amountKes: succeeded ? Number(findParam('Amount')) : undefined,
       transactionCompletedAt: succeeded ? String(findParam('TransactionCompletedDateTime')) : undefined,
+    };
+  }
+
+  /**
+   * Transaction Status Query (§ Daraja B2C production readiness —
+   * stuck-withdrawal reconciliation) — the B2C equivalent of
+   * `queryStkStatus`, but itself asynchronous (like B2C/Reversal): this
+   * only returns Safaricom's acknowledgement that the query was
+   * accepted, never the actual answer — that arrives later at
+   * `config.resultUrl`, parsed by `verifyTransactionStatusResult`.
+   * Queries by `OriginatorConversationID` (the id `WithdrawalService`
+   * generated and persisted before the *original* B2C call) rather
+   * than a Transaction ID/receipt number, since a stuck withdrawal is
+   * exactly the case where no receipt number was ever received.
+   *
+   * The exact request field set below reflects Daraja's documented
+   * Transaction Status Query contract as of this writing — verify it
+   * against a live sandbox call before relying on this reconciliation
+   * path in production (see the production-readiness report).
+   */
+  async queryTransactionStatus(input: {
+    businessId: string;
+    originatorConversationId: string;
+    remarks: string;
+    occasion?: string;
+  }): Promise<TransactionStatusQueryAck> {
+    const config = await getDarajaTransactionStatusConfig(input.businessId);
+    const accessToken = await fetchAccessToken(input.businessId, config);
+
+    // A query has no dedup key of its own to protect and does not move
+    // money — safe to retry on a transient network failure, same
+    // reasoning as `queryStkStatus`.
+    return withCircuitBreaker(`${GATEWAY_NAME}-txstatus:${input.businessId}`, () =>
+      withRetry(async () => {
+        const response = await fetch(`${config.baseUrl}/mpesa/transactionstatus/v1/query`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            Initiator: config.initiatorName,
+            SecurityCredential: config.securityCredential,
+            CommandID: 'TransactionStatusQuery',
+            OriginatorConversationID: input.originatorConversationId,
+            PartyA: config.shortcode,
+            IdentifierType: '4',
+            ResultURL: config.resultUrl,
+            QueueTimeOutURL: config.queueTimeoutUrl,
+            Remarks: input.remarks,
+            Occasion: input.occasion ?? '',
+          }),
+        });
+
+        const data = (await response.json()) as Record<string, unknown>;
+        if (!response.ok || data.ResponseCode !== '0') {
+          throw new Error(
+            `Daraja transaction status query failed: ${
+              data.errorMessage ?? data.ResponseDescription ?? response.status
+            }`,
+          );
+        }
+
+        return {
+          originatorConversationId: String(data.OriginatorConversationID),
+          conversationId: String(data.ConversationID),
+          responseCode: String(data.ResponseCode),
+          responseDescription: String(data.ResponseDescription),
+        };
+      }),
+    );
+  }
+
+  verifyTransactionStatusResult(payload: unknown): TransactionStatusResult {
+    const result = (payload as RawDarajaB2CResult).Result;
+    if (!result) {
+      throw new Error('Malformed Daraja transaction status result payload: missing Result');
+    }
+
+    const params = result.ResultParameters?.ResultParameter ?? [];
+    const findParam = (key: string): string | number | undefined =>
+      params.find((p) => p.Key === key)?.Value;
+
+    const queryItselfSucceeded = result.ResultCode === 0;
+    // "TransactionStatus" is Safaricom's own free-text field for the
+    // *queried* transaction's real outcome — deliberately read as a
+    // raw, optional string and never coerced into a boolean here.
+    // `WithdrawalService.handleTransactionStatusResult` is the only
+    // place allowed to decide what counts as "safe to mark paid", and
+    // it requires an exact 'Completed' match, nothing looser.
+    const transactionStatus = queryItselfSucceeded
+      ? (findParam('TransactionStatus') as string | undefined)
+      : undefined;
+
+    return {
+      originatorConversationId: result.OriginatorConversationID,
+      conversationId: result.ConversationID,
+      resultCode: result.ResultCode,
+      resultDesc: result.ResultDesc,
+      transactionStatus,
+      transactionId: queryItselfSucceeded ? result.TransactionID : undefined,
+      amountKes: queryItselfSucceeded && findParam('Amount') != null ? Number(findParam('Amount')) : undefined,
+      transactionCompletedAt: queryItselfSucceeded
+        ? (findParam('FinalisedTime') as string | undefined) ?? (findParam('TransactionCompletedDateTime') as string | undefined)
+        : undefined,
     };
   }
 }
