@@ -93,7 +93,7 @@ class WithdrawalService {
     }
 
     const creator = await creatorRepository.findById(input.ownerId);
-    if (!creator || creator.businessId !== input.businessId) {
+    if (!creator || creator.businessId !== input.businessId || creator.status !== 'active') {
       throw new CreatorNotEligibleForWithdrawalError(input.ownerId);
     }
 

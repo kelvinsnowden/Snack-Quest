@@ -89,7 +89,7 @@ afterEach(() => {
 
 describe('WithdrawalService.requestWithdrawal', () => {
   it('reserves the balance and creates a pending withdrawal', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
 
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
@@ -106,7 +106,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
   });
 
   it('rejects a request exceeding the available balance, reserving nothing', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 500 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 500 });
 
     await expect(
       withdrawalService.requestWithdrawal({
@@ -123,7 +123,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
   });
 
   it('rejects a creator outside the business', async () => {
-    await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID, status: 'active', availableCashKes: 5000 });
 
     await expect(
       withdrawalService.requestWithdrawal({
@@ -149,7 +149,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
   });
 
   it('rejects an amount below the minimum withdrawal, reserving nothing', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
 
     await expect(
       withdrawalService.requestWithdrawal({
@@ -166,7 +166,7 @@ describe('WithdrawalService.requestWithdrawal', () => {
   });
 
   it('allows a withdrawal request for exactly the minimum', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
 
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
@@ -183,8 +183,8 @@ describe('WithdrawalService.requestWithdrawal', () => {
 
 describe('WithdrawalService.listWithdrawalsForOwner', () => {
   it('returns only the given owner’s own withdrawal history', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
-    await seedCreator('creator-2', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
+    await seedCreator('creator-2', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',
@@ -209,7 +209,7 @@ describe('WithdrawalService.listWithdrawalsForOwner', () => {
 
 describe('WithdrawalService.approveWithdrawal', () => {
   it('initiates a real B2C payout and stores the correlation ids', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',
@@ -230,7 +230,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
   });
 
   it('marks the withdrawal failed and refunds the balance when Daraja rejects the B2C request', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',
@@ -261,7 +261,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
       version: 1,
       isActive: true,
     });
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     await userRepository.create(
       'creator-1',
       { email: 'creator@example.com', roles: ['creator'], displayName: 'Cool Creator', photoURL: null },
@@ -284,7 +284,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
   });
 
   it('throws WithdrawalNotFoundError for a withdrawal in a different business', async () => {
-    await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({
       businessId: OTHER_BUSINESS_ID,
       ownerId: 'creator-1',
@@ -299,7 +299,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
   });
 
   it('throws InvalidWithdrawalTransitionError for an already-approved withdrawal', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',
@@ -318,7 +318,7 @@ describe('WithdrawalService.approveWithdrawal', () => {
 
 describe('WithdrawalService.rejectWithdrawal', () => {
   it('refunds the reserved balance and records the reason', async () => {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',
@@ -339,7 +339,7 @@ describe('WithdrawalService.rejectWithdrawal', () => {
 
 describe('WithdrawalService.handleB2CResult', () => {
   async function approvedWithdrawal(originatorConversationId: string) {
-    await seedCreator('creator-1', { businessId: BUSINESS_ID, availableCashKes: 5000 });
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({
       businessId: BUSINESS_ID,
       ownerId: 'creator-1',

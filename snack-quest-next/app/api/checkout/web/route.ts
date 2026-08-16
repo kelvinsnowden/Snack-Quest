@@ -104,6 +104,7 @@ export async function POST(request: Request): Promise<Response> {
       contactPhone: typeof contactPhone === 'string' ? contactPhone : undefined,
       referralCode: typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
       isCreatorCheckout: Boolean(creatorSession),
+      creatorUid: creatorSession?.uid ?? null,
       attribution,
     });
 

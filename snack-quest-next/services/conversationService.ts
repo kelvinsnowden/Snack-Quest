@@ -16,6 +16,7 @@ import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
+import { isSelfReferral } from '@/lib/creators/selfReferralGuard';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -203,6 +204,16 @@ export interface WebCheckoutInput {
    */
   isCreatorCheckout?: boolean;
   /**
+   * The verified creator session's own uid when `isCreatorCheckout` is
+   * true, `null`/absent otherwise — same server-verified-only sourcing
+   * as `isCreatorCheckout` itself. Used only to catch self-referral
+   * (§ security audit, `lib/creators/selfReferralGuard.ts`): a creator
+   * checking out with their own referral code voids the code entirely
+   * rather than stacking a discount with a commission paid to
+   * themselves.
+   */
+  creatorUid?: string | null;
+  /**
    * Set when a staff member is placing this order on the customer's
    * behalf (§ staff-initiated orders) — an order taken over the phone,
    * at an event, or in a DM. Absent for a customer checking out
@@ -246,6 +257,8 @@ export interface WebCheckoutQuoteInput {
   phone?: string;
   /** Same server-verified meaning as `WebCheckoutInput.isCreatorCheckout` — the quote and the charge must show the same discount, or a customer would pay more than they were quoted. */
   isCreatorCheckout?: boolean;
+  /** Same server-verified meaning as `WebCheckoutInput.creatorUid`. */
+  creatorUid?: string | null;
 }
 
 class ConversationService {
@@ -493,6 +506,24 @@ class ConversationService {
         'One of our team is already helping you with an order on WhatsApp — please finish there, or message us to start over.',
       );
     }
+    // § Security audit — wallet double-discount: without this, a second
+    // checkout for the same phone while the first STK push is still
+    // pending would freeze a second snapshot against the same
+    // not-yet-debited wallet balance (`walletService.redeemableAmount`
+    // is a read, not a hold — see `freezeSnapshot`), letting one real
+    // balance be applied as a discount on two orders. `awaiting_payment`
+    // is transient: `handlePaymentResult`'s failure path resets it back
+    // to `'active'` the moment Safaricom reports failure/cancellation,
+    // so this never strands a customer whose payment genuinely failed —
+    // only blocks starting a second one while the first might still
+    // succeed. Staff exempt for the same reason `agent_assigned` is:
+    // a staff member placing a fresh order over the phone is not the
+    // race this guards against.
+    if (existing?.conversation.status === 'awaiting_payment' && !input.initiatedBy) {
+      throw new WebCheckoutConflictError(
+        'You already have a payment in progress — check your phone for the M-Pesa prompt. Give it a minute and try again if it expired.',
+      );
+    }
 
     const { delivery, stateBlob } = await this.buildWebDeliveryDetails(businessId, county, input);
 
@@ -547,6 +578,7 @@ class ConversationService {
           referralCode: input.referralCode,
           isRescueOffer: box.isRescueOffer,
           isCreatorCheckout: input.isCreatorCheckout,
+          creatorUid: input.creatorUid,
         },
         delivery,
       );
@@ -787,9 +819,26 @@ class ConversationService {
       }
     }
 
-    const referral = input.referralCode
+    let referral = input.referralCode
       ? await referralService.validateCode(businessId, input.referralCode)
       : null;
+    if (referral) {
+      let normalizedPhone: string | null = null;
+      try {
+        normalizedPhone = input.phone ? normalizeKenyanPhone(input.phone) : null;
+      } catch {
+        normalizedPhone = null;
+      }
+      if (
+        await isSelfReferral({
+          referralOwnerId: referral.ownerId,
+          buyerCreatorUid: input.creatorUid,
+          buyerPhone: normalizedPhone,
+        })
+      ) {
+        referral = null;
+      }
+    }
 
     // Wallet credit needs a real, normalized phone number to look up.
     // Half-typed numbers are the norm here, so a rejection just means
@@ -970,12 +1019,24 @@ class ConversationService {
       isRescueOffer?: boolean;
       /** Same server-verified meaning as `WebCheckoutInput.isCreatorCheckout`. */
       isCreatorCheckout?: boolean;
+      /** Same server-verified meaning as `WebCheckoutInput.creatorUid`. */
+      creatorUid?: string | null;
     },
     delivery: DeliveryDetails,
   ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
-    const referral = common.referralCode
+    let referral = common.referralCode
       ? await referralService.validateCode(businessId, common.referralCode)
       : null;
+    if (
+      referral &&
+      (await isSelfReferral({
+        referralOwnerId: referral.ownerId,
+        buyerCreatorUid: common.creatorUid,
+        buyerPhone: phoneNumber,
+      }))
+    ) {
+      referral = null;
+    }
 
     const quantity = common.quantity ?? 1;
     // Wallet credit is applied on top of any referral discount, capped
