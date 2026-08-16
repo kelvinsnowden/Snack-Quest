@@ -1,10 +1,18 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   campaignService,
   CampaignNotFoundError,
   InvalidCampaignInputError,
 } from '@/services/campaignService';
-import { campaignRepository, type CampaignInput } from '@/repositories/campaignRepository';
+import {
+  campaignRepository,
+  type CampaignInput,
+} from '@/repositories/campaignRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { Campaign, CampaignStatus } from '@/types';
 
@@ -21,9 +29,16 @@ interface UpdateCampaignBody {
   referenceLink?: unknown;
 }
 
-const CAMPAIGN_STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
+const CAMPAIGN_STATUSES: CampaignStatus[] = [
+  'draft',
+  'active',
+  'paused',
+  'ended',
+];
 
-function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> } | { error: string } {
+function buildPatch(
+  body: UpdateCampaignBody,
+): { patch: Partial<CampaignInput> } | { error: string } {
   const patch: Partial<CampaignInput> = {};
 
   if (body.title !== undefined) {
@@ -34,7 +49,9 @@ function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> }
   }
   if (body.status !== undefined) {
     if (!CAMPAIGN_STATUSES.includes(body.status as CampaignStatus)) {
-      return { error: `"status" must be one of: ${CAMPAIGN_STATUSES.join(', ')}.` };
+      return {
+        error: `"status" must be one of: ${CAMPAIGN_STATUSES.join(', ')}.`,
+      };
     }
     patch.status = body.status as CampaignStatus;
   }
@@ -44,7 +61,9 @@ function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> }
       !Number.isFinite(body.commissionRateKes) ||
       body.commissionRateKes <= 0
     ) {
-      return { error: '"commissionRateKes" must be a positive number when provided.' };
+      return {
+        error: '"commissionRateKes" must be a positive number when provided.',
+      };
     }
     patch.commissionRateKes = body.commissionRateKes;
   }
@@ -55,13 +74,21 @@ function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> }
     patch.rules = body.rules.trim();
   }
   if (body.targetNiche !== undefined) {
-    if (typeof body.targetNiche !== 'string' || body.targetNiche.trim().length === 0) {
-      return { error: '"targetNiche" must be a non-empty string when provided.' };
+    if (
+      typeof body.targetNiche !== 'string' ||
+      body.targetNiche.trim().length === 0
+    ) {
+      return {
+        error: '"targetNiche" must be a non-empty string when provided.',
+      };
     }
     patch.targetNiche = body.targetNiche.trim();
   }
   if (body.deadline !== undefined) {
-    if (typeof body.deadline !== 'string' || Number.isNaN(new Date(body.deadline).getTime())) {
+    if (
+      typeof body.deadline !== 'string' ||
+      Number.isNaN(new Date(body.deadline).getTime())
+    ) {
       return { error: '"deadline" must be a valid date string when provided.' };
     }
     patch.deadline = new Date(body.deadline) as unknown as Campaign['deadline'];
@@ -73,8 +100,13 @@ function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> }
     patch.assetsUrl = body.assetsUrl;
   }
   if (body.imageUrls !== undefined) {
-    if (!Array.isArray(body.imageUrls) || body.imageUrls.some((url) => typeof url !== 'string')) {
-      return { error: '"imageUrls" must be an array of strings when provided.' };
+    if (
+      !Array.isArray(body.imageUrls) ||
+      body.imageUrls.some((url) => typeof url !== 'string')
+    ) {
+      return {
+        error: '"imageUrls" must be an array of strings when provided.',
+      };
     }
     patch.imageUrls = body.imageUrls;
   }
@@ -86,7 +118,9 @@ function buildPatch(body: UpdateCampaignBody): { patch: Partial<CampaignInput> }
   }
   if (body.referenceLink !== undefined) {
     if (body.referenceLink !== null && typeof body.referenceLink !== 'string') {
-      return { error: '"referenceLink" must be a string or null when provided.' };
+      return {
+        error: '"referenceLink" must be a string or null when provided.',
+      };
     }
     patch.referenceLink = body.referenceLink;
   }
@@ -103,12 +137,21 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { campaignId } = await params;
 
-  const existing = await campaignRepository.findById(session.businessId, campaignId);
+  const existing = await campaignRepository.findById(
+    session.businessId,
+    campaignId,
+  );
   if (!existing) {
-    return Response.json({ error: `Campaign ${campaignId} not found` }, { status: 404 });
+    return Response.json(
+      { error: `Campaign ${campaignId} not found` },
+      { status: 404 },
+    );
   }
 
   let body: UpdateCampaignBody;
@@ -124,8 +167,16 @@ export async function PATCH(
   }
 
   try {
-    await campaignService.updateCampaign(session.businessId, campaignId, result.patch, session.uid);
-    const updated = await campaignRepository.findById(session.businessId, campaignId);
+    await campaignService.updateCampaign(
+      session.businessId,
+      campaignId,
+      result.patch,
+      session.uid,
+    );
+    const updated = await campaignRepository.findById(
+      session.businessId,
+      campaignId,
+    );
 
     await recordAuditLog(request, {
       businessId: session.businessId,

@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   purchaseOrderService,
@@ -20,6 +25,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { purchaseOrderId } = await params;
 
@@ -27,12 +35,25 @@ export async function POST(
   try {
     const body = (await request.json().catch(() => null)) as ReceiveBody | null;
     if (body?.expiresAtByPackageId !== undefined) {
-      if (typeof body.expiresAtByPackageId !== 'object' || body.expiresAtByPackageId === null) {
-        return Response.json({ error: '"expiresAtByPackageId" must be an object when provided.' }, { status: 400 });
+      if (
+        typeof body.expiresAtByPackageId !== 'object' ||
+        body.expiresAtByPackageId === null
+      ) {
+        return Response.json(
+          { error: '"expiresAtByPackageId" must be an object when provided.' },
+          { status: 400 },
+        );
       }
-      for (const [packageId, value] of Object.entries(body.expiresAtByPackageId as Record<string, unknown>)) {
+      for (const [packageId, value] of Object.entries(
+        body.expiresAtByPackageId as Record<string, unknown>,
+      )) {
         if (value !== null && typeof value !== 'string') {
-          return Response.json({ error: `"expiresAtByPackageId.${packageId}" must be a string or null.` }, { status: 400 });
+          return Response.json(
+            {
+              error: `"expiresAtByPackageId.${packageId}" must be a string or null.`,
+            },
+            { status: 400 },
+          );
         }
         expiresAtByPackageId[packageId] = value as string | null;
       }
@@ -42,7 +63,12 @@ export async function POST(
   }
 
   try {
-    await purchaseOrderService.receivePurchaseOrder(session.businessId, purchaseOrderId, session.uid, expiresAtByPackageId);
+    await purchaseOrderService.receivePurchaseOrder(
+      session.businessId,
+      purchaseOrderId,
+      session.uid,
+      expiresAtByPackageId,
+    );
 
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -61,6 +87,14 @@ export async function POST(
     if (error instanceof InvalidPurchaseOrderTransitionError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'Could not receive this purchase order' }, { status: 400 });
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not receive this purchase order',
+      },
+      { status: 400 },
+    );
   }
 }

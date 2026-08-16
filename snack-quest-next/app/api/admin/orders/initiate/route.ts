@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   conversationService,
@@ -6,7 +11,10 @@ import {
 } from '@/services/conversationService';
 import { InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { auditLogRepository } from '@/repositories/auditLogRepository';
-import type { WebCheckoutRequest, WebCheckoutResponse } from '@/types/webCheckout';
+import type {
+  WebCheckoutRequest,
+  WebCheckoutResponse,
+} from '@/types/webCheckout';
 
 /**
  * `POST /api/admin/orders/initiate` (§ staff-initiated orders) — a
@@ -31,6 +39,9 @@ export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
   }
 
   let body: unknown;
@@ -67,28 +78,43 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   if (deliveryMethod !== 'pickup' && deliveryMethod !== 'door') {
-    return Response.json({ error: "deliveryMethod must be 'pickup' or 'door'" }, { status: 400 });
+    return Response.json(
+      { error: "deliveryMethod must be 'pickup' or 'door'" },
+      { status: 400 },
+    );
   }
   if (typeof quantity !== 'number') {
-    return Response.json({ error: 'quantity must be a number' }, { status: 400 });
+    return Response.json(
+      { error: 'quantity must be a number' },
+      { status: 400 },
+    );
   }
 
   try {
-    const result = await conversationService.startWebCheckout(session.businessId, {
-      packageId,
-      quantity,
-      customerName,
-      phone,
-      county,
-      deliveryMethod,
-      pickupStationId: typeof pickupStationId === 'string' ? pickupStationId : undefined,
-      addressText: typeof addressText === 'string' ? addressText : undefined,
-      estate: typeof estate === 'string' ? estate : undefined,
-      landmark: typeof landmark === 'string' ? landmark : undefined,
-      referralCode:
-        typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
-      initiatedBy: { staffUid: session.uid, staffName: session.displayName || session.email },
-    });
+    const result = await conversationService.startWebCheckout(
+      session.businessId,
+      {
+        packageId,
+        quantity,
+        customerName,
+        phone,
+        county,
+        deliveryMethod,
+        pickupStationId:
+          typeof pickupStationId === 'string' ? pickupStationId : undefined,
+        addressText: typeof addressText === 'string' ? addressText : undefined,
+        estate: typeof estate === 'string' ? estate : undefined,
+        landmark: typeof landmark === 'string' ? landmark : undefined,
+        referralCode:
+          typeof referralCode === 'string' && referralCode.trim()
+            ? referralCode.trim()
+            : undefined,
+        initiatedBy: {
+          staffUid: session.uid,
+          staffName: session.displayName || session.email,
+        },
+      },
+    );
 
     await auditLogRepository.record({
       businessId: session.businessId,
@@ -106,7 +132,8 @@ export async function POST(request: Request): Promise<Response> {
         totalKes: result.pricing.totalKes,
         stkPushSent: result.stkPushSent,
       },
-      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '',
+      ipAddress:
+        request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '',
     });
 
     const response: WebCheckoutResponse = {
@@ -117,7 +144,10 @@ export async function POST(request: Request): Promise<Response> {
     };
     return Response.json(response);
   } catch (error) {
-    if (error instanceof WebCheckoutValidationError || error instanceof InvalidPhoneNumberError) {
+    if (
+      error instanceof WebCheckoutValidationError ||
+      error instanceof InvalidPhoneNumberError
+    ) {
       return Response.json({ error: error.message }, { status: 400 });
     }
     if (error instanceof WebCheckoutConflictError) {

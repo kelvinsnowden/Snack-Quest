@@ -1,5 +1,13 @@
+import {
+  hasStaffRole,
+  ADMIN_OR_AGENT,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { conversationService, ConversationNotFoundError } from '@/services/conversationService';
+import {
+  conversationService,
+  ConversationNotFoundError,
+} from '@/services/conversationService';
 
 /** Hands the conversation back to the bot (§ Admin: Conversation monitoring). */
 export async function POST(
@@ -10,18 +18,29 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
+    return forbiddenResponse();
+  }
 
   const { conversationId } = await params;
 
   try {
-    await conversationService.adminReturnToBot(session.businessId, conversationId);
+    await conversationService.adminReturnToBot(
+      session.businessId,
+      conversationId,
+    );
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof ConversationNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not return conversation to bot' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not return conversation to bot',
+      },
       { status: 400 },
     );
   }

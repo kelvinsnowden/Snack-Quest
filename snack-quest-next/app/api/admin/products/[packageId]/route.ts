@@ -1,6 +1,14 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
-import { packageRepository, type PackageInput } from '@/repositories/packageRepository';
+import {
+  packageRepository,
+  type PackageInput,
+} from '@/repositories/packageRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { Package } from '@/types';
 
@@ -17,7 +25,9 @@ interface UpdateProductBody {
   offerExpiresAt?: unknown;
 }
 
-function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } | { error: string } {
+function buildPatch(
+  body: UpdateProductBody,
+): { patch: Partial<PackageInput> } | { error: string } {
   const patch: Partial<PackageInput> = {};
 
   if (body.name !== undefined) {
@@ -27,13 +37,22 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
     patch.name = body.name.trim();
   }
   if (body.description !== undefined) {
-    if (typeof body.description !== 'string' || body.description.trim().length === 0) {
-      return { error: '"description" must be a non-empty string when provided.' };
+    if (
+      typeof body.description !== 'string' ||
+      body.description.trim().length === 0
+    ) {
+      return {
+        error: '"description" must be a non-empty string when provided.',
+      };
     }
     patch.description = body.description.trim();
   }
   if (body.priceKes !== undefined) {
-    if (typeof body.priceKes !== 'number' || !Number.isFinite(body.priceKes) || body.priceKes <= 0) {
+    if (
+      typeof body.priceKes !== 'number' ||
+      !Number.isFinite(body.priceKes) ||
+      body.priceKes <= 0
+    ) {
       return { error: '"priceKes" must be a positive number when provided.' };
     }
     patch.priceKes = body.priceKes;
@@ -45,8 +64,14 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
     patch.isActive = body.isActive;
   }
   if (body.stockCount !== undefined) {
-    if (typeof body.stockCount !== 'number' || !Number.isFinite(body.stockCount) || body.stockCount < 0) {
-      return { error: '"stockCount" must be a non-negative number when provided.' };
+    if (
+      typeof body.stockCount !== 'number' ||
+      !Number.isFinite(body.stockCount) ||
+      body.stockCount < 0
+    ) {
+      return {
+        error: '"stockCount" must be a non-negative number when provided.',
+      };
     }
     patch.stockCount = body.stockCount;
   }
@@ -56,7 +81,10 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
       !Number.isFinite(body.lowStockThreshold) ||
       body.lowStockThreshold < 0
     ) {
-      return { error: '"lowStockThreshold" must be a non-negative number when provided.' };
+      return {
+        error:
+          '"lowStockThreshold" must be a non-negative number when provided.',
+      };
     }
     patch.lowStockThreshold = body.lowStockThreshold;
   }
@@ -67,8 +95,13 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
     patch.imageUrl = body.imageUrl;
   }
   if (body.snackCountLabel !== undefined) {
-    if (typeof body.snackCountLabel !== 'string' || body.snackCountLabel.trim().length === 0) {
-      return { error: '"snackCountLabel" must be a non-empty string when provided.' };
+    if (
+      typeof body.snackCountLabel !== 'string' ||
+      body.snackCountLabel.trim().length === 0
+    ) {
+      return {
+        error: '"snackCountLabel" must be a non-empty string when provided.',
+      };
     }
     patch.snackCountLabel = body.snackCountLabel.trim();
   }
@@ -79,15 +112,27 @@ function buildPatch(body: UpdateProductBody): { patch: Partial<PackageInput> } |
     patch.isRescueOffer = body.isRescueOffer;
   }
   if (body.offerExpiresAt !== undefined) {
-    if (body.offerExpiresAt !== null && typeof body.offerExpiresAt !== 'string') {
-      return { error: '"offerExpiresAt" must be a date string, null, or omitted.' };
+    if (
+      body.offerExpiresAt !== null &&
+      typeof body.offerExpiresAt !== 'string'
+    ) {
+      return {
+        error: '"offerExpiresAt" must be a date string, null, or omitted.',
+      };
     }
-    if (typeof body.offerExpiresAt === 'string' && Number.isNaN(new Date(body.offerExpiresAt).getTime())) {
-      return { error: '"offerExpiresAt" must be a valid date string when provided.' };
+    if (
+      typeof body.offerExpiresAt === 'string' &&
+      Number.isNaN(new Date(body.offerExpiresAt).getTime())
+    ) {
+      return {
+        error: '"offerExpiresAt" must be a valid date string when provided.',
+      };
     }
     patch.offerExpiresAt =
       typeof body.offerExpiresAt === 'string'
-        ? (new Date(body.offerExpiresAt) as unknown as Package['offerExpiresAt'])
+        ? (new Date(
+            body.offerExpiresAt,
+          ) as unknown as Package['offerExpiresAt'])
         : null;
   }
 
@@ -108,12 +153,21 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { packageId } = await params;
 
-  const existing = await packageRepository.findById(session.businessId, packageId);
+  const existing = await packageRepository.findById(
+    session.businessId,
+    packageId,
+  );
   if (!existing) {
-    return Response.json({ error: `Product ${packageId} not found` }, { status: 404 });
+    return Response.json(
+      { error: `Product ${packageId} not found` },
+      { status: 404 },
+    );
   }
 
   let body: UpdateProductBody;
@@ -129,8 +183,16 @@ export async function PATCH(
   }
 
   try {
-    await productService.updateProduct(session.businessId, packageId, result.patch, session.uid);
-    const updated = await packageRepository.findById(session.businessId, packageId);
+    await productService.updateProduct(
+      session.businessId,
+      packageId,
+      result.patch,
+      session.uid,
+    );
+    const updated = await packageRepository.findById(
+      session.businessId,
+      packageId,
+    );
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
@@ -143,7 +205,10 @@ export async function PATCH(
     return Response.json({ product: updated });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not update product' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Could not update product',
+      },
       { status: 400 },
     );
   }

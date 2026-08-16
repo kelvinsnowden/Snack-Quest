@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { reviewService, ReviewNotFoundError } from '@/services/reviewService';
 
@@ -18,6 +23,9 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { reviewId } = await params;
 
@@ -30,11 +38,19 @@ export async function PATCH(
 
   const { status } = (body ?? {}) as { status?: unknown };
   if (status !== 'published' && status !== 'rejected') {
-    return Response.json({ error: "status must be 'published' or 'rejected'" }, { status: 400 });
+    return Response.json(
+      { error: "status must be 'published' or 'rejected'" },
+      { status: 400 },
+    );
   }
 
   try {
-    await reviewService.moderate(session.businessId, reviewId, status, session.uid);
+    await reviewService.moderate(
+      session.businessId,
+      reviewId,
+      status,
+      session.uid,
+    );
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof ReviewNotFoundError) {

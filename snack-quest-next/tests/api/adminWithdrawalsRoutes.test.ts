@@ -49,6 +49,13 @@ describe('POST /api/admin/withdrawals/[withdrawalId]/approve', () => {
     expect(approveWithdrawalMock).not.toHaveBeenCalled();
   });
 
+  it('403s a valid session that only holds the agent role (§ security audit — admin routes must check role, not just session)', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['agent'] });
+    const response = await approveRoute(approveRequest(), { params: Promise.resolve({ withdrawalId: 'w1' }) });
+    expect(response.status).toBe(403);
+    expect(approveWithdrawalMock).not.toHaveBeenCalled();
+  });
+
   it('200s and reports the resulting status, scoped to the session businessId', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     approveWithdrawalMock.mockResolvedValue('approved');
@@ -83,6 +90,13 @@ describe('POST /api/admin/withdrawals/[withdrawalId]/reject', () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(null);
     const response = await rejectRoute(rejectRequest({ reason: 'x' }), { params: Promise.resolve({ withdrawalId: 'w1' }) });
     expect(response.status).toBe(401);
+    expect(rejectWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('403s a valid session that only holds the finance role', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['finance'] });
+    const response = await rejectRoute(rejectRequest({ reason: 'x' }), { params: Promise.resolve({ withdrawalId: 'w1' }) });
+    expect(response.status).toBe(403);
     expect(rejectWithdrawalMock).not.toHaveBeenCalled();
   });
 

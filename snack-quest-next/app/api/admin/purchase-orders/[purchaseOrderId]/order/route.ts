@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   purchaseOrderService,
@@ -15,11 +20,18 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { purchaseOrderId } = await params;
 
   try {
-    await purchaseOrderService.markOrdered(session.businessId, purchaseOrderId, session.uid);
+    await purchaseOrderService.markOrdered(
+      session.businessId,
+      purchaseOrderId,
+      session.uid,
+    );
 
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -38,6 +50,14 @@ export async function POST(
     if (error instanceof InvalidPurchaseOrderTransitionError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'Could not mark this purchase order ordered' }, { status: 400 });
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not mark this purchase order ordered',
+      },
+      { status: 400 },
+    );
   }
 }

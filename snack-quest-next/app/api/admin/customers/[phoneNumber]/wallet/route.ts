@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { walletService, WalletValidationError } from '@/services/walletService';
@@ -16,6 +21,9 @@ export async function GET(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
   }
 
   const { phoneNumber: encodedPhoneNumber } = await params;
@@ -38,6 +46,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { phoneNumber: encodedPhoneNumber } = await params;
   const phoneNumber = decodeURIComponent(encodedPhoneNumber);
@@ -50,11 +61,20 @@ export async function POST(
   }
 
   if (typeof body.amountKes !== 'number' || typeof body.note !== 'string') {
-    return Response.json({ error: '"amountKes" (number) and "note" (string) are required.' }, { status: 400 });
+    return Response.json(
+      { error: '"amountKes" (number) and "note" (string) are required.' },
+      { status: 400 },
+    );
   }
 
   try {
-    const balance = await walletService.adjust(session.businessId, phoneNumber, body.amountKes, body.note, session.uid);
+    const balance = await walletService.adjust(
+      session.businessId,
+      phoneNumber,
+      body.amountKes,
+      body.note,
+      session.uid,
+    );
 
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -62,14 +82,29 @@ export async function POST(
       action: 'customerWallet.adjust',
       entityType: 'customerWallet',
       entityId: phoneNumber,
-      after: { amountKes: body.amountKes, note: body.note, balanceAfterKes: balance.balanceKes },
+      after: {
+        amountKes: body.amountKes,
+        note: body.note,
+        balanceAfterKes: balance.balanceKes,
+      },
     });
 
     return Response.json({ balance });
   } catch (error) {
-    if (error instanceof WalletValidationError || error instanceof InsufficientWalletBalanceError) {
+    if (
+      error instanceof WalletValidationError ||
+      error instanceof InsufficientWalletBalanceError
+    ) {
       return Response.json({ error: error.message }, { status: 400 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'Could not adjust this wallet.' }, { status: 400 });
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not adjust this wallet.',
+      },
+      { status: 400 },
+    );
   }
 }

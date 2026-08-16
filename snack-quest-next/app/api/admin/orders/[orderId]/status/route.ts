@@ -1,5 +1,14 @@
+import {
+  hasStaffRole,
+  ADMIN_OR_WAREHOUSE,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { orderService, OrderNotFoundError, InvalidOrderTransitionError } from '@/services/orderService';
+import {
+  orderService,
+  OrderNotFoundError,
+  InvalidOrderTransitionError,
+} from '@/services/orderService';
 import type { OrderStatus } from '@/types';
 
 const VALID_STATUSES: OrderStatus[] = [
@@ -26,6 +35,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
+    return forbiddenResponse();
+  }
 
   const { orderId } = await params;
 
@@ -36,15 +48,24 @@ export async function POST(
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { status, reason } = (body ?? {}) as { status?: unknown; reason?: unknown };
-  if (typeof status !== 'string' || !VALID_STATUSES.includes(status as OrderStatus)) {
+  const { status, reason } = (body ?? {}) as {
+    status?: unknown;
+    reason?: unknown;
+  };
+  if (
+    typeof status !== 'string' ||
+    !VALID_STATUSES.includes(status as OrderStatus)
+  ) {
     return Response.json(
       { error: `status must be one of: ${VALID_STATUSES.join(', ')}` },
       { status: 400 },
     );
   }
   if (reason !== undefined && typeof reason !== 'string') {
-    return Response.json({ error: 'reason must be a string when provided' }, { status: 400 });
+    return Response.json(
+      { error: 'reason must be a string when provided' },
+      { status: 400 },
+    );
   }
 
   try {
@@ -64,7 +85,10 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 409 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not update order' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Could not update order',
+      },
       { status: 400 },
     );
   }

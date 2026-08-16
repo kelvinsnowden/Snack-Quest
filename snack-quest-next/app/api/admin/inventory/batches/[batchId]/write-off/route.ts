@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   inventoryService,
@@ -19,6 +24,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { batchId } = await params;
 
@@ -28,16 +36,36 @@ export async function POST(
   } catch {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
-  const { quantity, reason, note } = (body ?? {}) as { quantity?: unknown; reason?: unknown; note?: unknown };
+  const { quantity, reason, note } = (body ?? {}) as {
+    quantity?: unknown;
+    reason?: unknown;
+    note?: unknown;
+  };
 
-  if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity <= 0) {
-    return Response.json({ error: '"quantity" must be a positive whole number.' }, { status: 400 });
+  if (
+    typeof quantity !== 'number' ||
+    !Number.isInteger(quantity) ||
+    quantity <= 0
+  ) {
+    return Response.json(
+      { error: '"quantity" must be a positive whole number.' },
+      { status: 400 },
+    );
   }
-  if (typeof reason !== 'string' || !VALID_REASONS.includes(reason as WriteOffReason)) {
-    return Response.json({ error: `"reason" must be one of: ${VALID_REASONS.join(', ')}.` }, { status: 400 });
+  if (
+    typeof reason !== 'string' ||
+    !VALID_REASONS.includes(reason as WriteOffReason)
+  ) {
+    return Response.json(
+      { error: `"reason" must be one of: ${VALID_REASONS.join(', ')}.` },
+      { status: 400 },
+    );
   }
   if (note !== undefined && typeof note !== 'string') {
-    return Response.json({ error: '"note" must be a string when provided.' }, { status: 400 });
+    return Response.json(
+      { error: '"note" must be a string when provided.' },
+      { status: 400 },
+    );
   }
 
   try {
@@ -64,9 +92,20 @@ export async function POST(
     if (error instanceof InventoryBatchNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
-    if (error instanceof InsufficientBatchQuantityError || error instanceof InvalidWriteOffQuantityError) {
+    if (
+      error instanceof InsufficientBatchQuantityError ||
+      error instanceof InvalidWriteOffQuantityError
+    ) {
       return Response.json({ error: error.message }, { status: 409 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'Could not write off this batch' }, { status: 400 });
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not write off this batch',
+      },
+      { status: 400 },
+    );
   }
 }

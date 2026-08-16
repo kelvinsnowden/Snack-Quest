@@ -72,6 +72,25 @@ describe('POST /api/admin/conversations/[conversationId]/assign', () => {
     expect(adminAssignAgentMock).toHaveBeenCalledWith('biz-1', 'c1', 'staff-1');
   });
 
+  it('allows the agent role — this is the Agent workspace’s own core action (§ security audit)', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['agent'] });
+    adminAssignAgentMock.mockResolvedValue(undefined);
+
+    const response = await assignRoute(request('http://localhost/api/admin/conversations/c1/assign'), {
+      params: Promise.resolve({ conversationId: 'c1' }),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('403s a valid session that only holds the finance role', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['finance'] });
+    const response = await assignRoute(request('http://localhost/api/admin/conversations/c1/assign'), {
+      params: Promise.resolve({ conversationId: 'c1' }),
+    });
+    expect(response.status).toBe(403);
+  });
+
   it('404s a conversation the service reports as not found', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     adminAssignAgentMock.mockRejectedValue(new ConversationNotFoundError('c1'));

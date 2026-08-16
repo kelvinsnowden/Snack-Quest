@@ -1,6 +1,14 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { storageService } from '@/services/storageService';
-import { STORAGE_DIRECTORIES, isStorageDirectory } from '@/lib/storage/policies';
+import {
+  STORAGE_DIRECTORIES,
+  isStorageDirectory,
+} from '@/lib/storage/policies';
 import { StorageUploadError } from '@/lib/storage/errors';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
@@ -10,18 +18,25 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { searchParams } = new URL(request.url);
   const directory = searchParams.get('directory');
   if (!directory || !isStorageDirectory(directory)) {
     return Response.json(
-      { error: `"directory" query param must be one of: ${STORAGE_DIRECTORIES.join(', ')}.` },
+      {
+        error: `"directory" query param must be one of: ${STORAGE_DIRECTORIES.join(', ')}.`,
+      },
       { status: 400 },
     );
   }
   const cursor = searchParams.get('cursor') ?? undefined;
 
-  const page = await storageService.listFiles(session.businessId, directory, { cursor });
+  const page = await storageService.listFiles(session.businessId, directory, {
+    cursor,
+  });
   return Response.json(page);
 }
 
@@ -31,6 +46,9 @@ export async function DELETE(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   let body: unknown;
   try {
@@ -39,13 +57,18 @@ export async function DELETE(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { url, directory } = (body ?? {}) as { url?: unknown; directory?: unknown };
+  const { url, directory } = (body ?? {}) as {
+    url?: unknown;
+    directory?: unknown;
+  };
   if (typeof url !== 'string' || url.trim().length === 0) {
     return Response.json({ error: '"url" is required.' }, { status: 400 });
   }
   if (typeof directory !== 'string' || !isStorageDirectory(directory)) {
     return Response.json(
-      { error: `"directory" must be one of: ${STORAGE_DIRECTORIES.join(', ')}.` },
+      {
+        error: `"directory" must be one of: ${STORAGE_DIRECTORIES.join(', ')}.`,
+      },
       { status: 400 },
     );
   }
@@ -55,10 +78,16 @@ export async function DELETE(request: Request): Promise<Response> {
   try {
     pathname = new URL(url).pathname;
   } catch {
-    return Response.json({ error: '"url" is not a valid URL.' }, { status: 400 });
+    return Response.json(
+      { error: '"url" is not a valid URL.' },
+      { status: 400 },
+    );
   }
   if (!pathname.startsWith(requiredPrefix)) {
-    return Response.json({ error: 'That object does not belong to this business/directory.' }, { status: 403 });
+    return Response.json(
+      { error: 'That object does not belong to this business/directory.' },
+      { status: 403 },
+    );
   }
 
   try {

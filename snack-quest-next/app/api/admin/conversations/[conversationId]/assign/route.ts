@@ -1,5 +1,13 @@
+import {
+  hasStaffRole,
+  ADMIN_OR_AGENT,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { conversationService, ConversationNotFoundError } from '@/services/conversationService';
+import {
+  conversationService,
+  ConversationNotFoundError,
+} from '@/services/conversationService';
 
 /** "Assign to me" (§ Admin: Conversation monitoring — the human agent queue's core action). Always assigns the calling staff member, never an arbitrary id. */
 export async function POST(
@@ -10,18 +18,30 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
+    return forbiddenResponse();
+  }
 
   const { conversationId } = await params;
 
   try {
-    await conversationService.adminAssignAgent(session.businessId, conversationId, session.uid);
+    await conversationService.adminAssignAgent(
+      session.businessId,
+      conversationId,
+      session.uid,
+    );
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof ConversationNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not assign conversation' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not assign conversation',
+      },
       { status: 400 },
     );
   }

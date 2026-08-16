@@ -1,5 +1,14 @@
+import {
+  hasStaffRole,
+  ADMIN_OR_AGENT,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { deliveryService, ShipmentNotFoundError, InvalidShipmentTransitionError } from '@/services/deliveryService';
+import {
+  deliveryService,
+  ShipmentNotFoundError,
+  InvalidShipmentTransitionError,
+} from '@/services/deliveryService';
 
 /** Records a manually-booked courier's reference (§ Admin: Delivery monitoring — the manual-booking queue's action) and moves the shipment to `created`. */
 export async function POST(
@@ -9,6 +18,9 @@ export async function POST(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
+    return forbiddenResponse();
   }
 
   const { shipmentId } = await params;
@@ -20,19 +32,38 @@ export async function POST(
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { courierShipmentRef, trackingUrl } = (body ?? {}) as { courierShipmentRef?: unknown; trackingUrl?: unknown };
-  if (typeof courierShipmentRef !== 'string' || courierShipmentRef.trim().length === 0) {
-    return Response.json({ error: '"courierShipmentRef" is required.' }, { status: 400 });
+  const { courierShipmentRef, trackingUrl } = (body ?? {}) as {
+    courierShipmentRef?: unknown;
+    trackingUrl?: unknown;
+  };
+  if (
+    typeof courierShipmentRef !== 'string' ||
+    courierShipmentRef.trim().length === 0
+  ) {
+    return Response.json(
+      { error: '"courierShipmentRef" is required.' },
+      { status: 400 },
+    );
   }
-  if (trackingUrl !== undefined && trackingUrl !== null && typeof trackingUrl !== 'string') {
-    return Response.json({ error: '"trackingUrl" must be a string or null when provided.' }, { status: 400 });
+  if (
+    trackingUrl !== undefined &&
+    trackingUrl !== null &&
+    typeof trackingUrl !== 'string'
+  ) {
+    return Response.json(
+      { error: '"trackingUrl" must be a string or null when provided.' },
+      { status: 400 },
+    );
   }
 
   try {
     await deliveryService.completeManualBooking(
       session.businessId,
       shipmentId,
-      { courierShipmentRef: courierShipmentRef.trim(), trackingUrl: (trackingUrl as string | null | undefined) ?? null },
+      {
+        courierShipmentRef: courierShipmentRef.trim(),
+        trackingUrl: (trackingUrl as string | null | undefined) ?? null,
+      },
       session.uid,
     );
     return Response.json({ ok: true });
@@ -44,7 +75,12 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 409 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not complete manual booking' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not complete manual booking',
+      },
       { status: 400 },
     );
   }
