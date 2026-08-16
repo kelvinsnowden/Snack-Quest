@@ -131,6 +131,7 @@ describe('IntegrationSettingsService.updateSecret', () => {
       consumerKey: 'ck-1',
       consumerSecret: 'cs-1',
       shortcode: '111111',
+      accountType: 'till',
       passkey: 'pk-1',
       callbackUrl: 'https://example.com/cb',
       env: 'sandbox',

@@ -107,6 +107,7 @@ async function seedBusiness() {
     consumerKey: 'daraja-key',
     consumerSecret: 'daraja-secret',
     shortcode: SHORTCODE,
+    accountType: 'till',
     passkey: 'test-passkey',
     callbackUrl: `https://example.com/api/webhooks/daraja/${BUSINESS_ID}`,
     env: 'sandbox',

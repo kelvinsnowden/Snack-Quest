@@ -16,6 +16,8 @@ export interface DarajaConfig {
   consumerKey: string;
   consumerSecret: string;
   shortcode: string;
+  /** See `DarajaIntegrationSecret.accountType`'s own doc comment. */
+  accountType: 'paybill' | 'till';
   passkey: string;
   callbackUrl: string;
   baseUrl: string;
@@ -115,6 +117,11 @@ export async function getDarajaConfig(businessId: string): Promise<DarajaConfig>
     consumerKey: secret.consumerKey,
     consumerSecret: secret.consumerSecret,
     shortcode: secret.shortcode,
+    // A secret document saved before `accountType` existed has no such
+    // field at runtime even though the type now requires one —
+    // defaults to 'paybill', this codebase's actual behavior before
+    // the field was introduced, never silently assumed 'till'.
+    accountType: secret.accountType === 'till' ? 'till' : 'paybill',
     passkey: secret.passkey,
     callbackUrl: withWebhookSecret(secret.callbackUrl, webhookSecret),
     baseUrl: toBaseUrl(secret),

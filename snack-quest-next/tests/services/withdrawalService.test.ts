@@ -35,6 +35,7 @@ const B2C_SECRET = {
   consumerKey: 'test-key',
   consumerSecret: 'test-secret',
   shortcode: '174379',
+  accountType: 'till' as const,
   passkey: 'test-passkey',
   callbackUrl: `https://example.com/api/webhooks/daraja/${BUSINESS_ID}`,
   env: 'sandbox' as const,

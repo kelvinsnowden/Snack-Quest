@@ -181,7 +181,13 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
             BusinessShortCode: config.shortcode,
             Password: password,
             Timestamp: timestamp,
-            TransactionType: 'CustomerPayBillOnline',
+            // 'CustomerBuyGoodsOnline' for a Till (Buy Goods) shortcode,
+            // 'CustomerPayBillOnline' for a Paybill — sending the wrong
+            // one for the account type doesn't fail loudly, it charges
+            // through the wrong M-Pesa product code, so this must match
+            // the real shortcode's actual type (§ Daraja M-Pesa Express
+            // production readiness).
+            TransactionType: config.accountType === 'till' ? 'CustomerBuyGoodsOnline' : 'CustomerPayBillOnline',
             Amount: Math.round(input.amountKes),
             PartyA: input.phone,
             PartyB: config.shortcode,

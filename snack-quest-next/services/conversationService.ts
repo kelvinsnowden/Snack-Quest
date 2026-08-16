@@ -620,7 +620,8 @@ class ConversationService {
         phone: phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
+        // Daraja's documented STK Push limit is 13 characters — 'Snack order' (11) stays under it.
+        transactionDesc: 'Snack order',
       });
     } catch {
       // The prompt never reached Daraja. Unlike the WhatsApp path there
@@ -1263,7 +1264,8 @@ class ConversationService {
         phone: phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
+        // Daraja's documented STK Push limit is 13 characters — 'Snack order' (11) stays under it.
+        transactionDesc: 'Snack order',
       });
     } catch {
       // STK push never even reached Daraja — tell the customer, and
@@ -1699,7 +1701,8 @@ class ConversationService {
         phone: conversation.phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
+        // Daraja's documented STK Push limit is 13 characters — 'Snack order' (11) stays under it.
+        transactionDesc: 'Snack order',
       });
     } catch {
       // Same recovery as confirmAndFreeze: STK push never reached

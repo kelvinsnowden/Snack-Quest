@@ -92,6 +92,7 @@ async function seedBusiness(tenant: TenantConfig) {
     consumerKey: `key-${tenant.businessId}`,
     consumerSecret: `secret-${tenant.businessId}`,
     shortcode: tenant.shortcode,
+    accountType: 'till',
     passkey: 'test-passkey',
     callbackUrl: `https://example.com/api/webhooks/daraja/${tenant.businessId}`,
     env: 'sandbox',

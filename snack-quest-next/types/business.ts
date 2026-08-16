@@ -110,6 +110,20 @@ export interface DarajaIntegrationSecret extends IntegrationSecretMeta {
   consumerKey: string;
   consumerSecret: string;
   shortcode: string;
+  /**
+   * Which STK Push `TransactionType` this shortcode requires (§ Daraja
+   * M-Pesa Express production readiness) — `'paybill'` sends
+   * `CustomerPayBillOnline`, `'till'` (Buy Goods) sends
+   * `CustomerBuyGoodsOnline`. Required, not defaulted at the type
+   * level: silently assuming the wrong one doesn't fail loudly, it
+   * just charges through the wrong product code, which Safaricom may
+   * accept and misroute rather than reject outright. Any secret
+   * document stored before this field existed is handled explicitly
+   * in `getDarajaConfig` (defaults to `'paybill'`, matching this
+   * codebase's actual behavior before this field was introduced) —
+   * not assumed here.
+   */
+  accountType: 'paybill' | 'till';
   passkey: string;
   callbackUrl: string;
   env: 'sandbox' | 'production';

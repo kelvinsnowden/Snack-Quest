@@ -14,6 +14,7 @@ const SECRET = {
   consumerKey: 'test-key',
   consumerSecret: 'test-secret',
   shortcode: '174379',
+  accountType: 'till' as const,
   passkey: 'test-passkey',
   callbackUrl: `https://example.com/api/webhooks/daraja/${BUSINESS_ID}`,
   env: 'sandbox' as const,
@@ -249,6 +250,72 @@ describe('DarajaGateway.initiateStkPush', () => {
 
     // Both tenants had to fetch their own OAuth token: 2 OAuth calls + 2 STK calls.
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('sends CustomerBuyGoodsOnline when the configured account is a Till (Buy Goods)', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', { ...SECRET, accountType: 'till' });
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                MerchantRequestID: 'merchant-1',
+                CheckoutRequestID: 'checkout-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Success. Request accepted for processing',
+                CustomerMessage: 'Success. Request accepted for processing',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'Snack order',
+    });
+
+    const [, stkCall] = fetchMock.mock.calls;
+    const body = JSON.parse(String(stkCall[1].body));
+    expect(body.TransactionType).toBe('CustomerBuyGoodsOnline');
+  });
+
+  it('sends CustomerPayBillOnline when the configured account is a Paybill', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', { ...SECRET, accountType: 'paybill' });
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                MerchantRequestID: 'merchant-1',
+                CheckoutRequestID: 'checkout-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Success. Request accepted for processing',
+                CustomerMessage: 'Success. Request accepted for processing',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'Snack order',
+    });
+
+    const [, stkCall] = fetchMock.mock.calls;
+    const body = JSON.parse(String(stkCall[1].body));
+    expect(body.TransactionType).toBe('CustomerPayBillOnline');
   });
 });
 

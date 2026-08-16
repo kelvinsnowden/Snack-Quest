@@ -76,6 +76,9 @@ async function main() {
         consumerKey: requireEnv('DARAJA_CONSUMER_KEY'),
         consumerSecret: requireEnv('DARAJA_CONSUMER_SECRET'),
         shortcode: requireEnv('DARAJA_SHORTCODE'),
+        // Snack Quest's real shortcode is a Till (Buy Goods) number —
+        // defaults to 'till'; set DARAJA_ACCOUNT_TYPE=paybill to override for a different tenant.
+        accountType: process.env.DARAJA_ACCOUNT_TYPE === 'paybill' ? 'paybill' : 'till',
         passkey: requireEnv('DARAJA_PASSKEY'),
         callbackUrl: requireEnv('DARAJA_CALLBACK_URL'),
         env: process.env.DARAJA_ENV === 'production' ? 'production' : 'sandbox',

@@ -90,6 +90,7 @@ describe('OperationsService.getSnapshot', () => {
       consumerKey: 'k',
       consumerSecret: 's',
       shortcode: '123',
+      accountType: 'till',
       passkey: 'p',
       callbackUrl: 'https://example.com',
       env: 'sandbox',
