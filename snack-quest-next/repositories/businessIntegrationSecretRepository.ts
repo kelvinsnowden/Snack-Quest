@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { randomBytes } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { decryptSecret, encryptSecret, isEncryptedSecret } from '@/lib/secrets/secretCipher';
@@ -90,6 +91,36 @@ class BusinessIntegrationSecretRepository {
       .collection('integrationSecrets')
       .doc(provider)
       .set({ ...encrypted, updatedAt: FieldValue.serverTimestamp() });
+  }
+
+  /**
+   * Guarantees a real `webhookSecret` exists for a provider whose
+   * webhook URL this app itself resubmits on every outbound API call
+   * (currently only `daraja` — see `lib/webhooks/webhookSecret.ts` for
+   * why that resubmission property is what makes auto-provisioning
+   * safe: Safaricom always receives the *current* secret embedded in
+   * the callback URL, so there is no window where a stale, unkeyed URL
+   * is registered anywhere). Pass the caller's already-fetched
+   * `webhookSecret` value in as `current` — if set, it's returned
+   * unchanged; if missing, a fresh random one is generated, persisted,
+   * and returned, so the very next outbound call (and every one after)
+   * embeds a real key without any operator having to remember to run
+   * `scripts/setDarajaWebhookSecret.mjs`.
+   *
+   * NOT used for `jumia`: its webhook URL is registered once in
+   * Jumia's own merchant dashboard rather than resubmitted per call,
+   * so silently generating a secret here would start rejecting real
+   * inbound tracking webhooks the moment it's set, with no way for
+   * this app to also update the external registration. That one still
+   * needs the manual script + a manual dashboard update.
+   */
+  async ensureWebhookSecret(businessId: string, provider: 'daraja', current: string | undefined): Promise<string> {
+    if (current) {
+      return current;
+    }
+    const generated = randomBytes(24).toString('hex');
+    await this.update(businessId, provider, { webhookSecret: generated });
+    return generated;
   }
 
   /** Partial update — merges `patch` onto whatever's already stored (or nothing, for a first-time setup), so the Integration Portal can save just the fields an admin actually changed. */

@@ -83,12 +83,13 @@ function toBaseUrl(secret: DarajaIntegrationSecret): string {
 export async function getDarajaConfig(businessId: string): Promise<DarajaConfig> {
   const secret = await businessIntegrationSecretRepository.get(businessId, 'daraja');
   assertIntegrationEnabled(businessId, 'daraja', secret);
+  const webhookSecret = await businessIntegrationSecretRepository.ensureWebhookSecret(businessId, 'daraja', secret.webhookSecret);
   return {
     consumerKey: secret.consumerKey,
     consumerSecret: secret.consumerSecret,
     shortcode: secret.shortcode,
     passkey: secret.passkey,
-    callbackUrl: withWebhookSecret(secret.callbackUrl, secret.webhookSecret),
+    callbackUrl: withWebhookSecret(secret.callbackUrl, webhookSecret),
     baseUrl: toBaseUrl(secret),
   };
 }
@@ -99,6 +100,7 @@ export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CC
   if (!secret.b2cInitiatorName || !secret.b2cSecurityCredential) {
     throw new DarajaB2CNotConfiguredError(businessId);
   }
+  const webhookSecret = await businessIntegrationSecretRepository.ensureWebhookSecret(businessId, 'daraja', secret.webhookSecret);
 
   const origin = new URL(secret.callbackUrl).origin;
   return {
@@ -108,8 +110,8 @@ export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CC
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-result`, secret.webhookSecret),
-    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-timeout`, secret.webhookSecret),
+    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-result`, webhookSecret),
+    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-timeout`, webhookSecret),
   };
 }
 
@@ -119,6 +121,7 @@ export async function getDarajaReversalConfig(businessId: string): Promise<Daraj
   if (!secret.b2cInitiatorName || !secret.b2cSecurityCredential) {
     throw new DarajaReversalNotConfiguredError(businessId);
   }
+  const webhookSecret = await businessIntegrationSecretRepository.ensureWebhookSecret(businessId, 'daraja', secret.webhookSecret);
 
   const origin = new URL(secret.callbackUrl).origin;
   return {
@@ -128,7 +131,7 @@ export async function getDarajaReversalConfig(businessId: string): Promise<Daraj
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-result`, secret.webhookSecret),
-    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-timeout`, secret.webhookSecret),
+    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-result`, webhookSecret),
+    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-timeout`, webhookSecret),
   };
 }

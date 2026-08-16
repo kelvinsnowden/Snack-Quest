@@ -357,6 +357,11 @@ const B2C_SECRET = {
   ...SECRET,
   b2cInitiatorName: 'testapiuser',
   b2cSecurityCredential: 'encrypted-credential-base64',
+  // Set explicitly, not left to auto-provisioning
+  // (businessIntegrationSecretRepository.ensureWebhookSecret), so the
+  // ResultURL/QueueTimeOutURL assertions below can be exact-match
+  // rather than asserting only a prefix.
+  webhookSecret: 'test-webhook-secret',
 };
 
 describe('DarajaGateway.initiateB2CPayment', () => {
@@ -418,8 +423,8 @@ describe('DarajaGateway.initiateB2CPayment', () => {
     const body = JSON.parse(b2cCall[1].body);
     expect(body.InitiatorName).toBe('testapiuser');
     expect(body.SecurityCredential).toBe('encrypted-credential-base64');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-result`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-timeout`);
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-result?key=test-webhook-secret`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-timeout?key=test-webhook-secret`);
   });
 
   it('throws when Daraja rejects the B2C request', async () => {
@@ -561,8 +566,8 @@ describe('DarajaGateway.initiateReversal', () => {
     expect(body.Amount).toBe(2500);
     expect(body.ReceiverParty).toBe('174379');
     expect(body.RecieverIdentifierType).toBe('11');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-result`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-timeout`);
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-result?key=test-webhook-secret`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-timeout?key=test-webhook-secret`);
   });
 
   it('throws when Daraja rejects the reversal request', async () => {
