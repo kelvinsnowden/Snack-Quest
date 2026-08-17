@@ -17,6 +17,7 @@ import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
 import { isSelfReferral } from '@/lib/creators/selfReferralGuard';
+import { formatOrderNumber } from '@/lib/orders/format';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -925,6 +926,7 @@ class ConversationService {
       checkoutSessionId: base.checkoutSessionId,
       paymentStatus: base.paymentStatus,
       orderId: base.orderId,
+      orderNumber: base.orderNumber,
       totalKes: base.totalKes,
       deliveryMethod,
       customerName,
@@ -1746,6 +1748,7 @@ class ConversationService {
     let paymentStatus: OrderPaymentStatus;
     let orderId: string | null = null;
     let totalKes: number | null = null;
+    let orderNumber: number | null = null;
 
     if (conversation.status === 'completed') {
       paymentStatus = 'succeeded';
@@ -1753,6 +1756,7 @@ class ConversationService {
       if (order) {
         orderId = order.id;
         totalKes = order.data.pricing.totalKes;
+        orderNumber = order.data.orderNumber ?? null;
       }
     } else if (conversation.status === 'abandoned') {
       paymentStatus = 'abandoned';
@@ -1772,6 +1776,7 @@ class ConversationService {
       paymentStatus,
       currentStep: conversation.currentStep,
       orderId,
+      orderNumber,
       totalKes,
     };
   }
@@ -1856,14 +1861,15 @@ class ConversationService {
     }
 
     let orderId: string;
+    let orderNumber: number;
     try {
-      orderId = await orderService.createFromConversationSnapshot({
+      ({ orderId, orderNumber } = await orderService.createFromConversationSnapshot({
         snapshotId: result.snapshotId,
         snapshot,
         paymentIntentId: result.intentId,
         mpesaReceiptNumber: result.mpesaReceiptNumber,
         attribution,
-      });
+      }));
     } catch (error) {
       if (error instanceof OutOfStockError) {
         // Money already collected, box unavailable — this needs a
@@ -1883,6 +1889,7 @@ class ConversationService {
       }
       throw error;
     }
+    const orderRef = formatOrderNumber(orderNumber);
 
     await conversationCheckoutSnapshotRepository.updateStatus(result.snapshotId, 'completed');
     await conversationRepository.update(result.conversationId, {
@@ -1977,8 +1984,8 @@ class ConversationService {
 
     await this.notifications.notifyAdmin(
       businessId,
-      `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
-        `${formatDeliveryLabel(snapshot.delivery)}. Order ${orderId}.`,
+      `New order ${orderRef}: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
+        `${formatDeliveryLabel(snapshot.delivery)}.`,
     );
 
     // Best-effort, same discipline as the shipment/referral calls
@@ -2003,8 +2010,8 @@ class ConversationService {
     // so this just confirms the payment landed.
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
-        ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
-        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
+        ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
+        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     const milestoneMessage =
       milestoneAwardKes > 0 ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.` : '';

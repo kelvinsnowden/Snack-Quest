@@ -71,6 +71,19 @@ export interface Order extends AuditFields {
   conversationId: string;
   conversationCheckoutSnapshotId: string;
   status: OrderStatus;
+  /**
+   * A short, sequential, per-business number (`1`, `2`, …) — the
+   * human-friendly reference a customer or staff member can actually
+   * say out loud or type, unlike the raw Firestore document id.
+   * Allocated once, atomically, alongside order creation itself (§
+   * `OrderService.createFromConversationSnapshot`) via a per-business
+   * counter document — never derived from the id or from `createdAt`,
+   * since either could collide or reorder. Optional on this read type,
+   * not because a new order can lack one, but because every order
+   * created before this field existed genuinely has none — display
+   * code must handle that absence rather than assume it.
+   */
+  orderNumber?: number;
   /** Set whenever a staff member changes `status` with a reason attached (e.g. a cancellation or refund note) — absent on orders whose status has never been changed with one. */
   statusReason?: string | null;
   referralLinkId: string | null;

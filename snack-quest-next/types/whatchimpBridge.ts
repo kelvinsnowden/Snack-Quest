@@ -102,5 +102,7 @@ export interface OrderStatusResponse {
   paymentStatus: OrderPaymentStatus;
   currentStep: string;
   orderId: string | null;
+  /** The human-friendly reference (§ order references) — set once `orderId` is, null before that and for the rare pre-existing order that predates this field. */
+  orderNumber: number | null;
   totalKes: number | null;
 }

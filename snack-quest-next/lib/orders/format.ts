@@ -4,6 +4,11 @@ export function formatKes(amount: number): string {
   return `KES ${amount.toLocaleString('en-KE')}`;
 }
 
+/** The human-friendly reference for `Order.orderNumber` — what a customer or staff member actually says/types, never the raw Firestore document id. */
+export function formatOrderNumber(orderNumber: number): string {
+  return `SQ-${orderNumber}`;
+}
+
 export function formatDate(value: unknown): string {
   const timestamp = value as { toDate?: () => Date } | undefined;
   const date = timestamp?.toDate ? timestamp.toDate() : null;

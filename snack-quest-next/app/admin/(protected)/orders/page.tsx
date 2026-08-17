@@ -120,6 +120,7 @@ export default async function AdminOrdersPage({
         <OrdersTable
           orders={orders.map(({ id, data }) => ({
             id,
+            orderNumber: data.orderNumber ?? null,
             customerName: data.customer.customerName,
             phoneNumber: data.customer.phoneNumber,
             packageLabel: data.product.packageLabel,

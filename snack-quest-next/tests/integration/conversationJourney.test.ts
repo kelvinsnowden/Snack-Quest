@@ -335,6 +335,10 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(order.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
     // A native WhatsApp-originated order has no browser to attribute to.
     expect(order.attribution).toBeNull();
+    // The first order for a fresh business starts its sequence at 1
+    // (§ order references), and the customer-facing confirmation
+    // quotes the same human-friendly reference, not the raw doc id.
+    expect(order.orderNumber).toBe(1);
 
     const items = await orderRepository.listItems(orderDoc.id);
     expect(items).toHaveLength(1);
@@ -360,6 +364,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(adminMessages[0].businessId).toBe(SNACK_QUEST.businessId);
 
     expect(gateway.sent.at(-1)?.text).toContain('Payment received');
+    expect(gateway.sent.at(-1)?.text).toContain('SQ-1');
   });
 
   it('rejects checkout for the exit-intent rescue offer once its offerExpiresAt has passed', async () => {
@@ -1114,6 +1119,11 @@ describe('platform proof: a second, independent tenant', () => {
     expect(rivalOrders.size).toBe(1);
     expect(sqOrders.docs[0].data().pricing.totalKes).toBe(2400);
     expect(rivalOrders.docs[0].data().pricing.totalKes).toBe(4200);
+    // Each tenant's order-number sequence is its own — the first order
+    // for a fresh business always starts at 1, regardless of what any
+    // other business's counter is doing (§ order references).
+    expect(sqOrders.docs[0].data().orderNumber).toBe(1);
+    expect(rivalOrders.docs[0].data().orderNumber).toBe(1);
 
     // The creator only got credited for the Snack Quest order — Rival
     // Snacks never touched Snack Quest's referral program.

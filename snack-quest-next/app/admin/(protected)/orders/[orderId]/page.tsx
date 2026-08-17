@@ -13,7 +13,7 @@ import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { OrderStatusActions } from '@/components/admin/OrderStatusActions';
 import { RefundActions } from '@/components/admin/RefundActions';
 import { RefundStatusBadge } from '@/components/admin/RefundStatusBadge';
-import { formatDateTime, formatKes } from '@/lib/orders/format';
+import { formatDateTime, formatKes, formatOrderNumber } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Order detail' };
 
@@ -62,11 +62,13 @@ export default async function AdminOrderDetailPage({
             Orders
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title font-bold tracking-tight text-foreground">{product.packageLabel}</h1>
+            <h1 className="text-page-title font-bold tracking-tight text-foreground">
+              {order.orderNumber !== undefined ? formatOrderNumber(order.orderNumber) : product.packageLabel}
+            </h1>
             <OrderStatusBadge status={order.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Placed {formatDateTime(order.createdAt)} · Order {orderId}
+            {product.packageLabel} · Placed {formatDateTime(order.createdAt)}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
