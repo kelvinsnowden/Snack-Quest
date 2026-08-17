@@ -3,6 +3,7 @@ import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { packageRepository } from '@/repositories/packageRepository';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { listPosts } from '@/lib/blog/posts';
+import { ACADEMY_ARTICLES } from '@/lib/creators/academy';
 
 /**
  * Reads live package data — same reasoning as app/(marketing)/layout.tsx's
@@ -21,6 +22,7 @@ const STATIC_ROUTES: Array<{ path: string; changeFrequency: MetadataRoute.Sitema
   { path: '/how-it-works', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/faq', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/creators', changeFrequency: 'monthly', priority: 0.6 },
+  { path: '/creators/academy', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/blog', changeFrequency: 'weekly', priority: 0.6 },
   { path: '/about', changeFrequency: 'monthly', priority: 0.5 },
   { path: '/press', changeFrequency: 'monthly', priority: 0.3 },
@@ -55,5 +57,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  return [...staticEntries, ...boxEntries, ...blogEntries];
+  const academyEntries: MetadataRoute.Sitemap = ACADEMY_ARTICLES.map((article) => ({
+    url: `${siteUrl}/creators/academy/${article.slug}`,
+    lastModified: new Date(article.publishedAt),
+    changeFrequency: 'monthly',
+    priority: 0.6,
+  }));
+
+  return [...staticEntries, ...boxEntries, ...blogEntries, ...academyEntries];
 }

@@ -1,6 +1,7 @@
 import { formatKes } from '@/lib/orders/format';
 import { CREATOR_COMMISSION_KES, REFERRAL_DISCOUNT_KES } from '@/lib/creators/referralEconomics';
 import { REFERRAL_COOKIE_MAX_AGE_SECONDS } from '@/lib/creators/referralCookie';
+import { MIN_WITHDRAWAL_KES } from '@/lib/withdrawals/rules';
 import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { Reveal } from '../design/Reveal';
@@ -19,8 +20,12 @@ import { safeJsonLd } from '@/lib/seo/safeJsonLd';
  *   `ReferralService.awardCommission`, which credits
  *   `availableCashKes` directly in the same transaction as the order's
  *   attribution record.
- * - No minimum withdrawal exists — `withdrawalService.requestWithdrawal`
- *   only checks the amount against available balance, never a floor.
+ * - The KES 300 minimum withdrawal is real and enforced in
+ *   `withdrawalService.requestWithdrawal` (`MIN_WITHDRAWAL_KES`,
+ *   `lib/withdrawals/rules.ts`) — this FAQ used to say there was no
+ *   minimum, which was true when written but went stale once that rule
+ *   was added later and nobody updated the copy. Read from the same
+ *   constant now so it can't drift again.
  * - The 30-day attribution window is `REFERRAL_COOKIE_MAX_AGE_SECONDS`,
  *   read here rather than typed twice.
  * - Paid ads and refund clawbacks: neither has a defined policy
@@ -66,7 +71,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Is there a minimum withdrawal amount?',
-    a: 'No minimum. You can withdraw any amount up to your available balance.',
+    a: `Yes — ${formatKes(MIN_WITHDRAWAL_KES)}, which is exactly one referral commission. That means you need at least one real referred sale credited before your first withdrawal; campaign rewards alone don't reach it on their own.`,
   },
   {
     q: 'How do I get my creator link?',
