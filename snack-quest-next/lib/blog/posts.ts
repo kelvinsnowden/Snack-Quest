@@ -174,6 +174,15 @@ const POSTS: BlogPost[] = [
         type: 'p',
         text: "People who already know they like imported Asian snacks and want an easy way to keep discovering more, people who've never tried them and want a low-effort way to start, and people looking for a genuinely different gift than flowers or chocolate. It's not for someone who wants to guarantee a specific item — that's what the surprise trades away.",
       },
+      {
+        type: 'p',
+        text: "Snack Quest also works with creators who make honest unboxing and review content — a real box like this is exactly the kind of product that makes an easy first video.",
+      },
+      {
+        type: 'links',
+        intro: 'No following required —',
+        items: [{ href: '/creators/academy/ugc-kenya', label: 'see how to become a UGC creator in Kenya' }],
+      },
     ],
   },
   {

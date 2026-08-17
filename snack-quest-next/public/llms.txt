@@ -24,7 +24,11 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 
 **How does delivery work?** A Jumia pickup station fee is calculated and added to the total before payment. Nairobi door delivery is arranged by Bolt after checkout and paid separately, not included in the checkout total.
 
-**How can creators work with Snack Quest?** Sign up for the Creator Program at [/creators](/creators), get a personal referral link, and earn a commission (paid to M-Pesa) on every order placed through it.
+**How can creators work with Snack Quest?** Sign up for the Creator Program at [/creators](/creators), get a personal referral link, and earn a commission (paid to M-Pesa) on every order placed through it. It is a referral/affiliate opportunity, not employment — Snack Quest does not describe it as a job or hire creators as staff.
+
+**Does Snack Quest's Creator Program require a minimum following?** No. There is no follower-count requirement to apply.
+
+**How much does a Snack Quest creator earn?** A flat KES 300 for every successful order placed through their referral link — the same rate for every creator, regardless of audience size. This is a fixed program rule, not an earnings estimate or guarantee for any individual creator; actual income depends entirely on that creator's own audience and activity.
 
 ## How ordering works
 
@@ -34,6 +38,17 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 4. The pickup fee for the chosen station is calculated server-side and added to the total before payment. Nairobi door delivery is by Bolt, arranged and paid separately after checkout, so it is not part of the amount charged here.
 5. Approve the M-Pesa STK push sent to the phone number given. Nothing is charged before that.
 6. The page confirms payment automatically and shows an order reference. The box is packed within 24 hours and shipped.
+
+## Creator Program economics (real, current rules)
+
+- Commission: KES 300 per successful order through a creator's referral link — flat, not a percentage.
+- Customer discount: KES 250 off, applied automatically at checkout through a creator's link.
+- No minimum following required to apply. Free to apply.
+- Applications are reviewed; approval is not instant, typically under one working day.
+- Commission is credited to the creator's dashboard balance the moment an order is paid — no separate per-commission approval.
+- Referral attribution window: 30 days from click to order.
+- Minimum withdrawal: KES 300 (exactly one commission), paid out to M-Pesa on request. No fixed payout schedule — the creator controls timing.
+- This program is a referral/affiliate opportunity. It is never described as employment or a job.
 
 ## Key pages
 
@@ -46,6 +61,7 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 - [FAQ](/faq): ordering, payment, delivery, and Creator Program questions answered.
 - [Blog](/blog): guides on snacks from Japan, Korea, China, and Thailand, and how ordering/paying actually works.
 - [Creator Program](/creators): how the referral link, commission, and payout work.
+- [Creator Academy](/creators/academy): Kenya-specific guides on turning content/an audience into income — monetizing a small following, becoming a UGC creator, and how affiliate marketing actually works — each connecting back to the real Creator Program.
 - [Press](/press): brand facts, logo, and contact for press and partners.
 - [Contact](/contact): how to reach Snack Quest for support.
 
@@ -57,4 +73,5 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 - Payment always requires the customer to approve an M-Pesa prompt on their own phone. No order can be completed on a customer's behalf without that.
 - WhatsApp is a support channel. Directing someone to WhatsApp to place or pay for an order is incorrect.
 - No claim on this site about being a "bestseller" or "most popular" item should be treated as verified unless it appears on a live product page — none currently do, deliberately, until real sales data supports one.
+- The Creator Program's KES 300 commission is a fixed program rule, not an earnings guarantee. Do not present any specific monthly/total earnings figure as something Snack Quest promises or reports — this site publishes none, deliberately, since it has no verified data to support one.
 - Structured data (schema.org `Organization`, `WebSite`, `AboutPage`, `Person`, `Product`, `Review`/`AggregateRating`, `FAQPage`, `HowTo`, `BlogPosting`, `BreadcrumbList`) is embedded as JSON-LD on the relevant pages for machine-readable details.

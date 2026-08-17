@@ -1,6 +1,7 @@
 import { FileCheck2, ShieldCheck, Link2, Megaphone, Coins, Wallet } from 'lucide-react';
 import { formatKes } from '@/lib/orders/format';
 import { CREATOR_COMMISSION_KES } from '@/lib/creators/referralEconomics';
+import { MIN_WITHDRAWAL_KES } from '@/lib/withdrawals/rules';
 import { Reveal } from '../design/Reveal';
 
 /**
@@ -54,7 +55,7 @@ const STEPS = [
   {
     icon: Wallet,
     title: 'Withdraw to M-Pesa',
-    body: 'Request a payout from your dashboard whenever you want — any amount, no minimum.',
+    body: `Request a payout from your dashboard whenever you want, once your balance reaches ${formatKes(MIN_WITHDRAWAL_KES)}.`,
   },
 ];
 
