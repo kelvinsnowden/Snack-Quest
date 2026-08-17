@@ -5,6 +5,7 @@ import { adminAuth } from '@/lib/firebase/admin';
 import { staffRepository } from '@/repositories/staffRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { notificationService } from '@/services/notificationService';
+import { isAdminSection } from '@/lib/auth/adminSections';
 import type { Role, StaffRole } from '@/types';
 
 export class StaffValidationError extends Error {
@@ -51,9 +52,18 @@ export interface StaffListItem {
   displayName: string;
   role: StaffRole;
   department: string;
+  /** Admin Portal sections this account is restricted to — empty means unrestricted (§ Staff access control). */
+  permissions: string[];
   disabled: boolean;
   lastSignInAt: string | null;
   createdAt: string | null;
+}
+
+function validatePermissions(permissions: string[]): void {
+  const invalid = permissions.filter((p) => !isAdminSection(p));
+  if (invalid.length > 0) {
+    throw new StaffValidationError(`"permissions" contains unknown section(s): ${invalid.join(', ')}.`);
+  }
 }
 
 function isoOrNull(value: string | undefined | null): string | null {
@@ -83,6 +93,7 @@ class StaffManagementService {
         displayName: user?.displayName ?? authRecord?.displayName ?? 'Unknown',
         role: profile.data.role,
         department: profile.data.department,
+        permissions: profile.data.permissions,
         disabled: authRecord?.disabled ?? false,
         lastSignInAt: isoOrNull(authRecord?.metadata.lastSignInTime),
         createdAt: profile.data.createdAt?.toDate ? profile.data.createdAt.toDate().toISOString() : null,
@@ -101,7 +112,7 @@ class StaffManagementService {
    */
   async inviteStaff(
     businessId: string,
-    input: { email: string; displayName: string; role: StaffRole; department: string },
+    input: { email: string; displayName: string; role: StaffRole; department: string; permissions?: string[] },
     actor: string,
   ): Promise<{ uid: string; resetLink: string; emailAttempted: boolean }> {
     const email = input.email.trim().toLowerCase();
@@ -118,6 +129,8 @@ class StaffManagementService {
     if (input.department.trim().length === 0) {
       throw new StaffValidationError('"department" is required.');
     }
+    const permissions = input.permissions ?? [];
+    validatePermissions(permissions);
 
     let uid: string;
     let isNewUser: boolean;
@@ -156,7 +169,7 @@ class StaffManagementService {
       // overwrite their identity doc, just extend its roles.
       await userRepository.updateRoles(uid, roles, actor);
     }
-    await staffRepository.create(uid, { businessId, role: input.role, permissions: [], department: input.department.trim() }, actor);
+    await staffRepository.create(uid, { businessId, role: input.role, permissions, department: input.department.trim() }, actor);
 
     const resetLink = await adminAuth.generatePasswordResetLink(email);
 
@@ -201,6 +214,21 @@ class StaffManagementService {
       await userRepository.updateRoles(uid, roles, actor);
       await adminAuth.setCustomUserClaims(uid, { roles, businessId });
     }
+  }
+
+  /**
+   * Restricts (or unrestricts) which Admin Portal sections a staff
+   * member can reach (§ Staff access control) — an empty array means
+   * unrestricted, the same default every account already had. Applies
+   * to any role without complaint: it's simply a no-op for
+   * `super_admin` (always unrestricted regardless, per
+   * `canAccessAdminSection`) and for `agent`/`warehouse`/`finance`
+   * (they never reach the Admin Portal these sections gate at all).
+   */
+  async changePermissions(businessId: string, uid: string, permissions: string[], actor: string): Promise<void> {
+    validatePermissions(permissions);
+    await this.requireProfile(businessId, uid);
+    await staffRepository.update(uid, { permissions }, actor);
   }
 
   async setDisabled(businessId: string, uid: string, disabled: boolean, actor: string): Promise<void> {

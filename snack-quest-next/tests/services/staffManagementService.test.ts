@@ -140,6 +140,70 @@ describe('StaffManagementService.inviteStaff', () => {
       ),
     ).rejects.toBeInstanceOf(StaffValidationError);
   });
+
+  it('defaults to unrestricted (empty permissions) when none are given', async () => {
+    const result = await staffManagementService.inviteStaff(
+      BUSINESS_ID,
+      { email: 'unrestricted@example.com', displayName: 'X', role: 'admin', department: 'Ops' },
+      'inviter-uid',
+    );
+    createdUids.push(result.uid);
+
+    expect((await staffRepository.findById(result.uid))?.permissions).toEqual([]);
+  });
+
+  it('stores a real, restricted set of sections when given', async () => {
+    const result = await staffManagementService.inviteStaff(
+      BUSINESS_ID,
+      { email: 'restricted@example.com', displayName: 'X', role: 'admin', department: 'Ops', permissions: ['orders', 'finance'] },
+      'inviter-uid',
+    );
+    createdUids.push(result.uid);
+
+    expect((await staffRepository.findById(result.uid))?.permissions).toEqual(['orders', 'finance']);
+  });
+
+  it('rejects an unknown section in permissions', async () => {
+    await expect(
+      staffManagementService.inviteStaff(
+        BUSINESS_ID,
+        { email: 'bad-permissions@example.com', displayName: 'X', role: 'admin', department: 'Ops', permissions: ['not-a-real-section'] },
+        'inviter-uid',
+      ),
+    ).rejects.toBeInstanceOf(StaffValidationError);
+  });
+});
+
+describe('StaffManagementService.changePermissions', () => {
+  it('restricts an unrestricted admin to specific sections', async () => {
+    const uid = await seedStaff('restrict-me@example.com', 'admin');
+
+    await staffManagementService.changePermissions(BUSINESS_ID, uid, ['orders'], 'actor-uid');
+
+    expect((await staffRepository.findById(uid))?.permissions).toEqual(['orders']);
+  });
+
+  it('clears restrictions back to unrestricted with an empty array', async () => {
+    const uid = await seedStaff('unrestrict-me@example.com', 'admin');
+    await staffManagementService.changePermissions(BUSINESS_ID, uid, ['orders'], 'actor-uid');
+
+    await staffManagementService.changePermissions(BUSINESS_ID, uid, [], 'actor-uid');
+
+    expect((await staffRepository.findById(uid))?.permissions).toEqual([]);
+  });
+
+  it('rejects an unknown section', async () => {
+    const uid = await seedStaff('bad-section@example.com', 'admin');
+    await expect(
+      staffManagementService.changePermissions(BUSINESS_ID, uid, ['not-a-real-section'], 'actor-uid'),
+    ).rejects.toBeInstanceOf(StaffValidationError);
+  });
+
+  it('throws StaffNotFoundError for a uid not on this business', async () => {
+    await expect(
+      staffManagementService.changePermissions(BUSINESS_ID, 'nonexistent-uid', ['orders'], 'actor-uid'),
+    ).rejects.toBeInstanceOf(StaffNotFoundError);
+  });
 });
 
 describe('StaffManagementService.changeRole', () => {

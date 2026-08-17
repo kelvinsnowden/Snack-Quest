@@ -98,10 +98,30 @@ describe('StaffAuthService.establishSession', () => {
       displayName: 'Amina Agent',
       roles: ['agent'],
       businessId: BUSINESS_ID,
+      permissions: [],
     });
 
     const authUser = await adminAuth.getUser(uid);
     expect(authUser.customClaims).toEqual({ roles: ['agent'], businessId: BUSINESS_ID });
+  });
+
+  it('carries a restricted admin\'s permissions through to the session (§ Staff access control)', async () => {
+    const uid = await createAuthUser('restricted-admin@example.com');
+    await userRepository.create(
+      uid,
+      { email: 'restricted-admin@example.com', roles: ['admin'], displayName: 'Restricted Admin', photoURL: null },
+      'system',
+    );
+    await staffRepository.create(
+      uid,
+      { businessId: BUSINESS_ID, role: 'admin', permissions: ['orders', 'finance'], department: 'Ops' },
+      'system',
+    );
+    const idToken = await getIdTokenForUid(uid);
+
+    const { session } = await staffAuthService.establishSession(idToken);
+
+    expect(session.permissions).toEqual(['orders', 'finance']);
   });
 
   it('rejects a deactivated staff account (deletedAt set) even with a valid ID token', async () => {
@@ -148,6 +168,7 @@ describe('StaffAuthService.verifySessionCookie', () => {
       displayName: 'Superadmin',
       roles: ['super_admin'],
       businessId: BUSINESS_ID,
+      permissions: [],
     });
   });
 

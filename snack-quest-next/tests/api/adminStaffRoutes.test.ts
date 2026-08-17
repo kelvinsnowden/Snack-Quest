@@ -5,6 +5,7 @@ const {
   inviteStaffMock,
   changeRoleMock,
   setDisabledMock,
+  changePermissionsMock,
   removeStaffMock,
   resetPasswordMock,
   verifyStaffSessionFromRequestMock,
@@ -13,6 +14,7 @@ const {
   inviteStaffMock: vi.fn(),
   changeRoleMock: vi.fn(),
   setDisabledMock: vi.fn(),
+  changePermissionsMock: vi.fn(),
   removeStaffMock: vi.fn(),
   resetPasswordMock: vi.fn(),
   verifyStaffSessionFromRequestMock: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('@/services/staffManagementService', async () => {
       inviteStaff: inviteStaffMock,
       changeRole: changeRoleMock,
       setDisabled: setDisabledMock,
+      changePermissions: changePermissionsMock,
       removeStaff: removeStaffMock,
       resetPassword: resetPasswordMock,
     },
@@ -99,6 +102,42 @@ describe('POST /api/admin/staff', () => {
     const body = await response.json();
     expect(body.resetLink).toBe('https://example.com/reset');
   });
+
+  it('passes permissions through to inviteStaff when provided', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(SUPER_ADMIN_SESSION);
+    inviteStaffMock.mockResolvedValue({ uid: 'new-uid', resetLink: 'https://example.com/reset', emailAttempted: true });
+
+    await inviteRoute(
+      jsonRequest('http://localhost/api/admin/staff', {
+        email: 'a@b.com',
+        displayName: 'A',
+        role: 'admin',
+        department: 'Ops',
+        permissions: ['orders'],
+      }),
+    );
+
+    expect(inviteStaffMock).toHaveBeenCalledWith(
+      'biz-1',
+      expect.objectContaining({ permissions: ['orders'] }),
+      'staff-1',
+    );
+  });
+
+  it('400s when permissions is not an array of strings', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(SUPER_ADMIN_SESSION);
+    const response = await inviteRoute(
+      jsonRequest('http://localhost/api/admin/staff', {
+        email: 'a@b.com',
+        displayName: 'A',
+        role: 'admin',
+        department: 'Ops',
+        permissions: 'not-an-array',
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(inviteStaffMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('PATCH /api/admin/staff/[uid]', () => {
@@ -135,6 +174,26 @@ describe('PATCH /api/admin/staff/[uid]', () => {
     });
     expect(response.status).toBe(200);
     expect(setDisabledMock).toHaveBeenCalledWith('biz-1', 'u1', true, 'staff-1');
+  });
+
+  it('200s and calls changePermissions for a permissions patch (§ Staff access control)', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(SUPER_ADMIN_SESSION);
+    const response = await patchRoute(
+      jsonRequest('http://localhost/api/admin/staff/u1', { permissions: ['orders', 'finance'] }, 'PATCH'),
+      { params: Promise.resolve({ uid: 'u1' }) },
+    );
+    expect(response.status).toBe(200);
+    expect(changePermissionsMock).toHaveBeenCalledWith('biz-1', 'u1', ['orders', 'finance'], 'staff-1');
+  });
+
+  it('400s when permissions is not an array of strings', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(SUPER_ADMIN_SESSION);
+    const response = await patchRoute(
+      jsonRequest('http://localhost/api/admin/staff/u1', { permissions: [1, 2] }, 'PATCH'),
+      { params: Promise.resolve({ uid: 'u1' }) },
+    );
+    expect(response.status).toBe(400);
+    expect(changePermissionsMock).not.toHaveBeenCalled();
   });
 });
 
