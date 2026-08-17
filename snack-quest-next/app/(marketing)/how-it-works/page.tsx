@@ -14,6 +14,7 @@ import { PageHero } from '@/components/marketing/design/PageHero';
 import { SurfaceCard } from '@/components/marketing/design/SurfaceCard';
 import { Reveal } from '@/components/marketing/design/Reveal';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'How it works',
@@ -59,8 +60,26 @@ const STEPS = [
 ];
 
 export default async function HowItWorksPage() {
+  const howToJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: 'How to order from Snack Quest',
+    description:
+      'Four steps from box to doorstep: pick a box, choose pickup or Nairobi door delivery, pay with M-Pesa, and we pack and ship.',
+    step: STEPS.map((step, index) => ({
+      '@type': 'HowToStep',
+      position: index + 1,
+      name: step.title,
+      text: step.description,
+    })),
+  };
+
   return (
     <PageShell>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(howToJsonLd) }}
+      />
       <PageHero
         eyebrow="The route"
         eyebrowIcon={Compass}

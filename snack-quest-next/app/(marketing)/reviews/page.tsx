@@ -8,6 +8,9 @@ import { RatingSummary } from '@/components/marketing/review/RatingSummary';
 import { ReviewFilterList } from '@/components/marketing/review/ReviewFilterList';
 import { PRIMARY_CTA_CLASS } from '@/components/marketing/design/ctaStyles';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
+import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 
 /**
  * `/reviews` (§ homepage reviews) — every published review, and the
@@ -28,14 +31,65 @@ export const metadata: Metadata = buildPageMetadata({
 
 const ALL_REVIEWS_LIMIT = 60;
 
+/**
+ * AggregateRating + individual Review nodes on the Organization
+ * already emitted by the marketing layout (§ SEO/AEO visibility audit)
+ * — same `@id`, so parsers that stitch same-page JSON-LD by identity
+ * attach these to the one real Organization node rather than a
+ * duplicate. Only emitted when there's at least one real published
+ * review — never a fabricated rating.
+ */
+function buildReviewsJsonLd(
+  siteUrl: string,
+  businessName: string,
+  averageRating: number,
+  totalCount: number,
+  reviews: { customerName: string; rating: number; body: string; createdAtIso: string }[],
+) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `${siteUrl}/#organization`,
+    name: businessName,
+    aggregateRating: {
+      '@type': 'AggregateRating',
+      ratingValue: Math.round(averageRating * 10) / 10,
+      reviewCount: totalCount,
+      bestRating: 5,
+      worstRating: 1,
+    },
+    review: reviews.slice(0, 30).map((r) => ({
+      '@type': 'Review',
+      author: { '@type': 'Person', name: r.customerName },
+      reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: 5, worstRating: 1 },
+      reviewBody: r.body,
+      datePublished: r.createdAtIso,
+    })),
+  };
+}
+
 export default async function ReviewsPage() {
   const businessId = getCurrentBusinessId();
-  const { reviews, totalCount, averageRating, ratingCounts } = await reviewService
-    .listPublished(businessId, ALL_REVIEWS_LIMIT)
-    .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }));
+  const [{ reviews, totalCount, averageRating, ratingCounts }, business] = await Promise.all([
+    reviewService
+      .listPublished(businessId, ALL_REVIEWS_LIMIT)
+      .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
+    getCurrentBusiness(),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-16 lg:px-8">
+      {reviews.length > 0 ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: safeJsonLd(
+              buildReviewsJsonLd(getSiteUrl(), business?.name ?? 'Snack Quest', averageRating, totalCount, reviews),
+            ),
+          }}
+        />
+      ) : null}
+
       <header className="flex flex-col gap-4">
         <p className="text-caption text-primary font-bold tracking-[0.3em] uppercase">The verdict</p>
         <h1 className="text-page-title text-foreground font-bold tracking-tight text-balance">

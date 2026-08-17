@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { packageRepository } from '@/repositories/packageRepository';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { listPosts } from '@/lib/blog/posts';
 
 /**
  * Reads live package data — same reasoning as app/(marketing)/layout.tsx's
@@ -20,6 +21,7 @@ const STATIC_ROUTES: Array<{ path: string; changeFrequency: MetadataRoute.Sitema
   { path: '/how-it-works', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/faq', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/creators', changeFrequency: 'monthly', priority: 0.6 },
+  { path: '/blog', changeFrequency: 'weekly', priority: 0.6 },
   { path: '/contact', changeFrequency: 'yearly', priority: 0.4 },
   { path: '/privacy', changeFrequency: 'yearly', priority: 0.2 },
   { path: '/terms', changeFrequency: 'yearly', priority: 0.2 },
@@ -44,5 +46,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  return [...staticEntries, ...boxEntries];
+  const blogEntries: MetadataRoute.Sitemap = listPosts().map((post) => ({
+    url: `${siteUrl}/blog/${post.slug}`,
+    lastModified: new Date(post.publishedAt),
+    changeFrequency: 'monthly',
+    priority: 0.6,
+  }));
+
+  return [...staticEntries, ...boxEntries, ...blogEntries];
 }
