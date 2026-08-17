@@ -3,6 +3,7 @@ import { adminAuth, adminFirestore } from '@/lib/firebase/admin';
 import { businessRepository } from '@/repositories/businessRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { staffRepository } from '@/repositories/staffRepository';
+import { staffAuthService } from '@/services/staffAuthService';
 import {
   staffManagementService,
   StaffValidationError,
@@ -11,6 +12,7 @@ import {
   CannotModifySelfError,
   LastSuperAdminError,
 } from '@/services/staffManagementService';
+import { getIdTokenForUid } from '../helpers/authEmulator';
 
 const BUSINESS_ID = 'biz-staff-mgmt-test';
 const createdUids: string[] = [];
@@ -107,6 +109,39 @@ describe('StaffManagementService.inviteStaff', () => {
     const user = await userRepository.findById(record.uid);
     expect(user?.roles.sort()).toEqual(['customer', 'finance']);
     expect(user?.displayName).toBe('Existing Person'); // never overwritten
+  });
+
+  it('reactivates a previously removed staffer on re-invite, so they can actually sign back in', async () => {
+    const uid = await seedStaff('re-invited@example.com', 'agent');
+    await staffManagementService.removeStaff(BUSINESS_ID, uid, 'inviter-uid');
+
+    // Removed: not provisioned, and the Auth account is disabled —
+    // confirms the "before" state this test is guarding against.
+    expect(await staffRepository.findById(uid)).toBeNull();
+    expect((await adminAuth.getUser(uid)).disabled).toBe(true);
+
+    const result = await staffManagementService.inviteStaff(
+      BUSINESS_ID,
+      { email: 're-invited@example.com', displayName: 'Re-Invited', role: 'agent', department: 'Ops' },
+      'inviter-uid',
+    );
+    expect(result.uid).toBe(uid);
+
+    const authRecord = await adminAuth.getUser(uid);
+    expect(authRecord.disabled).toBe(false);
+
+    const user = await userRepository.findById(uid);
+    expect(user?.deletedAt).toBeNull();
+
+    const profile = await staffRepository.findById(uid);
+    expect(profile).not.toBeNull();
+
+    // The real end-to-end proof: a fresh sign-in for this uid must
+    // actually establish a session, not throw StaffNotProvisionedError
+    // the way it did before this account was reactivated correctly.
+    const idToken = await getIdTokenForUid(uid);
+    const { session } = await staffAuthService.establishSession(idToken);
+    expect(session.uid).toBe(uid);
   });
 
   it('rejects inviting someone who is already staff', async () => {

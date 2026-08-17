@@ -6,6 +6,7 @@ import { staffRepository } from '@/repositories/staffRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { notificationService } from '@/services/notificationService';
 import { isAdminSection } from '@/lib/auth/adminSections';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
 import type { Role, StaffRole } from '@/types';
 
 export class StaffValidationError extends Error {
@@ -70,6 +71,33 @@ function isoOrNull(value: string | undefined | null): string | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * A password-reset/invite link that lands the invitee straight on
+ * `/admin/accept-invite` — our own branded page, not Firebase's bare
+ * `*.firebaseapp.com/__/auth/action` — the same "never leave the app"
+ * experience the Creator Portal already has, since Creators set their
+ * password at registration and never see a Firebase-hosted page at
+ * all. `handleCodeInApp: true` is what makes Firebase skip its own
+ * hosted page and link directly to ours instead.
+ *
+ * Requires the site's domain to be on Firebase Console → Authentication
+ * → Settings → Authorized domains, or Admin SDK rejects the link
+ * outright (`auth/invalid-continue-uri`) — until that's added, this
+ * falls back to the old, plain link rather than ever blocking an
+ * invite or a password reset on a one-time console setting.
+ */
+async function generateStaffPasswordLink(email: string): Promise<string> {
+  const actionCodeSettings = {
+    url: `${getSiteUrl()}/admin/accept-invite`,
+    handleCodeInApp: true,
+  };
+  try {
+    return await adminAuth.generatePasswordResetLink(email, actionCodeSettings);
+  } catch {
+    return adminAuth.generatePasswordResetLink(email);
+  }
 }
 
 class StaffManagementService {
@@ -165,13 +193,20 @@ class StaffManagementService {
     if (isNewUser) {
       await userRepository.create(uid, { email, roles, displayName, photoURL: null }, actor);
     } else {
-      // Upgrading an existing (e.g. customer/creator) account — never
-      // overwrite their identity doc, just extend its roles.
+      // Upgrading an existing (e.g. customer/creator, or a previously
+      // *removed* staffer being re-invited) account — never overwrite
+      // their identity doc, just extend its roles. `updateRoles` also
+      // clears `deletedAt`, and re-enabling the Auth account here
+      // covers the other half of undoing `removeStaff()` — without
+      // both, a re-invited former staffer gets either a permanent
+      // "not provisioned as staff" error or an `auth/user-disabled`
+      // failure before they even reach that check.
       await userRepository.updateRoles(uid, roles, actor);
+      await adminAuth.updateUser(uid, { disabled: false });
     }
     await staffRepository.create(uid, { businessId, role: input.role, permissions, department: input.department.trim() }, actor);
 
-    const resetLink = await adminAuth.generatePasswordResetLink(email);
+    const resetLink = await generateStaffPasswordLink(email);
 
     let emailAttempted = false;
     try {
@@ -264,7 +299,7 @@ class StaffManagementService {
     if (!user) {
       throw new StaffNotFoundError(uid);
     }
-    const resetLink = await adminAuth.generatePasswordResetLink(user.email);
+    const resetLink = await generateStaffPasswordLink(user.email);
     return { resetLink };
   }
 

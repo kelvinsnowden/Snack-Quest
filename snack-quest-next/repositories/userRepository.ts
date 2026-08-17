@@ -43,9 +43,20 @@ class UserRepository {
       });
   }
 
+  /**
+   * `deletedAt` is always cleared alongside `roles`, not just for a
+   * genuinely new assignment — a uid whose `roles` are being actively
+   * managed is by definition not soft-deleted anymore. This matters
+   * for `staffManagementService.inviteStaff()`'s existing-user branch:
+   * re-inviting someone previously removed via `removeStaff()` (which
+   * sets `deletedAt` here) must actually un-stick their account, or
+   * `establishSession()` keeps rejecting them forever even after a
+   * fresh, successful invite.
+   */
   async updateRoles(uid: string, roles: User['roles'], actor: string): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(uid).update({
       roles,
+      deletedAt: null,
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: actor,
     });
