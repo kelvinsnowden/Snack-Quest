@@ -22,6 +22,7 @@ const FOOTER_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/boxes', label: 'Boxes' },
   { href: '/how-it-works', label: 'How it works' },
+  { href: '/blog', label: 'Blog' },
   { href: '/creators', label: 'Creator program' },
   { href: '/creator/register', label: 'Become a creator' },
   { href: '/creator/login', label: 'Creator sign in' },

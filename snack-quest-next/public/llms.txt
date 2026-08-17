@@ -21,6 +21,7 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 - [How it works](/how-it-works): the full ordering flow, step by step.
 - [Reviews](/reviews): published customer reviews. [/review](/review) is the form for leaving one.
 - [FAQ](/faq): ordering, payment, delivery, and Creator Program questions answered.
+- [Blog](/blog): guides on snacks from Japan, Korea, China, and Thailand, and how ordering/paying actually works.
 - [Creator Program](/creators): how the referral link, commission, and payout work.
 - [Contact](/contact): how to reach Snack Quest for support.
 

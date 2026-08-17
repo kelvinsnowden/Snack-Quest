@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Geist, Geist_Mono, Bagel_Fat_One } from 'next/font/google';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { ADMIN_THEME_STORAGE_KEY } from '@/lib/theme/adminTheme';
@@ -83,6 +84,7 @@ export default function RootLayout({
         </Script>
         {children}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
