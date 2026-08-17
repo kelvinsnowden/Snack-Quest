@@ -717,6 +717,10 @@ describe('getWebCheckoutStatus', () => {
       checkoutSessionId: result.checkoutSessionId,
       paymentStatus: 'processing',
       orderId: null,
+      orderNumber: null,
+      // No Order exists yet — this must come from the frozen snapshot,
+      // or the payment screen has nothing to show while it waits.
+      totalKes: 2800,
       deliveryMethod: 'pickup',
       customerName: 'Wanjiru Kamau',
       packageLabel: 'Premium Box',

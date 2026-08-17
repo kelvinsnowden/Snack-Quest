@@ -909,6 +909,12 @@ class ConversationService {
     let deliveryMethod: DeliveryMethod | null = null;
     let customerName: string | null = null;
     let packageLabel: string | null = null;
+    // `getOrderStatus`'s totalKes only ever comes from a real Order,
+    // which doesn't exist yet while the payment screen is polling —
+    // the frozen snapshot's total is what the STK prompt actually asks
+    // for in the meantime, and it's the same figure the eventual order
+    // gets charged, so it's a safe, accurate stand-in while waiting.
+    let totalKes = base.totalKes;
 
     const conversation = await conversationRepository.findById(conversationId);
     if (conversation?.conversationCheckoutSnapshotId) {
@@ -919,6 +925,7 @@ class ConversationService {
         deliveryMethod = snapshot.delivery.method;
         customerName = snapshot.customerName;
         packageLabel = snapshot.packageLabel;
+        totalKes ??= snapshot.totalKes;
       }
     }
 
@@ -927,7 +934,7 @@ class ConversationService {
       paymentStatus: base.paymentStatus,
       orderId: base.orderId,
       orderNumber: base.orderNumber,
-      totalKes: base.totalKes,
+      totalKes,
       deliveryMethod,
       customerName,
       packageLabel,
