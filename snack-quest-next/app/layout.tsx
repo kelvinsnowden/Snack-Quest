@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { Analytics } from '@vercel/analytics/next';
 import { Geist, Geist_Mono, Bagel_Fat_One } from 'next/font/google';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { ADMIN_THEME_STORAGE_KEY } from '@/lib/theme/adminTheme';
@@ -81,6 +82,7 @@ export default function RootLayout({
           {`(function(){try{if(!location.pathname.startsWith('/admin'))return;var t=localStorage.getItem(${JSON.stringify(ADMIN_THEME_STORAGE_KEY)});document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}})();`}
         </Script>
         {children}
+        <Analytics />
       </body>
     </html>
   );
