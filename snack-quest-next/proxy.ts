@@ -36,6 +36,10 @@ import {
  */
 
 const ADMIN_LOGIN_PATH = '/admin/login';
+// Reached from an invite/reset email before the invitee has any
+// session — must stay open the same way ADMIN_LOGIN_PATH is, or the
+// proxy bounces them to /admin/login before they can set a password.
+const ADMIN_ACCEPT_INVITE_PATH = '/admin/accept-invite';
 const CREATOR_LOGIN_PATH = '/creator/login';
 // The only two /creator/* paths a signed-out visitor may reach —
 // register also needs the cookie check below (redirect away once
@@ -80,6 +84,7 @@ export function proxy(request: NextRequest): NextResponse {
   if (
     pathname.startsWith('/admin') &&
     pathname !== ADMIN_LOGIN_PATH &&
+    pathname !== ADMIN_ACCEPT_INVITE_PATH &&
     !hasStaffSessionCookie
   ) {
     return redirectTo(ADMIN_LOGIN_PATH, pathname);
