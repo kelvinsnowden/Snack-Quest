@@ -16,10 +16,27 @@ const COLLECTION = 'orders';
 
 export type OrderInput = Omit<
   Order,
-  'status' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy'
+  'status' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy' | 'orderNumber'
 > & {
   createdBy: string;
+  /** Required here (unlike on `Order` itself) — every new order must allocate one, see `orderNumberCounterRef`. */
+  orderNumber: number;
 };
+
+/**
+ * The per-business sequential-order-number counter (§ order
+ * references) — one doc per business, `{ value: <last number issued> }`.
+ * Nested under the business the same way `integrationSecrets` is,
+ * since it's config-shaped, not another `orders`-style collection of
+ * its own. `OrderService` reads it, computes `value + 1`, and writes
+ * both the counter and the new order back in the same transaction —
+ * this repository only builds the ref, since a bare read-then-write
+ * needs to interleave with the caller's own transaction reads/writes
+ * in a specific order (see that Service's own comment).
+ */
+export function orderNumberCounterRef(businessId: string) {
+  return adminFirestore.collection('businesses').doc(businessId).collection('counters').doc('orders');
+}
 
 /**
  * Runs inside the same Firestore transaction as inventory reservation

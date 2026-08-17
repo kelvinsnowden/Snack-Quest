@@ -88,7 +88,7 @@ describe('reviews security rules', () => {
   it('lets an admin read a pending review, since moderating one means reading it', async () => {
     await seed('review-1', pendingReview);
 
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'snack-quest' });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'reviews', 'review-1')));
   });
 

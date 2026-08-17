@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { faqRepository, type FaqInput } from '@/repositories/faqRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
@@ -8,11 +13,16 @@ interface UpdateFaqBody {
   isActive?: unknown;
 }
 
-function buildPatch(body: UpdateFaqBody): { patch: Partial<FaqInput> } | { error: string } {
+function buildPatch(
+  body: UpdateFaqBody,
+): { patch: Partial<FaqInput> } | { error: string } {
   const patch: Partial<FaqInput> = {};
 
   if (body.question !== undefined) {
-    if (typeof body.question !== 'string' || body.question.trim().length === 0) {
+    if (
+      typeof body.question !== 'string' ||
+      body.question.trim().length === 0
+    ) {
       return { error: '"question" must be a non-empty string when provided.' };
     }
     patch.question = body.question.trim();
@@ -41,6 +51,9 @@ export async function PATCH(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
   }
 
   const { faqId } = await params;
@@ -86,6 +99,9 @@ export async function DELETE(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
   }
 
   const { faqId } = await params;

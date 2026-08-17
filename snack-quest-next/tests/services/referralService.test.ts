@@ -10,7 +10,7 @@ import {
   referralService,
   ReferralLinkNotFoundError,
 } from '@/services/referralService';
-import { seedCreator } from '../helpers/creatorFixtures';
+import { clearCreatorMemberships, seedCreator } from '../helpers/creatorFixtures';
 
 /**
  * `ReferralService`'s admin-facing methods (§ referral system
@@ -52,9 +52,7 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(
     adminFirestore.collection('referralAttributions'),
   );
-  await adminFirestore.recursiveDelete(
-    adminFirestore.collection('creatorProfiles'),
-  );
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
@@ -168,7 +166,7 @@ describe('ReferralService.awardCommission', () => {
 
     const link = await referralLinkRepository.findById(BUSINESS_ID, linkId);
     expect(link?.conversionCount).toBe(1);
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.totalConversions).toBe(1);
     expect(creator?.availableCashKes).toBe(500);
   });
@@ -238,7 +236,7 @@ describe('ReferralService.recordClick', () => {
     expect(result?.code).toBe('SAVE10');
     const link = await referralLinkRepository.findById(BUSINESS_ID, linkId);
     expect(link?.clickCount).toBe(1);
-    const creator = await creatorRepository.findById('creator-1');
+    const creator = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(creator?.totalClicks).toBe(1);
   });
 

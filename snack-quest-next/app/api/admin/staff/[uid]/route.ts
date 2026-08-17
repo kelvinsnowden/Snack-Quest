@@ -13,6 +13,7 @@ import type { StaffRole } from '@/types';
 interface PatchStaffBody {
   role?: unknown;
   disabled?: unknown;
+  permissions?: unknown;
 }
 
 function errorResponse(error: unknown): Response {
@@ -50,8 +51,8 @@ export async function PATCH(
   } catch {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
-  if (body.role === undefined && body.disabled === undefined) {
-    return Response.json({ error: 'Provide "role" and/or "disabled".' }, { status: 400 });
+  if (body.role === undefined && body.disabled === undefined && body.permissions === undefined) {
+    return Response.json({ error: 'Provide "role", "disabled", and/or "permissions".' }, { status: 400 });
   }
 
   try {
@@ -81,6 +82,21 @@ export async function PATCH(
         entityType: 'staffProfile',
         entityId: uid,
         after: { disabled: body.disabled },
+      });
+    }
+    if (body.permissions !== undefined) {
+      if (!Array.isArray(body.permissions) || body.permissions.some((p) => typeof p !== 'string')) {
+        return Response.json({ error: '"permissions" must be an array of strings.' }, { status: 400 });
+      }
+      const permissions = body.permissions as string[];
+      await staffManagementService.changePermissions(session.businessId, uid, permissions, session.uid);
+      await recordAuditLog(request, {
+        businessId: session.businessId,
+        actorId: session.uid,
+        action: 'staff.change_permissions',
+        entityType: 'staffProfile',
+        entityId: uid,
+        after: { permissions },
       });
     }
     return Response.json({ ok: true });

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatKes } from '@/lib/orders/format';
+import { formatKes, formatOrderNumber } from '@/lib/orders/format';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
@@ -20,7 +20,14 @@ import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
  */
 export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse }) {
   const isDoorDelivery = status.deliveryMethod === 'door';
-  const orderRef = status.orderId?.slice(0, 8) ?? status.checkoutSessionId.slice(0, 8);
+  // The real, sequential order number once one exists (it always does
+  // by the time this renders) — the raw id/session-id fallback only
+  // covers the split second before an order predating this field would
+  // have shown something, and is never expected to actually fire.
+  const orderRef =
+    status.orderNumber !== null
+      ? formatOrderNumber(status.orderNumber)
+      : (status.orderId?.slice(0, 8) ?? status.checkoutSessionId.slice(0, 8)).toUpperCase();
 
   return (
     <div className="flex flex-col items-center gap-8 text-center">
@@ -41,7 +48,7 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
         <dl className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between gap-4">
             <dt className="text-muted-foreground text-sm">Order reference</dt>
-            <dd className="text-foreground font-mono text-sm font-medium">{orderRef.toUpperCase()}</dd>
+            <dd className="text-foreground font-mono text-sm font-medium">{orderRef}</dd>
           </div>
           {status.packageLabel ? (
             <div className="flex items-baseline justify-between gap-4">
@@ -76,7 +83,7 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
           <Button asChild size="lg">
             <a
               href={buildWhatsAppOrderUrl(
-                `Hi! I've paid for order ${orderRef.toUpperCase()} and I'd like to arrange Bolt delivery.`,
+                `Hi! I've paid for order ${orderRef} and I'd like to arrange Bolt delivery.`,
               )}
               target="_blank"
               rel="noopener noreferrer"
@@ -87,9 +94,21 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
           </Button>
         </div>
       ) : (
-        <p className="text-muted-foreground text-sm">
-          We&apos;ll let you know on WhatsApp as soon as your box reaches your pickup station.
-        </p>
+        <div className="flex w-full flex-col items-center gap-4">
+          <p className="text-muted-foreground text-sm">
+            We&apos;ll let you know on WhatsApp as soon as your box reaches your pickup station.
+          </p>
+          <Button asChild variant="outline" size="lg">
+            <a
+              href={buildWhatsAppOrderUrl(`Hi! I've paid for order ${orderRef} and wanted to check in.`)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <WhatsAppIcon className="size-4" />
+              Message us about {orderRef}
+            </a>
+          </Button>
+        </div>
       )}
 
       <Button asChild variant="outline" size="lg">

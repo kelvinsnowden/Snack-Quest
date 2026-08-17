@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { ADMIN_SECTIONS } from '@/lib/auth/adminSections';
 import type { StaffRole } from '@/types';
 
 const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
@@ -25,7 +26,7 @@ const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'finance', label: 'Finance' },
 ];
 
-const DEFAULTS = { email: '', displayName: '', role: 'admin' as StaffRole, department: '' };
+const DEFAULTS = { email: '', displayName: '', role: 'admin' as StaffRole, department: '', permissions: [] as string[] };
 
 export function InviteStaffDialog() {
   const router = useRouter();
@@ -59,6 +60,10 @@ export function InviteStaffDialog() {
           displayName: values.displayName.trim(),
           role: values.role,
           department: values.department.trim(),
+          // Only meaningful for role 'admin' — the server ignores it
+          // for every other role anyway, but sending it only when it
+          // could matter keeps the request honest about intent.
+          ...(values.role === 'admin' ? { permissions: values.permissions } : {}),
         }),
       });
       if (!response.ok) {
@@ -166,7 +171,10 @@ export function InviteStaffDialog() {
                     id="invite-role"
                     className="h-10 rounded-md border border-border bg-surface px-3 text-sm text-foreground"
                     value={values.role}
-                    onChange={(event) => setValues((v) => ({ ...v, role: event.target.value as StaffRole }))}
+                    onChange={(event) => {
+                      const role = event.target.value as StaffRole;
+                      setValues((v) => ({ ...v, role, permissions: role === 'admin' ? v.permissions : [] }));
+                    }}
                   >
                     {ROLE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -185,6 +193,38 @@ export function InviteStaffDialog() {
                   />
                 </div>
               </div>
+              {values.role === 'admin' ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label>Admin Portal access</Label>
+                  <p className="text-caption text-muted-foreground">
+                    Leave everything unchecked for full access. Check specific sections to restrict this admin to
+                    only those.
+                  </p>
+                  <div className="mt-1 flex flex-col gap-2 rounded-md border border-border p-3">
+                    {ADMIN_SECTIONS.map((section) => (
+                      <label key={section.key} className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={values.permissions.includes(section.key)}
+                          onChange={(event) =>
+                            setValues((v) => ({
+                              ...v,
+                              permissions: event.target.checked
+                                ? [...v.permissions, section.key]
+                                : v.permissions.filter((p) => p !== section.key),
+                            }))
+                          }
+                        />
+                        <span>
+                          <span className="block font-medium text-foreground">{section.label}</span>
+                          <span className="block text-caption text-muted-foreground">{section.description}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {error ? <p className="text-sm text-danger">{error}</p> : null}
             </div>
             <DialogFooter>

@@ -18,7 +18,11 @@ vi.mock('@/lib/auth/creatorSession', () => ({
 }));
 
 import { POST as withdrawalsRoute } from '@/app/api/creator/withdrawals/route';
-import { InsufficientCreatorBalanceError, CreatorNotEligibleForWithdrawalError } from '@/services/withdrawalService';
+import {
+  InsufficientCreatorBalanceError,
+  CreatorNotEligibleForWithdrawalError,
+  WithdrawalBelowMinimumError,
+} from '@/services/withdrawalService';
 
 const CREATOR_SESSION = {
   uid: 'creator-1',
@@ -95,5 +99,15 @@ describe('POST /api/creator/withdrawals', () => {
 
     const response = await withdrawalsRoute(request(VALID_BODY));
     expect(response.status).toBe(400);
+  });
+
+  it('400s WithdrawalBelowMinimumError from the service, with the service’s own message', async () => {
+    verifyCreatorSessionFromRequestMock.mockResolvedValue(CREATOR_SESSION);
+    requestWithdrawalMock.mockRejectedValue(new WithdrawalBelowMinimumError(200));
+
+    const response = await withdrawalsRoute(request({ ...VALID_BODY, amountKes: 200 }));
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toMatch(/minimum/i);
   });
 });

@@ -16,6 +16,8 @@ import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
+import { isSelfReferral } from '@/lib/creators/selfReferralGuard';
+import { formatOrderNumber } from '@/lib/orders/format';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
 import { referralService } from './referralService';
@@ -203,6 +205,16 @@ export interface WebCheckoutInput {
    */
   isCreatorCheckout?: boolean;
   /**
+   * The verified creator session's own uid when `isCreatorCheckout` is
+   * true, `null`/absent otherwise — same server-verified-only sourcing
+   * as `isCreatorCheckout` itself. Used only to catch self-referral
+   * (§ security audit, `lib/creators/selfReferralGuard.ts`): a creator
+   * checking out with their own referral code voids the code entirely
+   * rather than stacking a discount with a commission paid to
+   * themselves.
+   */
+  creatorUid?: string | null;
+  /**
    * Set when a staff member is placing this order on the customer's
    * behalf (§ staff-initiated orders) — an order taken over the phone,
    * at an event, or in a DM. Absent for a customer checking out
@@ -246,6 +258,8 @@ export interface WebCheckoutQuoteInput {
   phone?: string;
   /** Same server-verified meaning as `WebCheckoutInput.isCreatorCheckout` — the quote and the charge must show the same discount, or a customer would pay more than they were quoted. */
   isCreatorCheckout?: boolean;
+  /** Same server-verified meaning as `WebCheckoutInput.creatorUid`. */
+  creatorUid?: string | null;
 }
 
 class ConversationService {
@@ -493,6 +507,24 @@ class ConversationService {
         'One of our team is already helping you with an order on WhatsApp — please finish there, or message us to start over.',
       );
     }
+    // § Security audit — wallet double-discount: without this, a second
+    // checkout for the same phone while the first STK push is still
+    // pending would freeze a second snapshot against the same
+    // not-yet-debited wallet balance (`walletService.redeemableAmount`
+    // is a read, not a hold — see `freezeSnapshot`), letting one real
+    // balance be applied as a discount on two orders. `awaiting_payment`
+    // is transient: `handlePaymentResult`'s failure path resets it back
+    // to `'active'` the moment Safaricom reports failure/cancellation,
+    // so this never strands a customer whose payment genuinely failed —
+    // only blocks starting a second one while the first might still
+    // succeed. Staff exempt for the same reason `agent_assigned` is:
+    // a staff member placing a fresh order over the phone is not the
+    // race this guards against.
+    if (existing?.conversation.status === 'awaiting_payment' && !input.initiatedBy) {
+      throw new WebCheckoutConflictError(
+        'You already have a payment in progress — check your phone for the M-Pesa prompt. Give it a minute and try again if it expired.',
+      );
+    }
 
     const { delivery, stateBlob } = await this.buildWebDeliveryDetails(businessId, county, input);
 
@@ -547,6 +579,7 @@ class ConversationService {
           referralCode: input.referralCode,
           isRescueOffer: box.isRescueOffer,
           isCreatorCheckout: input.isCreatorCheckout,
+          creatorUid: input.creatorUid,
         },
         delivery,
       );
@@ -588,7 +621,8 @@ class ConversationService {
         phone: phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
+        // Daraja's documented STK Push limit is 13 characters — 'Snack order' (11) stays under it.
+        transactionDesc: 'Snack order',
       });
     } catch {
       // The prompt never reached Daraja. Unlike the WhatsApp path there
@@ -787,9 +821,27 @@ class ConversationService {
       }
     }
 
-    const referral = input.referralCode
+    let referral = input.referralCode
       ? await referralService.validateCode(businessId, input.referralCode)
       : null;
+    if (referral) {
+      let normalizedPhone: string | null = null;
+      try {
+        normalizedPhone = input.phone ? normalizeKenyanPhone(input.phone) : null;
+      } catch {
+        normalizedPhone = null;
+      }
+      if (
+        await isSelfReferral({
+          businessId,
+          referralOwnerId: referral.ownerId,
+          buyerCreatorUid: input.creatorUid,
+          buyerPhone: normalizedPhone,
+        })
+      ) {
+        referral = null;
+      }
+    }
 
     // Wallet credit needs a real, normalized phone number to look up.
     // Half-typed numbers are the norm here, so a rejection just means
@@ -857,6 +909,12 @@ class ConversationService {
     let deliveryMethod: DeliveryMethod | null = null;
     let customerName: string | null = null;
     let packageLabel: string | null = null;
+    // `getOrderStatus`'s totalKes only ever comes from a real Order,
+    // which doesn't exist yet while the payment screen is polling —
+    // the frozen snapshot's total is what the STK prompt actually asks
+    // for in the meantime, and it's the same figure the eventual order
+    // gets charged, so it's a safe, accurate stand-in while waiting.
+    let totalKes = base.totalKes;
 
     const conversation = await conversationRepository.findById(conversationId);
     if (conversation?.conversationCheckoutSnapshotId) {
@@ -867,6 +925,7 @@ class ConversationService {
         deliveryMethod = snapshot.delivery.method;
         customerName = snapshot.customerName;
         packageLabel = snapshot.packageLabel;
+        totalKes ??= snapshot.totalKes;
       }
     }
 
@@ -874,7 +933,8 @@ class ConversationService {
       checkoutSessionId: base.checkoutSessionId,
       paymentStatus: base.paymentStatus,
       orderId: base.orderId,
-      totalKes: base.totalKes,
+      orderNumber: base.orderNumber,
+      totalKes,
       deliveryMethod,
       customerName,
       packageLabel,
@@ -970,12 +1030,25 @@ class ConversationService {
       isRescueOffer?: boolean;
       /** Same server-verified meaning as `WebCheckoutInput.isCreatorCheckout`. */
       isCreatorCheckout?: boolean;
+      /** Same server-verified meaning as `WebCheckoutInput.creatorUid`. */
+      creatorUid?: string | null;
     },
     delivery: DeliveryDetails,
   ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
-    const referral = common.referralCode
+    let referral = common.referralCode
       ? await referralService.validateCode(businessId, common.referralCode)
       : null;
+    if (
+      referral &&
+      (await isSelfReferral({
+        businessId,
+        referralOwnerId: referral.ownerId,
+        buyerCreatorUid: common.creatorUid,
+        buyerPhone: phoneNumber,
+      }))
+    ) {
+      referral = null;
+    }
 
     const quantity = common.quantity ?? 1;
     // Wallet credit is applied on top of any referral discount, capped
@@ -1200,7 +1273,8 @@ class ConversationService {
         phone: phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
+        // Daraja's documented STK Push limit is 13 characters — 'Snack order' (11) stays under it.
+        transactionDesc: 'Snack order',
       });
     } catch {
       // STK push never even reached Daraja — tell the customer, and
@@ -1636,7 +1710,8 @@ class ConversationService {
         phone: conversation.phoneNumber,
         amountKes: totalKes,
         accountReference: `SQ-${conversationId.slice(0, 8)}`,
-        transactionDesc: 'Snack Quest order',
+        // Daraja's documented STK Push limit is 13 characters — 'Snack order' (11) stays under it.
+        transactionDesc: 'Snack order',
       });
     } catch {
       // Same recovery as confirmAndFreeze: STK push never reached
@@ -1680,6 +1755,7 @@ class ConversationService {
     let paymentStatus: OrderPaymentStatus;
     let orderId: string | null = null;
     let totalKes: number | null = null;
+    let orderNumber: number | null = null;
 
     if (conversation.status === 'completed') {
       paymentStatus = 'succeeded';
@@ -1687,6 +1763,7 @@ class ConversationService {
       if (order) {
         orderId = order.id;
         totalKes = order.data.pricing.totalKes;
+        orderNumber = order.data.orderNumber ?? null;
       }
     } else if (conversation.status === 'abandoned') {
       paymentStatus = 'abandoned';
@@ -1706,6 +1783,7 @@ class ConversationService {
       paymentStatus,
       currentStep: conversation.currentStep,
       orderId,
+      orderNumber,
       totalKes,
     };
   }
@@ -1790,14 +1868,15 @@ class ConversationService {
     }
 
     let orderId: string;
+    let orderNumber: number;
     try {
-      orderId = await orderService.createFromConversationSnapshot({
+      ({ orderId, orderNumber } = await orderService.createFromConversationSnapshot({
         snapshotId: result.snapshotId,
         snapshot,
         paymentIntentId: result.intentId,
         mpesaReceiptNumber: result.mpesaReceiptNumber,
         attribution,
-      });
+      }));
     } catch (error) {
       if (error instanceof OutOfStockError) {
         // Money already collected, box unavailable — this needs a
@@ -1817,6 +1896,7 @@ class ConversationService {
       }
       throw error;
     }
+    const orderRef = formatOrderNumber(orderNumber);
 
     await conversationCheckoutSnapshotRepository.updateStatus(result.snapshotId, 'completed');
     await conversationRepository.update(result.conversationId, {
@@ -1911,8 +1991,8 @@ class ConversationService {
 
     await this.notifications.notifyAdmin(
       businessId,
-      `New order: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
-        `${formatDeliveryLabel(snapshot.delivery)}. Order ${orderId}.`,
+      `New order ${orderRef}: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
+        `${formatDeliveryLabel(snapshot.delivery)}.`,
     );
 
     // Best-effort, same discipline as the shipment/referral calls
@@ -1937,8 +2017,8 @@ class ConversationService {
     // so this just confirms the payment landed.
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
-        ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
-        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your Snack Quest order is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
+        ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
+        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     const milestoneMessage =
       milestoneAwardKes > 0 ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.` : '';

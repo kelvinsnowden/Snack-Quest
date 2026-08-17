@@ -92,6 +92,7 @@ async function seedBusiness(tenant: TenantConfig) {
     consumerKey: `key-${tenant.businessId}`,
     consumerSecret: `secret-${tenant.businessId}`,
     shortcode: tenant.shortcode,
+    accountType: 'till',
     passkey: 'test-passkey',
     callbackUrl: `https://example.com/api/webhooks/daraja/${tenant.businessId}`,
     env: 'sandbox',
@@ -248,7 +249,6 @@ async function cleanCollections() {
     'shipments',
     'referralLinks',
     'referralAttributions',
-    'creatorProfiles',
     'outboundGatewayCalls',
     'pickupStations',
     'customerWallets',
@@ -335,6 +335,10 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(order.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
     // A native WhatsApp-originated order has no browser to attribute to.
     expect(order.attribution).toBeNull();
+    // The first order for a fresh business starts its sequence at 1
+    // (§ order references), and the customer-facing confirmation
+    // quotes the same human-friendly reference, not the raw doc id.
+    expect(order.orderNumber).toBe(1);
 
     const items = await orderRepository.listItems(orderDoc.id);
     expect(items).toHaveLength(1);
@@ -360,6 +364,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(adminMessages[0].businessId).toBe(SNACK_QUEST.businessId);
 
     expect(gateway.sent.at(-1)?.text).toContain('Payment received');
+    expect(gateway.sent.at(-1)?.text).toContain('SQ-1');
   });
 
   it('rejects checkout for the exit-intent rescue offer once its offerExpiresAt has passed', async () => {
@@ -551,29 +556,34 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     mockAllProviders();
 
     const creatorId = 'creator-1';
-    await adminFirestore.collection('creatorProfiles').doc(creatorId).set({
-      businessId: SNACK_QUEST.businessId,
-      referralCode: 'CREATOR10',
-      tier: 'bronze',
-      availableCashKes: 0,
-      pendingEarningsKes: 0,
-      lifetimeEarningsKes: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      bio: '',
-      niche: '',
-      followersRange: '',
-      paymentPreference: 'mpesa',
-      socialHandles: {},
-      onboardingCompleted: true,
-      status: 'active',
-      schemaVersion: 1,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      createdBy: 'system',
-      updatedBy: 'system',
-      deletedAt: null,
-    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
+      .doc(creatorId)
+      .set({
+        businessId: SNACK_QUEST.businessId,
+        referralCode: 'CREATOR10',
+        tier: 'bronze',
+        availableCashKes: 0,
+        pendingEarningsKes: 0,
+        lifetimeEarningsKes: 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        bio: '',
+        niche: '',
+        followersRange: '',
+        paymentPreference: 'mpesa',
+        socialHandles: {},
+        onboardingCompleted: true,
+        status: 'active',
+        schemaVersion: 1,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: 'system',
+        updatedBy: 'system',
+        deletedAt: null,
+      });
     await adminFirestore.collection('referralLinks').add({
       businessId: SNACK_QUEST.businessId,
       code: 'CREATOR10',
@@ -609,7 +619,9 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     await service.handlePaymentResult(callback);
 
     const creatorSnapshot = await adminFirestore
-      .collection('creatorProfiles')
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
       .doc(creatorId)
       .get();
     expect(creatorSnapshot.data()?.availableCashKes).toBe(300);
@@ -975,29 +987,34 @@ describe('platform proof: a second, independent tenant', () => {
     // A referral code that means something for Snack Quest and
     // literally does not exist for Rival Snacks.
     const creatorId = 'creator-snack-quest-1';
-    await adminFirestore.collection('creatorProfiles').doc(creatorId).set({
-      businessId: SNACK_QUEST.businessId,
-      referralCode: 'SQ10',
-      tier: 'bronze',
-      availableCashKes: 0,
-      pendingEarningsKes: 0,
-      lifetimeEarningsKes: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      bio: '',
-      niche: '',
-      followersRange: '',
-      paymentPreference: 'mpesa',
-      socialHandles: {},
-      onboardingCompleted: true,
-      status: 'active',
-      schemaVersion: 1,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      createdBy: 'system',
-      updatedBy: 'system',
-      deletedAt: null,
-    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
+      .doc(creatorId)
+      .set({
+        businessId: SNACK_QUEST.businessId,
+        referralCode: 'SQ10',
+        tier: 'bronze',
+        availableCashKes: 0,
+        pendingEarningsKes: 0,
+        lifetimeEarningsKes: 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        bio: '',
+        niche: '',
+        followersRange: '',
+        paymentPreference: 'mpesa',
+        socialHandles: {},
+        onboardingCompleted: true,
+        status: 'active',
+        schemaVersion: 1,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: 'system',
+        updatedBy: 'system',
+        deletedAt: null,
+      });
     await adminFirestore.collection('referralLinks').add({
       businessId: SNACK_QUEST.businessId,
       code: 'SQ10',
@@ -1102,10 +1119,20 @@ describe('platform proof: a second, independent tenant', () => {
     expect(rivalOrders.size).toBe(1);
     expect(sqOrders.docs[0].data().pricing.totalKes).toBe(2400);
     expect(rivalOrders.docs[0].data().pricing.totalKes).toBe(4200);
+    // Each tenant's order-number sequence is its own — the first order
+    // for a fresh business always starts at 1, regardless of what any
+    // other business's counter is doing (§ order references).
+    expect(sqOrders.docs[0].data().orderNumber).toBe(1);
+    expect(rivalOrders.docs[0].data().orderNumber).toBe(1);
 
     // The creator only got credited for the Snack Quest order — Rival
     // Snacks never touched Snack Quest's referral program.
-    const creatorSnapshot = await adminFirestore.collection('creatorProfiles').doc(creatorId).get();
+    const creatorSnapshot = await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .collection('creatorMemberships')
+      .doc(creatorId)
+      .get();
     expect(creatorSnapshot.data()?.availableCashKes).toBe(150);
     const attributions = await adminFirestore.collection('referralAttributions').get();
     expect(attributions.size).toBe(1);

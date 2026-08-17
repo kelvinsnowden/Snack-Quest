@@ -100,12 +100,13 @@ describe('packages security rules', () => {
   });
 
   it('lets an admin write a package', async () => {
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(
       setDoc(doc(ctx.firestore(), 'packages', 'box-1'), {
         name: 'Starter Box',
         priceKes: 2500,
         isActive: true,
+        businessId: 'biz-1',
       }),
     );
   });
@@ -158,9 +159,9 @@ describe('domainEvents security rules', () => {
 
   it('lets an admin read', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), 'domainEvents', 'evt-1'), { type: 'Test' });
+      await setDoc(doc(context.firestore(), 'domainEvents', 'evt-1'), { type: 'Test', businessId: 'biz-1' });
     });
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'domainEvents', 'evt-1')));
   });
 });

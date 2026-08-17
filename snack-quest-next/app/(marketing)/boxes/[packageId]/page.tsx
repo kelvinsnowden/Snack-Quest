@@ -11,6 +11,7 @@ import { SetActiveBoxName } from '@/components/marketing/design/ActiveBoxContext
 import { formatKes } from '@/lib/orders/format';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 
 export async function generateMetadata({
   params,
@@ -86,7 +87,7 @@ export default async function BoxDetailPage({
     <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLdGraph) }}
       />
       <SetActiveBoxName packageId={packageId} name={box.name} />
       <nav aria-label="Breadcrumb" className="text-muted-foreground flex items-center gap-1.5 text-sm">
@@ -131,6 +132,9 @@ export default async function BoxDetailPage({
           <p className="text-subtitle text-muted-foreground mt-4">
             {box.description}
           </p>
+          {box.snackCountLabel ? (
+            <p className="text-foreground mt-2 text-base font-medium">{box.snackCountLabel}</p>
+          ) : null}
           <p className="text-muted-foreground mt-2 text-sm">
             All snacks have passed the taste test. I have tasted each of them.
           </p>

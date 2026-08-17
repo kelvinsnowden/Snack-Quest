@@ -25,7 +25,7 @@ export const metadata: Metadata = { title: 'Earnings' };
 export default async function CreatorEarningsPage() {
   const session = await requireCreatorSession();
   const [{ profile }, { attributions }] = await Promise.all([
-    creatorDashboardService.getDashboard(session.uid),
+    creatorDashboardService.getDashboard(session.businessId, session.uid),
     referralService.listCommissionsForCreator(session.businessId, session.uid),
   ]);
 

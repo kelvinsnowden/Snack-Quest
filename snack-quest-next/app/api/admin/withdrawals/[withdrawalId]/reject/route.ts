@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   withdrawalService,
@@ -15,6 +20,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { withdrawalId } = await params;
 
@@ -31,7 +39,12 @@ export async function POST(
   }
 
   try {
-    await withdrawalService.rejectWithdrawal(session.businessId, withdrawalId, session.uid, reason.trim());
+    await withdrawalService.rejectWithdrawal(
+      session.businessId,
+      withdrawalId,
+      session.uid,
+      reason.trim(),
+    );
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
@@ -49,7 +62,12 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 409 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not reject withdrawal' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not reject withdrawal',
+      },
       { status: 400 },
     );
   }

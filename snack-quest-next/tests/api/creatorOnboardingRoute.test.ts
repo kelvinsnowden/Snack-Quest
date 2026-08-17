@@ -78,7 +78,7 @@ describe('POST /api/creator/onboarding', () => {
       request({ ...VALID_BODY, socialHandles: { instagram: '@amina', junk: 123, tiktok: '@amina.tt' } }),
     );
 
-    expect(completeOnboardingMock).toHaveBeenCalledWith('creator-1', {
+    expect(completeOnboardingMock).toHaveBeenCalledWith('biz-1', 'creator-1', {
       bio: 'Food creator',
       niche: 'Food',
       followersRange: '1,000–5,000',

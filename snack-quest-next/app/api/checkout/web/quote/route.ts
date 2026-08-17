@@ -52,6 +52,7 @@ export async function POST(request: Request): Promise<Response> {
         typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
       phone: typeof phone === 'string' ? phone : undefined,
       isCreatorCheckout: Boolean(creatorSession),
+      creatorUid: creatorSession?.uid ?? null,
     },
   );
 

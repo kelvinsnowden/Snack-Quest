@@ -1,6 +1,14 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
-import { featureFlagService, UnknownFeatureFlagError } from '@/services/featureFlagService';
+import {
+  featureFlagService,
+  UnknownFeatureFlagError,
+} from '@/services/featureFlagService';
 
 interface SetFlagBody {
   key?: unknown;
@@ -13,6 +21,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const flags = await featureFlagService.listFlags(session.businessId);
   return Response.json({ flags });
@@ -24,6 +35,9 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   let body: SetFlagBody;
   try {
@@ -33,11 +47,19 @@ export async function PATCH(request: Request): Promise<Response> {
   }
 
   if (typeof body.key !== 'string' || typeof body.enabled !== 'boolean') {
-    return Response.json({ error: '"key" (string) and "enabled" (boolean) are required.' }, { status: 400 });
+    return Response.json(
+      { error: '"key" (string) and "enabled" (boolean) are required.' },
+      { status: 400 },
+    );
   }
 
   try {
-    const flag = await featureFlagService.setEnabled(session.businessId, body.key, body.enabled, session.uid);
+    const flag = await featureFlagService.setEnabled(
+      session.businessId,
+      body.key,
+      body.enabled,
+      session.uid,
+    );
 
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -53,6 +75,14 @@ export async function PATCH(request: Request): Promise<Response> {
     if (error instanceof UnknownFeatureFlagError) {
       return Response.json({ error: error.message }, { status: 400 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'Could not update this flag.' }, { status: 400 });
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not update this flag.',
+      },
+      { status: 400 },
+    );
   }
 }

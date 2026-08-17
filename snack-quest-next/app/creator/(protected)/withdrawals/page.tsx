@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: 'Withdrawals' };
 export default async function CreatorWithdrawalsPage() {
   const session = await requireCreatorSession();
   const [{ profile }, { withdrawals }] = await Promise.all([
-    creatorDashboardService.getDashboard(session.uid),
+    creatorDashboardService.getDashboard(session.businessId, session.uid),
     withdrawalService.listWithdrawalsForOwner(session.businessId, session.uid),
   ]);
 

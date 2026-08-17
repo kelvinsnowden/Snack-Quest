@@ -1,5 +1,13 @@
+import {
+  hasStaffRole,
+  ADMIN_OR_AGENT,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { conversationService, ConversationNotFoundError } from '@/services/conversationService';
+import {
+  conversationService,
+  ConversationNotFoundError,
+} from '@/services/conversationService';
 
 /** A staff member's message to the customer (§ Admin: Conversation monitoring), sent through the real WhatsApp gateway and appended to the transcript exactly like a bot reply. */
 export async function POST(
@@ -9,6 +17,9 @@ export async function POST(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
+    return forbiddenResponse();
   }
 
   const { conversationId } = await params;
@@ -26,14 +37,21 @@ export async function POST(
   }
 
   try {
-    await conversationService.sendAgentReply(session.businessId, conversationId, text.trim());
+    await conversationService.sendAgentReply(
+      session.businessId,
+      conversationId,
+      text.trim(),
+    );
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof ConversationNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not send message' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Could not send message',
+      },
       { status: 400 },
     );
   }

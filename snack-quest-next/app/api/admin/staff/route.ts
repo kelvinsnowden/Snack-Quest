@@ -13,6 +13,7 @@ interface InviteStaffBody {
   displayName?: unknown;
   role?: unknown;
   department?: unknown;
+  permissions?: unknown;
 }
 
 /** Lists every staff account on this business (§ Staff Management). */
@@ -53,11 +54,15 @@ export async function POST(request: Request): Promise<Response> {
   ) {
     return Response.json({ error: '"email", "displayName", "role", and "department" are required strings.' }, { status: 400 });
   }
+  if (body.permissions !== undefined && (!Array.isArray(body.permissions) || body.permissions.some((p) => typeof p !== 'string'))) {
+    return Response.json({ error: '"permissions" must be an array of strings.' }, { status: 400 });
+  }
+  const permissions = body.permissions as string[] | undefined;
 
   try {
     const result = await staffManagementService.inviteStaff(
       session.businessId,
-      { email: body.email, displayName: body.displayName, role: body.role as StaffRole, department: body.department },
+      { email: body.email, displayName: body.displayName, role: body.role as StaffRole, department: body.department, permissions },
       session.uid,
     );
 
@@ -67,7 +72,7 @@ export async function POST(request: Request): Promise<Response> {
       action: 'staff.invite',
       entityType: 'staffProfile',
       entityId: result.uid,
-      after: { email: body.email, role: body.role, department: body.department, emailAttempted: result.emailAttempted },
+      after: { email: body.email, role: body.role, department: body.department, permissions: permissions ?? [], emailAttempted: result.emailAttempted },
     });
 
     return Response.json({ uid: result.uid, resetLink: result.resetLink, emailAttempted: result.emailAttempted }, { status: 201 });

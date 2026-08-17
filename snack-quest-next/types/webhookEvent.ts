@@ -29,7 +29,8 @@ export type WebhookEventKind =
   | 'reversal_result'
   | 'inbound_message'
   | 'tracking_update'
-  | 'stk_query_reconciliation';
+  | 'stk_query_reconciliation'
+  | 'transaction_status_result';
 
 export interface WebhookEvent {
   businessId: string;

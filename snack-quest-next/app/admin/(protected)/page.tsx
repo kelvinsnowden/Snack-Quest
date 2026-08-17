@@ -6,10 +6,12 @@ import {
   ClipboardList,
   MessageCircleWarning,
   Package,
+  ShieldAlert,
   Truck,
   Users,
 } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { ADMIN_SECTIONS, visibleAdminSections, type AdminSection } from '@/lib/auth/adminSections';
 import { orderRepository } from '@/repositories/orderRepository';
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { staffRepository } from '@/repositories/staffRepository';
@@ -28,11 +30,11 @@ import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
-const QUICK_LINKS = [
-  { href: '/admin/orders', label: 'Orders', description: 'Every order, oldest to newest', icon: ClipboardList },
-  { href: '/admin/products', label: 'Products', description: 'Manage boxes and pricing', icon: Package },
-  { href: '/admin/deliveries', label: 'Deliveries', description: 'Track every shipment', icon: Truck },
-  { href: '/admin/withdrawals', label: 'Withdrawals', description: 'Creator payout requests', icon: Banknote },
+const QUICK_LINKS: { href: string; label: string; description: string; icon: typeof ClipboardList; section: AdminSection }[] = [
+  { href: '/admin/orders', label: 'Orders', description: 'Every order, oldest to newest', icon: ClipboardList, section: 'orders' },
+  { href: '/admin/products', label: 'Products', description: 'Manage boxes and pricing', icon: Package, section: 'orders' },
+  { href: '/admin/deliveries', label: 'Deliveries', description: 'Track every shipment', icon: Truck, section: 'orders' },
+  { href: '/admin/withdrawals', label: 'Withdrawals', description: 'Creator payout requests', icon: Banknote, section: 'finance' },
 ];
 
 /** First letter of each of up to two words — the same "no photo, still recognisable" treatment initials-avatars use everywhere. */
@@ -59,8 +61,17 @@ function initials(name: string): string {
  * land on, and giving it the visual rhythm a dashboard should have:
  * one real chart, one real composition view, one real list.
  */
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ accessDenied?: string }>;
+}) {
   const session = await requireStaffSession();
+  const { accessDenied } = await searchParams;
+  const deniedSection = ADMIN_SECTIONS.find((s) => s.key === accessDenied);
+
+  const visibleSections = visibleAdminSections(session);
+  const quickLinks = visibleSections === null ? QUICK_LINKS : QUICK_LINKS.filter((link) => visibleSections.includes(link.section));
 
   const [business, totalOrders, agentQueueCount, staff, revenue, recentOrders, delivery, traffic] =
     await Promise.all([
@@ -111,6 +122,17 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {deniedSection ? (
+        <Card className="border-warning/40 bg-warning/5">
+          <CardContent className="flex items-center gap-3 pt-6">
+            <ShieldAlert className="size-5 shrink-0 text-warning" aria-hidden="true" />
+            <p className="text-sm text-foreground">
+              You don&apos;t have access to <strong>{deniedSection.label}</strong>. Ask a super admin if you need it.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div>
         <h1 className="text-page-title text-foreground font-bold tracking-tight">
           Welcome back, {session.displayName.split(' ')[0]}
@@ -231,7 +253,7 @@ export default async function AdminDashboardPage() {
             <CardTitle>Jump to</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-1 p-3 pt-0">
-            {QUICK_LINKS.map((link) => (
+            {quickLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

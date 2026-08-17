@@ -346,8 +346,20 @@ describe('startWebCheckout — pricing authority', () => {
     // looked up by exact match, so a customer typing what they read on
     // a creator's post used to pay full price with no error anywhere,
     // and the creator earned nothing.
-    for (const typed of ['save500', 'Save500', ' save500 ', 'SAVE500']) {
-      const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ referralCode: typed }));
+    //
+    // A distinct phone per variant, not the shared PHONE_TYPED — each
+    // call would otherwise be a second checkout for the same phone
+    // while the first is still `awaiting_payment` (§ security audit:
+    // wallet double-discount fix), which now correctly rejects with
+    // WebCheckoutConflictError rather than silently freezing a second
+    // snapshot. That guard is real product behavior; this test's job
+    // is capitalization handling, not repeat-checkout blocking.
+    const variants = ['save500', 'Save500', ' save500 ', 'SAVE500'];
+    for (const [index, typed] of variants.entries()) {
+      const result = await service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({ referralCode: typed, phone: `07123456${70 + index}` }),
+      );
       expect(result.pricing.discountKes).toBe(500);
       expect(result.pricing.totalKes).toBe(2300);
     }
@@ -624,11 +636,21 @@ describe('startWebCheckout — staff-initiated', () => {
   const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
 
   it('prices a staff order exactly like a customer order', async () => {
+    // Different phones: the staff order deliberately stays exempt from
+    // the awaiting-payment checkout guard (§ security audit — wallet
+    // double-discount fix) so a staff member can place it regardless of
+    // any in-flight self-checkout, but that guard would otherwise
+    // correctly block a second, customer-initiated checkout for the
+    // very same phone right behind it — a real product behavior this
+    // test isn't exercising, so it shouldn't collide with it here.
     const staffOrder = await service().startWebCheckout(
       BUSINESS_ID,
       pickupInput({ initiatedBy: STAFF }),
     );
-    const customerOrder = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    const customerOrder = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ phone: '0798765432' }),
+    );
 
     // A faster way to start an order, never a privileged way to price one.
     expect(staffOrder.pricing).toEqual(customerOrder.pricing);
@@ -695,6 +717,10 @@ describe('getWebCheckoutStatus', () => {
       checkoutSessionId: result.checkoutSessionId,
       paymentStatus: 'processing',
       orderId: null,
+      orderNumber: null,
+      // No Order exists yet — this must come from the frozen snapshot,
+      // or the payment screen has nothing to show while it waits.
+      totalKes: 2800,
       deliveryMethod: 'pickup',
       customerName: 'Wanjiru Kamau',
       packageLabel: 'Premium Box',

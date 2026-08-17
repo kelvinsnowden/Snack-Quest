@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   fulfillmentBatchService,
@@ -17,7 +22,9 @@ interface CreateFulfillmentBatchBody {
   notes?: unknown;
 }
 
-function validateOrderIds(raw: unknown): { error: string } | { orderIds: string[] } {
+function validateOrderIds(
+  raw: unknown,
+): { error: string } | { orderIds: string[] } {
   if (!Array.isArray(raw) || raw.length === 0) {
     return { error: '"orderIds" must be a non-empty array.' };
   }
@@ -31,7 +38,10 @@ function validateOrderIds(raw: unknown): { error: string } | { orderIds: string[
   return { orderIds };
 }
 
-function validateOptionalCost(raw: unknown, label: string): { error: string } | { value: number | undefined } {
+function validateOptionalCost(
+  raw: unknown,
+  label: string,
+): { error: string } | { value: number | undefined } {
   if (raw === undefined) {
     return { value: undefined };
   }
@@ -47,6 +57,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   let body: CreateFulfillmentBatchBody;
   try {
@@ -59,10 +72,23 @@ export async function POST(request: Request): Promise<Response> {
   if ('error' in orderIdsResult) {
     return Response.json({ error: orderIdsResult.error }, { status: 400 });
   }
-  if (typeof body.productsPurchasedKes !== 'number' || !Number.isFinite(body.productsPurchasedKes) || body.productsPurchasedKes < 0) {
-    return Response.json({ error: '"productsPurchasedKes" is required and must be a non-negative number.' }, { status: 400 });
+  if (
+    typeof body.productsPurchasedKes !== 'number' ||
+    !Number.isFinite(body.productsPurchasedKes) ||
+    body.productsPurchasedKes < 0
+  ) {
+    return Response.json(
+      {
+        error:
+          '"productsPurchasedKes" is required and must be a non-negative number.',
+      },
+      { status: 400 },
+    );
   }
-  const packagingResult = validateOptionalCost(body.packagingKes, 'packagingKes');
+  const packagingResult = validateOptionalCost(
+    body.packagingKes,
+    'packagingKes',
+  );
   if ('error' in packagingResult) {
     return Response.json({ error: packagingResult.error }, { status: 400 });
   }
@@ -75,22 +101,26 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: miscResult.error }, { status: 400 });
   }
   if (body.notes !== undefined && typeof body.notes !== 'string') {
-    return Response.json({ error: '"notes" must be a string when provided.' }, { status: 400 });
+    return Response.json(
+      { error: '"notes" must be a string when provided.' },
+      { status: 400 },
+    );
   }
 
   try {
-    const fulfillmentBatchId = await fulfillmentBatchService.createFulfillmentBatch(
-      session.businessId,
-      {
-        orderIds: orderIdsResult.orderIds,
-        productsPurchasedKes: body.productsPurchasedKes,
-        packagingKes: packagingResult.value,
-        deliveryKes: deliveryResult.value,
-        miscKes: miscResult.value,
-        notes: body.notes as string | undefined,
-      },
-      session.uid,
-    );
+    const fulfillmentBatchId =
+      await fulfillmentBatchService.createFulfillmentBatch(
+        session.businessId,
+        {
+          orderIds: orderIdsResult.orderIds,
+          productsPurchasedKes: body.productsPurchasedKes,
+          packagingKes: packagingResult.value,
+          deliveryKes: deliveryResult.value,
+          miscKes: miscResult.value,
+          notes: body.notes as string | undefined,
+        },
+        session.uid,
+      );
 
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -109,9 +139,20 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof OrderAlreadyBatchedError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
-    if (error instanceof OrderNotEligibleForBatchError || error instanceof InvalidFulfillmentBatchInputError) {
+    if (
+      error instanceof OrderNotEligibleForBatchError ||
+      error instanceof InvalidFulfillmentBatchInputError
+    ) {
       return Response.json({ error: error.message }, { status: 400 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'Could not create fulfillment batch' }, { status: 400 });
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not create fulfillment batch',
+      },
+      { status: 400 },
+    );
   }
 }

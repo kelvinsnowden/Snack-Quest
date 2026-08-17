@@ -68,9 +68,10 @@ describe('pickupStations security rules', () => {
         name: 'G4S Kasarani Station',
         county: 'Nairobi',
         isActive: false,
+        businessId: 'biz-1',
       });
     });
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'pickupStations', 'station-1')));
   });
 
@@ -85,11 +86,12 @@ describe('pickupStations security rules', () => {
   });
 
   it('lets an admin write a station', async () => {
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(
       setDoc(doc(ctx.firestore(), 'pickupStations', 'station-1'), {
         name: 'G4S Kasarani Station',
         isActive: true,
+        businessId: 'biz-1',
       }),
     );
   });
@@ -112,9 +114,10 @@ describe('deliveryZoneRules security rules', () => {
       await setDoc(doc(context.firestore(), 'deliveryZoneRules', 'zone-1'), {
         zone: 'Nairobi',
         feeKes: null,
+        businessId: 'biz-1',
       });
     });
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'deliveryZoneRules', 'zone-1')));
   });
 
@@ -129,11 +132,12 @@ describe('deliveryZoneRules security rules', () => {
   });
 
   it('lets an admin write a zone rule', async () => {
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(
       setDoc(doc(ctx.firestore(), 'deliveryZoneRules', 'zone-1'), {
         zone: 'Nairobi',
         feeKes: 250,
+        businessId: 'biz-1',
       }),
     );
   });

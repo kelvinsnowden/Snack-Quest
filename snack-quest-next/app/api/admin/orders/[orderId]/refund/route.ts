@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   refundService,
@@ -23,11 +28,18 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
+  }
 
   const { orderId } = await params;
 
   try {
-    const status = await refundService.requestRefund(session.businessId, orderId, session.uid);
+    const status = await refundService.requestRefund(
+      session.businessId,
+      orderId,
+      session.uid,
+    );
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
@@ -48,7 +60,10 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 400 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not initiate refund' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Could not initiate refund',
+      },
       { status: 400 },
     );
   }

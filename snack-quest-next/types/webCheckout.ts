@@ -86,6 +86,8 @@ export interface WebCheckoutStatusResponse {
   checkoutSessionId: string;
   paymentStatus: OrderPaymentStatus;
   orderId: string | null;
+  /** The human-friendly reference (§ order references) shown on the success screen and folded into the "Arrange Bolt Delivery" WhatsApp message — null until `orderId` is set. */
+  orderNumber: number | null;
   totalKes: number | null;
   /** Set once an order exists — drives the success page's "Arrange Bolt Delivery on WhatsApp" call to action. */
   deliveryMethod: DeliveryMethod | null;

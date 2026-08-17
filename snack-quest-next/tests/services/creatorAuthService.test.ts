@@ -12,6 +12,7 @@ import {
   InvalidCreatorRegistrationError,
 } from '@/services/creatorAuthService';
 import { getIdTokenForUid } from '../helpers/authEmulator';
+import { clearCreatorMemberships } from '../helpers/creatorFixtures';
 
 /**
  * The real creator sign-up/sign-in handshake, end to end against the
@@ -25,11 +26,12 @@ import { getIdTokenForUid } from '../helpers/authEmulator';
  */
 
 const createdUids: string[] = [];
+const BUSINESS_ID = 'snack-quest';
+const OTHER_BUSINESS_ID = 'rival-snacks';
 
 async function cleanCollections() {
   for (const name of [
     'users',
-    'creatorProfiles',
     'referralLinks',
     'domainEvents',
     'outboundMessages',
@@ -37,6 +39,7 @@ async function cleanCollections() {
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   // The registration-order counter (§ referral system overhaul) — cleared so each
   // test's first registration deterministically claims registration #1.
   await adminFirestore.recursiveDelete(
@@ -76,7 +79,7 @@ describe('CreatorAuthService.register', () => {
     await expect(
       creatorAuthService.register(idToken, '   '),
     ).rejects.toBeInstanceOf(InvalidCreatorRegistrationError);
-    expect(await creatorRepository.findById(uid)).toBeNull();
+    expect(await creatorRepository.findById(BUSINESS_ID, uid)).toBeNull();
   });
 
   it('provisions a brand-new creator: users + creatorProfiles docs, custom claims, a unique referral code, and one permanent referral link', async () => {
@@ -103,7 +106,7 @@ describe('CreatorAuthService.register', () => {
     expect(user?.roles).toEqual(['creator']);
     expect(user?.displayName).toBe('Amina Yusuf');
 
-    const profile = await creatorRepository.findById(uid);
+    const profile = await creatorRepository.findById(BUSINESS_ID, uid);
     expect(profile).toMatchObject({
       businessId: 'snack-quest',
       status: 'pending',
@@ -159,7 +162,7 @@ describe('CreatorAuthService.register', () => {
 
     await creatorAuthService.register(idToken, 'Amina Yusuf');
 
-    const profile = await creatorRepository.findById(uid);
+    const profile = await creatorRepository.findById(BUSINESS_ID, uid);
     const outbound = await outboundMessageRepository.findById(`email:creator-welcome:${uid}`);
     expect(outbound?.recipientRef).toBe('welcome-email@example.com');
     expect(outbound?.renderedBody).toBe(
@@ -176,7 +179,7 @@ describe('CreatorAuthService.register', () => {
       const idToken = await getIdTokenForUid(uid);
       await creatorAuthService.register(idToken, `Creator Number ${i}`);
 
-      const profile = await creatorRepository.findById(uid);
+      const profile = await creatorRepository.findById(BUSINESS_ID, uid);
       const { links } = await referralLinkRepository.listByOwner('snack-quest', uid);
       rates.push(profile!.commissionRateKes, links[0].data.commissionKes);
       expect(links[0].data.discountKes).toBe(250);
@@ -246,7 +249,7 @@ describe('CreatorAuthService.register', () => {
     expect(after.session.uid).toBe(uid);
   });
 
-  it('rejects a uid that already has a creator profile', async () => {
+  it('rejects a uid that already has a creator profile in the same business', async () => {
     const uid = await createAuthUser('already-creator@example.com');
     const idToken = await getIdTokenForUid(uid);
     await creatorAuthService.register(idToken, 'Already Creator');
@@ -254,6 +257,39 @@ describe('CreatorAuthService.register', () => {
     await expect(
       creatorAuthService.register(idToken, 'Already Creator'),
     ).rejects.toBeInstanceOf(CreatorAlreadyRegisteredError);
+  });
+
+  // The direct regression test for the migration's whole purpose (§
+  // Creator Marketplace migration): before creatorMemberships was
+  // nested per business, this same uid registering a second time under
+  // a different business would incorrectly throw
+  // CreatorAlreadyRegisteredError, because `findById` had no way to
+  // know it should only be looking at the first business's data.
+  it('lets the same uid register as a creator in a second, independent business', async () => {
+    const uid = await createAuthUser('multi-business-creator@example.com');
+    const originalBusinessId = process.env.SNACK_QUEST_BUSINESS_ID;
+
+    try {
+      const firstToken = await getIdTokenForUid(uid);
+      await creatorAuthService.register(firstToken, 'Cross Business Creator');
+
+      process.env.SNACK_QUEST_BUSINESS_ID = OTHER_BUSINESS_ID;
+      const secondToken = await getIdTokenForUid(uid);
+      await expect(
+        creatorAuthService.register(secondToken, 'Cross Business Creator'),
+      ).resolves.toMatchObject({ session: { businessId: OTHER_BUSINESS_ID } });
+    } finally {
+      if (originalBusinessId === undefined) {
+        delete process.env.SNACK_QUEST_BUSINESS_ID;
+      } else {
+        process.env.SNACK_QUEST_BUSINESS_ID = originalBusinessId;
+      }
+    }
+
+    const inFirstBusiness = await creatorRepository.findById(BUSINESS_ID, uid);
+    const inOtherBusiness = await creatorRepository.findById(OTHER_BUSINESS_ID, uid);
+    expect(inFirstBusiness?.businessId).toBe(BUSINESS_ID);
+    expect(inOtherBusiness?.businessId).toBe(OTHER_BUSINESS_ID);
   });
 });
 

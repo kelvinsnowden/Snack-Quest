@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
-import { formatKes } from '@/lib/orders/format';
+import { formatKes, formatOrderNumber } from '@/lib/orders/format';
 import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
 import type { OrderStatus } from '@/types';
 
@@ -21,6 +21,7 @@ import type { OrderStatus } from '@/types';
  */
 export interface OrderTableRow {
   id: string;
+  orderNumber: number | null;
   customerName: string;
   phoneNumber: string;
   packageLabel: string;
@@ -84,7 +85,7 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
 
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
               <tr>
                 <th className="w-10 px-4 py-3">
@@ -95,6 +96,7 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
                     aria-label="Select all eligible orders"
                   />
                 </th>
+                <th className="px-4 py-3 font-medium">Order</th>
                 <th className="px-4 py-3 font-medium">Customer</th>
                 <th className="px-4 py-3 font-medium">Box</th>
                 <th className="px-4 py-3 font-medium">Total</th>
@@ -116,6 +118,11 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
                         onCheckedChange={(checked) => toggleOne(order.id, checked === true)}
                         aria-label={`Select order for ${order.customerName || 'guest'}`}
                       />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href={`/admin/orders/${order.id}`} className="font-mono text-caption font-medium text-foreground hover:underline">
+                        {order.orderNumber !== null ? formatOrderNumber(order.orderNumber) : '—'}
+                      </Link>
                     </td>
                     <td className="px-4 py-3">
                       <Link href={`/admin/orders/${order.id}`} className="block">

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { requireStaffSession } from '@/lib/auth/session';
+import { visibleAdminSections } from '@/lib/auth/adminSections';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
@@ -44,7 +45,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AdminSidebar businessName={business?.name ?? 'Snack Quest'} />
+      <AdminSidebar
+        businessName={business?.name ?? 'Snack Quest'}
+        visibleSections={visibleAdminSections(session)}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminTopBar
           businessName={business?.name ?? 'Snack Quest'}

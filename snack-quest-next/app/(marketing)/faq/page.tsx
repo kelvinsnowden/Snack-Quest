@@ -3,6 +3,7 @@ import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton'
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { faqRepository } from '@/repositories/faqRepository';
+import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Frequently asked questions',
@@ -31,7 +32,7 @@ export default async function FaqPage() {
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }}
       />
       <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-page-title">
         Frequently asked questions

@@ -4,7 +4,7 @@ export type CreatorTier = 'bronze' | 'silver' | 'gold' | 'platinum';
 export type CreatorStatus = 'pending' | 'active' | 'suspended';
 export type PaymentPreference = 'mpesa' | 'bank';
 
-/** `creatorProfiles/{uid}` — creator-specific business data. TDD §8. */
+/** `businesses/{businessId}/creatorMemberships/{uid}` — creator-specific business data. TDD §8. */
 export interface CreatorProfile extends AuditFields {
   businessId: string;
   referralCode: string;

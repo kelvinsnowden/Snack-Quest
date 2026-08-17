@@ -44,7 +44,7 @@ describe('businesses security rules', () => {
         currency: 'KES',
       });
     });
-    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'] });
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
     await assertSucceeds(getDoc(doc(ctx.firestore(), 'businesses', 'biz-1')));
   });
 
@@ -66,6 +66,19 @@ describe('businesses security rules', () => {
       });
     });
     const ctx = testEnv.authenticatedContext('creator-1', { roles: ['creator'] });
+    await assertFails(getDoc(doc(ctx.firestore(), 'businesses', 'biz-1')));
+  });
+
+  // § security audit — an admin's role claim alone used to be enough;
+  // `businessId` is what actually confines them to their own tenant.
+  it('blocks an admin from a different business from reading this one', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'businesses', 'biz-1'), {
+        name: 'Snack Quest',
+        currency: 'KES',
+      });
+    });
+    const ctx = testEnv.authenticatedContext('admin-2', { roles: ['admin'], businessId: 'biz-2' });
     await assertFails(getDoc(doc(ctx.firestore(), 'businesses', 'biz-1')));
   });
 });

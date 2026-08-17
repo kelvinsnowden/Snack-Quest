@@ -24,6 +24,7 @@ describe('businessIntegrationSecretRepository', () => {
       consumerKey: 'ck',
       consumerSecret: 'cs',
       shortcode: '123456',
+      accountType: 'till',
       passkey: 'pk',
       callbackUrl: 'https://example.com/cb',
       env: 'sandbox',

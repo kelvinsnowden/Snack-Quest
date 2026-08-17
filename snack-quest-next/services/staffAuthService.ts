@@ -38,6 +38,8 @@ export interface StaffSession {
   displayName: string;
   roles: Role[];
   businessId: string;
+  /** Which Admin Portal sections this staff member can reach (§ Staff access control) — empty means unrestricted. See `lib/auth/adminSections.ts`. */
+  permissions: string[];
 }
 
 class StaffAuthService {
@@ -76,6 +78,7 @@ class StaffAuthService {
         displayName: user.displayName,
         roles: user.roles,
         businessId: staffProfile.businessId,
+        permissions: staffProfile.permissions,
       },
     };
   }
@@ -109,6 +112,7 @@ class StaffAuthService {
       displayName: user.displayName,
       roles: user.roles,
       businessId: staffProfile.businessId,
+      permissions: staffProfile.permissions,
     };
   }
 }

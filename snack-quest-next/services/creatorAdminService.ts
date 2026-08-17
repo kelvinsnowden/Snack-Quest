@@ -47,8 +47,16 @@ function isoOrNull(value: string | undefined | null): string | null {
 class CreatorAdminService {
   async listCreators(
     businessId: string,
-    options: { status?: CreatorStatus; cursor?: string } = {},
+    options: { status?: CreatorStatus; followersRange?: string; q?: string; cursor?: string } = {},
   ): Promise<{ creators: CreatorListItem[]; nextCursor: string | null }> {
+    if (options.q?.trim()) {
+      return this.searchCreators(businessId, {
+        status: options.status,
+        followersRange: options.followersRange,
+        q: options.q.trim(),
+      });
+    }
+
     const { creators, nextCursor } = await creatorRepository.listByBusiness(businessId, options);
     const withIdentity = await Promise.all(
       creators.map(async ({ id, data }) => ({
@@ -60,8 +68,48 @@ class CreatorAdminService {
     return { creators: withIdentity, nextCursor };
   }
 
+  /**
+   * § Creator Marketplace — free-text search by niche or name, layered
+   * on top of the same status/follower-range filters `listCreators`
+   * already supports. Firestore has no substring query, so this reads
+   * a capped, indexed batch (the same composite index
+   * `listByBusiness` uses for its cursor-paginated path, just with a
+   * bigger limit and no cursor) and filters in memory once niche and
+   * displayName are both available — correct and fast while a
+   * business's creator count is in the hundreds, not a scalable
+   * full-text search. `SEARCH_CAP` is the honest ceiling until this
+   * needs a real search index (e.g. Algolia/Typesense); results
+   * beyond it silently don't appear rather than the page failing.
+   */
+  private async searchCreators(
+    businessId: string,
+    options: { status?: CreatorStatus; followersRange?: string; q: string },
+  ): Promise<{ creators: CreatorListItem[]; nextCursor: null }> {
+    const SEARCH_CAP = 500;
+    const { creators } = await creatorRepository.listByBusiness(businessId, {
+      status: options.status,
+      followersRange: options.followersRange,
+      limit: SEARCH_CAP,
+    });
+    const withIdentity = await Promise.all(
+      creators.map(async ({ id, data }) => ({
+        uid: id,
+        profile: data,
+        user: await userRepository.findById(id),
+      })),
+    );
+
+    const needle = options.q.toLowerCase();
+    const matches = withIdentity.filter(
+      ({ profile, user }) =>
+        profile.niche.toLowerCase().includes(needle) ||
+        (user?.displayName ?? '').toLowerCase().includes(needle),
+    );
+    return { creators: matches, nextCursor: null };
+  }
+
   async getCreator(businessId: string, uid: string): Promise<CreatorDetail> {
-    const profile = await creatorRepository.findById(uid);
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile || profile.businessId !== businessId) {
       throw new CreatorNotFoundError(uid);
     }
@@ -79,7 +127,7 @@ class CreatorAdminService {
   }
 
   async updateStatus(businessId: string, uid: string, next: CreatorStatus, actor: string): Promise<void> {
-    const profile = await creatorRepository.findById(uid);
+    const profile = await creatorRepository.findById(businessId, uid);
     if (!profile || profile.businessId !== businessId) {
       throw new CreatorNotFoundError(uid);
     }
@@ -87,7 +135,7 @@ class CreatorAdminService {
       throw new InvalidCreatorTransitionError(profile.status, next);
     }
 
-    await creatorRepository.update(uid, { status: next, updatedBy: actor });
+    await creatorRepository.update(businessId, uid, { status: next, updatedBy: actor });
     await publishEvent(businessId, 'CreatorStatusChanged', 'creatorProfile', uid, {
       from: profile.status,
       to: next,

@@ -29,7 +29,7 @@ class PaymentIntentRepository {
     return ref.id;
   }
 
-  /** Recent failed/expired intents for a business, newest first — the Operations dashboard's payment-failures tile (§ Phase 5). */
+  /** Recent intents for a business matching any of the given statuses, newest first — the Operations dashboard's payment-failures and abandoned-checkout tiles (§ Phase 5). */
   async listByStatus(
     businessId: string,
     statuses: PaymentIntentStatus[],

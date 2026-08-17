@@ -13,6 +13,16 @@ import type { Timestamp } from 'firebase-admin/firestore';
 
 const EXPIRING_SOON_DAYS = 14;
 
+/**
+ * A `PaymentIntent` is created, then the STK push is attempted, in the
+ * same request — there's no legitimate flow where it sits at `pending`
+ * for long. Older than this means the push never reached Daraja at all
+ * (e.g. no Daraja secret configured yet) and nothing else will ever
+ * move it out of `pending`, so it's a real abandoned checkout, not a
+ * customer mid-PIN-entry (that's `processing`, a different status).
+ */
+const ABANDONED_PENDING_AFTER_MS = 2 * 60 * 1000;
+
 export interface ExpiringBatchRow {
   id: string;
   packageLabel: string;
@@ -24,6 +34,7 @@ export interface OperationsSnapshot {
   failedDomainEvents: { id: string; data: DomainEvent }[];
   failedWebhookEvents: { id: string; data: WebhookEvent }[];
   failedPaymentIntents: { id: string; data: PaymentIntent }[];
+  abandonedPaymentIntents: { id: string; data: PaymentIntent }[];
   manualBookingShipments: { id: string; data: Shipment }[];
   integrationIssues: IntegrationSummary[];
   expiringBatches: ExpiringBatchRow[];
@@ -46,6 +57,7 @@ class OperationsService {
       failedDomainEvents,
       failedWebhookEvents,
       failedPaymentIntents,
+      pendingPaymentIntents,
       manualBookingShipments,
       integrationSummaries,
       expiringBatches,
@@ -54,11 +66,17 @@ class OperationsService {
       domainEventRepository.listRecentFailures(businessId),
       webhookEventRepository.listFailed(businessId),
       paymentIntentRepository.listByStatus(businessId, ['failed', 'expired']),
+      paymentIntentRepository.listByStatus(businessId, ['pending']),
       shipmentRepository.listByBusiness(businessId, { status: 'pending_manual_booking' }).then((r) => r.shipments),
       integrationSettingsService.listSummaries(businessId),
       inventoryBatchRepository.listExpiringSoon(businessId, EXPIRING_SOON_DAYS),
       scheduledJobRunRepository.listRecent(businessId),
     ]);
+
+    const abandonedCutoffMs = Date.now() - ABANDONED_PENDING_AFTER_MS;
+    const abandonedPaymentIntents = pendingPaymentIntents.filter(
+      ({ data }) => data.createdAt.toMillis() < abandonedCutoffMs,
+    );
 
     const integrationIssues = integrationSummaries.filter((s) => s.status === 'invalid' || s.status === 'connection_failed');
 
@@ -80,6 +98,7 @@ class OperationsService {
       failedDomainEvents.length +
       failedWebhookEvents.length +
       failedPaymentIntents.length +
+      abandonedPaymentIntents.length +
       manualBookingShipments.length +
       integrationIssues.length +
       scheduledJobRuns.filter((r) => r.data.status === 'failed').length;
@@ -88,6 +107,7 @@ class OperationsService {
       failedDomainEvents,
       failedWebhookEvents,
       failedPaymentIntents,
+      abandonedPaymentIntents,
       manualBookingShipments,
       integrationIssues,
       expiringBatches: expiringBatchRows,

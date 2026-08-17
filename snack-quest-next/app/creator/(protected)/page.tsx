@@ -77,7 +77,7 @@ export default async function CreatorHomePage() {
   const session = await requireCreatorSession();
   const [{ profile, accessLevel }, { attributions }, { links }, campaigns, rescueOffer, packages] =
     await Promise.all([
-      creatorDashboardService.getDashboard(session.uid),
+      creatorDashboardService.getDashboard(session.businessId, session.uid),
       referralService.listCommissionsForCreator(
         session.businessId,
         session.uid,

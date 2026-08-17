@@ -1,5 +1,13 @@
+import {
+  hasStaffRole,
+  ADMIN_OR_AGENT,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { conversationService, ConversationNotFoundError } from '@/services/conversationService';
+import {
+  conversationService,
+  ConversationNotFoundError,
+} from '@/services/conversationService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
@@ -23,6 +31,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
+    return forbiddenResponse();
+  }
 
   const { conversationId } = await params;
 
@@ -35,14 +46,21 @@ export async function POST(
 
   const { feeKes } = (body ?? {}) as { feeKes?: unknown };
   if (typeof feeKes !== 'number' || !Number.isFinite(feeKes) || feeKes < 0) {
-    return Response.json({ error: '"feeKes" must be a non-negative number.' }, { status: 400 });
+    return Response.json(
+      { error: '"feeKes" must be a non-negative number.' },
+      { status: 400 },
+    );
   }
 
   try {
-    await conversationService.adminPriceDoorDelivery(session.businessId, conversationId, {
-      agentId: session.uid,
-      feeKes,
-    });
+    await conversationService.adminPriceDoorDelivery(
+      session.businessId,
+      conversationId,
+      {
+        agentId: session.uid,
+        feeKes,
+      },
+    );
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
@@ -57,7 +75,12 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 404 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not price this delivery' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Could not price this delivery',
+      },
       { status: 400 },
     );
   }

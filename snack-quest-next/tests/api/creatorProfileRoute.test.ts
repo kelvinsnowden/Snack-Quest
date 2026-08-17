@@ -74,7 +74,7 @@ describe('PATCH /api/creator/profile', () => {
 
     await profileRoute(request({ ...VALID_BODY, payoutPhoneNumber: '  ' }));
 
-    expect(updateProfileMock).toHaveBeenCalledWith('creator-1', {
+    expect(updateProfileMock).toHaveBeenCalledWith('biz-1', 'creator-1', {
       bio: 'Updated bio',
       niche: 'Food',
       followersRange: '1,000–5,000',

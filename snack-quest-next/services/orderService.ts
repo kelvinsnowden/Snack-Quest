@@ -3,6 +3,7 @@ import 'server-only';
 import { adminFirestore } from '@/lib/firebase/admin';
 import {
   createInTransaction as createOrderInTransaction,
+  orderNumberCounterRef,
   orderRepository,
 } from '@/repositories/orderRepository';
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
@@ -48,7 +49,7 @@ export class InvalidOrderTransitionError extends Error {
 }
 
 class OrderService {
-  async createFromConversationSnapshot(input: CreateOrderInput): Promise<string> {
+  async createFromConversationSnapshot(input: CreateOrderInput): Promise<{ orderId: string; orderNumber: number }> {
     const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber, attribution } = input;
 
     // Absent on every snapshot frozen before the website checkout
@@ -56,15 +57,29 @@ class OrderService {
     // only ever buy one box.
     const quantity = snapshot.quantity ?? 1;
 
-    const orderId = await adminFirestore.runTransaction(async (tx) => {
-      // Stock check/decrement first — if this throws (OutOfStockError),
-      // the whole transaction aborts and no order is created.
+    const { orderId, orderNumber } = await adminFirestore.runTransaction(async (tx) => {
+      // Read before any write anywhere in this transaction — Firestore
+      // requires it. Reading the counter here, ahead of
+      // `reserveStockInTransaction`'s own read+write, is what makes it
+      // legal to write the counter's new value after that call: by
+      // then both reads (counter, stock) are already done, and only
+      // writes remain (stock, counter, order, items).
+      const counterRef = orderNumberCounterRef(snapshot.businessId);
+      const counterSnap = await tx.get(counterRef);
+      const orderNumber = ((counterSnap.data()?.value as number | undefined) ?? 0) + 1;
+
+      // Stock check/decrement — if this throws (OutOfStockError), the
+      // whole transaction aborts and neither the counter nor the order
+      // is written.
       await reserveStockInTransaction(tx, snapshot.packageId, quantity);
 
-      return createOrderInTransaction(
+      tx.set(counterRef, { value: orderNumber }, { merge: true });
+
+      const orderId = createOrderInTransaction(
         tx,
         {
           businessId: snapshot.businessId,
+          orderNumber,
           product: {
             packageId: snapshot.packageId,
             packageLabel: snapshot.packageLabel,
@@ -110,14 +125,17 @@ class OrderService {
           },
         ],
       );
+
+      return { orderId, orderNumber };
     });
 
     await publishEvent(snapshot.businessId, 'OrderCreated', 'order', orderId, {
       conversationId: snapshot.conversationId,
       totalKes: snapshot.totalKes,
+      orderNumber,
     });
 
-    return orderId;
+    return { orderId, orderNumber };
   }
 
   /**

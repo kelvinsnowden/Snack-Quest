@@ -67,7 +67,7 @@ describe('PATCH /api/creator/photo', () => {
     const response = await photoRoute(request({ photoURL: 'https://example.com/a.png' }));
 
     expect(response.status).toBe(200);
-    expect(updatePhotoMock).toHaveBeenCalledWith('creator-1', 'https://example.com/a.png');
+    expect(updatePhotoMock).toHaveBeenCalledWith('biz-1', 'creator-1', 'https://example.com/a.png');
   });
 
   it('allows clearing the photo with null', async () => {
@@ -77,7 +77,7 @@ describe('PATCH /api/creator/photo', () => {
     const response = await photoRoute(request({ photoURL: null }));
 
     expect(response.status).toBe(200);
-    expect(updatePhotoMock).toHaveBeenCalledWith('creator-1', null);
+    expect(updatePhotoMock).toHaveBeenCalledWith('biz-1', 'creator-1', null);
   });
 
   it('400s InvalidProfileUpdateError from the service', async () => {

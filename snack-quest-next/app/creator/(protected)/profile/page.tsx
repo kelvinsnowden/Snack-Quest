@@ -18,7 +18,7 @@ function initials(name: string): string {
 
 export default async function CreatorProfilePage() {
   const session = await requireCreatorSession();
-  const { profile } = await creatorDashboardService.getDashboard(session.uid);
+  const { profile } = await creatorDashboardService.getDashboard(session.businessId, session.uid);
 
   return (
     <div className="flex max-w-xl flex-col gap-6">

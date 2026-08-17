@@ -69,6 +69,14 @@ export function CreatorOffers({
             <p className="text-foreground/70 mt-2 max-w-sm text-sm">
               Your next content could be inside this box.
             </p>
+            {rescueOffer.data.description ? (
+              <p className="text-foreground/70 mt-2 max-w-sm text-sm">{rescueOffer.data.description}</p>
+            ) : null}
+            {rescueOffer.data.snackCountLabel ? (
+              <p className="text-foreground mt-1 max-w-sm text-sm font-semibold">
+                {rescueOffer.data.snackCountLabel}
+              </p>
+            ) : null}
 
             <div className="text-foreground/60 mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-semibold tracking-wide uppercase">
               {JOURNEY.map((step, index) => (
@@ -94,6 +102,12 @@ export function CreatorOffers({
               return (
                 <PortalCard key={id} className="flex flex-col gap-2">
                   <p className="text-foreground font-semibold">{data.name}</p>
+                  {data.description ? (
+                    <p className="text-muted-foreground text-sm">{data.description}</p>
+                  ) : null}
+                  {data.snackCountLabel ? (
+                    <p className="text-foreground text-sm font-medium">{data.snackCountLabel}</p>
+                  ) : null}
                   <div className="flex items-baseline gap-2">
                     <span className="text-muted-foreground text-sm line-through">
                       {formatKes(data.priceKes)}

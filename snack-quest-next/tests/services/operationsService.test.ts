@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { businessRepository, type BusinessInput } from '@/repositories/businessRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
@@ -44,6 +45,7 @@ describe('OperationsService.getSnapshot', () => {
     expect(snapshot.failedDomainEvents).toHaveLength(0);
     expect(snapshot.failedWebhookEvents).toHaveLength(0);
     expect(snapshot.failedPaymentIntents).toHaveLength(0);
+    expect(snapshot.abandonedPaymentIntents).toHaveLength(0);
     expect(snapshot.manualBookingShipments).toHaveLength(0);
     expect(snapshot.integrationIssues).toHaveLength(0);
   });
@@ -90,6 +92,7 @@ describe('OperationsService.getSnapshot', () => {
       consumerKey: 'k',
       consumerSecret: 's',
       shortcode: '123',
+      accountType: 'till',
       passkey: 'p',
       callbackUrl: 'https://example.com',
       env: 'sandbox',
@@ -117,5 +120,36 @@ describe('OperationsService.getSnapshot', () => {
     expect(snapshot.integrationIssues[0]).toMatchObject({ provider: 'daraja', status: 'invalid' });
     expect(snapshot.scheduledJobRuns.filter((r) => r.data.status === 'failed')).toHaveLength(1);
     expect(snapshot.totalIssueCount).toBe(6);
+  });
+
+  it('flags a pending payment intent as abandoned once it outlives the grace window, but not a freshly created one', async () => {
+    const staleAt = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
+    await adminFirestore.collection('paymentIntents').doc('stale-intent').set({
+      businessId: BUSINESS_ID,
+      conversationId: 'conv-stale',
+      conversationCheckoutSnapshotId: 'snap-stale',
+      customerId: null,
+      phoneNumber: '254700000002',
+      amountKes: 1000,
+      status: 'pending',
+      createdAt: staleAt,
+      updatedAt: staleAt,
+    });
+
+    const freshIntentId = await paymentIntentRepository.create({
+      businessId: BUSINESS_ID,
+      conversationId: 'conv-fresh',
+      conversationCheckoutSnapshotId: 'snap-fresh',
+      customerId: null,
+      phoneNumber: '254700000003',
+      amountKes: 1500,
+    });
+
+    const snapshot = await operationsService.getSnapshot(BUSINESS_ID);
+
+    expect(snapshot.abandonedPaymentIntents).toHaveLength(1);
+    expect(snapshot.abandonedPaymentIntents[0].data.phoneNumber).toBe('254700000002');
+    expect(snapshot.abandonedPaymentIntents.some(({ id }) => id === freshIntentId)).toBe(false);
+    expect(snapshot.totalIssueCount).toBe(1);
   });
 });

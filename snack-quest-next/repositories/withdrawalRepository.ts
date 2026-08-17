@@ -39,6 +39,31 @@ class WithdrawalRepository {
     return data.businessId === businessId ? data : null;
   }
 
+  /**
+   * The transactional counterpart to `findById` (§ Daraja B2C
+   * production readiness) — reads the withdrawal *inside* the caller's
+   * transaction, so a status check and the write that follows it can
+   * never race against a concurrent transaction on the same document.
+   * This is what `WithdrawalService.approveWithdrawal`/`rejectWithdrawal`
+   * use instead of a plain read-then-write.
+   */
+  async getInTransaction(
+    tx: Transaction,
+    businessId: string,
+    withdrawalId: string,
+  ): Promise<{ ref: FirebaseFirestore.DocumentReference; data: Withdrawal } | null> {
+    const ref = adminFirestore.collection(COLLECTION).doc(withdrawalId);
+    const snapshot = await tx.get(ref);
+    if (!snapshot.exists) {
+      return null;
+    }
+    const data = snapshot.data() as Withdrawal;
+    if (data.businessId !== businessId) {
+      return null;
+    }
+    return { ref, data };
+  }
+
   /** Matches a B2C async result callback back to the withdrawal that triggered it — see `Withdrawal.b2cOriginatorConversationId`. */
   async findByOriginatorConversationId(
     businessId: string,
@@ -55,6 +80,49 @@ class WithdrawalRepository {
     }
     const doc = snapshot.docs[0];
     return { id: doc.id, data: doc.data() as Withdrawal };
+  }
+
+  /** Matches a Transaction Status Query's async result back to the withdrawal a stuck-withdrawal reconciliation sweep queried it for — see `Withdrawal.pendingStatusQueryOriginatorConversationId`. */
+  async findByPendingStatusQueryId(
+    businessId: string,
+    pendingStatusQueryOriginatorConversationId: string,
+  ): Promise<{ id: string; data: Withdrawal } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('pendingStatusQueryOriginatorConversationId', '==', pendingStatusQueryOriginatorConversationId)
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() as Withdrawal };
+  }
+
+  /**
+   * Every withdrawal in any of the given statuses, for the stuck-
+   * withdrawal reconciliation sweep (§ Daraja B2C production
+   * readiness) — same shape as `paymentIntentRepository.listByStatus`,
+   * including the same reasoning for filtering age in memory rather
+   * than adding a composite index per age threshold. Firestore serves
+   * a `where(..., 'in', statuses)` off the same `businessId + status +
+   * createdAt` composite index the single-status queries already use.
+   */
+  async listByStatuses(
+    businessId: string,
+    statuses: WithdrawalStatus[],
+    limit = 100,
+  ): Promise<{ id: string; data: Withdrawal }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', 'in', statuses)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Withdrawal }));
   }
 
   createInTransaction(tx: Transaction, input: WithdrawalInput, actor: string): string {

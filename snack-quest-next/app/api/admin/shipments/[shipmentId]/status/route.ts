@@ -1,8 +1,24 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { deliveryService, ShipmentNotFoundError, InvalidShipmentTransitionError } from '@/services/deliveryService';
+import {
+  deliveryService,
+  ShipmentNotFoundError,
+  InvalidShipmentTransitionError,
+} from '@/services/deliveryService';
 import type { ShipmentStatus } from '@/types';
 
-const VALID_STATUSES: ShipmentStatus[] = ['pending', 'pending_manual_booking', 'created', 'in_transit', 'delivered', 'failed'];
+const VALID_STATUSES: ShipmentStatus[] = [
+  'pending',
+  'pending_manual_booking',
+  'created',
+  'in_transit',
+  'delivered',
+  'failed',
+];
 
 /** A manual shipment status override (§ Admin: Delivery monitoring), enforcing `VALID_SHIPMENT_TRANSITIONS` server-side. */
 export async function POST(
@@ -12,6 +28,9 @@ export async function POST(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
   }
 
   const { shipmentId } = await params;
@@ -24,12 +43,23 @@ export async function POST(
   }
 
   const { status } = (body ?? {}) as { status?: unknown };
-  if (typeof status !== 'string' || !VALID_STATUSES.includes(status as ShipmentStatus)) {
-    return Response.json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 });
+  if (
+    typeof status !== 'string' ||
+    !VALID_STATUSES.includes(status as ShipmentStatus)
+  ) {
+    return Response.json(
+      { error: `status must be one of: ${VALID_STATUSES.join(', ')}` },
+      { status: 400 },
+    );
   }
 
   try {
-    await deliveryService.updateShipmentStatus(session.businessId, shipmentId, status as ShipmentStatus, session.uid);
+    await deliveryService.updateShipmentStatus(
+      session.businessId,
+      shipmentId,
+      status as ShipmentStatus,
+      session.uid,
+    );
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof ShipmentNotFoundError) {
@@ -39,7 +69,10 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 409 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Could not update shipment' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Could not update shipment',
+      },
       { status: 400 },
     );
   }

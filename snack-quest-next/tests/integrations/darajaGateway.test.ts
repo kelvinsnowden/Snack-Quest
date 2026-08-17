@@ -14,6 +14,7 @@ const SECRET = {
   consumerKey: 'test-key',
   consumerSecret: 'test-secret',
   shortcode: '174379',
+  accountType: 'till' as const,
   passkey: 'test-passkey',
   callbackUrl: `https://example.com/api/webhooks/daraja/${BUSINESS_ID}`,
   env: 'sandbox' as const,
@@ -250,6 +251,72 @@ describe('DarajaGateway.initiateStkPush', () => {
     // Both tenants had to fetch their own OAuth token: 2 OAuth calls + 2 STK calls.
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
+
+  it('sends CustomerBuyGoodsOnline when the configured account is a Till (Buy Goods)', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', { ...SECRET, accountType: 'till' });
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                MerchantRequestID: 'merchant-1',
+                CheckoutRequestID: 'checkout-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Success. Request accepted for processing',
+                CustomerMessage: 'Success. Request accepted for processing',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'Snack order',
+    });
+
+    const [, stkCall] = fetchMock.mock.calls;
+    const body = JSON.parse(String(stkCall[1].body));
+    expect(body.TransactionType).toBe('CustomerBuyGoodsOnline');
+  });
+
+  it('sends CustomerPayBillOnline when the configured account is a Paybill', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', { ...SECRET, accountType: 'paybill' });
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                MerchantRequestID: 'merchant-1',
+                CheckoutRequestID: 'checkout-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Success. Request accepted for processing',
+                CustomerMessage: 'Success. Request accepted for processing',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254700000000',
+      amountKes: 500,
+      accountReference: 'ORDER-1',
+      transactionDesc: 'Snack order',
+    });
+
+    const [, stkCall] = fetchMock.mock.calls;
+    const body = JSON.parse(String(stkCall[1].body));
+    expect(body.TransactionType).toBe('CustomerPayBillOnline');
+  });
 });
 
 describe('DarajaGateway.queryStkStatus', () => {
@@ -357,6 +424,11 @@ const B2C_SECRET = {
   ...SECRET,
   b2cInitiatorName: 'testapiuser',
   b2cSecurityCredential: 'encrypted-credential-base64',
+  // Set explicitly, not left to auto-provisioning
+  // (businessIntegrationSecretRepository.ensureWebhookSecret), so the
+  // ResultURL/QueueTimeOutURL assertions below can be exact-match
+  // rather than asserting only a prefix.
+  webhookSecret: 'test-webhook-secret',
 };
 
 describe('DarajaGateway.initiateB2CPayment', () => {
@@ -377,6 +449,7 @@ describe('DarajaGateway.initiateB2CPayment', () => {
         phone: '254700000000',
         amountKes: 500,
         remarks: 'Withdrawal payout',
+        originatorConversationId: 'test-origin-conv-id',
       }),
     ).rejects.toThrow(/no Daraja B2C credentials configured/);
   });
@@ -405,6 +478,7 @@ describe('DarajaGateway.initiateB2CPayment', () => {
       phone: '254700000000',
       amountKes: 500,
       remarks: 'Withdrawal payout',
+      originatorConversationId: 'test-origin-conv-id',
     });
 
     expect(result).toEqual({
@@ -414,12 +488,16 @@ describe('DarajaGateway.initiateB2CPayment', () => {
       responseDescription: 'Accept the service request successfully.',
     });
     const [, b2cCall] = fetchMock.mock.calls;
-    expect(String(b2cCall[0])).toContain('/mpesa/b2c/v1/paymentrequest');
+    expect(String(b2cCall[0])).toContain('/mpesa/b2c/v3/paymentrequest');
     const body = JSON.parse(b2cCall[1].body);
+    expect(body.OriginatorConversationID).toBe('test-origin-conv-id');
     expect(body.InitiatorName).toBe('testapiuser');
     expect(body.SecurityCredential).toBe('encrypted-credential-base64');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-result`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-timeout`);
+    // Safaricom's real B2C v3 field is spelled "Occassion" — verified,
+    // not a typo, see darajaGateway.ts's own comment.
+    expect(body.Occassion).toBe('');
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-result?key=test-webhook-secret`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-timeout?key=test-webhook-secret`);
   });
 
   it('throws when Daraja rejects the B2C request', async () => {
@@ -439,6 +517,7 @@ describe('DarajaGateway.initiateB2CPayment', () => {
         phone: '254700000000',
         amountKes: 500,
         remarks: 'Withdrawal payout',
+        originatorConversationId: 'test-origin-conv-id',
       }),
     ).rejects.toThrow(/Daraja B2C payment request failed/);
   });
@@ -561,8 +640,8 @@ describe('DarajaGateway.initiateReversal', () => {
     expect(body.Amount).toBe(2500);
     expect(body.ReceiverParty).toBe('174379');
     expect(body.RecieverIdentifierType).toBe('11');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-result`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-timeout`);
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-result?key=test-webhook-secret`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-timeout?key=test-webhook-secret`);
   });
 
   it('throws when Daraja rejects the reversal request', async () => {
@@ -637,6 +716,135 @@ describe('DarajaGateway.verifyReversalResult', () => {
   it('throws on a malformed payload missing Result', () => {
     expect(() => darajaGateway.verifyReversalResult({ unexpected: true })).toThrow(
       /Malformed Daraja reversal result/,
+    );
+  });
+});
+
+describe('DarajaGateway.queryTransactionStatus', () => {
+  beforeEach(() => {
+    resetDarajaTokenCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('queries the real Transaction Status endpoint by OriginatorConversationID, reusing B2C operator credentials', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                ConversationID: 'AG_query_conv',
+                OriginatorConversationID: 'query-orig-1',
+                ResponseCode: '0',
+                ResponseDescription: 'Accept the service request successfully.',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ack = await darajaGateway.queryTransactionStatus({
+      businessId: BUSINESS_ID,
+      originatorConversationId: 'original-txn-orig-id',
+      remarks: 'Reconciliation check',
+      occasion: 'withdrawal-1',
+    });
+
+    expect(ack).toEqual({
+      originatorConversationId: 'query-orig-1',
+      conversationId: 'AG_query_conv',
+      responseCode: '0',
+      responseDescription: 'Accept the service request successfully.',
+    });
+    const [, queryCall] = fetchMock.mock.calls;
+    expect(String(queryCall[0])).toContain('/mpesa/transactionstatus/v1/query');
+    const body = JSON.parse(queryCall[1].body);
+    expect(body.CommandID).toBe('TransactionStatusQuery');
+    expect(body.OriginatorConversationID).toBe('original-txn-orig-id');
+    expect(body.Initiator).toBe('testapiuser');
+    expect(body.SecurityCredential).toBe('encrypted-credential-base64');
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/transaction-status-result?key=test-webhook-secret`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/transaction-status-timeout?key=test-webhook-secret`);
+  });
+
+  it('throws when Daraja rejects the query request', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', B2C_SECRET);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          String(url).includes('/oauth/v1/generate')
+            ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+            : new Response(JSON.stringify({ errorMessage: 'Invalid access token' }), { status: 401 }),
+        ),
+      ),
+    );
+
+    await expect(
+      darajaGateway.queryTransactionStatus({
+        businessId: BUSINESS_ID,
+        originatorConversationId: 'original-txn-orig-id',
+        remarks: 'Reconciliation check',
+      }),
+    ).rejects.toThrow(/Daraja transaction status query failed/);
+  });
+});
+
+describe('DarajaGateway.verifyTransactionStatusResult', () => {
+  it('reads TransactionStatus verbatim on an unambiguous Completed result', () => {
+    const result = darajaGateway.verifyTransactionStatusResult({
+      Result: {
+        ResultType: 0,
+        ResultCode: 0,
+        ResultDesc: 'The service request has been accepted successfully.',
+        OriginatorConversationID: 'query-orig-1',
+        ConversationID: 'AG_query_conv',
+        TransactionID: 'STATUSCONFIRMED1',
+        ResultParameters: {
+          ResultParameter: [
+            { Key: 'TransactionStatus', Value: 'Completed' },
+            { Key: 'Amount', Value: 2000 },
+            { Key: 'FinalisedTime', Value: '20231219114550' },
+          ],
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      originatorConversationId: 'query-orig-1',
+      conversationId: 'AG_query_conv',
+      resultCode: 0,
+      resultDesc: 'The service request has been accepted successfully.',
+      transactionStatus: 'Completed',
+      transactionId: 'STATUSCONFIRMED1',
+      amountKes: 2000,
+      transactionCompletedAt: '20231219114550',
+    });
+  });
+
+  it('never fabricates a transactionStatus when the query itself failed', () => {
+    const result = darajaGateway.verifyTransactionStatusResult({
+      Result: {
+        ResultType: 0,
+        ResultCode: 2,
+        ResultDesc: 'Transaction not found.',
+        OriginatorConversationID: 'query-orig-2',
+        ConversationID: 'AG_query_conv_2',
+      },
+    });
+
+    expect(result.transactionStatus).toBeUndefined();
+    expect(result.transactionId).toBeUndefined();
+  });
+
+  it('throws on a malformed payload missing Result', () => {
+    expect(() => darajaGateway.verifyTransactionStatusResult({ unexpected: true })).toThrow(
+      /Malformed Daraja transaction status result/,
     );
   });
 });

@@ -8,6 +8,7 @@ import { creatorRepository } from '@/repositories/creatorRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { featureFlagService } from '@/services/featureFlagService';
 import { globalSearchService } from '@/services/globalSearchService';
+import { clearCreatorMemberships } from '../helpers/creatorFixtures';
 
 const BUSINESS_ID = 'biz-global-search-test';
 const OTHER_BUSINESS_ID = 'biz-global-search-other';
@@ -19,12 +20,12 @@ beforeEach(async () => {
       'suppliers',
       'purchaseOrders',
       'conversations',
-      'creatorProfiles',
       'users',
     ].map((name) =>
       adminFirestore.recursiveDelete(adminFirestore.collection(name)),
     ),
   );
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   await adminFirestore.recursiveDelete(
     adminFirestore
       .collection('businesses')

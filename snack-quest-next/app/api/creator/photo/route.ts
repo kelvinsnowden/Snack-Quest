@@ -22,7 +22,7 @@ export async function PATCH(request: Request): Promise<Response> {
   }
 
   try {
-    await creatorProfileService.updatePhoto(session.uid, photoURL);
+    await creatorProfileService.updatePhoto(session.businessId, session.uid, photoURL);
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof InvalidProfileUpdateError) {

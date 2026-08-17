@@ -1,3 +1,8 @@
+import {
+  hasStaffRole,
+  ADMIN_ONLY,
+  forbiddenResponse,
+} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   referralService,
@@ -19,6 +24,9 @@ export async function PATCH(
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
+    return forbiddenResponse();
   }
 
   const { linkId } = await params;

@@ -24,6 +24,16 @@ export type StaffRole = 'admin' | 'super_admin' | 'agent' | 'warehouse' | 'finan
 export interface StaffProfile extends AuditFields {
   businessId: string;
   role: StaffRole;
+  /**
+   * Which Admin Portal sections (`lib/auth/adminSections.ts`'s
+   * `AdminSection` keys) this `admin`-role account is restricted to.
+   * Empty means unrestricted — full Admin Portal access, same as every
+   * account already had before this field was ever read. Only
+   * meaningful for `role: 'admin'`; `super_admin` always has
+   * everything regardless of this array, and `agent`/`warehouse`/
+   * `finance` reach their own dedicated single-purpose workspace
+   * instead of the Admin Portal these sections gate.
+   */
   permissions: string[];
   department: string;
 }

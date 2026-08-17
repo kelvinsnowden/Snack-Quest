@@ -48,14 +48,14 @@ export default async function MarketingHomePage() {
   return (
     <div className="flex flex-col overflow-x-hidden">
       <HomeHero />
+      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
+      <PickYourBox packages={featured} />
       {/*
-        Social proof moved up to run right after the hero (§ CRO audit
-        — funnel order): real customer photos and reviews are stronger,
-        earlier trust evidence than an illustrated founder placeholder,
-        and a visitor deciding whether to keep scrolling should see
-        other people's reactions before being asked to read anyone's
-        origin story. Renders nothing when there are no published
-        reviews yet, so this is a no-op until real ones exist.
+        Social proof now runs right after the box picker, not the hero
+        — a visitor should see what they'd actually be buying before
+        being asked to trust other people's reactions to it. Renders
+        nothing when there are no published reviews yet, so this is a
+        no-op until real ones exist.
       */}
       <ReviewsSection
         reviews={reviews.reviews}
@@ -63,8 +63,6 @@ export default async function MarketingHomePage() {
         averageRating={reviews.averageRating}
         ratingCounts={reviews.ratingCounts}
       />
-      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
-      <PickYourBox packages={featured} />
       <PartnersMarquee label="M-Pesa accepted · Jumia pickup countrywide · Bolt door delivery" />
       <TheRoute />
       {/*

@@ -4,6 +4,7 @@ import type { WithdrawalStatus } from '@/types';
 
 const VARIANT_FOR_STATUS: Record<WithdrawalStatus, BadgeProps['variant']> = {
   pending: 'warning',
+  submitting: 'warning',
   approved: 'default',
   paid: 'success',
   rejected: 'outline',

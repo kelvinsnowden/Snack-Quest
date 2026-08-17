@@ -95,7 +95,7 @@ export function PaymentWaiting({
           <p className="text-muted-foreground text-base">
             {timedOut
               ? 'The prompt may have expired before you entered your PIN. Nothing has been charged — you can start again, or message us and we’ll sort it out.'
-              : 'The M-Pesa prompt was cancelled or timed out, so nothing was charged. You can try again.'}
+              : "The M-Pesa prompt may not have reached your phone, or it was cancelled before you entered your PIN. Either way, nothing was charged — you can try again."}
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">

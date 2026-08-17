@@ -1,7 +1,26 @@
+import { adminFirestore } from '@/lib/firebase/admin';
 import {
   creatorRepository,
   type CreatorProfileInput,
 } from '@/repositories/creatorRepository';
+
+/**
+ * Wipes `businesses/{businessId}/creatorMemberships` for each given
+ * business — the nested-path replacement for the old
+ * `adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'))`
+ * one-liner every test file's `beforeEach` used to reach for (§ Creator
+ * Marketplace migration). Safe to call with a business that has no
+ * memberships at all.
+ */
+export async function clearCreatorMemberships(...businessIds: string[]): Promise<void> {
+  await Promise.all(
+    businessIds.map((businessId) =>
+      adminFirestore.recursiveDelete(
+        adminFirestore.collection('businesses').doc(businessId).collection('creatorMemberships'),
+      ),
+    ),
+  );
+}
 
 /** A minimal, fully-shaped `CreatorProfile` fixture for repository/service/route tests. */
 export async function seedCreator(

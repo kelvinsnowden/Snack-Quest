@@ -4,7 +4,7 @@ import {
   creatorRepository,
   claimNextRegistrationNumberInTransaction,
 } from '@/repositories/creatorRepository';
-import { seedCreator } from '../helpers/creatorFixtures';
+import { clearCreatorMemberships, seedCreator } from '../helpers/creatorFixtures';
 
 /** `listByBusiness` (§ Admin: Creators) — scoping, status filtering, and pagination against the real emulator. */
 
@@ -12,9 +12,7 @@ const BUSINESS_ID = 'biz-creator-repo-test';
 const OTHER_BUSINESS_ID = 'biz-creator-repo-other';
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(
-    adminFirestore.collection('creatorProfiles'),
-  );
+  await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
   await adminFirestore.recursiveDelete(
     adminFirestore
       .collection('businesses')
@@ -109,17 +107,95 @@ describe('creatorRepository.listByBusiness', () => {
     expect(secondPage.creators).toHaveLength(1);
     expect(secondPage.nextCursor).toBeNull();
   });
+
+  it('filters by followersRange (§ Creator Marketplace, admin creator search)', async () => {
+    await seedCreator('creator-small', {
+      businessId: BUSINESS_ID,
+      followersRange: 'Under 1,000',
+    });
+    await seedCreator('creator-big', {
+      businessId: BUSINESS_ID,
+      followersRange: '100,000+',
+    });
+
+    const { creators } = await creatorRepository.listByBusiness(BUSINESS_ID, {
+      followersRange: '100,000+',
+    });
+
+    expect(creators.map((c) => c.id)).toEqual(['creator-big']);
+  });
+
+  it('combines status and followersRange filters', async () => {
+    await seedCreator('creator-match', {
+      businessId: BUSINESS_ID,
+      status: 'active',
+      followersRange: '100,000+',
+    });
+    await seedCreator('creator-wrong-status', {
+      businessId: BUSINESS_ID,
+      status: 'pending',
+      followersRange: '100,000+',
+    });
+    await seedCreator('creator-wrong-range', {
+      businessId: BUSINESS_ID,
+      status: 'active',
+      followersRange: 'Under 1,000',
+    });
+
+    const { creators } = await creatorRepository.listByBusiness(BUSINESS_ID, {
+      status: 'active',
+      followersRange: '100,000+',
+    });
+
+    expect(creators.map((c) => c.id)).toEqual(['creator-match']);
+  });
 });
 
 describe('creatorRepository.incrementClickCount', () => {
   it('increments totalClicks by 1 each call', async () => {
     await seedCreator('creator-1', { businessId: BUSINESS_ID });
 
-    await creatorRepository.incrementClickCount('creator-1');
-    await creatorRepository.incrementClickCount('creator-1');
+    await creatorRepository.incrementClickCount(BUSINESS_ID, 'creator-1');
+    await creatorRepository.incrementClickCount(BUSINESS_ID, 'creator-1');
 
-    const found = await creatorRepository.findById('creator-1');
+    const found = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
     expect(found?.totalClicks).toBe(2);
+  });
+});
+
+describe('creatorRepository.findById — multi-business membership (§ Creator Marketplace migration)', () => {
+  it('returns independent profiles for the same uid registered under two different businesses', async () => {
+    const uid = 'creator-multi-business';
+    await seedCreator(uid, { businessId: BUSINESS_ID, availableCashKes: 100 });
+    await seedCreator(uid, { businessId: OTHER_BUSINESS_ID, availableCashKes: 900 });
+
+    const inFirstBusiness = await creatorRepository.findById(BUSINESS_ID, uid);
+    const inOtherBusiness = await creatorRepository.findById(OTHER_BUSINESS_ID, uid);
+
+    expect(inFirstBusiness?.availableCashKes).toBe(100);
+    expect(inOtherBusiness?.availableCashKes).toBe(900);
+  });
+
+  it('never leaks a mutation from one business membership into the other', async () => {
+    const uid = 'creator-multi-business-mutate';
+    await seedCreator(uid, { businessId: BUSINESS_ID, totalClicks: 0 });
+    await seedCreator(uid, { businessId: OTHER_BUSINESS_ID, totalClicks: 0 });
+
+    await creatorRepository.incrementClickCount(BUSINESS_ID, uid);
+    await creatorRepository.incrementClickCount(BUSINESS_ID, uid);
+
+    const inFirstBusiness = await creatorRepository.findById(BUSINESS_ID, uid);
+    const inOtherBusiness = await creatorRepository.findById(OTHER_BUSINESS_ID, uid);
+
+    expect(inFirstBusiness?.totalClicks).toBe(2);
+    expect(inOtherBusiness?.totalClicks).toBe(0);
+  });
+
+  it('returns null for a uid that has no membership in the given business, even if it has one elsewhere', async () => {
+    const uid = 'creator-only-in-first-business';
+    await seedCreator(uid, { businessId: BUSINESS_ID });
+
+    expect(await creatorRepository.findById(OTHER_BUSINESS_ID, uid)).toBeNull();
   });
 });
 

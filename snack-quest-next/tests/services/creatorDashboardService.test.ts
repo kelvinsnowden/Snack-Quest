@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { creatorDashboardService } from '@/services/creatorDashboardService';
-import { seedCreator } from '../helpers/creatorFixtures';
+import { clearCreatorMemberships, seedCreator } from '../helpers/creatorFixtures';
 
 /** `CreatorDashboardService.getLeaderboard` (§ Creator Portal leaderboards) — the top-earners list plus the caller's own rank, against the real emulator. */
 
 const BUSINESS_ID = 'biz-creator-dashboard-service-test';
 
 beforeEach(async () => {
-  await adminFirestore.recursiveDelete(adminFirestore.collection('creatorProfiles'));
+  await clearCreatorMemberships(BUSINESS_ID);
   await adminFirestore.recursiveDelete(adminFirestore.collection('users'));
 });
 

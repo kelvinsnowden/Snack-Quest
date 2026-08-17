@@ -308,7 +308,7 @@ class MarketingEmailService {
 
   /** Resolves already-picked creator ids back to display info — hydrates the composer's chips when editing a draft that already has a `specific_creators` selection. Silently drops any id that no longer resolves (deleted account, etc.) rather than erroring the whole page. */
   async getCreatorSummaries(businessId: string, ids: string[]): Promise<CreatorSearchResult[]> {
-    const profiles = await Promise.all(ids.map((id) => creatorRepository.findById(id)));
+    const profiles = await Promise.all(ids.map((id) => creatorRepository.findById(businessId, id)));
     const users = await Promise.all(ids.map((id) => userRepository.findById(id)));
     const summaries: CreatorSearchResult[] = [];
     ids.forEach((id, index) => {

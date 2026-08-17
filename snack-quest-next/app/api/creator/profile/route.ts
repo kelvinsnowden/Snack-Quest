@@ -46,7 +46,7 @@ export async function PATCH(request: Request): Promise<Response> {
   );
 
   try {
-    await creatorProfileService.updateProfile(session.uid, {
+    await creatorProfileService.updateProfile(session.businessId, session.uid, {
       bio,
       niche,
       followersRange,

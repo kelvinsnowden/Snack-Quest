@@ -128,6 +128,37 @@ export default async function AdminOperationsPage() {
       </Section>
 
       <Section
+        title="Abandoned checkout attempts"
+        description="Customers whose M-Pesa prompt never went out — usually because a payment provider isn't connected yet."
+        count={snapshot.abandonedPaymentIntents.length}
+      >
+        {snapshot.abandonedPaymentIntents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No abandoned checkout attempts.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] text-sm">
+              <thead className="border-b border-border text-left text-caption text-muted-foreground uppercase">
+                <tr>
+                  <th className="py-2 pr-4 font-medium">Phone</th>
+                  <th className="py-2 pr-4 font-medium">Amount</th>
+                  <th className="py-2 font-medium">Attempted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshot.abandonedPaymentIntents.map(({ id, data }) => (
+                  <tr key={id} className="border-b border-border last:border-0">
+                    <td className="py-2 pr-4 tabular-nums text-foreground">{data.phoneNumber}</td>
+                    <td className="py-2 pr-4 tabular-nums text-foreground">{formatKes(data.amountKes)}</td>
+                    <td className="py-2 text-muted-foreground tabular-nums">{formatDateTime(data.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
+      <Section
         title="Webhook failures"
         description="Inbound provider callbacks (Daraja, Whatchimp, Jumia) that failed to process."
         count={snapshot.failedWebhookEvents.length}

@@ -30,10 +30,11 @@ export class InsufficientCreatorBalanceError extends Error {
  */
 export async function reserveBalanceInTransaction(
   tx: Transaction,
+  businessId: string,
   creatorId: string,
   amountKes: number,
 ): Promise<void> {
-  const ref = adminFirestore.collection('creatorProfiles').doc(creatorId);
+  const ref = creatorMembershipRef(businessId, creatorId);
   const snapshot = await tx.get(ref);
   const data = snapshot.data() as CreatorProfile | undefined;
   if (!data) {
@@ -52,19 +53,21 @@ export async function reserveBalanceInTransaction(
 /** The reverse of `reserveBalanceInTransaction` — a rejected or failed withdrawal releases the hold back to the creator. */
 export function refundBalanceInTransaction(
   tx: Transaction,
+  businessId: string,
   creatorId: string,
   amountKes: number,
 ): void {
-  const ref = adminFirestore.collection('creatorProfiles').doc(creatorId);
+  const ref = creatorMembershipRef(businessId, creatorId);
   tx.update(ref, { availableCashKes: FieldValue.increment(amountKes) });
 }
 
 /** The creator-level conversion counter (§ Creator Portal referral links) — incremented alongside `referralLinkRepository.incrementConversionCountInTransaction()` in the same `ReferralService.awardCommission()` transaction. */
 export function incrementConversionCountInTransaction(
   tx: Transaction,
+  businessId: string,
   creatorId: string,
 ): void {
-  const ref = adminFirestore.collection('creatorProfiles').doc(creatorId);
+  const ref = creatorMembershipRef(businessId, creatorId);
   tx.update(ref, { totalConversions: FieldValue.increment(1) });
 }
 
@@ -106,7 +109,7 @@ export function createInTransaction(
   data: CreatorProfileInput,
 ): void {
   const now = FieldValue.serverTimestamp();
-  const ref = adminFirestore.collection('creatorProfiles').doc(uid);
+  const ref = creatorMembershipRef(data.businessId, uid);
   tx.set(ref, {
     ...data,
     createdAt: now,
@@ -118,13 +121,34 @@ export function createInTransaction(
 }
 
 /**
- * `creatorProfiles` reads/writes (TDD §4/§8). This is the reference
- * Repository every later repository is reviewed against: persistence
- * only, no business rules, no decision about *whether* a write should
- * happen — that belongs to a Service.
+ * `businesses/{businessId}/creatorMemberships/{uid}` reads/writes (TDD
+ * §4/§8). This is the reference Repository every later repository is
+ * reviewed against: persistence only, no business rules, no decision
+ * about *whether* a write should happen — that belongs to a Service.
+ *
+ * Nested under the owning business (formerly a flat top-level
+ * `creatorProfiles/{uid}` collection) so the same Firebase Auth uid
+ * can hold an independent membership — and independent balance — in
+ * more than one business at once. Every reader/writer of this
+ * collection goes through `creatorMembershipsCollection`/
+ * `creatorMembershipRef` below rather than re-deriving the path, so
+ * there is exactly one place that knows the collection is nested.
  */
+export function creatorMembershipsCollection(
+  businessId: string,
+): FirebaseFirestore.CollectionReference {
+  return adminFirestore
+    .collection('businesses')
+    .doc(businessId)
+    .collection('creatorMemberships');
+}
 
-const COLLECTION = 'creatorProfiles';
+export function creatorMembershipRef(
+  businessId: string,
+  uid: string,
+): FirebaseFirestore.DocumentReference {
+  return creatorMembershipsCollection(businessId).doc(uid);
+}
 
 export type CreatorProfileInput = Omit<CreatorProfile, keyof AuditFields>;
 
@@ -138,8 +162,8 @@ export type CreatorProfileUpdate = Partial<CreatorProfileInput> & {
 };
 
 class CreatorRepository {
-  async findById(uid: string): Promise<CreatorProfile | null> {
-    const snapshot = await adminFirestore.collection(COLLECTION).doc(uid).get();
+  async findById(businessId: string, uid: string): Promise<CreatorProfile | null> {
+    const snapshot = await creatorMembershipRef(businessId, uid).get();
     if (!snapshot.exists) {
       return null;
     }
@@ -148,35 +172,26 @@ class CreatorRepository {
 
   async create(uid: string, data: CreatorProfileInput): Promise<void> {
     const now = FieldValue.serverTimestamp();
-    await adminFirestore
-      .collection(COLLECTION)
-      .doc(uid)
-      .set({
-        ...data,
-        createdAt: now,
-        updatedAt: now,
-        createdBy: uid,
-        updatedBy: uid,
-        deletedAt: null,
-      });
+    await creatorMembershipRef(data.businessId, uid).set({
+      ...data,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: uid,
+      updatedBy: uid,
+      deletedAt: null,
+    });
   }
 
-  async update(uid: string, partial: CreatorProfileUpdate): Promise<void> {
-    await adminFirestore
-      .collection(COLLECTION)
-      .doc(uid)
-      .update({
-        ...partial,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+  async update(businessId: string, uid: string, partial: CreatorProfileUpdate): Promise<void> {
+    await creatorMembershipRef(businessId, uid).update({
+      ...partial,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   }
 
   /** § app/r/[code]/route.ts — the creator-level aggregate, alongside the per-link `referralLinkRepository.incrementClickCount()`. */
-  async incrementClickCount(uid: string): Promise<void> {
-    await adminFirestore
-      .collection(COLLECTION)
-      .doc(uid)
-      .update({ totalClicks: FieldValue.increment(1) });
+  async incrementClickCount(businessId: string, uid: string): Promise<void> {
+    await creatorMembershipRef(businessId, uid).update({ totalClicks: FieldValue.increment(1) });
   }
 
   /** § Creator Portal auth — uniqueness check while generating a new creator's referral code; see lib/creators/referralCode.ts. */
@@ -184,9 +199,7 @@ class CreatorRepository {
     businessId: string,
     referralCode: string,
   ): Promise<boolean> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
+    const snapshot = await creatorMembershipsCollection(businessId)
       .where('referralCode', '==', referralCode)
       .limit(1)
       .get();
@@ -195,35 +208,35 @@ class CreatorRepository {
 
   /**
    * Admin: Creators (§ Admin: Creators) — real cursor pagination,
-   * newest-first, optionally narrowed to one status. Both the filtered
-   * shape (businessId + status + createdAt) and the unfiltered one
-   * (businessId + createdAt) need their own composite index — see
-   * firestore.indexes.json. An equality filter plus an `orderBy` on a
-   * different field always needs one; there is no exemption for the
-   * unfiltered case.
+   * newest-first, optionally narrowed to one status and/or one
+   * follower-range bucket (§ Creator Marketplace, admin creator
+   * search). Every filtered shape (status + createdAt, followersRange
+   * + createdAt, status + followersRange + createdAt) needs its own
+   * composite index — see firestore.indexes.json. The unfiltered shape
+   * (bare `createdAt` orderBy) is Firestore's automatic single-field
+   * index now that `businessId` is the collection's path rather than a
+   * filter.
    */
   async listByBusiness(
     businessId: string,
-    options: { status?: CreatorStatus; limit?: number; cursor?: string } = {},
+    options: { status?: CreatorStatus; followersRange?: string; limit?: number; cursor?: string } = {},
   ): Promise<{
     creators: { id: string; data: CreatorProfile }[];
     nextCursor: string | null;
   }> {
     const pageSize = options.limit ?? 25;
-    let query = adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+    let query = creatorMembershipsCollection(businessId) as FirebaseFirestore.Query;
 
     if (options.status) {
       query = query.where('status', '==', options.status);
     }
+    if (options.followersRange) {
+      query = query.where('followersRange', '==', options.followersRange);
+    }
     query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
 
     if (options.cursor) {
-      const cursorDoc = await adminFirestore
-        .collection(COLLECTION)
-        .doc(options.cursor)
-        .get();
+      const cursorDoc = await creatorMembershipRef(businessId, options.cursor).get();
       if (cursorDoc.exists) {
         query = query.startAfter(cursorDoc);
       }
@@ -252,9 +265,7 @@ class CreatorRepository {
     businessId: string,
     limit = 10,
   ): Promise<{ id: string; data: CreatorProfile }[]> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
+    const snapshot = await creatorMembershipsCollection(businessId)
       .where('status', '==', 'active')
       .orderBy('lifetimeEarningsKes', 'desc')
       .limit(limit)
@@ -271,14 +282,20 @@ class CreatorRepository {
    * a given lifetime-earnings figure; `rank = count + 1`. A cheap
    * aggregation query (`.count()`), not a full document read of every
    * competing creator.
+   *
+   * Needs its own `status ASC, lifetimeEarningsKes ASC` composite
+   * index (firestore.indexes.json) — a distinct index from
+   * `listTopByBusiness`'s `lifetimeEarningsKes DESC` one, since this
+   * query has no `orderBy` and Firestore requires ASCENDING for a bare
+   * inequality filter. The two do not satisfy each other; this page
+   * previously 500'd in production because only the DESC index had
+   * ever been deployed.
    */
   async countActiveAboveEarnings(
     businessId: string,
     lifetimeEarningsKes: number,
   ): Promise<number> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
+    const snapshot = await creatorMembershipsCollection(businessId)
       .where('status', '==', 'active')
       .where('lifetimeEarningsKes', '>', lifetimeEarningsKes)
       .count()
@@ -288,9 +305,7 @@ class CreatorRepository {
 
   /** § Creator Portal leaderboards — the "#N of M" denominator. */
   async countActive(businessId: string): Promise<number> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
+    const snapshot = await creatorMembershipsCollection(businessId)
       .where('status', '==', 'active')
       .count()
       .get();
@@ -305,9 +320,9 @@ class CreatorRepository {
    * counts a `pending` creator's code too, not only `active` ones).
    * `gte` is a real range filter, so it orders by `totalConversions`
    * itself rather than `createdAt` — Firestore requires the first
-   * `orderBy` to match the inequality field. Needs the `businessId
-   * ASC, totalConversions ASC` composite index (see
-   * firestore.indexes.json) for both the `eq` and `gte` shapes.
+   * `orderBy` to match the inequality field. The bare `eq`/`gte`
+   * filter plus matching `orderBy` on `totalConversions` is Firestore's
+   * automatic single-field index now that `businessId` is the path.
    */
   async listByConversionCount(
     businessId: string,
@@ -315,15 +330,13 @@ class CreatorRepository {
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null }> {
     const pageSize = options.limit ?? 100;
-    let query = adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+    let query = creatorMembershipsCollection(businessId) as FirebaseFirestore.Query;
 
     query = 'eq' in filter ? query.where('totalConversions', '==', filter.eq) : query.where('totalConversions', '>=', filter.gte);
     query = query.orderBy('totalConversions', 'asc').limit(pageSize + 1);
 
     if (options.cursor) {
-      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      const cursorDoc = await creatorMembershipRef(businessId, options.cursor).get();
       if (cursorDoc.exists) {
         query = query.startAfter(cursorDoc);
       }
@@ -341,9 +354,10 @@ class CreatorRepository {
 
   /**
    * § Admin: Marketing Emails segments — creators who registered on or
-   * after `since`. Reuses the same `businessId ASC, createdAt DESC`
-   * composite index `listByBusiness` already needs — a range filter on
-   * the same field the query already orders by, not a new shape.
+   * after `since`. Reuses the same bare `createdAt DESC` automatic
+   * single-field index `listByBusiness`'s unfiltered shape already
+   * needs — a range filter on the same field the query already orders
+   * by, not a new shape.
    */
   async listRegisteredSince(
     businessId: string,
@@ -351,15 +365,13 @@ class CreatorRepository {
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null }> {
     const pageSize = options.limit ?? 100;
-    let query = adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
+    let query = creatorMembershipsCollection(businessId)
       .where('createdAt', '>=', since)
       .orderBy('createdAt', 'desc')
       .limit(pageSize + 1) as FirebaseFirestore.Query;
 
     if (options.cursor) {
-      const cursorDoc = await adminFirestore.collection(COLLECTION).doc(options.cursor).get();
+      const cursorDoc = await creatorMembershipRef(businessId, options.cursor).get();
       if (cursorDoc.exists) {
         query = query.startAfter(cursorDoc);
       }
