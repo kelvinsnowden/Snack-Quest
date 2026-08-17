@@ -10,7 +10,7 @@ import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
-import { getPostBySlug, listPosts } from '@/lib/blog/posts';
+import { getPostBySlug, getRelatedPosts, listPosts } from '@/lib/blog/posts';
 
 export async function generateMetadata({
   params,
@@ -48,6 +48,7 @@ export default async function BlogPostPage({
   const businessName = business?.name ?? 'Snack Quest';
   const siteUrl = getSiteUrl();
   const postUrl = `${siteUrl}/blog/${post.slug}`;
+  const relatedPosts = getRelatedPosts(post.slug);
 
   const jsonLdGraph = {
     '@context': 'https://schema.org',
@@ -100,7 +101,22 @@ export default async function BlogPostPage({
         <BlogContent blocks={post.content} />
       </article>
 
-      <SurfaceCard className="mt-14 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {relatedPosts.length > 0 ? (
+        <div className="mt-14">
+          <p className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">Related reading</p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {relatedPosts.map((related) => (
+              <li key={related.slug}>
+                <Link href={`/blog/${related.slug}`} className="text-primary hover:underline">
+                  {related.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <SurfaceCard className="mt-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-card-title font-semibold text-foreground">Ready to try a box?</p>
           <p className="text-body mt-1 text-muted-foreground">Pay with M-Pesa, delivered anywhere in Kenya.</p>

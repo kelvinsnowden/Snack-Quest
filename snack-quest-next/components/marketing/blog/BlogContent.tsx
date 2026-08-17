@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { BlogBlock } from '@/lib/blog/posts';
 
 export function BlogContent({ blocks }: { blocks: BlogBlock[] }) {
@@ -21,6 +22,21 @@ export function BlogContent({ blocks }: { blocks: BlogBlock[] }) {
                 </li>
               ))}
             </ul>
+          );
+        }
+        if (block.type === 'links') {
+          return (
+            <p key={index} className="text-body text-muted-foreground">
+              {block.intro}{' '}
+              {block.items.map((link, linkIndex) => (
+                <span key={link.href}>
+                  <Link href={link.href} className="text-primary hover:underline">
+                    {link.label}
+                  </Link>
+                  {linkIndex < block.items.length - 1 ? ', ' : '.'}
+                </span>
+              ))}
+            </p>
           );
         }
         return (

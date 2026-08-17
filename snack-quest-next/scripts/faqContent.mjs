@@ -9,6 +9,21 @@
 
 export const FAQS = [
   {
+    question: 'What is Snack Quest?',
+    answer:
+      'A Kenya-based mystery snack box company. Every box is a hand-picked, personally tasted mix of imported snacks, ordered and paid for online, and delivered nationwide.',
+  },
+  {
+    question: "Where do Snack Quest's snacks come from?",
+    answer:
+      'Japan, Korea, China, and Thailand. Every box is a curated mix across all four — not a single country.',
+  },
+  {
+    question: 'Can I choose only Japanese or only Korean snacks?',
+    answer:
+      "Not today. Every Snack Quest box is a mystery mix across Japan, Korea, China, and Thailand — what's inside is part of the surprise, and there is no single-country box yet.",
+  },
+  {
     question: 'How do I order?',
     answer:
       'On this website. Pick a box, tap Buy now, tell us where to send it, and pay with M-Pesa. It takes about a minute and there is nothing to install and no account to create.',

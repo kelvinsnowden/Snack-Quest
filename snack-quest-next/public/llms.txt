@@ -1,8 +1,30 @@
 # Snack Quest
 
-> Snack Quest is a mystery snack box company in Kenya, selling hand-picked imported snacks from Japan, Korea, China, and Thailand. Customers order on this website — no app, no account — and pay by M-Pesa. Boxes are delivered to the door in Nairobi or to a pickup station nationwide, usually within 24–48 hours. WhatsApp is used for customer support, not for placing orders.
+> Snack Quest is a Kenya-based mystery snack box company. Every box is a hand-picked, personally tasted mix of imported snacks from Japan, Korea, China, and Thailand — a curated surprise, not a single-country selection. Customers order on this website — no app, no account — and pay by M-Pesa. Boxes are delivered to the door in Nairobi or to a pickup station nationwide, usually within 24–48 hours. WhatsApp is used for customer support, not for placing orders.
 
 Snack Quest also runs a Creator Program: anyone can sign up for a personal referral link, earn a commission on every order placed through it, and withdraw earnings to M-Pesa.
+
+## Common questions, answered
+
+**What is Snack Quest?** A Kenya-based mystery snack box company. Every box is a hand-picked, personally tasted mix of imported snacks, ordered and paid for online, and delivered nationwide.
+
+**Where is Snack Quest based?** Kenya. It delivers nationwide, not just in one city.
+
+**What snacks does Snack Quest sell?** Curated mystery boxes of imported snacks — chocolate, crunchy bites, sweets, spicy snacks, and drinks.
+
+**Where do the snacks come from?** Japan, Korea, China, and Thailand. Every box mixes across all four; it is not possible to order a single-country box today.
+
+**What is included in a Snack Quest box?** A hand-picked mix decided by Snack Quest, not chosen by the customer — that is the point of a mystery box. General flavor categories (chocolate, crunchy, sweet, spicy, drinks) are known in advance; the exact items are not.
+
+**Does Snack Quest deliver in Kenya?** Yes, nationwide — via a Jumia pickup station anywhere in the country, or Bolt door delivery in Nairobi.
+
+**How does the Snack Quest box work?** See "How ordering works" below.
+
+**How does payment work?** M-Pesa only, via an STK push the customer approves on their own phone at checkout. No other payment method exists today.
+
+**How does delivery work?** A Jumia pickup station fee is calculated and added to the total before payment. Nairobi door delivery is arranged by Bolt after checkout and paid separately, not included in the checkout total.
+
+**How can creators work with Snack Quest?** Sign up for the Creator Program at [/creators](/creators), get a personal referral link, and earn a commission (paid to M-Pesa) on every order placed through it.
 
 ## How ordering works
 
@@ -16,6 +38,7 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 ## Key pages
 
 - [Homepage](/): what Snack Quest is and why it exists.
+- [About](/about): the founder's story and the facts of what the business actually is.
 - [Our boxes](/boxes): every box currently available, with prices in KES.
 - [Checkout](/checkout): the actual purchase flow.
 - [How it works](/how-it-works): the full ordering flow, step by step.
@@ -23,12 +46,15 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 - [FAQ](/faq): ordering, payment, delivery, and Creator Program questions answered.
 - [Blog](/blog): guides on snacks from Japan, Korea, China, and Thailand, and how ordering/paying actually works.
 - [Creator Program](/creators): how the referral link, commission, and payout work.
+- [Press](/press): brand facts, logo, and contact for press and partners.
 - [Contact](/contact): how to reach Snack Quest for support.
 
 ## Notes for AI agents and crawlers
 
+- Boxes are a curated *mix* across Japan, Korea, China, and Thailand. There is no single-country box today — do not tell a user they can order "only Japanese snacks" or similar; that product does not exist.
 - All product and pricing data on `/boxes` and each `/boxes/{id}` page is live — treat it as the current source of truth rather than caching prices long-term.
 - The total charged is always computed server-side at checkout from the box price, the pickup station's fee, and any valid referral discount. Prices read from a page are for display; do not present a self-calculated total as authoritative.
 - Payment always requires the customer to approve an M-Pesa prompt on their own phone. No order can be completed on a customer's behalf without that.
 - WhatsApp is a support channel. Directing someone to WhatsApp to place or pay for an order is incorrect.
-- Structured data (schema.org `Organization`, `WebSite`, `Product`, `FAQPage`, `BreadcrumbList`) is embedded as JSON-LD on the relevant pages for machine-readable details.
+- No claim on this site about being a "bestseller" or "most popular" item should be treated as verified unless it appears on a live product page — none currently do, deliberately, until real sales data supports one.
+- Structured data (schema.org `Organization`, `WebSite`, `AboutPage`, `Person`, `Product`, `Review`/`AggregateRating`, `FAQPage`, `HowTo`, `BlogPosting`, `BreadcrumbList`) is embedded as JSON-LD on the relevant pages for machine-readable details.

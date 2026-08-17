@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Geist, Geist_Mono, Bagel_Fat_One } from 'next/font/google';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { BRAND_NAME, BRAND_DESCRIPTION_SHORT } from '@/lib/seo/entity';
 import { ADMIN_THEME_STORAGE_KEY } from '@/lib/theme/adminTheme';
 import './globals.css';
 
@@ -30,24 +31,30 @@ const displayFont = Bagel_Fat_One({
   subsets: ['latin'],
 });
 
-const SITE_NAME = 'Snack Quest';
-const SITE_DESCRIPTION = 'Order curated snack boxes on WhatsApp and get them delivered across Kenya.';
+// Was "Snack boxes on WhatsApp" / "Order curated snack boxes on
+// WhatsApp" — stale since ordering moved to the website (§ Website
+// Becomes the Primary Commerce Channel); WhatsApp is support only.
+// This is the fallback used by any page that doesn't set its own
+// title/description (see buildPageMetadata's own doc comment) — worth
+// getting right since it's also the literal og:description for those
+// pages.
+const TITLE_DEFAULT = `${BRAND_NAME} — Mystery snack boxes from Japan, Korea, China & Thailand`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
-  title: { default: `${SITE_NAME} — Snack boxes on WhatsApp`, template: `%s | ${SITE_NAME}` },
-  description: SITE_DESCRIPTION,
+  title: { default: TITLE_DEFAULT, template: `%s | ${BRAND_NAME}` },
+  description: BRAND_DESCRIPTION_SHORT,
   openGraph: {
     type: 'website',
-    siteName: SITE_NAME,
+    siteName: BRAND_NAME,
     locale: 'en_KE',
-    title: { default: `${SITE_NAME} — Snack boxes on WhatsApp`, template: `%s | ${SITE_NAME}` },
-    description: SITE_DESCRIPTION,
+    title: { default: TITLE_DEFAULT, template: `%s | ${BRAND_NAME}` },
+    description: BRAND_DESCRIPTION_SHORT,
   },
   twitter: {
     card: 'summary_large_image',
-    title: { default: `${SITE_NAME} — Snack boxes on WhatsApp`, template: `%s | ${SITE_NAME}` },
-    description: SITE_DESCRIPTION,
+    title: { default: TITLE_DEFAULT, template: `%s | ${BRAND_NAME}` },
+    description: BRAND_DESCRIPTION_SHORT,
   },
   robots: { index: true, follow: true },
 };
