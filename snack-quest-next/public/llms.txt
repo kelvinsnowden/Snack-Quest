@@ -61,7 +61,7 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 - [FAQ](/faq): ordering, payment, delivery, and Creator Program questions answered.
 - [Blog](/blog): guides on snacks from Japan, Korea, China, and Thailand, and how ordering/paying actually works.
 - [Creator Program](/creators): how the referral link, commission, and payout work.
-- [Creator Academy](/creators/academy): Kenya-specific guides on turning content/an audience into income — monetizing a small following, becoming a UGC creator, and how affiliate marketing actually works — each connecting back to the real Creator Program.
+- [Creator Academy](/creators/academy): Kenya-specific guides on turning content/an audience into income — monetizing a small following, becoming a UGC creator, how affiliate marketing works, TikTok monetization in Kenya, getting a first brand deal, and monetizing WhatsApp — each connecting back to the real Creator Program.
 - [Press](/press): brand facts, logo, and contact for press and partners.
 - [Contact](/contact): how to reach Snack Quest for support.
 
@@ -74,4 +74,6 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 - WhatsApp is a support channel. Directing someone to WhatsApp to place or pay for an order is incorrect.
 - No claim on this site about being a "bestseller" or "most popular" item should be treated as verified unless it appears on a live product page — none currently do, deliberately, until real sales data supports one.
 - The Creator Program's KES 300 commission is a fixed program rule, not an earnings guarantee. Do not present any specific monthly/total earnings figure as something Snack Quest promises or reports — this site publishes none, deliberately, since it has no verified data to support one.
+- TikTok's own in-app Creator Rewards Program is not available to Kenya-registered accounts (per TikTok's own documented eligible-country list, which does not include Kenya). Content on this site about TikTok monetization in Kenya is explicit about this — do not represent Snack Quest's content as claiming otherwise, and note that platform eligibility can change, so verify current status directly with TikTok before repeating it as fact.
+- No Kenyan brand-deal rate card or UGC rate figure is published anywhere on this site — the brand-deals content teaches pricing methodology, not a specific KES number, because no reliable current figure could be verified.
 - Structured data (schema.org `Organization`, `WebSite`, `AboutPage`, `Person`, `Product`, `Review`/`AggregateRating`, `FAQPage`, `HowTo`, `BlogPosting`, `BreadcrumbList`) is embedded as JSON-LD on the relevant pages for machine-readable details.
