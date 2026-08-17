@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
@@ -57,10 +58,21 @@ export default async function FaqPage() {
         </div>
       ) : null}
 
-      <div className="mt-8 sm:mt-10">
+      <div className="mt-8 flex flex-col gap-4 sm:mt-10">
         <WhatsAppOrderButton message="Hi! I have a question.">
           Ask us on WhatsApp
         </WhatsAppOrderButton>
+        <p className="text-sm text-muted-foreground">
+          Want the longer version?{' '}
+          <Link href="/about" className="text-primary hover:underline">
+            Read about Snack Quest
+          </Link>{' '}
+          or{' '}
+          <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
+            what a mystery box actually is
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

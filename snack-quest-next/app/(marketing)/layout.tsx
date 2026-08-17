@@ -11,6 +11,7 @@ import { SOCIAL_LINKS } from '@/lib/config/socialLinks';
 import { META_PIXEL_ID } from '@/lib/config/metaPixel';
 import { TIKTOK_PIXEL_CODE } from '@/lib/config/tiktokPixel';
 import { safeJsonLd } from '@/lib/seo/safeJsonLd';
+import { BRAND_DESCRIPTION_LONG, FOUNDER_NAME } from '@/lib/seo/entity';
 
 /**
  * Every marketing page reads live data (active boxes, the business's
@@ -40,9 +41,25 @@ export default async function MarketingLayout({
         '@type': 'Organization',
         '@id': `${siteUrl}/#organization`,
         name: businessName,
+        description: BRAND_DESCRIPTION_LONG,
         url: siteUrl,
         logo: `${siteUrl}/logo.png`,
+        image: `${siteUrl}/logo.png`,
         areaServed: 'KE',
+        brand: { '@type': 'Brand', '@id': `${siteUrl}/#organization`, name: businessName },
+        // Every one of these is a real, already-public thing the
+        // business actually is/does — not a fabricated tag. Matches
+        // §3's ask to help Google associate the entity with its real
+        // categories, nothing invented.
+        knowsAbout: [
+          'Imported snacks',
+          'Japanese snacks',
+          'Korean snacks',
+          'Asian snacks',
+          'Mystery snack boxes',
+          'Kenya',
+        ],
+        founder: { '@type': 'Person', name: FOUNDER_NAME },
         contactPoint: [
           {
             '@type': 'ContactPoint',
@@ -57,6 +74,7 @@ export default async function MarketingLayout({
         '@type': 'WebSite',
         '@id': `${siteUrl}/#website`,
         name: businessName,
+        description: BRAND_DESCRIPTION_LONG,
         url: siteUrl,
         inLanguage: 'en-KE',
         publisher: { '@id': `${siteUrl}/#organization` },

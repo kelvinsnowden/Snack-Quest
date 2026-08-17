@@ -23,6 +23,7 @@ const FOOTER_LINKS = [
   { href: '/boxes', label: 'Boxes' },
   { href: '/how-it-works', label: 'How it works' },
   { href: '/blog', label: 'Blog' },
+  { href: '/about', label: 'About' },
   { href: '/creators', label: 'Creator program' },
   { href: '/creator/register', label: 'Become a creator' },
   { href: '/creator/login', label: 'Creator sign in' },
@@ -30,6 +31,7 @@ const FOOTER_LINKS = [
   { href: '/review', label: 'Leave a review' },
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact us' },
+  { href: '/press', label: 'Press' },
   { href: '/privacy', label: 'Privacy policy' },
   { href: '/terms', label: 'Terms of service' },
 ];

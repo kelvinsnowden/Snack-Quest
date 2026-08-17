@@ -46,6 +46,13 @@ export default async function BoxesPage() {
         <p className="mt-3 text-subtitle text-muted-foreground">
           Every box is curated and packed by hand. Tap one to see the details, then check out with M-Pesa.
         </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          New here?{' '}
+          <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
+            Read what a mystery box actually is
+          </Link>{' '}
+          before you pick one.
+        </p>
       </div>
 
       {packages.length === 0 ? (
