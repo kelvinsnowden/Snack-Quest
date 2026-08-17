@@ -239,6 +239,23 @@ export default async function AdminDashboardPage({
                     Visitors
                   </span>
                 </div>
+                {traffic.topPages.length > 0 ? (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
+                      Top pages
+                    </p>
+                    <ul className="mt-2 flex flex-col gap-1.5">
+                      {traffic.topPages.slice(0, 5).map((page) => (
+                        <li key={page.path} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="truncate text-foreground">{page.path}</span>
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {page.visits.toLocaleString()} visit{page.visits === 1 ? '' : 's'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </>
             ) : (
               <p className="py-16 text-center text-sm text-muted-foreground">
