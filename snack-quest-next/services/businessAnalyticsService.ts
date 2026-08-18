@@ -67,6 +67,27 @@ export const ORDER_CHANNEL_LABELS: Record<OrderChannel, string> = {
   other: 'Other / WhatsApp',
 };
 
+/**
+ * Every calendar date (UTC, `YYYY-MM-DD`) touched by the half-open
+ * interval `[start, end)` — used to seed `getTrafficForRange`'s
+ * day buckets so a day with zero views still shows up as a zero,
+ * not a gap in the chart.
+ */
+function dateKeysBetween(start: Date, end: Date): string[] {
+  const lastMs = Math.max(start.getTime(), end.getTime() - 1);
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const lastKey = new Date(lastMs).toISOString().slice(0, 10);
+
+  const keys: string[] = [];
+  while (true) {
+    const key = cursor.toISOString().slice(0, 10);
+    keys.push(key);
+    if (key >= lastKey) break;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
 function deriveOrderChannel(order: Order): OrderChannel {
   if (order.referralLinkId) {
     return 'referral';
@@ -111,6 +132,12 @@ export interface TrafficOverview {
     totalVisits: number;
     uniqueVisitors: number;
   };
+}
+
+export interface TrafficDateRange {
+  start: Date;
+  /** Exclusive. */
+  end: Date;
 }
 
 export interface RevenueOverview {
@@ -303,6 +330,66 @@ class BusinessAnalyticsService {
     const byDay = new Map<string, { date: string; visits: number; visitorIds: Set<string> }>();
     for (let i = 0; i < days; i += 1) {
       const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      byDay.set(date, { date, visits: 0, visitorIds: new Set() });
+    }
+
+    const pageCounts = new Map<string, number>();
+    const uniqueVisitors = new Set<string>();
+    for (const view of inWindow) {
+      uniqueVisitors.add(view.visitorId);
+      pageCounts.set(view.path, (pageCounts.get(view.path) ?? 0) + 1);
+
+      const date = new Date(toMillis(view.createdAt)).toISOString().slice(0, 10);
+      const bucket = byDay.get(date);
+      if (bucket) {
+        bucket.visits += 1;
+        bucket.visitorIds.add(view.visitorId);
+      }
+    }
+
+    const previousUniqueVisitors = new Set(inPreviousWindow.map((v) => v.visitorId));
+
+    const topPages = Array.from(pageCounts.entries())
+      .map(([path, visits]) => ({ path, visits }))
+      .sort((a, b) => b.visits - a.visits)
+      .slice(0, TOP_PAGES_LIMIT);
+
+    return {
+      totalVisits: inWindow.length,
+      uniqueVisitors: uniqueVisitors.size,
+      days: Array.from(byDay.values())
+        .map(({ date, visits, visitorIds }) => ({ date, visits, uniqueVisitors: visitorIds.size }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      topPages,
+      previousPeriod: {
+        totalVisits: inPreviousWindow.length,
+        uniqueVisitors: previousUniqueVisitors.size,
+      },
+    };
+  }
+
+  /**
+   * Same as `getTraffic`, but for an explicit window that doesn't
+   * necessarily end "now" — backs the admin Analytics page's
+   * day/week/month/custom-range traffic filter (`lib/analytics/trafficRange.ts`
+   * resolves the query params into the `range` passed here). Kept as
+   * its own method rather than folded into `getTraffic` so that
+   * method's existing rolling-N-days behavior (used by the admin
+   * dashboard homepage) stays untouched.
+   */
+  async getTrafficForRange(businessId: string, range: TrafficDateRange): Promise<TrafficOverview> {
+    const { start, end } = range;
+    const windowMs = end.getTime() - start.getTime();
+    const previousStart = new Date(start.getTime() - windowMs);
+    const previousEnd = start;
+
+    const [inWindow, inPreviousWindow] = await Promise.all([
+      pageViewRepository.listInRange(businessId, start, end),
+      pageViewRepository.listInRange(businessId, previousStart, previousEnd),
+    ]);
+
+    const byDay = new Map<string, { date: string; visits: number; visitorIds: Set<string> }>();
+    for (const date of dateKeysBetween(start, end)) {
       byDay.set(date, { date, visits: 0, visitorIds: new Set() });
     }
 
