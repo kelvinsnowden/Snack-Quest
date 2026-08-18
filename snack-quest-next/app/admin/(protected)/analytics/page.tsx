@@ -1,9 +1,13 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Banknote, ClipboardList, Receipt, Users, Eye, RotateCcw, Repeat, Wallet } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessAnalyticsService, ORDER_CHANNEL_LABELS } from '@/services/businessAnalyticsService';
 import { fulfillmentAccountingService } from '@/services/fulfillmentAccountingService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { RevenueChart } from '@/components/admin/RevenueChart';
 import { FunnelChart } from '@/components/admin/FunnelChart';
 import { TrafficChart } from '@/components/admin/TrafficChart';
@@ -11,6 +15,7 @@ import { MarketingSpendForm } from '@/components/admin/MarketingSpendForm';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
+import { resolveTrafficRange, type TrafficRangeKey } from '@/lib/analytics/trafficRange';
 
 export const metadata: Metadata = { title: 'Analytics' };
 
@@ -18,9 +23,21 @@ function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
 }
 
-export default async function AdminAnalyticsPage() {
+const TRAFFIC_RANGE_PRESETS: { key: TrafficRangeKey; label: string; query: string }[] = [
+  { key: 'day', label: 'Today', query: '?range=day' },
+  { key: 'week', label: 'Last 7 days', query: '?range=week' },
+  { key: 'month', label: 'Last 30 days', query: '' },
+];
+
+export default async function AdminAnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+}) {
   const session = await requireStaffSession();
   const month = currentMonth();
+  const trafficParams = await searchParams;
+  const trafficRange = resolveTrafficRange(trafficParams);
 
   const [
     revenue,
@@ -43,7 +60,10 @@ export default async function AdminAnalyticsPage() {
     businessAnalyticsService.getCac(session.businessId, month),
     businessAnalyticsService.getCacByChannel(session.businessId, month),
     businessAnalyticsService.getDeliveryPerformance(session.businessId),
-    businessAnalyticsService.getTraffic(session.businessId, 30),
+    businessAnalyticsService.getTrafficForRange(session.businessId, {
+      start: trafficRange.start,
+      end: trafficRange.end,
+    }),
     businessAnalyticsService.getRevenueByChannel(session.businessId, 30),
     fulfillmentAccountingService.getOverview(session.businessId, 30),
     businessAnalyticsService.getRefundRate(session.businessId, 30),
@@ -180,20 +200,69 @@ export default async function AdminAnalyticsPage() {
         </p>
       </div>
 
+      <Card className="p-4">
+        <div className="flex flex-wrap gap-2">
+          {TRAFFIC_RANGE_PRESETS.map((preset) => (
+            <Link
+              key={preset.key}
+              href={`/admin/analytics${preset.query}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                trafficRange.key === preset.key
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-border/40'
+              }`}
+            >
+              {preset.label}
+            </Link>
+          ))}
+        </div>
+
+        <form
+          action="/admin/analytics"
+          method="GET"
+          className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-end"
+        >
+          <input type="hidden" name="range" value="custom" />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="from">From</Label>
+            <Input
+              id="from"
+              name="from"
+              type="date"
+              defaultValue={trafficRange.key === 'custom' ? trafficParams.from : undefined}
+              max={new Date().toISOString().slice(0, 10)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="to">To</Label>
+            <Input
+              id="to"
+              name="to"
+              type="date"
+              defaultValue={trafficRange.key === 'custom' ? trafficParams.to : undefined}
+              max={new Date().toISOString().slice(0, 10)}
+            />
+          </div>
+          <Button type="submit" variant={trafficRange.key === 'custom' ? 'primary' : 'outline'}>
+            Apply custom range
+          </Button>
+        </form>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <TrendStatCard
-          label="Visitors (30 days)"
+          label={`Visitors (${trafficRange.label})`}
           value={traffic.uniqueVisitors.toLocaleString('en-KE')}
           icon={<Users className="size-5" />}
           tone="secondary"
-          trend={computePeriodTrend(traffic.uniqueVisitors, traffic.previousPeriod.uniqueVisitors, 'vs previous 30 days')}
+          trend={computePeriodTrend(traffic.uniqueVisitors, traffic.previousPeriod.uniqueVisitors, 'vs previous period')}
           sparkline={traffic.days.map((d) => d.uniqueVisitors)}
         />
         <TrendStatCard
-          label="Page views (30 days)"
+          label={`Page views (${trafficRange.label})`}
           value={traffic.totalVisits.toLocaleString('en-KE')}
           icon={<Eye className="size-5" />}
-          trend={computePeriodTrend(traffic.totalVisits, traffic.previousPeriod.totalVisits, 'vs previous 30 days')}
+          trend={computePeriodTrend(traffic.totalVisits, traffic.previousPeriod.totalVisits, 'vs previous period')}
           sparkline={traffic.days.map((d) => d.visits)}
         />
       </div>
@@ -202,7 +271,7 @@ export default async function AdminAnalyticsPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Visits, last 30 days</CardTitle>
+              <CardTitle>Visits, {trafficRange.label.toLowerCase()}</CardTitle>
             </CardHeader>
             <CardContent>
               <TrafficChart days={traffic.days} />

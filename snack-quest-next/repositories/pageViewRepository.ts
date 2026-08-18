@@ -39,6 +39,24 @@ class PageViewRepository {
       .get();
     return snapshot.docs.map((doc) => doc.data() as PageView);
   }
+
+  /**
+   * Same as `listSince`, bounded above too — backs the admin Analytics
+   * day/week/month/custom-range traffic filter, where the window
+   * doesn't necessarily end "now". Both clauses are range filters on
+   * the same `createdAt` field, so this needs no index beyond the
+   * existing businessId + createdAt composite.
+   */
+  async listInRange(businessId: string, start: Date, end: Date): Promise<PageView[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('createdAt', '>=', start)
+      .where('createdAt', '<', end)
+      .limit(MAX_PAGE_VIEWS_PER_QUERY)
+      .get();
+    return snapshot.docs.map((doc) => doc.data() as PageView);
+  }
 }
 
 export const pageViewRepository = new PageViewRepository();

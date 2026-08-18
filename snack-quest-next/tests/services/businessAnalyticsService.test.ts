@@ -365,6 +365,68 @@ describe('BusinessAnalyticsService.getTraffic', () => {
   });
 });
 
+describe('BusinessAnalyticsService.getTrafficForRange', () => {
+  it('counts only visits inside the given [start, end) window, scoped to the business', async () => {
+    const start = new Date('2026-08-15T00:00:00.000Z');
+    const end = new Date('2026-08-16T00:00:00.000Z');
+
+    await seedPageView({ path: '/', visitorId: 'v1', createdAtMillis: Date.parse('2026-08-15T09:00:00.000Z') });
+    await seedPageView({ path: '/boxes', visitorId: 'v1', createdAtMillis: Date.parse('2026-08-15T10:00:00.000Z') });
+    // The day before — outside the window.
+    await seedPageView({ path: '/', visitorId: 'v2', createdAtMillis: Date.parse('2026-08-14T23:00:00.000Z') });
+    // A different business's traffic — must never leak in.
+    await seedPageView({ businessId: OTHER_BUSINESS_ID, path: '/', visitorId: 'v3', createdAtMillis: Date.parse('2026-08-15T09:30:00.000Z') });
+
+    const traffic = await businessAnalyticsService.getTrafficForRange(BUSINESS_ID, { start, end });
+
+    expect(traffic.totalVisits).toBe(2);
+    expect(traffic.uniqueVisitors).toBe(1);
+  });
+
+  it('computes the equal-length window immediately before "start" as the previous period', async () => {
+    const start = new Date('2026-08-10T00:00:00.000Z');
+    const end = new Date('2026-08-17T00:00:00.000Z'); // 7-day window
+
+    await seedPageView({ path: '/', visitorId: 'in-window', createdAtMillis: Date.parse('2026-08-12T00:00:00.000Z') });
+    // 5 days before "start" — inside the previous 7-day window.
+    await seedPageView({ path: '/', visitorId: 'prev-1', createdAtMillis: Date.parse('2026-08-05T00:00:00.000Z') });
+    // Outside both windows entirely.
+    await seedPageView({ path: '/', visitorId: 'too-old', createdAtMillis: Date.parse('2026-07-01T00:00:00.000Z') });
+
+    const traffic = await businessAnalyticsService.getTrafficForRange(BUSINESS_ID, { start, end });
+
+    expect(traffic.totalVisits).toBe(1);
+    expect(traffic.previousPeriod.totalVisits).toBe(1);
+    expect(traffic.previousPeriod.uniqueVisitors).toBe(1);
+  });
+
+  it('produces one day bucket per calendar date in range, including zero-visit days', async () => {
+    const start = new Date('2026-08-01T00:00:00.000Z');
+    const end = new Date('2026-08-04T00:00:00.000Z'); // Aug 1, 2, 3
+
+    await seedPageView({ path: '/', visitorId: 'v1', createdAtMillis: Date.parse('2026-08-01T12:00:00.000Z') });
+
+    const traffic = await businessAnalyticsService.getTrafficForRange(BUSINESS_ID, { start, end });
+
+    expect(traffic.days.map((d) => d.date)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03']);
+    expect(traffic.days[0].visits).toBe(1);
+    expect(traffic.days[1].visits).toBe(0);
+    expect(traffic.days[2].visits).toBe(0);
+  });
+
+  it('reports zeroes rather than throwing for a range with no recorded visits', async () => {
+    const traffic = await businessAnalyticsService.getTrafficForRange(BUSINESS_ID, {
+      start: new Date('2026-08-01T00:00:00.000Z'),
+      end: new Date('2026-08-02T00:00:00.000Z'),
+    });
+
+    expect(traffic.totalVisits).toBe(0);
+    expect(traffic.uniqueVisitors).toBe(0);
+    expect(traffic.topPages).toEqual([]);
+    expect(traffic.days).toHaveLength(1);
+  });
+});
+
 describe('BusinessAnalyticsService.getRevenueByChannel', () => {
   it('buckets orders by acquisition channel, referral taking priority over an ad click id', async () => {
     await seedOrder({
