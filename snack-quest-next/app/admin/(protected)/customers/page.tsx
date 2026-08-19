@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { EmptyCustomersState } from '@/components/admin/EmptyCustomersState';
+import { MobileRecordCard, MobileRecordList } from '@/components/admin/MobileRecordCard';
 import { formatDate, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Customers' };
@@ -53,7 +54,34 @@ export default async function AdminCustomersPage({
       {customers.length === 0 ? (
         <EmptyCustomersState hasFilter={Boolean(trimmedQuery)} />
       ) : (
-        <Card className="overflow-hidden p-0">
+        <>
+          <MobileRecordList>
+            {customers.map((customer) => (
+              <MobileRecordCard
+                key={customer.phoneNumber}
+                href={`/admin/customers/${encodeURIComponent(customer.phoneNumber)}`}
+                title={customer.customerName}
+                subtitle={
+                  <span className="tabular-nums">
+                    {customer.phoneNumber} · {customer.county}
+                  </span>
+                }
+                fields={[
+                  { label: 'Orders', value: <span className="tabular-nums">{customer.orderCount}</span> },
+                  {
+                    label: 'Total spent',
+                    value: <span className="font-medium tabular-nums">{formatKes(customer.totalSpentKes)}</span>,
+                  },
+                  {
+                    label: 'Last order',
+                    value: <span className="tabular-nums">{formatDate(customer.lastOrderAt)}</span>,
+                  },
+                ]}
+              />
+            ))}
+          </MobileRecordList>
+
+          <Card className="hidden overflow-hidden p-0 md:block">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
@@ -85,7 +113,8 @@ export default async function AdminCustomersPage({
               </tbody>
             </table>
           </div>
-        </Card>
+          </Card>
+        </>
       )}
     </div>
   );

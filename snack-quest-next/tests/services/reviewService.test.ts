@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { seedOrder } from '../helpers/orderFixtures';
+import type { Order } from '@/types';
 
 const { uploadFileMock, deleteFileMock, getMetadataMock, listFilesMock } = vi.hoisted(() => ({
   uploadFileMock: vi.fn(),
@@ -143,7 +144,12 @@ describe('verified purchase', () => {
 });
 
 describe('listAwaitingReviewRequest', () => {
-  const longAgo = () => Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  // Cast for the same reason `businessAnalyticsService.test.ts` does:
+  // fixtures write through the Admin SDK, while `Order` is typed
+  // against the client SDK's `Timestamp`. The two are structurally
+  // different types for the same stored value.
+  const longAgo = () =>
+    Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000) as unknown as Order['createdAt'];
 
   it('lists a paid customer who is past the waiting period and has never been asked', async () => {
     await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', createdAt: longAgo() });

@@ -69,7 +69,7 @@ export default async function AdminCreatorsPage({
         <div className="flex flex-wrap gap-2">
           <Link
             href={creatorsHref({ q, followersRange: validFollowersRange })}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
               !validStatus ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
             }`}
           >
@@ -79,7 +79,7 @@ export default async function AdminCreatorsPage({
             <Link
               key={value}
               href={creatorsHref({ status: value, q, followersRange: validFollowersRange })}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
                 validStatus === value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
               }`}
             >

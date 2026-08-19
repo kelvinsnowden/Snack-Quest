@@ -94,7 +94,7 @@ export default async function AdminOrdersPage({
         <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
           <Link
             href="/admin/orders"
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
               !status && !trimmedQuery ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
             }`}
           >
@@ -104,7 +104,7 @@ export default async function AdminOrdersPage({
             <Link
               key={value}
               href={`/admin/orders?status=${value}`}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
                 status === value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
               }`}
             >
