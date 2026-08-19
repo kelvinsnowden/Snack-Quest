@@ -20,8 +20,8 @@ export default async function AdminReconciliationPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Reconciliation</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Reconciliation</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
           Real M-Pesa STK callbacks Safaricom sent us that never matched a known payment attempt.
         </p>
       </div>

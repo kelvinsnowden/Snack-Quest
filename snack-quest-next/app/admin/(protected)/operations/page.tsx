@@ -45,8 +45,8 @@ export default async function AdminOperationsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Operations</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Operations</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
           Real signals already recorded across the platform — webhook, payment, integration, and scheduled-job failures,
           plus the manual-booking and expiring-stock queues.
         </p>

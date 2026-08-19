@@ -39,7 +39,7 @@ export default async function AdminPurchaseOrderDetailPage({
             Purchase orders
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title font-bold tracking-tight text-foreground">{supplier?.name ?? purchaseOrder.supplierId}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{supplier?.name ?? purchaseOrder.supplierId}</h1>
             <PurchaseOrderStatusBadge status={purchaseOrder.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{formatKes(purchaseOrder.totalCostKes)} total</p>

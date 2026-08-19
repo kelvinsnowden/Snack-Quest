@@ -71,7 +71,7 @@ export default async function AdminIntegrationsPage() {
           <ArrowLeft className="size-4" aria-hidden="true" />
           Settings
         </Link>
-        <h1 className="mt-3 text-page-title font-bold tracking-tight text-foreground">Integrations</h1>
+        <h1 className="mt-3 text-2xl md:text-3xl font-bold tracking-tight text-foreground">Integrations</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Manage every external service this business connects to — credentials are stored per business and take effect immediately, no redeploy needed.
         </p>

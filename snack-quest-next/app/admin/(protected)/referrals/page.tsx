@@ -32,10 +32,10 @@ export default async function AdminReferralsPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title text-foreground font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
           Referrals
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
           Every creator gets one permanent referral link automatically at
           registration — a fixed KES 250 customer discount and a commission
           locked in by their real registration order. Commissions are credited

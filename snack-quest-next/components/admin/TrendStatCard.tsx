@@ -52,11 +52,21 @@ export function TrendStatCard({ label, value, icon, tone = 'primary', trend, spa
 
   return (
     <Card className="overflow-hidden">
-      <CardContent className="flex flex-col gap-4 p-6">
+      {/*
+        Tighter on a phone (§ Admin mobile density pass). At desktop
+        padding these cards were about 180px tall each and stacked one
+        per row, so four numbers cost most of a screen. The figure
+        itself stays large — it is the content; what shrank is the
+        chrome around it.
+      */}
+      <CardContent className="flex flex-col gap-2.5 p-4 md:gap-4 md:p-6">
         <div className="flex items-center justify-between gap-3">
           <span
             aria-hidden="true"
-            className={cn('flex size-10 shrink-0 items-center justify-center rounded-full', TONE_CLASSES[tone])}
+            className={cn(
+              'flex size-8 shrink-0 items-center justify-center rounded-full md:size-10',
+              TONE_CLASSES[tone],
+            )}
           >
             {icon}
           </span>
@@ -64,7 +74,9 @@ export function TrendStatCard({ label, value, icon, tone = 'primary', trend, spa
 
         <div>
           <p className="text-caption text-muted-foreground font-medium tracking-wide uppercase">{label}</p>
-          <p className="text-foreground mt-1.5 text-[1.75rem] leading-none font-semibold tabular-nums">{value}</p>
+          <p className="text-foreground mt-1.5 text-2xl leading-none font-semibold tabular-nums md:text-[1.75rem]">
+            {value}
+          </p>
         </div>
 
         {trend ? (

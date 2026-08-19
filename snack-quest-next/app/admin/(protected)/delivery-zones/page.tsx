@@ -15,8 +15,8 @@ export default async function AdminDeliveryZonesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Delivery zones</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Delivery zones</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
           Set the pickup delivery fee for every zone. Changes apply immediately to every station in that zone — 0 means
           intentionally free pickup.
         </p>

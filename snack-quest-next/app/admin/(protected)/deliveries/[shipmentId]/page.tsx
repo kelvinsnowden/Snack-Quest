@@ -47,7 +47,7 @@ export default async function AdminShipmentDetailPage({
             Deliveries
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title font-bold tracking-tight text-foreground">{shipment.recipientName}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{shipment.recipientName}</h1>
             <ShipmentStatusBadge status={shipment.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">

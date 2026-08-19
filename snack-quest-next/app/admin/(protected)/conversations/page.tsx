@@ -52,10 +52,10 @@ export default async function AdminConversationsPage({
       {/* Any status filter is still the first page and worth keeping live (the agent_assigned filter especially is exactly the queue staff watch); once they've paged past it with a cursor, a refresh could shift rows under them, so it pauses there. */}
       <AutoRefresh intervalMs={8000} pause={Boolean(cursor)} />
       <div>
-        <h1 className="text-page-title text-foreground font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
           Conversations
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
           Monitor the WhatsApp checkout and take over threads that need a human.
         </p>
       </div>

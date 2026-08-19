@@ -21,8 +21,8 @@ export default async function AdminProductsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Products</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The snack boxes sold through the WhatsApp catalog.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Products</h1>
+          <p className="hidden sm:block mt-1 text-sm text-muted-foreground">The snack boxes sold through the WhatsApp catalog.</p>
         </div>
         <Button asChild>
           <Link href="/admin/products/new">

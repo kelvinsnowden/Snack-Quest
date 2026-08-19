@@ -42,7 +42,7 @@ export default async function NewFulfillmentBatchPage({
     return (
       <div className="flex max-w-xl flex-col gap-6">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">New fulfillment batch</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">New fulfillment batch</h1>
         </div>
         <EmptyState
           icon={PackageX}
@@ -61,8 +61,8 @@ export default async function NewFulfillmentBatchPage({
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">New fulfillment batch</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">New fulfillment batch</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
           Record one real shopping trip and split its cost across {eligible.length} order{eligible.length === 1 ? '' : 's'}.
         </p>
       </div>

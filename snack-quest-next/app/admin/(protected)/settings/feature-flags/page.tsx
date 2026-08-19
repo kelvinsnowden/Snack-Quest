@@ -12,8 +12,8 @@ export default async function AdminFeatureFlagsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Feature flags</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Feature flags</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
           Turn platform features on or off for this business — takes effect immediately, no redeploy needed.
         </p>
       </div>

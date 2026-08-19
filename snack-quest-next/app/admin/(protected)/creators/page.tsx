@@ -59,8 +59,8 @@ export default async function AdminCreatorsPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Creators</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Creators</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
           Review signups, approve new creators, and search your creator pool by niche or follower range.
         </p>
       </div>

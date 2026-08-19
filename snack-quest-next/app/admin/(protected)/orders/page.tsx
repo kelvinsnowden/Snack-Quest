@@ -66,8 +66,8 @@ export default async function AdminOrdersPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Orders</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Orders</h1>
+          <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
             Every paid order — placed on the website, over WhatsApp, or taken by staff.
           </p>
         </div>

@@ -66,7 +66,7 @@ export default async function AdminConversationDetailPage({
             Conversations
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title text-foreground font-bold tracking-tight tabular-nums">
+            <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight tabular-nums">
               {conversation.phoneNumber}
             </h1>
             <ConversationStatusBadge status={conversation.status} />
