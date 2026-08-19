@@ -38,7 +38,14 @@ const displayFont = Bagel_Fat_One({
 // title/description (see buildPageMetadata's own doc comment) — worth
 // getting right since it's also the literal og:description for those
 // pages.
-const TITLE_DEFAULT = `${BRAND_NAME} — Mystery snack boxes from Japan, Korea, China & Thailand`;
+// Keeps the two country names people actually search for while
+// signalling the wider range (§ international positioning). The four-
+// country version ran to 69 characters and was being truncated in
+// results anyway; "& beyond" costs less room than "China & Thailand"
+// and says more about where the brand is going. The international
+// framing does its real work in the description and on the page —
+// this line's job is to match what someone types.
+const TITLE_DEFAULT = `${BRAND_NAME} — Mystery snack boxes from Japan, Korea & beyond`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),

@@ -74,8 +74,19 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
         </Reveal>
 
         <Reveal delayMs={200}>
+          {/*
+            Where the international positioning is stated, and the only
+            place it needs to be (§ international positioning).
+            "First stop" rather than "starting in Asia": Asia is not a
+            phase the brand is passing through — those boxes stay — it
+            is the first of several ranges. It also happens to be the
+            language the rest of this page already speaks in (the quest,
+            the route, explorers). The qualifier is not decoration: every
+            box today is Asian, so "from around the world" on its own
+            would promise a range the box doesn't contain.
+          */}
           <p className="text-subtitle text-foreground/75 mx-auto mt-6 max-w-xl">
-            Hand-picked mystery snacks from across Asia.{' '}
+            Hand-picked mystery snacks from around the world. First stop: Asia.{' '}
             <span className="text-foreground font-semibold">
               You&apos;re about to take the first step into a very delicious
               adventure.
