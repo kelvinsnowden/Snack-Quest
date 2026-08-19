@@ -16,7 +16,7 @@ export const FAQS = [
   {
     question: "Where do Snack Quest's snacks come from?",
     answer:
-      'Japan, Korea, China, and Thailand. Every box is a curated mix across all four — not a single country.',
+      'Snack Quest is about snacks from around the world, and our first stop is Asia: Japan, Korea, China, and Thailand. Every box is a curated mix across all four — not a single country. More regions will join over time; the Asia boxes are staying either way.',
   },
   {
     question: 'Can I choose only Japanese or only Korean snacks?',

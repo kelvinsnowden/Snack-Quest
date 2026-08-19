@@ -38,6 +38,12 @@ export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
           <h2 className="mt-4 text-balance font-display text-5xl leading-[1] font-normal uppercase md:text-7xl">
             What&apos;s <span className="text-secondary">inside?</span>
           </h2>
+          {/*
+            Left exactly as it was. This section answers "what am I
+            actually getting", and that answer is four specific places.
+            The international framing lives in the hero; repeating it
+            here would only make the concrete part vaguer.
+          */}
           <p className="mt-5 text-base text-foreground/70 md:text-lg">
             Snacks sourced from{' '}
             <span className="font-semibold text-foreground">Japan, Korea, China &amp; Thailand</span>, hand-curated

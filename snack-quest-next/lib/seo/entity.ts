@@ -19,22 +19,43 @@ export const BRAND_NAME = 'Snack Quest';
 /** As it already appears on the homepage's own "Meet the founder" section — never invent a surname or title beyond what's public there. */
 export const FOUNDER_NAME = 'Kelvin';
 
+/**
+ * The countries a box actually draws from today. Still exactly four —
+ * this is a fact about what ships, not a statement of ambition, and it
+ * changes only when the buying does.
+ *
+ * The brand is positioned as international snack discovery rather than
+ * an Asia-only shop (§ international positioning), but that positioning
+ * always travels with "first stop Asia" alongside it. Dropping the
+ * qualifier would make the site promise a range the boxes don't
+ * contain — the same failure as the fabricated bestseller badge, just
+ * pointed at sourcing instead of sales.
+ *
+ * "First stop", not "starting in": Asia is the first of several ranges
+ * and stays permanently, not a phase the brand passes through. Copy
+ * that implies otherwise would be wrong about the plan as well as
+ * unhelpful to anyone who liked their Japanese box.
+ */
 export const SOURCE_COUNTRIES = ['Japan', 'Korea', 'China', 'Thailand'] as const;
+
+/** The category the brand is in, independent of where it currently buys. */
+export const BRAND_CATEGORY = 'international snacks';
+
+/** How the current sourcing region is described wherever the international framing appears. */
+export const CURRENT_SOURCING_REGION = 'Asia';
 
 /**
  * ~150 characters — for metadata `description`/OG fallbacks, where a
  * long entity description gets truncated anyway.
  */
 export const BRAND_DESCRIPTION_SHORT =
-  'Snack Quest is a Kenya-based mystery snack box company: hand-picked imported snacks from Japan, Korea, China & Thailand, delivered nationwide.';
+  'Snack Quest is a Kenya-based mystery snack box company: hand-picked international snacks. First stop Asia — Japan, Korea, China & Thailand.';
 
 /**
  * The full entity description — for Organization JSON-LD and the
- * /about page's lead. Deliberately states the one fact people most
- * often get wrong about the product: boxes are a curated *mix*, not a
- * single-origin selection — see WhatsInside.tsx's own "no two
- * adventures are ever the same" and the honest FAQ answer this same
- * phase adds.
+ * /about page's lead. States two things people get wrong: boxes are a
+ * curated *mix* rather than a single-origin selection, and the range
+ * is where the brand has started rather than where it ends.
  */
 export const BRAND_DESCRIPTION_LONG =
-  'Snack Quest is a Kenya-based mystery snack box company. Every box is a hand-picked, personally tasted mix of imported snacks from Japan, Korea, China, and Thailand — a curated surprise, not a single-country selection. Customers order and pay by M-Pesa directly on the website, no app or account needed, and boxes are delivered nationwide: to a Jumia pickup station anywhere in Kenya, or by Bolt door delivery in Nairobi, usually within 24–48 hours.';
+  'Snack Quest is a Kenya-based mystery snack box company bringing international snacks to Kenya. Every box is a hand-picked, personally tasted mix of imported snacks — a curated surprise, not a single-country selection. The first stop is Asia: the range currently covers Japan, Korea, China and Thailand, and grows from there. Customers order and pay by M-Pesa directly on the website, no app or account needed, and boxes are delivered nationwide: to a Jumia pickup station anywhere in Kenya, or by Bolt door delivery in Nairobi, usually within 24–48 hours.';

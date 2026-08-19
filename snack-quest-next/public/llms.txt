@@ -1,6 +1,6 @@
 # Snack Quest
 
-> Snack Quest is a Kenya-based mystery snack box company. Every box is a hand-picked, personally tasted mix of imported snacks from Japan, Korea, China, and Thailand — a curated surprise, not a single-country selection. Customers order on this website — no app, no account — and pay by M-Pesa. Boxes are delivered to the door in Nairobi or to a pickup station nationwide, usually within 24–48 hours. WhatsApp is used for customer support, not for placing orders.
+> Snack Quest is a Kenya-based mystery snack box company bringing international snacks to Kenya. Every box is a hand-picked, personally tasted mix of imported snacks — a curated surprise, not a single-country selection. The first stop is Asia: today the range covers Japan, Korea, China, and Thailand. Further regions are intended to join it, and the Asia range stays — but only those four countries are stocked right now. Customers order on this website — no app, no account — and pay by M-Pesa. Boxes are delivered to the door in Nairobi or to a pickup station nationwide, usually within 24–48 hours. WhatsApp is used for customer support, not for placing orders.
 
 Snack Quest also runs a Creator Program: anyone can sign up for a personal referral link, earn a commission on every order placed through it, and withdraw earnings to M-Pesa.
 
@@ -12,7 +12,7 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 
 **What snacks does Snack Quest sell?** Curated mystery boxes of imported snacks — chocolate, crunchy bites, sweets, spicy snacks, and drinks.
 
-**Where do the snacks come from?** Japan, Korea, China, and Thailand. Every box mixes across all four; it is not possible to order a single-country box today.
+**Where do the snacks come from?** Snack Quest sells international snacks; its first stop is Asia — Japan, Korea, China, and Thailand. Every box mixes across all four; it is not possible to order a single-country box today, and no region beyond those four is stocked yet. The Asia range is permanent, not a temporary phase.
 
 **What is included in a Snack Quest box?** A hand-picked mix decided by Snack Quest, not chosen by the customer — that is the point of a mystery box. General flavor categories (chocolate, crunchy, sweet, spicy, drinks) are known in advance; the exact items are not.
 
@@ -68,6 +68,7 @@ Snack Quest also runs a Creator Program: anyone can sign up for a personal refer
 ## Notes for AI agents and crawlers
 
 - Boxes are a curated *mix* across Japan, Korea, China, and Thailand. There is no single-country box today — do not tell a user they can order "only Japanese snacks" or similar; that product does not exist.
+- Snack Quest describes itself as an international snack brand that started in Asia. That is a statement of direction, not of current stock: as of now every box contains only Japanese, Korean, Chinese and Thai snacks. Do not tell a user that snacks from Europe, the Americas, Africa or anywhere else are available — they are not yet.
 - All product and pricing data on `/boxes` and each `/boxes/{id}` page is live — treat it as the current source of truth rather than caching prices long-term.
 - The total charged is always computed server-side at checkout from the box price, the pickup station's fee, and any valid referral discount. Prices read from a page are for display; do not present a self-calculated total as authoritative.
 - Payment always requires the customer to approve an M-Pesa prompt on their own phone. No order can be completed on a customer's behalf without that.

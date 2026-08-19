@@ -51,8 +51,14 @@ export default async function MarketingLayout({
         // business actually is/does — not a fabricated tag. Matches
         // §3's ask to help Google associate the entity with its real
         // categories, nothing invented.
+        // The Asia-specific entries stay: they describe what the
+        // business demonstrably sells today, and they are what people
+        // search. "International snacks" is added as the category the
+        // brand sits in (§ international positioning), not as a
+        // replacement for the specifics.
         knowsAbout: [
           'Imported snacks',
+          'International snacks',
           'Japanese snacks',
           'Korean snacks',
           'Asian snacks',
