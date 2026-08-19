@@ -144,7 +144,7 @@ export default async function HowItWorksPage() {
 
       <Reveal delayMs={180}>
         <div className="mt-10 flex flex-col items-start gap-4">
-          <BuyNowButton>Start your quest</BuyNowButton>
+          <BuyNowButton analyticsSource="how_it_works">Start your quest</BuyNowButton>
           <p className="text-caption text-muted-foreground">
             Curious what actually arrives?{' '}
             <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">

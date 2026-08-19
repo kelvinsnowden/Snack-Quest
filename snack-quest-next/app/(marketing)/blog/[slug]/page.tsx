@@ -121,7 +121,7 @@ export default async function BlogPostPage({
           <p className="text-card-title font-semibold text-foreground">Ready to try a box?</p>
           <p className="text-body mt-1 text-muted-foreground">Pay with M-Pesa, delivered anywhere in Kenya.</p>
         </div>
-        <BuyNowButton>Shop boxes</BuyNowButton>
+        <BuyNowButton analyticsSource="blog">Shop boxes</BuyNowButton>
       </SurfaceCard>
     </PageShell>
   );

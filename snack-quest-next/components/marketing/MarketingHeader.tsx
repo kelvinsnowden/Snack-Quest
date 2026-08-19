@@ -65,7 +65,7 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
         </nav>
 
         <div className="hidden lg:block">
-          <BuyNowButton packageId={activeBox?.id} size="sm">
+          <BuyNowButton packageId={activeBox?.id} size="sm" analyticsSource="header">
             {activeBox ? `Buy the ${activeBox.name}` : 'Buy now'}
           </BuyNowButton>
         </div>
@@ -113,6 +113,7 @@ export function MarketingHeader({ businessName }: { businessName: string }) {
               packageId={activeBox?.id}
               className="w-full"
               onClick={() => setMobileOpen(false)}
+              analyticsSource="header"
             >
               {activeBox ? `Buy the ${activeBox.name}` : 'Buy now'}
             </BuyNowButton>

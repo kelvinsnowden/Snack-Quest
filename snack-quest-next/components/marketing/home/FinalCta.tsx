@@ -52,6 +52,7 @@ export function FinalCta({ packageId }: { packageId?: string } = {}) {
               packageId={packageId}
               size="lg"
               className="animate-pulse-glow from-primary to-home-orange-glow rounded-full bg-gradient-to-br px-8 text-lg"
+              analyticsSource="home_final_cta"
             >
               Start your quest
             </BuyNowButton>

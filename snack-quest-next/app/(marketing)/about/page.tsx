@@ -152,7 +152,7 @@ export default async function AboutPage() {
 
       <Reveal delayMs={160}>
         <div className="mt-14 flex justify-center">
-          <BuyNowButton>See the boxes</BuyNowButton>
+          <BuyNowButton analyticsSource="about">See the boxes</BuyNowButton>
         </div>
       </Reveal>
     </PageShell>

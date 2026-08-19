@@ -114,6 +114,21 @@ export interface Order extends AuditFields {
    */
   packingRecipeVersionId: string | null;
   packing: OrderPacking | null;
+  /**
+   * When a staff member recorded that this customer was asked to leave
+   * a review (§ Mission 2 — review acquisition). Absent on every order
+   * that has never been asked, which is also every order predating this
+   * field — so the "to ask" queue treats absent and null identically
+   * and never needs a backfill.
+   *
+   * Deliberately records only that the ask happened, not how: the
+   * outreach itself is manual today, and nothing in this codebase
+   * sends it. Whether the customer then actually reviewed is answered
+   * by the `reviews` collection, not duplicated here.
+   */
+  reviewRequestedAt?: Timestamp | null;
+  /** Who recorded the ask. Absent for the same reason as `reviewRequestedAt`. */
+  reviewRequestedBy?: string | null;
 }
 
 /** Snapshotted once at the batch's creation time — never recomputed if the order's own pricing later changes. */

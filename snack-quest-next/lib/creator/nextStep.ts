@@ -32,8 +32,23 @@ export type NextStep = {
   title: string;
   body: string;
   cta?: { label: string; href: string };
+  /**
+   * A quieter second link, only on the steps where "I don't know what
+   * to post" is the real blocker rather than a missing click
+   * (§ Mission 2 — creator activation). It points at the Creator
+   * Academy, which already exists and is already written — this adds a
+   * route to it from the moment a creator needs it, and no new content.
+   *
+   * Deliberately absent everywhere else: the whole point of this module
+   * is one instruction at a time, and a second link on a step whose
+   * blocker is "you have no link yet" is just noise.
+   */
+  secondaryCta?: { label: string; href: string };
   tone: 'neutral' | 'positive' | 'blocked';
 };
+
+/** Where a creator goes when the blocker is knowing what to make, not what to click. */
+const ACADEMY_CTA = { label: 'Not sure what to post?', href: '/creators/academy' } as const;
 
 export function resolveNextStep(input: {
   accessLevel: CreatorDashboardAccessLevel;
@@ -79,6 +94,7 @@ export function resolveNextStep(input: {
       title: 'Share your link to start earning',
       body: 'Nobody has opened it yet. A single story or bio link is usually enough to get the first clicks moving.',
       cta: { label: 'Get your link', href: '/creator/referrals' },
+      secondaryCta: ACADEMY_CTA,
     };
   }
 
@@ -89,6 +105,7 @@ export function resolveNextStep(input: {
       title: 'People are clicking — no orders yet',
       body: `${input.totalClicks.toLocaleString()} ${input.totalClicks === 1 ? 'person has' : 'people have'} opened your link. Telling them what is actually in the box is what usually turns a click into an order.`,
       cta: { label: 'See what is inside', href: '/boxes' },
+      secondaryCta: ACADEMY_CTA,
     };
   }
 

@@ -50,14 +50,31 @@ export function NextStepCard({ step }: { step: NextStep }) {
         {step.body}
       </p>
 
-      {step.cta ? (
-        <Link
-          href={step.cta.href}
-          className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold transition-transform duration-150 ease-out hover:translate-x-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-        >
-          {step.cta.label}
-          <ArrowRight className="size-4" aria-hidden="true" />
-        </Link>
+      {/*
+        Wrapped so the two links sit side by side with room to breathe
+        on a wide screen and stack on a phone — never so close together
+        that a thumb aiming for one lands on the other.
+      */}
+      {step.cta || step.secondaryCta ? (
+        <div className="mt-4 flex flex-col gap-x-6 gap-y-2.5 sm:flex-row sm:items-center">
+          {step.cta ? (
+            <Link
+              href={step.cta.href}
+              className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background inline-flex w-fit items-center gap-1.5 rounded-md text-sm font-semibold transition-transform duration-150 ease-out hover:translate-x-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              {step.cta.label}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          ) : null}
+          {step.secondaryCta ? (
+            <Link
+              href={step.secondaryCta.href}
+              className="text-muted-foreground hover:text-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex w-fit items-center gap-1.5 rounded-md text-sm font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              {step.secondaryCta.label}
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

@@ -1,11 +1,12 @@
 import 'server-only';
 
 import { reviewRepository } from '@/repositories/reviewRepository';
+import { orderRepository } from '@/repositories/orderRepository';
 import { storageService } from '@/services/storageService';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { publishEvent } from '@/lib/events/eventBus';
 import { toMillis } from '@/lib/firestoreTimestamp';
-import type { PublicReview, Review, ReviewPhoto, ReviewStatus, ReviewVideo } from '@/types';
+import type { OrderStatus, PublicReview, Review, ReviewPhoto, ReviewStatus, ReviewVideo } from '@/types';
 
 /**
  * Owns customer reviews (§ homepage reviews) — submission through a
@@ -26,6 +27,27 @@ export const MAX_REVIEW_BODY_LENGTH = 1200;
 export const MAX_REVIEW_NAME_LENGTH = 60;
 /** How many reviews one phone number may leave per day, when a number was given at all. */
 export const MAX_REVIEWS_PER_PHONE_PER_DAY = 3;
+
+/**
+ * The order states that count as a real purchase behind a "Verified
+ * purchase" badge (§ Mission 2 — review acquisition). An order only
+ * exists at all once a payment succeeded (see `types/order.ts`), so
+ * this is about whether the order still stands: `cancelled` and the
+ * refund states are excluded, since a badge saying someone bought the
+ * box shouldn't survive the box being cancelled or paid back.
+ */
+const VERIFIED_PURCHASE_STATUSES: OrderStatus[] = ['confirmed', 'dispatched', 'delivered'];
+
+/**
+ * How long after an order is placed a customer is worth asking for a
+ * review. Deliberately measured from `createdAt` rather than from a
+ * `delivered` status: delivery is marked by hand today and can lag
+ * reality, so keying off it would hide customers who really did get
+ * their box. Boxes ship within 24 hours and arrive in 24–48, so five
+ * days is comfortably past arrival without being so late the box is
+ * forgotten.
+ */
+export const REVIEW_REQUEST_ELIGIBLE_AFTER_DAYS = 5;
 
 export class ReviewValidationError extends Error {
   constructor(message: string) {
@@ -110,7 +132,23 @@ function toPublicReview(entry: { id: string; data: Review }): PublicReview {
     photos: entry.data.photos.map((photo) => ({ url: photo.url })),
     videoUrl: entry.data.video?.url ?? null,
     createdAtIso: new Date(toMillis(entry.data.createdAt)).toISOString(),
+    // Absent on every review predating verification, which reads as
+    // false — the badge is only ever shown on a confirmed match.
+    // `verifiedOrderId` stays server-side: it identifies an order, and
+    // nothing public needs it.
+    isVerifiedPurchase: entry.data.isVerifiedPurchase === true,
   };
+}
+
+/** One customer worth asking for a review, with why they qualify. */
+export interface ReviewRequestCandidate {
+  orderId: string;
+  orderNumber: number | null;
+  customerName: string;
+  phoneNumber: string;
+  packageLabel: string;
+  status: OrderStatus;
+  placedAtIso: string;
 }
 
 class ReviewService {
@@ -196,6 +234,26 @@ class ReviewService {
       photos.push({ url: uploaded.url, pathname: uploaded.pathname });
     }
 
+    // Does this number belong to someone who actually bought a box?
+    // Checked here rather than asked of the reviewer, because a claim
+    // the customer types about themselves is not verification. Failure
+    // is not fatal: an unverifiable review is still a real review, so a
+    // lookup problem downgrades the badge rather than rejecting a
+    // submission the customer has already written.
+    let verifiedOrderId: string | null = null;
+    if (contactPhone) {
+      try {
+        const order = await orderRepository.findPaidOrderForPhone(
+          businessId,
+          contactPhone,
+          VERIFIED_PURCHASE_STATUSES,
+        );
+        verifiedOrderId = order?.id ?? null;
+      } catch {
+        verifiedOrderId = null;
+      }
+    }
+
     const reviewId = await reviewRepository.create({
       businessId,
       customerName,
@@ -204,6 +262,8 @@ class ReviewService {
       photos,
       video,
       contactPhone,
+      isVerifiedPurchase: verifiedOrderId !== null,
+      verifiedOrderId,
       // Never published on arrival — see types/review.ts.
       status: 'pending',
     });
@@ -212,9 +272,82 @@ class ReviewService {
       rating,
       photoCount: photos.length,
       hasVideo: video !== null,
+      isVerifiedPurchase: verifiedOrderId !== null,
     });
 
     return { reviewId };
+  }
+
+  /**
+   * Customers who have had their box long enough to have an opinion,
+   * have not already been asked, and have not already reviewed
+   * (§ Mission 2 — review acquisition).
+   *
+   * This is a worklist, not an automation: nothing in this codebase
+   * messages these people. A staff member reads the list, reaches out
+   * however they normally would, and records it with
+   * `markReviewRequested`. That split is deliberate — the messaging
+   * integrations are explicitly out of scope, and a queue a human works
+   * is useful today without them.
+   */
+  async listAwaitingReviewRequest(businessId: string, limit = 25): Promise<ReviewRequestCandidate[]> {
+    const placedBefore = new Date(
+      Date.now() - REVIEW_REQUEST_ELIGIBLE_AFTER_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    const [candidates, reviewedPhones] = await Promise.all([
+      orderRepository.listReviewRequestCandidates(businessId, {
+        placedBefore,
+        statuses: VERIFIED_PURCHASE_STATUSES,
+      }),
+      reviewRepository.listContactPhones(businessId),
+    ]);
+
+    const alreadyReviewed = new Set(reviewedPhones);
+    const seenPhones = new Set<string>();
+    const result: ReviewRequestCandidate[] = [];
+
+    for (const { id, data } of candidates) {
+      if (result.length >= limit) {
+        break;
+      }
+      if (data.reviewRequestedAt) {
+        continue;
+      }
+      const phone = data.customer.phoneNumber;
+      if (alreadyReviewed.has(phone)) {
+        continue;
+      }
+      // A repeat customer should appear once, not once per order —
+      // the ask is to a person, not to an order line. Candidates are
+      // newest-first, so this keeps their most recent box.
+      if (seenPhones.has(phone)) {
+        continue;
+      }
+      seenPhones.add(phone);
+
+      result.push({
+        orderId: id,
+        orderNumber: data.orderNumber ?? null,
+        customerName: data.customer.customerName,
+        phoneNumber: phone,
+        packageLabel: data.product.packageLabel,
+        status: data.status,
+        placedAtIso: new Date(toMillis(data.createdAt)).toISOString(),
+      });
+    }
+
+    return result;
+  }
+
+  /** Records that a staff member asked this customer for a review. */
+  async markReviewRequested(businessId: string, orderId: string, actor: string): Promise<void> {
+    const order = await orderRepository.findById(orderId);
+    if (!order || order.businessId !== businessId) {
+      throw new ReviewNotFoundError(orderId);
+    }
+    await orderRepository.markReviewRequested(orderId, actor);
+    await publishEvent(businessId, 'ReviewRequested', 'order', orderId, { actor });
   }
 
   /**

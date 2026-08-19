@@ -2,11 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { MessageSquareQuote } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { reviewService } from '@/services/reviewService';
+import { reviewService, REVIEW_REQUEST_ELIGIBLE_AFTER_DAYS } from '@/services/reviewService';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { CopyLinkButton } from '@/components/creator/CopyLinkButton';
 import { ReviewModerationCard, type ModeratableReview } from '@/components/admin/ReviewModerationCard';
+import { ReviewRequestList } from '@/components/admin/ReviewRequestList';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
@@ -14,7 +15,17 @@ import type { ReviewStatus } from '@/types';
 
 export const metadata: Metadata = { title: 'Reviews' };
 
-const TABS: { status: ReviewStatus; label: string }[] = [
+/**
+ * `to-ask` is not a `ReviewStatus` — it lists *orders* whose customer
+ * hasn't been asked yet, not reviews (§ Mission 2 — review
+ * acquisition). It shares this page because "who should we ask" and
+ * "what came back" are one job, and a separate route would split the
+ * same workflow across two screens.
+ */
+type ReviewTab = ReviewStatus | 'to-ask';
+
+const TABS: { status: ReviewTab; label: string }[] = [
+  { status: 'to-ask', label: 'To ask' },
   { status: 'pending', label: 'Awaiting review' },
   { status: 'published', label: 'On the site' },
   { status: 'rejected', label: 'Rejected' },
@@ -37,13 +48,19 @@ export default async function AdminReviewsPage({
 }) {
   const session = await requireStaffSession();
   const { status } = await searchParams;
-  const activeStatus: ReviewStatus = TABS.some((tab) => tab.status === status)
-    ? (status as ReviewStatus)
+  const activeTab: ReviewTab = TABS.some((tab) => tab.status === status)
+    ? (status as ReviewTab)
     : 'pending';
+  const activeStatus: ReviewStatus = activeTab === 'to-ask' ? 'pending' : activeTab;
 
-  const [entries, pendingCount] = await Promise.all([
-    reviewService.listForModeration(session.businessId, activeStatus),
+  const [entries, pendingCount, awaitingRequest] = await Promise.all([
+    // Skipped on the "to ask" tab, which renders orders rather than
+    // reviews — no point paying for a moderation read nothing shows.
+    activeTab === 'to-ask'
+      ? Promise.resolve([])
+      : reviewService.listForModeration(session.businessId, activeStatus),
     reviewService.countPending(session.businessId),
+    reviewService.listAwaitingReviewRequest(session.businessId),
   ]);
 
   const reviewUrl = `${getSiteUrl()}/review`;
@@ -108,11 +125,28 @@ export default async function AdminReviewsPage({
           >
             {tab.label}
             {tab.status === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}
+            {tab.status === 'to-ask' && awaitingRequest.length > 0 ? ` (${awaitingRequest.length})` : ''}
           </Link>
         ))}
       </div>
 
-      {reviews.length === 0 ? (
+      {activeTab === 'to-ask' ? (
+        awaitingRequest.length === 0 ? (
+          <EmptyState
+            icon={MessageSquareQuote}
+            title="Nobody to ask right now"
+            description={`Customers appear here about ${REVIEW_REQUEST_ELIGIBLE_AFTER_DAYS} days after they order, once they've had the box — unless they've already been asked or already reviewed.`}
+          />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p className="text-muted-foreground text-sm">
+              Ordered at least {REVIEW_REQUEST_ELIGIBLE_AFTER_DAYS} days ago, never asked, no review yet.
+              Nothing is sent automatically — reach out yourself, then mark it here so nobody gets chased twice.
+            </p>
+            <ReviewRequestList rows={awaitingRequest} reviewUrl={reviewUrl} />
+          </div>
+        )
+      ) : reviews.length === 0 ? (
         <EmptyState
           icon={MessageSquareQuote}
           title={activeStatus === 'pending' ? 'Nothing waiting' : 'Nothing here yet'}

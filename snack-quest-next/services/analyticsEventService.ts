@@ -2,17 +2,21 @@ import 'server-only';
 
 import { analyticsEventRepository } from '@/repositories/analyticsEventRepository';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
+import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 
 /**
- * Records one named funnel event (§ exit-intent rescue offer) —
- * sibling to `PageViewService`, same "low-stakes vanity metric, not
- * money" validation bar. The rescue offer's own events are the only
- * ones this app produces today; the allowlist exists so a hostile or
- * buggy client can't fill the collection with arbitrary event names,
- * not because this couldn't grow to more events later.
+ * Records one named funnel event (§ exit-intent rescue offer, extended
+ * § Mission 2 — funnel analytics) — sibling to `PageViewService`, same
+ * "low-stakes vanity metric, not money" validation bar. The allowlist
+ * exists so a hostile or buggy client can't fill the collection with
+ * arbitrary event names; it grows by adding a constant to one of the
+ * event modules below, never by accepting free-form names.
  */
 
-const KNOWN_EVENTS: readonly string[] = Object.values(RESCUE_OFFER_EVENTS);
+const KNOWN_EVENTS: readonly string[] = [
+  ...Object.values(RESCUE_OFFER_EVENTS),
+  ...Object.values(FUNNEL_EVENTS),
+];
 const MAX_METADATA_ENTRIES = 10;
 const MAX_METADATA_VALUE_LENGTH = 200;
 

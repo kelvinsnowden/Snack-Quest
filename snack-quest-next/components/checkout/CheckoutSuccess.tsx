@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatKes, formatOrderNumber } from '@/lib/orders/format';
+import { CREATOR_COMMISSION_KES, REFERRAL_DISCOUNT_KES } from '@/lib/creators/referralEconomics';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
@@ -95,8 +96,18 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
         </div>
       ) : (
         <div className="flex w-full flex-col items-center gap-4">
-          <p className="text-muted-foreground text-sm">
-            We&apos;ll let you know on WhatsApp as soon as your box reaches your pickup station.
+          {/*
+            States what the business actually does — packs within 24
+            hours, arrives in 24–48, ask us any time — rather than
+            promising an automatic "it has arrived" notification. The
+            previous copy committed to a message that nothing in this
+            codebase sends (§ Mission 2 — no unbacked promises); if that
+            update is sent by hand today, this is still true, and it
+            gives the customer something they control either way.
+          */}
+          <p className="text-muted-foreground text-sm text-pretty">
+            Your box is packed and sent within 24 hours, and usually reaches the station within 24–48
+            hours after that. Message us any time to check where yours is.
           </p>
           <Button asChild variant="outline" size="lg">
             <a
@@ -110,6 +121,30 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
           </Button>
         </div>
       )}
+
+      {/*
+        The one place a genuinely warm creator prospect is standing
+        still: someone who has just chosen to spend real money on this
+        product (§ Mission 2 — creator discoverability). Deliberately
+        placed after the delivery details, styled as a quiet aside
+        rather than a second call to action, and carrying only the two
+        fixed program facts — no earnings projection, since what any
+        individual makes depends entirely on their own audience.
+      */}
+      <div className="border-border bg-surface w-full rounded-lg border p-5 text-left">
+        <p className="text-foreground text-sm font-semibold">Going to post about it?</p>
+        <p className="text-muted-foreground mt-1.5 text-sm text-pretty">
+          Snack Quest creators get a personal link. Anyone who orders through it gets{' '}
+          {formatKes(REFERRAL_DISCOUNT_KES)} off, and you earn {formatKes(CREATOR_COMMISSION_KES)} on
+          every order it brings in, paid to M-Pesa. Free to join, no minimum following.
+        </p>
+        <Link
+          href="/creators"
+          className="text-primary mt-3 inline-block text-sm font-semibold hover:underline"
+        >
+          See how the Creator Program works →
+        </Link>
+      </div>
 
       <Button asChild variant="outline" size="lg">
         <Link href="/boxes">Browse more boxes</Link>

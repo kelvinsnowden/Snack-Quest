@@ -89,7 +89,12 @@ export function CreatorOffers({
               ))}
             </div>
 
-            <BuyNowButton packageId={rescueOffer.id} className="mt-5 w-full sm:w-auto">
+            <BuyNowButton
+              packageId={rescueOffer.id}
+              className="mt-5 w-full sm:w-auto"
+              analyticsSource="creator_offers"
+              analyticsPriceKes={rescueOffer.data.priceKes}
+            >
               Get my creator box — {formatKes(rescueOffer.data.priceKes)}
             </BuyNowButton>
           </PortalCard>
@@ -119,7 +124,13 @@ export function CreatorOffers({
                   <p className="text-caption text-primary font-bold tracking-wide uppercase">
                     Creator price
                   </p>
-                  <BuyNowButton packageId={id} size="sm" className="mt-2">
+                  <BuyNowButton
+                    packageId={id}
+                    size="sm"
+                    className="mt-2"
+                    analyticsSource="creator_offers"
+                    analyticsPriceKes={data.priceKes}
+                  >
                     Get this box
                   </BuyNowButton>
                 </PortalCard>
