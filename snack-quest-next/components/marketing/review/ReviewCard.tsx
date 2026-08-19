@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { Images, Quote, Star } from 'lucide-react';
+import { BadgeCheck, Images, Quote, Star } from 'lucide-react';
 import { ReviewLightbox } from './ReviewLightbox';
 import type { PublicReview } from '@/types';
 
@@ -98,7 +98,22 @@ export function ReviewCard({ review }: { review: PublicReview }) {
         <div className="flex flex-1 flex-col gap-3 p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
             <Stars rating={review.rating} className="size-4" />
-            <Quote className="text-primary/25 size-6 shrink-0" aria-hidden="true" />
+            {/*
+              Shown only where the reviewer's phone number matched a
+              real paid order (§ Mission 2 — review acquisition), so
+              it is a fact rather than a decoration. Its absence says
+              nothing about the reviewer — most simply leave the
+              optional number blank — which is why there is no
+              "unverified" counterpart.
+            */}
+            {review.isVerifiedPurchase ? (
+              <span className="text-success bg-success/10 inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+                <BadgeCheck className="size-3.5" aria-hidden="true" />
+                Verified purchase
+              </span>
+            ) : (
+              <Quote className="text-primary/25 size-6 shrink-0" aria-hidden="true" />
+            )}
           </div>
 
           <div className="flex-1">

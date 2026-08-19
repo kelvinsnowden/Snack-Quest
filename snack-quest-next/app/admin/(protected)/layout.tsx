@@ -5,6 +5,7 @@ import { visibleAdminSections } from '@/lib/auth/adminSections';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
+import { AdminBottomBar } from '@/components/admin/AdminBottomBar';
 
 export const metadata: Metadata = {
   title: {
@@ -42,12 +43,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   const business = await businessRepository.findById(session.businessId);
+  const visibleSections = visibleAdminSections(session);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar
         businessName={business?.name ?? 'Snack Quest'}
-        visibleSections={visibleAdminSections(session)}
+        visibleSections={visibleSections}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminTopBar
@@ -55,9 +57,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           displayName={session.displayName}
           email={session.email}
           role={session.roles[0] ?? 'staff'}
+          visibleSections={visibleSections}
         />
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+        {/*
+          The bottom padding reserves the phone's quick-nav bar, so the
+          last row of a table or the last field of a form is never
+          trapped beneath it (§ Admin mobile UX overhaul). It collapses
+          from `md` up, where that bar isn't rendered at all.
+        */}
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">{children}</main>
       </div>
+      <AdminBottomBar visibleSections={visibleSections} />
     </div>
   );
 }

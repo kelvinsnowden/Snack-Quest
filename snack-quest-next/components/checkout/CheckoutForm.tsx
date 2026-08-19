@@ -16,6 +16,7 @@ import { MPESA_RECIPIENT_NAME } from '@/lib/config/mpesaRecipient';
 import { cn } from '@/lib/utils';
 import { trackEvent } from '@/lib/analytics/trackEvent';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
+import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 import type { DeliveryMethod } from '@/types/delivery';
 import type { WebCheckoutQuote, WebCheckoutResponse } from '@/types/webCheckout';
 
@@ -95,6 +96,26 @@ export function CheckoutForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once for the box checkout loaded with, not on every boxId change.
   }, []);
 
+  /**
+   * `checkout_form_started` — fired the first time the customer types
+   * into one of their own details, never on render (§ Mission 2 —
+   * funnel analytics). Landing on this page is already a page view;
+   * what was missing was the difference between arriving and actually
+   * starting, which is the drop-off the admin dashboard could not see.
+   * A ref, not state, so marking it started never re-renders the form.
+   */
+  const formStartedRef = useRef(false);
+  function markFormStarted() {
+    if (formStartedRef.current) {
+      return;
+    }
+    formStartedRef.current = true;
+    trackEvent(FUNNEL_EVENTS.checkoutFormStarted, {
+      ...(boxId ? { packageId: boxId } : {}),
+      deliveryMethod,
+    });
+  }
+
   const quote = useCheckoutQuote({
     packageId: boxId,
     quantity,
@@ -122,6 +143,20 @@ export function CheckoutForm({
     }
     setSubmitting(true);
     setError(null);
+
+    // The real "they tried to pay" moment: past client validation,
+    // immediately before the request that triggers the STK push — not
+    // the button rendering, and not a click that validation rejected.
+    // Deliberately outside the try/catch that follows, but itself
+    // incapable of throwing (`trackEvent` swallows everything), so a
+    // broken beacon can never stop a purchase.
+    trackEvent(FUNNEL_EVENTS.paySubmitted, {
+      packageId: box.id,
+      quantity,
+      deliveryMethod,
+      hasReferralCode: referralCode.trim().length > 0,
+    });
+
     try {
       const response = await fetch('/api/checkout/web', {
         method: 'POST',
@@ -196,6 +231,16 @@ export function CheckoutForm({
                   onClick={() => {
                     setBoxId(candidate.id);
                     setQuantity(1);
+                    // Changing the box here is the same intent as
+                    // clicking "buy this box" elsewhere, so it reports
+                    // as the same event with its own source.
+                    if (candidate.id !== boxId) {
+                      trackEvent(FUNNEL_EVENTS.boxSelected, {
+                        source: 'checkout_picker',
+                        packageId: candidate.id,
+                        priceKes: candidate.priceKes,
+                      });
+                    }
                   }}
                   aria-pressed={isSelected}
                   className={cn(
@@ -299,7 +344,10 @@ export function CheckoutForm({
             <Input
               id="checkout-name"
               value={customerName}
-              onChange={(event) => setCustomerName(event.target.value)}
+              onChange={(event) => {
+                markFormStarted();
+                setCustomerName(event.target.value);
+              }}
               autoComplete="name"
               placeholder="Wanjiru Kamau"
               required
@@ -310,7 +358,10 @@ export function CheckoutForm({
             <Input
               id="checkout-phone"
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={(event) => {
+                markFormStarted();
+                setPhone(event.target.value);
+              }}
               inputMode="tel"
               autoComplete="tel"
               placeholder="0712 345 678"

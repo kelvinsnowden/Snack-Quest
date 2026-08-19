@@ -13,6 +13,8 @@ import { StarRating } from './StarRating';
 import { compressImage, totalBytes, MAX_TOTAL_UPLOAD_BYTES } from './compressImage';
 import { REVIEW_VIDEO_ENABLED, REVIEW_VIDEO_POLICY } from '@/lib/storage/policies';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
+import { trackEvent } from '@/lib/analytics/trackEvent';
+import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 
 /**
  * The review form behind the shareable link (§ homepage reviews).
@@ -62,6 +64,22 @@ export function ReviewForm() {
       }
     };
   }, [photos]);
+
+  /**
+   * `review_started` — the first real interaction with the form, not
+   * the page load (§ Mission 2 — funnel analytics). Landing on
+   * `/review` is already a page view; what this adds is how many of
+   * those people actually began writing, which is the difference
+   * between "the ask reached them" and "the ask worked".
+   */
+  const reviewStartedRef = useRef(false);
+  function markReviewStarted() {
+    if (reviewStartedRef.current) {
+      return;
+    }
+    reviewStartedRef.current = true;
+    trackEvent(FUNNEL_EVENTS.reviewStarted);
+  }
 
   async function addPhotos(files: FileList | null) {
     if (!files) {
@@ -236,6 +254,11 @@ export function ReviewForm() {
         );
         return;
       }
+      trackEvent(FUNNEL_EVENTS.reviewSubmitted, {
+        rating,
+        hasPhotos: photos.length > 0,
+        hasVideo: video !== null,
+      });
       setSubmitted(true);
     } catch {
       setError("We couldn't reach Snack Quest. Check your connection and try again.");
@@ -271,7 +294,13 @@ export function ReviewForm() {
     <form onSubmit={onSubmit} className="flex flex-col gap-8">
       <div className="border-border bg-surface flex flex-col items-center gap-4 rounded-2xl border p-6">
         <p className="text-foreground text-center text-base font-semibold">How was your box?</p>
-        <StarRating value={rating} onChange={setRating} />
+        <StarRating
+          value={rating}
+          onChange={(next) => {
+            markReviewStarted();
+            setRating(next);
+          }}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -279,7 +308,10 @@ export function ReviewForm() {
         <Textarea
           id="review-body"
           value={body}
-          onChange={(event) => setBody(event.target.value.slice(0, MAX_BODY))}
+          onChange={(event) => {
+            markReviewStarted();
+            setBody(event.target.value.slice(0, MAX_BODY));
+          }}
           rows={5}
           placeholder="What did you open first? What surprised you? Would you send one to a friend?"
           className="min-h-32 text-base"
@@ -430,7 +462,18 @@ export function ReviewForm() {
             placeholder="0712 345 678"
             className="text-base"
           />
-          <p className="text-muted-foreground text-sm">Never shown. Only so we can reach you if we need to.</p>
+          {/*
+            The number now does a second job — it is what matches a
+            review to a real order and earns the "Verified purchase"
+            badge (§ Mission 2 — review acquisition). Saying so keeps
+            this description complete, and gives someone a reason to
+            fill in a field they would otherwise skip. The number
+            itself is still never published.
+          */}
+          <p className="text-muted-foreground text-sm">
+            Never shown. We use it to confirm your order so your review shows as a verified purchase,
+            and so we can reach you if we need to.
+          </p>
         </div>
       </div>
 

@@ -46,6 +46,17 @@ export default async function BoxesPage() {
         <p className="mt-3 text-subtitle text-muted-foreground">
           Every box is curated and packed by hand. Tap one to see the details, then check out with M-Pesa.
         </p>
+        {/*
+          Said once here rather than repeated on every card, where it
+          was the same sentence two or three times down a phone screen
+          (§ Mission 2 — UI pass). The difference between the boxes is
+          size, not care, and stating that up front is what a customer
+          comparing prices actually needs.
+        */}
+        <p className="mt-2 text-sm text-muted-foreground">
+          Every snack has passed the taste test — I have tasted each of them. The boxes differ in how
+          much you get, not in how they are put together.
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">
           New here?{' '}
           <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
@@ -73,14 +84,24 @@ export default async function BoxesPage() {
                 </div>
                 <CardContent className="p-5">
                   <p className="text-card-title font-semibold text-foreground">{data.name}</p>
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{data.description}</p>
-                  {data.snackCountLabel ? (
-                    <p className="mt-1 text-sm font-medium text-foreground">{data.snackCountLabel}</p>
-                  ) : null}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    All snacks have passed the taste test. I have tasted each of them.
-                  </p>
-                  <p className="mt-3 text-lg font-semibold text-foreground">{formatKes(data.priceKes)}</p>
+                  {/*
+                    Price and quantity sit together directly under the
+                    name: they are the two things someone comparing
+                    boxes is actually reading, and they were previously
+                    split by the description and a repeated trust line.
+                  */}
+                  <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                    <span className="text-lg font-semibold text-foreground tabular-nums">
+                      {formatKes(data.priceKes)}
+                    </span>
+                    {data.snackCountLabel ? (
+                      <span className="text-sm font-medium text-primary">{data.snackCountLabel}</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{data.description}</p>
+                  <span className="mt-3 inline-block text-sm font-medium text-primary">
+                    See what&apos;s inside →
+                  </span>
                 </CardContent>
               </Card>
             </Link>

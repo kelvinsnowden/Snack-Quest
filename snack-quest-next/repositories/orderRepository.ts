@@ -220,6 +220,66 @@ class OrderRepository {
       .get();
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Order }));
   }
+
+  /**
+   * The most recent orders old enough that the customer has plausibly
+   * had their box (§ Mission 2 — review acquisition). Returns
+   * candidates; `ReviewService` applies the "already asked" and
+   * "already reviewed" filters, since those need the `reviews`
+   * collection this repository has no business reading.
+   *
+   * `reviewRequestedAt` is deliberately *not* a query clause. Firestore
+   * cannot match documents where a field is absent, and every order
+   * predating that field has no such key — so filtering on it here
+   * would silently hide exactly the backlog this queue exists to
+   * surface. It is filtered in memory instead, over a bounded window,
+   * the same tradeoff `businessAnalyticsService` already accepts.
+   */
+  async listReviewRequestCandidates(
+    businessId: string,
+    options: { placedBefore: Date; statuses: OrderStatus[]; limit?: number },
+  ): Promise<{ id: string; data: Order }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', 'in', options.statuses)
+      .where('createdAt', '<=', options.placedBefore)
+      .orderBy('createdAt', 'desc')
+      .limit(options.limit ?? 100)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Order }));
+  }
+
+  /** Records that a staff member asked this customer for a review. Idempotent by intent — asking twice just overwrites the timestamp. */
+  async markReviewRequested(orderId: string, actor: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(orderId).update({
+      reviewRequestedAt: FieldValue.serverTimestamp(),
+      reviewRequestedBy: actor,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor,
+    });
+  }
+
+  /**
+   * Whether this phone number has a real, standing paid order — the
+   * check behind a review's "Verified purchase" badge. Bounded to the
+   * statuses the caller considers proof that money changed hands and
+   * the order still stands.
+   */
+  async findPaidOrderForPhone(
+    businessId: string,
+    phoneNumber: string,
+    statuses: OrderStatus[],
+  ): Promise<{ id: string } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('customer.phoneNumber', '==', phoneNumber)
+      .where('status', 'in', statuses)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id };
+  }
 }
 
 export const orderRepository = new OrderRepository();

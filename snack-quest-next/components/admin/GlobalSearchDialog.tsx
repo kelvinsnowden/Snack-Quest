@@ -72,10 +72,27 @@ export function GlobalSearchTrigger() {
 
   return (
     <>
+      {/*
+        Two shapes, one dialog. The search bar needs room the phone's
+        top bar doesn't have, so mobile gets an icon button instead —
+        previously the whole trigger was `hidden md:block`, which meant
+        the fastest way to reach any of 26 admin pages existed only on
+        the screen size that least needed it (§ Admin mobile UX
+        overhaul).
+      */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-64 items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-border/20"
+        aria-label="Search"
+        className="text-muted-foreground hover:bg-border/40 hover:text-foreground focus-visible:ring-primary inline-flex size-10 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none md:hidden"
+      >
+        <Search className="size-5" aria-hidden="true" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="hidden w-64 items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-border/20 md:flex"
       >
         <Search className="size-4" aria-hidden="true" />
         <span className="flex-1 text-left">Search…</span>

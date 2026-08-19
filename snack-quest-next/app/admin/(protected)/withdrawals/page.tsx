@@ -44,7 +44,7 @@ export default async function AdminWithdrawalsPage({
       <Card className="flex flex-wrap gap-2 p-4">
         <Link
           href="/admin/withdrawals"
-          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+          className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
             !status ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
           }`}
         >
@@ -54,7 +54,7 @@ export default async function AdminWithdrawalsPage({
           <Link
             key={value}
             href={`/admin/withdrawals?status=${value}`}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
               status === value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
             }`}
           >

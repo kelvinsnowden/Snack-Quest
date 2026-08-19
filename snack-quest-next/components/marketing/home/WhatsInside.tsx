@@ -1,14 +1,28 @@
 import Image from 'next/image';
 import { Reveal } from '../design/Reveal';
+import { SNACK_CATEGORIES } from '@/lib/packages/snackCategories';
 
-const CATEGORY_PILLS: Array<{ emoji: string; label: string; position: string; float: 'animate-float-slow' | 'animate-float-slower' }> = [
-  { emoji: '🍫', label: 'Chocolate', position: 'top-4 left-4 md:top-10 md:left-8', float: 'animate-float-slow' },
-  { emoji: '🍪', label: 'Crunchy', position: 'top-8 right-4 md:top-16 md:right-10', float: 'animate-float-slower' },
-  { emoji: '🍬', label: 'Sweet', position: 'top-1/2 -left-2 -translate-y-1/2 md:left-0', float: 'animate-float-slow' },
-  { emoji: '🌶️', label: 'Spicy', position: 'top-1/2 -right-2 -translate-y-1/2 md:right-0', float: 'animate-float-slower' },
-  { emoji: '🥤', label: 'Drinks', position: 'bottom-8 left-6 md:bottom-16 md:left-16', float: 'animate-float-slower' },
-  { emoji: '✨', label: 'Surprises', position: 'bottom-6 right-6 md:bottom-14 md:right-16', float: 'animate-float-slow' },
-];
+/**
+ * Where each category floats around the photo. Only the positioning
+ * lives here — the categories themselves come from
+ * `lib/packages/snackCategories.ts`, so this section and the box pages
+ * can't end up describing different products (§ Mission 2 — product
+ * pages). Keyed by label so a reordered list can't silently reshuffle
+ * the layout.
+ */
+const PILL_POSITIONS: Record<string, { position: string; float: string }> = {
+  Chocolate: { position: 'top-4 left-4 md:top-10 md:left-8', float: 'animate-float-slow' },
+  Crunchy: { position: 'top-8 right-4 md:top-16 md:right-10', float: 'animate-float-slower' },
+  Sweet: { position: 'top-1/2 -left-2 -translate-y-1/2 md:left-0', float: 'animate-float-slow' },
+  Spicy: { position: 'top-1/2 -right-2 -translate-y-1/2 md:right-0', float: 'animate-float-slower' },
+  Drinks: { position: 'bottom-8 left-6 md:bottom-16 md:left-16', float: 'animate-float-slower' },
+  Surprises: { position: 'bottom-6 right-6 md:bottom-14 md:right-16', float: 'animate-float-slow' },
+};
+
+const CATEGORY_PILLS = SNACK_CATEGORIES.map((category) => ({
+  ...category,
+  ...(PILL_POSITIONS[category.label] ?? { position: 'top-4 left-4', float: 'animate-float-slow' }),
+}));
 
 /**
  * The visual payoff (§ spec §7.2) — `photoUrl` null renders a

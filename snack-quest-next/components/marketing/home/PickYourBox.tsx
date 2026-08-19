@@ -2,7 +2,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Boxes, Check } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
-import { Badge } from '@/components/ui/badge';
 import { formatKes } from '@/lib/orders/format';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
@@ -47,8 +46,18 @@ const TRUST_LINES = [
  * Real, live package data — never hardcoded tier names/prices (§
  * jungle-adventure landing page rebuild). Whatever this business
  * actually sells is what shows here, styled with the spec's premium
- * card treatment; the middle box (of up to 3) gets the emphasis
- * treatment as the visual "most popular" position.
+ * card treatment.
+ *
+ * The middle box (of three) is raised slightly. That is visual
+ * hierarchy so three equal-weight cards don't read as an undifferentiated
+ * wall — it deliberately carries no label, because this platform has no
+ * verified per-box sales figure to back a "best seller"/"most popular"
+ * claim, and `public/llms.txt` states plainly that the site publishes
+ * none. It used to carry both (§ Mission 2 — social-proof integrity);
+ * they were removed rather than reworded, since every softer synonym
+ * ("customer favourite", "top pick") asserts the same unverified
+ * statistic. Revisit only with a real order-count query behind a
+ * minimum-volume floor.
  */
 export function PickYourBox({
   packages,
@@ -72,9 +81,19 @@ export function PickYourBox({
           <h2 className="font-display mt-4 text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
             Choose your <span className="text-primary">mystery.</span>
           </h2>
+          {/*
+            Was a weekly-batch scarcity line ("when this week's batch is
+            gone, it's gone") — a deadline nothing in the product
+            actually enforces, so it was doing the same job as the
+            removed Best Seller badge (§ Mission 2 — social-proof
+            integrity). Replaced with what is verifiably true and does
+            more useful work anyway: it answers "is the cheaper box the
+            lesser box?" before the customer has to ask.
+          */}
           <p className="text-foreground/70 mx-auto mt-5 max-w-[576px] text-base md:text-lg">
-            We hand-pack a limited number of boxes each week. When this
-            week&apos;s batch is gone, it&apos;s gone.
+            Every box is hand-packed and personally tasted before it ships.
+            Same care whichever size you pick — the difference is how much
+            of the adventure you get.
           </p>
         </div>
       </Reveal>
@@ -102,12 +121,6 @@ export function PickYourBox({
                   className={`absolute -top-16 -right-16 size-56 rounded-full blur-3xl ${accent.dot}`}
                 />
 
-                {isEmphasized ? (
-                  <Badge className="bg-home-lime text-foreground absolute top-4 right-4 z-10 rotate-3 shadow-sm md:top-5 md:right-5">
-                    ★ Best Seller
-                  </Badge>
-                ) : null}
-
                 <div className="relative aspect-[16/10] w-full overflow-hidden bg-border/40">
                   {pkg.data.imageUrl ? (
                     <Image
@@ -131,11 +144,18 @@ export function PickYourBox({
                       strokeWidth={2.2}
                       aria-hidden="true"
                     />
+                    {/*
+                      Describes the tier itself, never how many people
+                      bought it — "Most explorers pick this" was an
+                      unverified statistic (§ Mission 2 — social-proof
+                      integrity). These three read as what they are:
+                      how far into the adventure each box takes you.
+                    */}
                     <span className="text-caption text-foreground/60 font-bold tracking-wide uppercase">
                       {index === 0
                         ? 'Start your quest'
                         : isEmphasized
-                          ? 'Most explorers pick this'
+                          ? 'Go deeper'
                           : 'For serious explorers'}
                     </span>
                   </div>
@@ -188,6 +208,8 @@ export function PickYourBox({
                       packageId={pkg.id}
                       size="lg"
                       className={`w-full justify-center md:w-auto ${PRIMARY_CTA_CLASS}`}
+                      analyticsSource="home_pick_your_box"
+                      analyticsPriceKes={pkg.data.priceKes}
                     >
                       Buy the {pkg.data.name}
                     </BuyNowButton>

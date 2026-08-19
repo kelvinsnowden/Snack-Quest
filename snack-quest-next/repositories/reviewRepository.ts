@@ -120,6 +120,28 @@ class ReviewRepository {
       .get();
     return snapshot.data().count;
   }
+
+  /**
+   * Every phone number that has already left a review, any status
+   * (§ Mission 2 — review acquisition). Backs the "who should we still
+   * ask?" queue: one bounded read building a lookup set, rather than a
+   * per-candidate existence query each time that list is rendered.
+   *
+   * Status is deliberately not filtered — someone whose review is
+   * still pending, or was rejected, has already been asked once, and
+   * asking again is the thing this is meant to prevent.
+   */
+  async listContactPhones(businessId: string, limit = 500): Promise<string[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .select('contactPhone')
+      .limit(limit)
+      .get();
+    return snapshot.docs
+      .map((doc) => (doc.data() as { contactPhone?: string | null }).contactPhone)
+      .filter((phone): phone is string => Boolean(phone));
+  }
 }
 
 export const reviewRepository = new ReviewRepository();

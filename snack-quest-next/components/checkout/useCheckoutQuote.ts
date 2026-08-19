@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { trackEvent } from '@/lib/analytics/trackEvent';
+import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 import type { DeliveryMethod } from '@/types/delivery';
 import type { WebCheckoutQuote } from '@/types/webCheckout';
 
@@ -39,6 +41,13 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
   // rather than on every re-render that rebuilds the object.
   const key = JSON.stringify(selection);
 
+  // Which quote failures have already been reported this mount. The
+  // quote refires on every keystroke in the referral/phone fields, so
+  // a persistent failure would otherwise report itself once per
+  // character typed and drown out how many people it really affected
+  // (§ Mission 2 — funnel analytics, "avoid duplicate firing").
+  const reportedErrors = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const current = JSON.parse(key) as QuoteSelection;
     if (!current.packageId) {
@@ -46,6 +55,28 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
     }
 
     let cancelled = false;
+
+    // Reported with a coarse category and the selection that produced
+    // it — never the response body, the phone number or the referral
+    // code, none of which belong in an analytics record.
+    function reportQuoteError(category: 'http_error' | 'network_error' | 'empty_response') {
+      const signature = `${category}:${current.deliveryMethod}:${current.packageId}`;
+      if (reportedErrors.current.has(signature)) {
+        return;
+      }
+      reportedErrors.current.add(signature);
+      trackEvent(FUNNEL_EVENTS.quoteError, {
+        category,
+        deliveryMethod: current.deliveryMethod,
+        ...(current.packageId ? { packageId: current.packageId } : {}),
+      });
+    }
+
+    // Guards the `empty_response` branch below from also firing for a
+    // failure that has already reported itself with a more specific
+    // category — a non-OK response resolves to `null` too.
+    let alreadyReported = false;
+
     const timer = setTimeout(() => {
       fetch('/api/checkout/web/quote', {
         method: 'POST',
@@ -59,16 +90,35 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
           phone: current.phone || undefined,
         }),
       })
-        .then((response) => (response.ok ? (response.json() as Promise<WebCheckoutQuote | null>) : null))
-        .then((next) => {
-          if (!cancelled) {
-            setQuote(next);
+        .then((response) => {
+          if (!response.ok) {
+            if (!cancelled) {
+              alreadyReported = true;
+              reportQuoteError('http_error');
+            }
+            return null;
           }
+          return response.json() as Promise<WebCheckoutQuote | null>;
+        })
+        .then((next) => {
+          if (cancelled) {
+            return;
+          }
+          // A 200 that carries no quote still leaves the customer
+          // without a live total, so it is the same failure to them.
+          if (next === null && !alreadyReported) {
+            reportQuoteError('empty_response');
+          }
+          setQuote(next);
         })
         .catch(() => {
           // A failed quote leaves the last good one on screen; the
           // charge is priced server-side regardless, so this is a
           // display gap, not a correctness one.
+          if (!cancelled && !alreadyReported) {
+            alreadyReported = true;
+            reportQuoteError('network_error');
+          }
         });
     }, QUOTE_DEBOUNCE_MS);
 

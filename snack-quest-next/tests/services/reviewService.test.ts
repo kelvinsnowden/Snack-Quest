@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
+import { seedOrder } from '../helpers/orderFixtures';
+import type { Order } from '@/types';
 
 const { uploadFileMock, deleteFileMock, getMetadataMock, listFilesMock } = vi.hoisted(() => ({
   uploadFileMock: vi.fn(),
@@ -55,9 +58,144 @@ beforeEach(async () => {
     size: PNG.byteLength,
   }));
   deleteFileMock.mockResolvedValue(undefined);
-  for (const collection of ['reviews', 'domainEvents']) {
+  for (const collection of ['reviews', 'domainEvents', 'orders']) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
+});
+
+/**
+ * Verified purchase + the "who should we ask" queue (§ Mission 2 —
+ * review acquisition). Both read real orders, so these run against
+ * seeded orders rather than mocks — the point under test is exactly
+ * whether the order lookup is right.
+ */
+describe('verified purchase', () => {
+  it('marks a review verified when its phone number matches a real paid order', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed' });
+
+    const { reviewId } = await reviewService.submitReview(BUSINESS_ID, {
+      ...validReview(),
+      contactPhone: '0712345678',
+    });
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.isVerifiedPurchase).toBe(true);
+    expect(stored?.verifiedOrderId).toBeTruthy();
+  });
+
+  it('does not mark a review verified when no order matches that number', async () => {
+    const { reviewId } = await reviewService.submitReview(BUSINESS_ID, {
+      ...validReview(),
+      contactPhone: '0799999999',
+    });
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.isVerifiedPurchase).toBe(false);
+    expect(stored?.verifiedOrderId).toBeNull();
+  });
+
+  it('does not mark a review verified when no phone number was given at all', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed' });
+
+    const { reviewId } = await reviewService.submitReview(BUSINESS_ID, {
+      ...validReview(),
+      contactPhone: undefined,
+    });
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.isVerifiedPurchase).toBe(false);
+  });
+
+  it('does not verify against a cancelled order — the badge must not outlive the purchase', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'cancelled' });
+
+    const { reviewId } = await reviewService.submitReview(BUSINESS_ID, {
+      ...validReview(),
+      contactPhone: '0712345678',
+    });
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.isVerifiedPurchase).toBe(false);
+  });
+
+  it('never leaks the badge across businesses', async () => {
+    await seedOrder({ businessId: 'some-other-business', status: 'confirmed' });
+
+    const { reviewId } = await reviewService.submitReview(BUSINESS_ID, {
+      ...validReview(),
+      contactPhone: '0712345678',
+    });
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.isVerifiedPurchase).toBe(false);
+  });
+
+  it('publishes the badge on the public shape', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered' });
+    const { reviewId } = await reviewService.submitReview(BUSINESS_ID, {
+      ...validReview(),
+      contactPhone: '0712345678',
+    });
+    await reviewService.moderate(BUSINESS_ID, reviewId, 'published', 'staff-1');
+
+    const published = await reviewService.listPublished(BUSINESS_ID);
+    expect(published.reviews[0].isVerifiedPurchase).toBe(true);
+  });
+});
+
+describe('listAwaitingReviewRequest', () => {
+  // Cast for the same reason `businessAnalyticsService.test.ts` does:
+  // fixtures write through the Admin SDK, while `Order` is typed
+  // against the client SDK's `Timestamp`. The two are structurally
+  // different types for the same stored value.
+  const longAgo = () =>
+    Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000) as unknown as Order['createdAt'];
+
+  it('lists a paid customer who is past the waiting period and has never been asked', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', createdAt: longAgo() });
+
+    const candidates = await reviewService.listAwaitingReviewRequest(BUSINESS_ID);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].customerName).toBe('Jane Wanjiru');
+  });
+
+  it('excludes an order placed too recently to have arrived', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed' });
+
+    expect(await reviewService.listAwaitingReviewRequest(BUSINESS_ID)).toHaveLength(0);
+  });
+
+  it('excludes a customer who has already been asked', async () => {
+    const orderId = await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'delivered',
+      createdAt: longAgo(),
+    });
+    await reviewService.markReviewRequested(BUSINESS_ID, orderId, 'staff-1');
+
+    expect(await reviewService.listAwaitingReviewRequest(BUSINESS_ID)).toHaveLength(0);
+  });
+
+  it('excludes a customer who has already left a review', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', createdAt: longAgo() });
+    await reviewService.submitReview(BUSINESS_ID, { ...validReview(), contactPhone: '0712345678' });
+
+    expect(await reviewService.listAwaitingReviewRequest(BUSINESS_ID)).toHaveLength(0);
+  });
+
+  it('lists a repeat customer once, not once per order', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', createdAt: longAgo() });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'delivered', createdAt: longAgo() });
+
+    expect(await reviewService.listAwaitingReviewRequest(BUSINESS_ID)).toHaveLength(1);
+  });
+
+  it('never lists another business’s customers', async () => {
+    await seedOrder({ businessId: 'some-other-business', status: 'delivered', createdAt: longAgo() });
+
+    expect(await reviewService.listAwaitingReviewRequest(BUSINESS_ID)).toHaveLength(0);
+  });
 });
 
 describe('submitReview', () => {

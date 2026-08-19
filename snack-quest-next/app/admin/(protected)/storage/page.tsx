@@ -73,7 +73,7 @@ export default async function AdminStoragePage({
           <Link
             key={value}
             href={`/admin/storage?directory=${value}`}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium transition-colors ${
               directory === value
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:bg-border/40'

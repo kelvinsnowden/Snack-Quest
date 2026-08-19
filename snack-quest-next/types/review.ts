@@ -55,6 +55,19 @@ export interface Review extends AuditFields {
    * photo worth asking permission to reuse).
    */
   contactPhone: string | null;
+  /**
+   * True when `contactPhone` matched a real paid order for this
+   * business at submission time (§ Mission 2 — review acquisition).
+   * This is a fact the platform can check, not a claim it invents: it
+   * is set only from an `orders` lookup, never from anything the
+   * reviewer typed about themselves. Absent on every review submitted
+   * before this existed, and false whenever no phone number was given —
+   * so the badge means "we confirmed this", and its absence means
+   * "we couldn't", never "this person is lying".
+   */
+  isVerifiedPurchase?: boolean;
+  /** The order that verified it, for staff to trace back. Never shown publicly. */
+  verifiedOrderId?: string | null;
   /** Who approved or rejected it, and when — null while pending. */
   moderatedBy: string | null;
   moderatedAt: Date | null;
@@ -71,4 +84,6 @@ export interface PublicReview {
   videoUrl: string | null;
   /** ISO string rather than a Firestore Timestamp: this crosses into Client Components. */
   createdAtIso: string;
+  /** Whether to show the "Verified purchase" badge. `verifiedOrderId` deliberately does not cross into public view. */
+  isVerifiedPurchase: boolean;
 }

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
+import { MobileRecordCard, MobileRecordList } from '@/components/admin/MobileRecordCard';
 import { formatKes, formatOrderNumber } from '@/lib/orders/format';
 import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
 import type { OrderStatus } from '@/types';
@@ -66,16 +67,21 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/*
+        The bulk-action bar stacks on a phone. Side by side, "Create
+        fulfillment batch" and the selected-count were fighting for a
+        390px row and the button label wrapped mid-phrase.
+      */}
       {selectedCount > 0 ? (
-        <div className="sticky top-4 z-10 flex items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 shadow-sm">
-          <p className="text-sm font-medium text-foreground">
+        <div className="border-primary/20 bg-primary/5 sticky top-4 z-10 flex flex-col gap-3 rounded-lg border px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <p className="text-foreground text-sm font-medium">
             {selectedCount} order{selectedCount === 1 ? '' : 's'} selected
           </p>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
               Clear
             </Button>
-            <Button size="sm" onClick={createBatch}>
+            <Button size="sm" onClick={createBatch} className="flex-1 sm:flex-none">
               <PackagePlus className="size-4" aria-hidden="true" />
               Create fulfillment batch
             </Button>
@@ -83,7 +89,67 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
         </div>
       ) : null}
 
-      <Card className="overflow-hidden p-0">
+      {/*
+        The phone's view of the same rows. The table below is 900px
+        wide inside a horizontal scroller, which on a 390px screen puts
+        status and total — the two columns anyone opens this page for —
+        off the right edge (§ Admin mobile UX overhaul). Same data, same
+        selection behaviour, laid out to be read down instead of across.
+      */}
+      <MobileRecordList>
+        {orders.map((order) => {
+          const batchable = isOrderBatchable(order.status, order.fulfillmentBatchId);
+          const selected = selectedIds.has(order.id);
+          return (
+            <MobileRecordCard
+              key={order.id}
+              className={selected ? 'border-primary bg-primary/5' : undefined}
+              href={`/admin/orders/${order.id}`}
+              title={order.customerName || 'Guest'}
+              subtitle={<span className="tabular-nums">{order.phoneNumber}</span>}
+              badge={<OrderStatusBadge status={order.status} />}
+              leading={
+                <Checkbox
+                  checked={selected}
+                  disabled={!batchable}
+                  onCheckedChange={(checked) => toggleOne(order.id, checked === true)}
+                  aria-label={`Select order for ${order.customerName || 'guest'}`}
+                  // The box stays 20px to look right next to the name;
+                  // the invisible inset grows what a thumb can actually
+                  // hit to 44px. Padding on a wrapper would not do this
+                  // — the tap has to land on the control itself.
+                  className="relative before:absolute before:-inset-3 before:content-['']"
+                />
+              }
+              fields={[
+                {
+                  label: 'Order',
+                  value: (
+                    <span className="font-mono">
+                      {order.orderNumber !== null ? formatOrderNumber(order.orderNumber) : '—'}
+                    </span>
+                  ),
+                },
+                { label: 'Total', value: <span className="font-medium tabular-nums">{formatKes(order.totalKes)}</span> },
+                { label: 'Box', value: order.packageLabel },
+                { label: 'Placed', value: <span className="tabular-nums">{order.createdAtLabel}</span> },
+              ]}
+              footer={
+                order.fulfillmentBatchId ? (
+                  <Link
+                    href={`/admin/fulfillment-batches/${order.fulfillmentBatchId}`}
+                    className="text-primary text-sm font-medium hover:underline"
+                  >
+                    In a fulfillment batch →
+                  </Link>
+                ) : null
+              }
+            />
+          );
+        })}
+      </MobileRecordList>
+
+      <Card className="hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">

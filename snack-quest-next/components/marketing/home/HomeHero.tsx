@@ -85,7 +85,12 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
 
         <Reveal delayMs={300}>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <BuyNowButton packageId={primaryPackageId} size="lg" className={PRIMARY_CTA_CLASS}>
+            <BuyNowButton
+              packageId={primaryPackageId}
+              size="lg"
+              className={PRIMARY_CTA_CLASS}
+              analyticsSource="home_hero"
+            >
               Start your quest
             </BuyNowButton>
             <Button
