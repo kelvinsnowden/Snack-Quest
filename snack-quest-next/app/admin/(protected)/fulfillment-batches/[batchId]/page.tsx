@@ -51,10 +51,10 @@ export default async function AdminFulfillmentBatchDetailPage({
           <ArrowLeft className="size-4" aria-hidden="true" />
           Fulfillment batches
         </Link>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
           {batch.orderCount} order{batch.orderCount === 1 ? '' : 's'}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">Created {formatDateTime(batch.createdAt)}</p>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Created {formatDateTime(batch.createdAt)}</p>
       </div>
 
       <Card>

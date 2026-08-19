@@ -48,7 +48,7 @@ export default async function AdminWithdrawalDetailPage({
             Withdrawals
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title font-bold tracking-tight text-foreground">{owner?.displayName ?? withdrawal.ownerId}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{owner?.displayName ?? withdrawal.ownerId}</h1>
             <WithdrawalStatusBadge status={withdrawal.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">

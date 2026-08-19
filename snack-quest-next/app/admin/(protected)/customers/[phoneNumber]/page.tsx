@@ -40,8 +40,8 @@ export default async function AdminCustomerDetailPage({
           <ArrowLeft className="size-4" aria-hidden="true" />
           Customers
         </Link>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">{summary.customerName}</h1>
-        <p className="mt-1 text-sm text-muted-foreground tabular-nums">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{summary.customerName}</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground tabular-nums">
           {summary.phoneNumber} · {summary.county}
         </p>
       </div>

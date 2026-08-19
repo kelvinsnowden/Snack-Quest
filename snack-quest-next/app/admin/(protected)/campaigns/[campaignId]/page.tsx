@@ -35,8 +35,8 @@ export default async function EditAdminCampaignPage({
     <div className="flex max-w-2xl flex-col gap-10">
       <div>
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Edit campaign</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Changes are visible to creators immediately.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Edit campaign</h1>
+          <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Changes are visible to creators immediately.</p>
         </div>
         <div className="mt-6">
           <CampaignForm

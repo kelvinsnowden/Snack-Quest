@@ -57,10 +57,10 @@ export default async function AdminStoragePage({
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-page-title text-foreground font-bold tracking-tight">
+          <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
             Storage
           </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
             Upload and browse what&apos;s stored in this business&apos;s Vercel
             Blob storage.
           </p>

@@ -18,8 +18,8 @@ export default async function AdminSuppliersPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Suppliers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Who purchase orders are placed with.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Suppliers</h1>
+          <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Who purchase orders are placed with.</p>
         </div>
         {suppliers.length > 0 ? <SupplierFormDialog mode="create" /> : null}
       </div>

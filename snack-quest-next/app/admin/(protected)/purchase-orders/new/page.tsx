@@ -21,7 +21,7 @@ export default async function NewPurchaseOrderPage() {
     return (
       <div className="flex max-w-xl flex-col gap-6">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">New purchase order</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">New purchase order</h1>
         </div>
         <EmptyState
           icon={Warehouse}
@@ -40,8 +40,8 @@ export default async function NewPurchaseOrderPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">New purchase order</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Saved as a draft — order it once you&apos;re ready to send it to the supplier.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">New purchase order</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Saved as a draft — order it once you&apos;re ready to send it to the supplier.</p>
       </div>
       <PurchaseOrderForm
         suppliers={suppliers.map(({ id, data }) => ({ id, name: data.name }))}

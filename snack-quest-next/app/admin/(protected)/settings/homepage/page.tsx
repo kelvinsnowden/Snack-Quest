@@ -23,10 +23,10 @@ export default async function AdminHomepageContentPage() {
           <ArrowLeft className="size-4" aria-hidden="true" />
           Settings
         </Link>
-        <h1 className="text-page-title text-foreground font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
           Homepage content
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
           The founder portrait and snack flat-lay photos shown on the public
           homepage. Until uploaded, each section shows an on-brand illustrated
           placeholder instead.

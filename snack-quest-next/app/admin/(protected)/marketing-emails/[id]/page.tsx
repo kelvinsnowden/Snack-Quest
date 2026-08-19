@@ -57,7 +57,7 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
           Marketing Emails
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">{campaign.subject}</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{campaign.subject}</h1>
           <Badge variant={STATUS_VARIANT[campaign.status]}>{campaign.status}</Badge>
         </div>
       </div>

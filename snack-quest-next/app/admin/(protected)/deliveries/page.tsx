@@ -39,8 +39,8 @@ export default async function AdminDeliveriesPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Deliveries</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Track shipments and complete manual courier bookings.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Deliveries</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Track shipments and complete manual courier bookings.</p>
       </div>
 
       <Card className="flex flex-wrap gap-2 p-4">

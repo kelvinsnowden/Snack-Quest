@@ -29,8 +29,8 @@ export default async function AdminCustomersPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Customers</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Everyone who has ordered through the WhatsApp checkout.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Customers</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Everyone who has ordered through the WhatsApp checkout.</p>
       </div>
 
       <Card className="p-4">

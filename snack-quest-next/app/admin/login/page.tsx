@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
           <Image src="/logo.png" alt="Snack Quest" width={48} height={48} className="size-12 rounded-xl object-cover" />
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Admin</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Admin</h1>
           <p className="text-sm text-muted-foreground">Sign in with your staff account to continue.</p>
         </div>
 

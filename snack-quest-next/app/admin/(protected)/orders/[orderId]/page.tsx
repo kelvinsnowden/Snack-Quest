@@ -62,7 +62,7 @@ export default async function AdminOrderDetailPage({
             Orders
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title font-bold tracking-tight text-foreground">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
               {order.orderNumber !== undefined ? formatOrderNumber(order.orderNumber) : product.packageLabel}
             </h1>
             <OrderStatusBadge status={order.status} />

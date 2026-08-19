@@ -25,8 +25,8 @@ export default async function AdminInventoryPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Inventory</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Stock levels for every box that tracks stock.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Inventory</h1>
+          <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Stock levels for every box that tracks stock.</p>
         </div>
         <Button asChild variant="outline" size="sm">
           <Link href="/admin/inventory/batches">View batches</Link>

@@ -73,7 +73,7 @@ export default async function AdminCreatorDetailPage({
             Creators
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title font-bold tracking-tight text-foreground">{user?.displayName ?? 'Unknown creator'}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{user?.displayName ?? 'Unknown creator'}</h1>
             <CreatorStatusBadge status={profile.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{user?.email ?? uid}</p>

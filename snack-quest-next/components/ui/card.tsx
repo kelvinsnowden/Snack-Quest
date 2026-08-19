@@ -14,8 +14,21 @@ function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement
   return <div className={cn('flex flex-col gap-1.5 p-6', className)} {...props} />;
 }
 
+/**
+ * 18px on a phone, the full 24px from `md` up (§ Admin mobile density
+ * pass). At a flat 24px a card heading was the same size as the page
+ * title above it, so a screen of cards read as a list of page titles
+ * with no hierarchy between them. Only the staff-facing surfaces use
+ * this component — the marketing site sets its own headings — so the
+ * change is contained to the tools.
+ */
 function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn('text-card-title font-semibold tracking-tight', className)} {...props} />;
+  return (
+    <h3
+      className={cn('text-lg font-semibold tracking-tight md:text-[length:var(--text-card-title)]', className)}
+      {...props}
+    />
+  );
 }
 
 function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {

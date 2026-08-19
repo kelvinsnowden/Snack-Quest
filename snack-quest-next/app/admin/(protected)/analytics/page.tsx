@@ -83,8 +83,8 @@ export default async function AdminAnalyticsPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Analytics</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Revenue, conversion, and acquisition, computed from real orders and conversations.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Analytics</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Revenue, conversion, and acquisition, computed from real orders and conversations.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

@@ -75,6 +75,13 @@ export interface AdminNavItem {
   icon: LucideIcon;
   /** Which per-workspace toggle (§ Staff access control) gates this page — absent means every staff member with Admin Portal access sees it (Dashboard, Analytics, Staff). */
   section?: AdminSection;
+  /**
+   * A compact name for the phone's bottom bar, where a slot is about
+   * a fifth of the screen. Only set where the full label would be
+   * truncated there; everywhere else (sidebar, drawer, search) keeps
+   * `label`, which stays the unambiguous one.
+   */
+  shortLabel?: string;
   group: AdminNavGroup;
   /**
    * Reachable from the phone's bottom bar without opening the drawer
@@ -91,7 +98,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { href: '/admin/orders', label: 'Orders', icon: ClipboardList, section: 'orders', group: 'Orders & delivery', quickAccess: true },
   { href: '/admin/deliveries', label: 'Deliveries', icon: Truck, section: 'orders', group: 'Orders & delivery', quickAccess: true },
-  { href: '/admin/fulfillment-batches', label: 'Fulfillment batches', icon: PackageSearch, section: 'orders', group: 'Orders & delivery' },
+  { href: '/admin/fulfillment-batches', label: 'Fulfillment batches', shortLabel: 'Batches', icon: PackageSearch, section: 'orders', group: 'Orders & delivery', quickAccess: true },
   { href: '/admin/delivery-zones', label: 'Delivery zones', icon: MapPinned, section: 'orders', group: 'Orders & delivery' },
 
   { href: '/admin/products', label: 'Products', icon: Package, section: 'orders', group: 'Catalogue & stock' },
@@ -99,7 +106,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/purchase-orders', label: 'Purchase orders', icon: ClipboardCheck, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/suppliers', label: 'Suppliers', icon: Warehouse, section: 'orders', group: 'Catalogue & stock' },
 
-  { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers', quickAccess: true },
+  { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers' },
   { href: '/admin/customers', label: 'Customers', icon: Users, section: 'marketing', group: 'Customers' },
   { href: '/admin/reviews', label: 'Reviews', icon: MessageSquareQuote, section: 'marketing', group: 'Customers' },
 

@@ -36,8 +36,8 @@ export default async function NotificationTemplateEditPage({ params }: { params:
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">{templateEventLabel(template.templateCode)}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{template.templateCode} · version {template.version}</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{templateEventLabel(template.templateCode)}</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">{template.templateCode} · version {template.version}</p>
       </div>
       <NotificationTemplateForm
         templateCode={template.templateCode}

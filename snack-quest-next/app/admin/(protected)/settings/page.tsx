@@ -25,10 +25,10 @@ export default async function AdminSettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="text-page-title text-foreground font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
           Settings
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
           This business&apos;s own configuration — name, currency, WhatsApp
           routing, and coverage.
         </p>

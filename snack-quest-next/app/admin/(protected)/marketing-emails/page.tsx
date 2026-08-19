@@ -18,7 +18,7 @@ export default async function AdminMarketingEmailsPage() {
   if (!isSuperAdmin(session)) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Marketing Emails</h1>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Marketing Emails</h1>
         <Card className="flex flex-col items-center gap-3 p-10 text-center">
           <ShieldAlert className="size-8 text-warning" aria-hidden="true" />
           <p className="text-card-title font-semibold text-foreground">Super admin access required</p>
@@ -36,8 +36,8 @@ export default async function AdminMarketingEmailsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-page-title font-bold tracking-tight text-foreground">Marketing Emails</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Marketing Emails</h1>
+          <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
             Compose a branded email, preview exactly what it looks like, and send it to a real creator segment.
           </p>
         </div>

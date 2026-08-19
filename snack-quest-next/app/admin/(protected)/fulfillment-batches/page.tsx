@@ -22,8 +22,8 @@ export default async function AdminFulfillmentBatchesPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-page-title font-bold tracking-tight text-foreground">Fulfillment batches</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Every shopping trip that covered a group of orders, and what it made.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Fulfillment batches</h1>
+        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Every shopping trip that covered a group of orders, and what it made.</p>
       </div>
 
       {batches.length === 0 ? (

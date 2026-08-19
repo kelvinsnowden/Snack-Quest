@@ -47,10 +47,10 @@ export default async function AdminInventoryBatchesPage({
           <ArrowLeft className="size-4" aria-hidden="true" />
           Inventory
         </Link>
-        <h1 className="text-page-title text-foreground font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
           Batches
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
           Every active batch received from a purchase order, with real cost and
           expiry.
         </p>
