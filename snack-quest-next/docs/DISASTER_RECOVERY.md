@@ -116,7 +116,7 @@ done first.
    this one specifically means every already-encrypted integration
    credential in Firestore becomes permanently undecryptable, so it
    deserves its own secure backup, separate from the rest),
-   `SENDGRID_API_KEY`, `AFRICAS_TALKING_API_KEY`, `CRON_SECRET`, and
+   `SENDGRID_API_KEY`, `TEXTSMS_API_KEY`, `CRON_SECRET`, and
    the `WHATCHIMP_*`/`INTERNAL_AGENT_API_KEY` shared secrets. If any of
    these were never backed up outside of Vercel and Vercel's own
    project is what was lost, they are unrecoverable and must be

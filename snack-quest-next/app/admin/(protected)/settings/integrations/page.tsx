@@ -32,9 +32,11 @@ const PLATFORM_WIDE_INTEGRATIONS: Array<{ label: string; configured: boolean; no
     note: 'Only used by a business that has not connected its own SMTP above. One account per deployment, changed via deployment environment variables — configure Email (SMTP) instead and everything sends from your own domain.',
   },
   {
-    label: 'SMS (Africa’s Talking)',
-    configured: Boolean(process.env.AFRICAS_TALKING_API_KEY && process.env.AFRICAS_TALKING_USERNAME),
-    note: 'One SMS account per deployment, not per business. Change via deployment environment variables.',
+    label: 'SMS (TextSMS)',
+    configured: Boolean(
+      process.env.TEXTSMS_API_KEY && process.env.TEXTSMS_PARTNER_ID && process.env.TEXTSMS_SHORTCODE,
+    ),
+    note: `One SMS account per deployment, not per business. Change via deployment environment variables. Messages currently send from sender ID “${process.env.TEXTSMS_SHORTCODE || 'not set'}” — switching to a branded sender ID means changing TEXTSMS_SHORTCODE, nothing else.`,
   },
 ];
 

@@ -10,7 +10,7 @@ import type { Timestamp } from 'firebase/firestore';
  * duplicate, never reprocess. Server-only — no client ever reads or
  * writes this collection.
  */
-export type WebhookProvider = 'daraja' | 'whatchimp' | 'jumia';
+export type WebhookProvider = 'daraja' | 'whatchimp' | 'jumia' | 'textsms';
 
 export type WebhookEventStatus = 'received' | 'processed' | 'failed';
 
@@ -30,7 +30,9 @@ export type WebhookEventKind =
   | 'inbound_message'
   | 'tracking_update'
   | 'stk_query_reconciliation'
-  | 'transaction_status_result';
+  | 'transaction_status_result'
+  /** A TextSMS delivery report for one already-sent SMS. Unlike every other kind here, this one is pure enrichment — nothing downstream depends on it, which is why its handler is free to record an unrecognised status and change nothing. */
+  | 'sms_dlr';
 
 export interface WebhookEvent {
   businessId: string;
