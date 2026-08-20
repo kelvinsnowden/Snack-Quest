@@ -52,6 +52,20 @@ class InMemoryCircuitStore implements CircuitBreakerStore {
 
 const inMemoryCircuitStore: CircuitBreakerStore = new InMemoryCircuitStore();
 
+/**
+ * Clears one gateway's breaker state in the default in-process store.
+ *
+ * Exists for tests, and specifically for gateway tests that assert on
+ * several consecutive failure responses in a row: without it, the fifth
+ * such case in a file trips the breaker and every later case fails with
+ * `GatewayCircuitOpenError` instead of the error it was asserting on —
+ * a failure whose cause is nowhere near the test that reports it. Call
+ * it in `beforeEach` so each case starts from a closed circuit.
+ */
+export function resetCircuitBreaker(gatewayName: string): void {
+  inMemoryCircuitStore.set(gatewayName, { state: 'closed', consecutiveFailures: 0, openedAt: null });
+}
+
 export class GatewayCircuitOpenError extends Error {
   constructor(gatewayName: string) {
     super(

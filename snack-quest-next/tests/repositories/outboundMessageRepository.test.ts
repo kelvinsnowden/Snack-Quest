@@ -65,11 +65,11 @@ describe('outboundMessageRepository status transitions', () => {
 
   it('markFailed sets status and failureReason', async () => {
     await outboundMessageRepository.create('sms:withdrawal-3', baseInput());
-    await outboundMessageRepository.markFailed('sms:withdrawal-3', 'Africa\'s Talking send failed: InvalidPhoneNumber');
+    await outboundMessageRepository.markFailed('sms:withdrawal-3', 'TextSMS send failed: Invalid mobile number (code 1002)');
 
     const found = await outboundMessageRepository.findById('sms:withdrawal-3');
     expect(found?.status).toBe('failed');
-    expect(found?.failureReason).toBe("Africa's Talking send failed: InvalidPhoneNumber");
+    expect(found?.failureReason).toBe('TextSMS send failed: Invalid mobile number (code 1002)');
   });
 
   it('incrementRetryCount bumps retryCount by one each call', async () => {

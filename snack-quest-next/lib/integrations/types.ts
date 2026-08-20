@@ -487,13 +487,16 @@ export interface StorageGateway {
 /**
  * Email and SMS (§ Notification breadth, PLATFORM_ARCHITECTURE_V2.md
  * §10/§13) — like `StorageGateway` above, deliberately no `businessId`
- * parameter: a SendGrid/Africa's Talking account is platform
- * infrastructure with one credential per deployment, not a per-tenant
- * one a business owner configures themselves (unlike Daraja/Whatchimp,
- * which are literally that business's own paybill/WhatsApp number).
+ * parameter: a SendGrid/TextSMS account is platform infrastructure
+ * with one credential per deployment, not a per-tenant one a business
+ * owner configures themselves (unlike Daraja/Whatchimp, which are
+ * literally that business's own paybill/WhatsApp number). One
+ * consequence worth knowing: the SMS sender ID is therefore also one
+ * value per deployment, not per tenant.
  * `NotificationService` is still the only caller — these interfaces
- * exist so the concrete provider (`SendGridGateway`,
- * `AfricasTalkingGateway`) stays swappable without touching it.
+ * exist so the concrete provider (`SendGridGateway`, `TextSmsGateway`)
+ * stays swappable without touching it, which is exactly how the SMS
+ * provider was changed from Africa's Talking to TextSMS.
  */
 export interface EmailSendResult {
   providerMessageId: string;

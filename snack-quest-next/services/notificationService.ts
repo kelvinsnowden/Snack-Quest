@@ -2,7 +2,7 @@ import 'server-only';
 
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
-import { africasTalkingGateway } from '@/lib/integrations/sms/africasTalkingGateway';
+import { textSmsGateway } from '@/lib/integrations/sms/textSmsGateway';
 import { businessRepository } from '@/repositories/businessRepository';
 import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
 import { notificationRepository } from '@/repositories/notificationRepository';
@@ -57,7 +57,7 @@ class NotificationService {
   constructor(
     private readonly whatsapp: WhatsAppGateway = whatchimpGateway,
     private readonly email: EmailGateway = smtpEmailGateway,
-    private readonly sms: SmsGateway = africasTalkingGateway,
+    private readonly sms: SmsGateway = textSmsGateway,
   ) {}
 
   async notifyAdmin(businessId: string, text: string): Promise<void> {

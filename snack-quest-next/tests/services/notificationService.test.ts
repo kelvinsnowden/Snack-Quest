@@ -13,7 +13,7 @@ import type { WhatsAppGateway, EmailGateway, SmsGateway } from '@/lib/integratio
  * same constructor-injection pattern `ConversationService` uses — no
  * fetch stubbing needed, since the Gateway HTTP mechanics themselves
  * are already covered by tests/integrations/sendGridGateway.test.ts
- * and africasTalkingGateway.test.ts.
+ * and textSmsGateway.test.ts.
  */
 
 const BUSINESS_ID = 'biz-notification-service-test';
@@ -177,7 +177,7 @@ describe('NotificationService.send', () => {
   });
 
   it('marks the outbound message failed (without throwing) when the gateway rejects', async () => {
-    const sms = fakeSms({ send: vi.fn().mockRejectedValue(new Error('Africa\'s Talking send failed: timeout')) });
+    const sms = fakeSms({ send: vi.fn().mockRejectedValue(new Error('TextSMS send failed: timeout')) });
     const service = new NotificationService(fakeWhatsapp(), fakeEmail(), sms);
 
     await service.send(BUSINESS_ID, {
