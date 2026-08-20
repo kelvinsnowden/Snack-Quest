@@ -277,6 +277,46 @@ const TEMPLATES = [
     version: 1,
     isActive: true,
   },
+  /*
+   * The first two customer-facing templates in this catalog — every
+   * other entry goes to a creator or a staff member. Both are kept to
+   * one 160-character SMS segment with realistic values substituted in,
+   * since TextSMS bills per segment and a two-segment order
+   * confirmation costs double for no added clarity.
+   *
+   * Deliberately terser than their WhatsApp equivalents, which stay
+   * exactly as they are: WhatsApp carries the pickup-station detail and
+   * the Jumia tracking URL, and SMS is the channel that arrives even
+   * when the customer never opens WhatsApp. Saying less here is the
+   * point, not a limitation being worked around.
+   */
+  {
+    templateCode: 'order_confirmed_sms',
+    channel: 'sms',
+    subject: null,
+    heading: null,
+    bodyTemplate:
+      'Snack Quest: Payment received. Order {{orderRef}} is confirmed — KES {{totalKes}}, M-Pesa ref {{mpesaReceipt}}. We will text you the moment it ships.',
+    ctaLabel: null,
+    ctaUrl: null,
+    requiredParams: ['orderRef', 'totalKes', 'mpesaReceipt'],
+    htmlBodyTemplate: null,
+    version: 1,
+    isActive: true,
+  },
+  {
+    templateCode: 'order_dispatched_sms',
+    channel: 'sms',
+    subject: null,
+    heading: null,
+    bodyTemplate: 'Snack Quest: Your order {{orderRef}} has shipped and is on its way. Enjoy the quest!',
+    ctaLabel: null,
+    ctaUrl: null,
+    requiredParams: ['orderRef'],
+    htmlBodyTemplate: null,
+    version: 1,
+    isActive: true,
+  },
 ];
 
 async function main() {

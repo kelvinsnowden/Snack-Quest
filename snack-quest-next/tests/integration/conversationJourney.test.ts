@@ -8,6 +8,8 @@ import { conversationCheckoutSnapshotRepository } from '@/repositories/conversat
 import { packageRepository } from '@/repositories/packageRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
+import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
 import { businessRepository } from '@/repositories/businessRepository';
 import { walletService } from '@/services/walletService';
 import { featureFlagService } from '@/services/featureFlagService';
@@ -252,6 +254,8 @@ async function cleanCollections() {
     'outboundGatewayCalls',
     'pickupStations',
     'customerWallets',
+    'outboundMessages',
+    'notificationTemplates',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
@@ -1254,5 +1258,94 @@ describe('feature flags gate real behavior (§ Phase 6)', () => {
     // text on a brand-new conversation — falls through to the normal
     // welcome message instead of a wallet-balance reply.
     expect(disabledResult.botReply).not.toContain('wallet');
+  });
+});
+
+/**
+ * § SMS-1: order confirmation SMS. Driven through the real payment
+ * callback rather than by calling the private `completeOrder` — the
+ * thing worth proving is that a genuine end-to-end purchase texts the
+ * customer, and that a texting failure cannot cost a paid order.
+ */
+describe('order confirmation SMS (§ SMS-1)', () => {
+  beforeEach(async () => {
+    await seedBusiness(SNACK_QUEST);
+    await seedPackages(SNACK_QUEST.businessId);
+    await seedFreePickupStation(SNACK_QUEST.businessId);
+  });
+
+  async function seedConfirmationTemplate() {
+    await notificationTemplateRepository.upsert({
+      templateCode: 'order_confirmed_sms',
+      channel: 'sms',
+      subject: null,
+      bodyTemplate:
+        'Snack Quest: Payment received. Order {{orderRef}} is confirmed — KES {{totalKes}}, M-Pesa ref {{mpesaReceipt}}. We will text you the moment it ships.',
+      heading: null,
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: ['orderRef', 'totalKes', 'mpesaReceipt'],
+      version: 1,
+      isActive: true,
+    });
+  }
+
+  async function payForABox() {
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+    await walkToConfirmation(service, SNACK_QUEST.businessId);
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, 2500),
+    );
+    await service.handlePaymentResult(callback);
+    return (await adminFirestore.collection('orders').get()).docs[0];
+  }
+
+  it('texts the customer their order reference, total and M-Pesa receipt', async () => {
+    mockAllProviders();
+    await seedConfirmationTemplate();
+
+    const orderDoc = await payForABox();
+
+    const sent = await outboundMessageRepository.findById(`sms:order-confirmed:${orderDoc.id}`);
+    expect(sent).not.toBeNull();
+    expect(sent?.channel).toBe('sms');
+    expect(sent?.recipientRef).toBe(PHONE);
+    expect(sent?.renderedBody).toContain('SQ-1');
+    expect(sent?.renderedBody).toContain('2500');
+    expect(sent?.renderedBody).toContain('NLJ7RT61SV');
+  });
+
+  /** The WhatsApp confirmation is not replaced by the SMS — both go out. */
+  it('still sends the WhatsApp confirmation alongside the SMS', async () => {
+    mockAllProviders();
+    await seedConfirmationTemplate();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+    await walkToConfirmation(service, SNACK_QUEST.businessId);
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, 2500),
+    );
+    await service.handlePaymentResult(callback);
+
+    expect(gateway.sent.some((message) => message.text.includes('Payment received!'))).toBe(true);
+  });
+
+  /**
+   * The money is already collected and the order is real by this point,
+   * so a missing template — or any other texting failure — must leave a
+   * complete, confirmed order behind.
+   */
+  it('completes the order even when the SMS template does not exist', async () => {
+    mockAllProviders();
+
+    const orderDoc = await payForABox();
+
+    expect(orderDoc.data().status).toBe('confirmed');
+    expect(await outboundMessageRepository.findById(`sms:order-confirmed:${orderDoc.id}`)).toBeNull();
   });
 });

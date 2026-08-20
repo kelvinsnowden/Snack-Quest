@@ -1995,6 +1995,42 @@ class ConversationService {
         `${formatDeliveryLabel(snapshot.delivery)}.`,
     );
 
+    /*
+     * Order confirmation by SMS, alongside — never instead of — the
+     * WhatsApp reply below. SMS is the channel that lands even when the
+     * customer never opens WhatsApp again, which for a one-off snack
+     * purchase is most of them.
+     *
+     * Best-effort and swallowed, the same discipline as every other
+     * call past order creation in this method: the money is collected
+     * and the order is real, so a texting failure must never surface as
+     * a failed checkout. `NotificationService.send` already records the
+     * failure on `outboundMessages` and the retry sweep already picks
+     * it up, so nothing is lost by not throwing here.
+     *
+     * `dedupeKey` is the order id, so a redelivered Daraja callback
+     * that re-enters this path cannot text the customer twice.
+     */
+    try {
+      await this.notifications.send(businessId, {
+        channel: 'sms',
+        templateCode: 'order_confirmed_sms',
+        recipientType: 'customer',
+        recipientId: orderId,
+        recipientRef: phoneNumber,
+        params: {
+          orderRef,
+          totalKes: String(snapshot.totalKes),
+          mpesaReceipt: result.mpesaReceiptNumber ?? 'n/a',
+        },
+        dedupeKey: `order-confirmed:${orderId}`,
+      });
+    } catch (error) {
+      await publishEvent(businessId, 'OrderConfirmationSmsFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
     // Best-effort, same discipline as the shipment/referral calls
     // above — Firestore's `status: 'completed'` above is already the
     // real source of truth regardless of whether the BSP's own inbox

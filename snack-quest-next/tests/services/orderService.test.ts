@@ -3,6 +3,8 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { orderService, OrderNotFoundError, InvalidOrderTransitionError } from '@/services/orderService';
 import { orderRepository } from '@/repositories/orderRepository';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
+import { notificationTemplateRepository } from '@/repositories/notificationTemplateRepository';
 import { seedOrder } from '../helpers/orderFixtures';
 import type { ConversationCheckoutSnapshot } from '@/types';
 
@@ -190,5 +192,97 @@ describe('OrderService.createFromConversationSnapshot — order numbers', () => 
 
     expect(sq.orderNumber).toBe(1);
     expect(other.orderNumber).toBe(1);
+  });
+});
+
+/**
+ * § SMS-2: order shipment SMS. Real `notificationService` against the
+ * emulator rather than a mock — the point is that a real template
+ * resolves, renders, and lands on `outboundMessages` with the right
+ * recipient, which a mocked service would assert nothing about.
+ */
+describe('OrderService.updateStatus — shipment SMS', () => {
+  beforeEach(async () => {
+    await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
+    await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
+    await notificationTemplateRepository.upsert({
+      templateCode: 'order_dispatched_sms',
+      channel: 'sms',
+      subject: null,
+      bodyTemplate: 'Snack Quest: Your order {{orderRef}} has shipped and is on its way. Enjoy the quest!',
+      heading: null,
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: ['orderRef'],
+      version: 1,
+      isActive: true,
+    });
+  });
+
+  it('texts the customer when an order is dispatched', async () => {
+    const orderId = await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', orderNumber: 42 });
+
+    await orderService.updateStatus(BUSINESS_ID, orderId, 'dispatched', 'staff-uid-1');
+
+    const sent = await outboundMessageRepository.findById(`sms:order-dispatched:${orderId}`);
+    expect(sent).not.toBeNull();
+    expect(sent?.channel).toBe('sms');
+    expect(sent?.recipientRef).toBe('254712345678');
+    expect(sent?.renderedBody).toContain('SQ-42');
+  });
+
+  it('falls back to the order id when an old order has no orderNumber', async () => {
+    const orderId = await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed' });
+
+    await orderService.updateStatus(BUSINESS_ID, orderId, 'dispatched', 'staff-uid-1');
+
+    expect((await outboundMessageRepository.findById(`sms:order-dispatched:${orderId}`))?.renderedBody).toContain(
+      orderId,
+    );
+  });
+
+  it.each([
+    ['delivered', 'dispatched'],
+    ['cancelled', 'confirmed'],
+    ['refund_requested', 'confirmed'],
+  ] as const)('does not text on a %s transition', async (next, from) => {
+    const orderId = await seedOrder({ businessId: BUSINESS_ID, status: from, orderNumber: 7 });
+
+    await orderService.updateStatus(BUSINESS_ID, orderId, next, 'staff-uid-1');
+
+    const messages = await adminFirestore.collection('outboundMessages').get();
+    expect(messages.empty).toBe(true);
+  });
+
+  /**
+   * The dedupe key is the second guarantee behind the transition guard:
+   * even if an order somehow re-entered `dispatched`, the customer is
+   * never texted about the same shipment twice.
+   */
+  it('never texts twice for one shipment', async () => {
+    const orderId = await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', orderNumber: 42 });
+    await orderService.updateStatus(BUSINESS_ID, orderId, 'dispatched', 'staff-uid-1');
+    await orderRepository.updateStatus(orderId, 'confirmed', 'staff-uid-1');
+
+    await orderService.updateStatus(BUSINESS_ID, orderId, 'dispatched', 'staff-uid-1');
+
+    const messages = await adminFirestore.collection('outboundMessages').get();
+    expect(messages.size).toBe(1);
+  });
+
+  /**
+   * A dispatch a staff member just performed must never fail because a
+   * text could not be sent — the status change is already committed and
+   * is the real source of truth.
+   */
+  it('still completes the dispatch when the SMS template is missing', async () => {
+    await adminFirestore.recursiveDelete(adminFirestore.collection('notificationTemplates'));
+    const orderId = await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', orderNumber: 42 });
+
+    const updated = await orderService.updateStatus(BUSINESS_ID, orderId, 'dispatched', 'staff-uid-1');
+
+    expect(updated.status).toBe('dispatched');
+    expect((await adminFirestore.collection('orders').doc(orderId).get()).data()?.status).toBe('dispatched');
   });
 });

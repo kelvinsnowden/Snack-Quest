@@ -8,7 +8,9 @@ import {
 } from '@/repositories/orderRepository';
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
 import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
+import { formatOrderNumber } from '@/lib/orders/format';
 import type { ConversationCheckoutSnapshot, ConversionAttribution, Order, OrderStatus } from '@/types';
 
 /**
@@ -168,6 +170,42 @@ class OrderService {
       actor,
       reason: reason ?? null,
     });
+
+    /*
+     * Shipment SMS, sent from the one chokepoint every admin status
+     * change already goes through — a route that dispatched an order
+     * without texting the customer would have to bypass this method,
+     * which this method's own doc comment above exists to prevent.
+     *
+     * Guarded on the transition, not the resulting status: re-saving an
+     * already-dispatched order must not text again. `dedupeKey` makes
+     * that a second, independent guarantee rather than relying on the
+     * transition table alone.
+     *
+     * Best-effort by design. The status change is already committed and
+     * is the real source of truth; a texting failure is recorded on
+     * `outboundMessages` for the retry sweep and must never roll back
+     * or fail a dispatch a staff member just performed.
+     */
+    if (next === 'dispatched') {
+      try {
+        await notificationService.send(businessId, {
+          channel: 'sms',
+          templateCode: 'order_dispatched_sms',
+          recipientType: 'customer',
+          recipientId: orderId,
+          recipientRef: order.customer.phoneNumber,
+          params: {
+            orderRef: order.orderNumber ? formatOrderNumber(order.orderNumber) : orderId,
+          },
+          dedupeKey: `order-dispatched:${orderId}`,
+        });
+      } catch (error) {
+        await publishEvent(businessId, 'OrderDispatchedSmsFailed', 'order', orderId, {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
+    }
 
     return { ...order, status: next };
   }
