@@ -20,6 +20,29 @@ import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
 import type { DeliveryMethod } from '@/types/delivery';
 import type { WebCheckoutResponse } from '@/types/webCheckout';
+import type { ManualPaymentMethod } from '@/types';
+
+/**
+ * The two ways an order gets taken. `request` is the original and the
+ * default: price it, then push the customer an M-Pesa prompt.
+ * `already_paid` (§ super-admin manual payment orders) is for the
+ * customer who has *already* handed over money — cash at a stand, an
+ * M-Pesa transfer they sent themselves, a bank transfer — where a
+ * second prompt would be asking them to pay twice.
+ */
+type PaymentMode = 'request' | 'already_paid';
+
+const MANUAL_METHOD_LABELS: Record<ManualPaymentMethod, string> = {
+  cash: 'Cash',
+  mpesa_manual: 'M-Pesa (sent by customer)',
+  bank_transfer: 'Bank transfer',
+};
+
+const MANUAL_REFERENCE_LABELS: Record<ManualPaymentMethod, string> = {
+  cash: 'Reference (optional)',
+  mpesa_manual: 'M-Pesa code',
+  bank_transfer: 'Bank reference',
+};
 
 /**
  * Take an order for a customer and send them the M-Pesa prompt
@@ -39,7 +62,14 @@ export interface OrderableBox {
   priceKes: number;
 }
 
-export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) {
+export function StaffInitiatedOrderDialog({
+  boxes,
+  canRecordManualPayment = false,
+}: {
+  boxes: OrderableBox[];
+  /** True only for a super admin — the server enforces this independently, so a tampered client gains nothing. */
+  canRecordManualPayment?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [boxId, setBoxId] = useState(boxes[0]?.id ?? '');
@@ -50,6 +80,10 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
   const [referralCode, setReferralCode] = useState('');
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('request');
+  const [manualMethod, setManualMethod] = useState<ManualPaymentMethod>('cash');
+  const [manualReference, setManualReference] = useState('');
+  const [manualNote, setManualNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<WebCheckoutResponse | null>(null);
@@ -62,18 +96,28 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
     setStation(null);
     setAddressText('');
     setReferralCode('');
+    setPaymentMode('request');
+    setManualMethod('cash');
+    setManualReference('');
+    setManualNote('');
     setError(null);
     setSent(null);
   }
 
   const parsedQuantity = Number.parseInt(quantity, 10);
+  const alreadyPaid = paymentMode === 'already_paid';
+  // Cash is the only method with nothing to reference. The server
+  // enforces this too — this is here so the button explains itself
+  // rather than the request coming back 400.
+  const manualReferenceReady = manualMethod === 'cash' || manualReference.trim().length > 0;
   const ready =
     Boolean(boxId) &&
     customerName.trim().length >= 2 &&
     isValidKenyanPhone(phone) &&
     Number.isFinite(parsedQuantity) &&
     parsedQuantity >= 1 &&
-    (deliveryMethod === 'pickup' ? Boolean(station) : addressText.trim().length >= 5);
+    (deliveryMethod === 'pickup' ? Boolean(station) : addressText.trim().length >= 5) &&
+    (!alreadyPaid || manualReferenceReady);
 
   async function onSubmit() {
     setSubmitting(true);
@@ -93,6 +137,15 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
             ? { pickupStationId: station?.id }
             : { addressText: addressText.trim() }),
           referralCode: referralCode.trim() || undefined,
+          ...(alreadyPaid
+            ? {
+                manualPayment: {
+                  method: manualMethod,
+                  reference: manualReference.trim() || null,
+                  note: manualNote.trim() || null,
+                },
+              }
+            : {}),
         }),
       });
       const payload = (await response.json()) as WebCheckoutResponse | { error: string };
@@ -129,12 +182,18 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <CheckCircle2 className="text-success size-5" aria-hidden="true" />
-                  {sent.stkPushSent ? 'Payment request sent' : 'Order created, prompt failed'}
+                  {alreadyPaid
+                    ? 'Order recorded as paid'
+                    : sent.stkPushSent
+                      ? 'Payment request sent'
+                      : 'Order created, prompt failed'}
                 </DialogTitle>
                 <DialogDescription>
-                  {sent.stkPushSent
-                    ? `${customerName.trim()} has an M-Pesa prompt for ${formatKes(sent.pricing.totalKes)} on ${sent.payingPhone}. The order confirms itself once they pay.`
-                    : `The order is priced and saved, but the M-Pesa prompt did not reach Safaricom. Nothing has been charged — take the order again to retry.`}
+                  {alreadyPaid
+                    ? `${customerName.trim()}'s order is confirmed and their box is queued for packing. No M-Pesa prompt was sent — you recorded ${formatKes(sent.pricing.totalKes)} as already received.`
+                    : sent.stkPushSent
+                      ? `${customerName.trim()} has an M-Pesa prompt for ${formatKes(sent.pricing.totalKes)} on ${sent.payingPhone}. The order confirms itself once they pay.`
+                      : `The order is priced and saved, but the M-Pesa prompt did not reach Safaricom. Nothing has been charged — take the order again to retry.`}
                 </DialogDescription>
               </DialogHeader>
 
@@ -154,7 +213,21 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
                       : formatKes(sent.pricing.deliveryFeeKes)
                   }
                 />
-                <SummaryRow label="Total requested" value={formatKes(sent.pricing.totalKes)} strong />
+                <SummaryRow
+                  label={alreadyPaid ? 'Total recorded as paid' : 'Total requested'}
+                  value={formatKes(sent.pricing.totalKes)}
+                  strong
+                />
+                {alreadyPaid ? (
+                  <SummaryRow
+                    label="Paid by"
+                    value={
+                      manualReference.trim()
+                        ? `${MANUAL_METHOD_LABELS[manualMethod]} · ${manualReference.trim()}`
+                        : MANUAL_METHOD_LABELS[manualMethod]
+                    }
+                  />
+                ) : null}
               </dl>
 
               {sent.pricing.boltArrangedSeparately ? (
@@ -175,8 +248,9 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
               <DialogHeader>
                 <DialogTitle>Take an order</DialogTitle>
                 <DialogDescription>
-                  Places the order and sends the customer an M-Pesa prompt. Priced exactly as the website would
-                  price it — you can&apos;t change the amount here.
+                  {alreadyPaid
+                    ? 'Records an order the customer has already paid for. No M-Pesa prompt is sent. Priced exactly as the website would price it — you can\u2019t change the amount here.'
+                    : 'Places the order and sends the customer an M-Pesa prompt. Priced exactly as the website would price it — you can\u2019t change the amount here.'}
                 </DialogDescription>
               </DialogHeader>
 
@@ -229,7 +303,9 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
                     aria-invalid={phone.length > 0 && !isValidKenyanPhone(phone)}
                   />
                   <p className="text-muted-foreground text-sm">
-                    The prompt goes here, and so does a WhatsApp message explaining what it&apos;s for.
+                    {alreadyPaid
+                      ? 'No prompt is sent. This is the number the confirmation SMS and WhatsApp message go to.'
+                      : "The prompt goes here, and so does a WhatsApp message explaining what it's for."}
                   </p>
                 </div>
 
@@ -272,6 +348,86 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
                   </div>
                 )}
 
+                {canRecordManualPayment ? (
+                  <div className="flex flex-col gap-2">
+                    <Label>Payment</Label>
+                    <div className="flex gap-2">
+                      {(
+                        [
+                          ['request', 'Send M-Pesa prompt'],
+                          ['already_paid', 'Already paid'],
+                        ] as const
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setPaymentMode(mode)}
+                          aria-pressed={paymentMode === mode}
+                          className={cn(
+                            'focus-visible:ring-primary flex-1 rounded-md border px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2',
+                            paymentMode === mode
+                              ? 'border-primary bg-primary/5 text-foreground font-medium'
+                              : 'border-border bg-surface text-muted-foreground hover:bg-border/30',
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {alreadyPaid ? (
+                  <div className="border-warning/40 bg-warning/5 flex flex-col gap-4 rounded-lg border p-4">
+                    <p className="text-muted-foreground text-sm">
+                      You are recording that this money has already arrived. Nothing verifies it — the order counts as
+                      revenue immediately, and your name is saved against it.
+                    </p>
+
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="staff-order-manual-method">How they paid</Label>
+                      <select
+                        id="staff-order-manual-method"
+                        value={manualMethod}
+                        onChange={(event) => setManualMethod(event.target.value as ManualPaymentMethod)}
+                        className="border-border bg-surface text-foreground focus-visible:ring-primary h-10 rounded-md border px-3 text-sm shadow-sm outline-none focus-visible:ring-2"
+                      >
+                        {(Object.keys(MANUAL_METHOD_LABELS) as ManualPaymentMethod[]).map((method) => (
+                          <option key={method} value={method}>
+                            {MANUAL_METHOD_LABELS[method]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="staff-order-manual-ref">{MANUAL_REFERENCE_LABELS[manualMethod]}</Label>
+                      <Input
+                        id="staff-order-manual-ref"
+                        value={manualReference}
+                        onChange={(event) => setManualReference(event.target.value)}
+                        placeholder={manualMethod === 'mpesa_manual' ? 'NLJ7RT61SV' : ''}
+                        aria-invalid={!manualReferenceReady}
+                      />
+                      <p className="text-muted-foreground text-sm">
+                        {manualMethod === 'cash'
+                          ? 'Cash has no code to record, so this is optional — a till or receipt number if you have one.'
+                          : 'Required. This is the only record tying the order to money that actually moved.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="staff-order-manual-note">Note (optional)</Label>
+                      <Input
+                        id="staff-order-manual-note"
+                        value={manualNote}
+                        onChange={(event) => setManualNote(event.target.value)}
+                        placeholder="Paid at the Sarit stand"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="staff-order-ref">Referral code (optional)</Label>
                   <Input
@@ -294,7 +450,7 @@ export function StaffInitiatedOrderDialog({ boxes }: { boxes: OrderableBox[] }) 
                   Cancel
                 </Button>
                 <Button onClick={onSubmit} loading={submitting} disabled={!ready}>
-                  Send payment request
+                  {alreadyPaid ? 'Record paid order' : 'Send payment request'}
                 </Button>
               </DialogFooter>
             </>

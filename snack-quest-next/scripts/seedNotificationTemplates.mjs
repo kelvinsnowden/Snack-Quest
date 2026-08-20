@@ -296,10 +296,13 @@ const TEMPLATES = [
     subject: null,
     heading: null,
     bodyTemplate:
-      'Snack Quest: Payment received. Order {{orderRef}} is confirmed — KES {{totalKes}}, M-Pesa ref {{mpesaReceipt}}. We will text you the moment it ships.',
+      'Snack Quest: Payment received. Order {{orderRef}} is confirmed — KES {{totalKes}} ({{paymentRef}}). We will text you the moment it ships.',
     ctaLabel: null,
     ctaUrl: null,
-    requiredParams: ['orderRef', 'totalKes', 'mpesaReceipt'],
+    // `paymentRef` rather than an M-Pesa receipt: a cash or bank-transfer
+    // order genuinely has no M-Pesa code, and "M-Pesa ref cash" is worse
+    // than saying nothing (§ super-admin manual payment orders).
+    requiredParams: ['orderRef', 'totalKes', 'paymentRef'],
     htmlBodyTemplate: null,
     version: 1,
     isActive: true,

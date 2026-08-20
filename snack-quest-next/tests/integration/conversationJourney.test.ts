@@ -1280,12 +1280,12 @@ describe('order confirmation SMS (§ SMS-1)', () => {
       channel: 'sms',
       subject: null,
       bodyTemplate:
-        'Snack Quest: Payment received. Order {{orderRef}} is confirmed — KES {{totalKes}}, M-Pesa ref {{mpesaReceipt}}. We will text you the moment it ships.',
+        'Snack Quest: Payment received. Order {{orderRef}} is confirmed — KES {{totalKes}} ({{paymentRef}}). We will text you the moment it ships.',
       heading: null,
       ctaLabel: null,
       ctaUrl: null,
       htmlBodyTemplate: null,
-      requiredParams: ['orderRef', 'totalKes', 'mpesaReceipt'],
+      requiredParams: ['orderRef', 'totalKes', 'paymentRef'],
       version: 1,
       isActive: true,
     });
@@ -1347,5 +1347,189 @@ describe('order confirmation SMS (§ SMS-1)', () => {
 
     expect(orderDoc.data().status).toBe('confirmed');
     expect(await outboundMessageRepository.findById(`sms:order-confirmed:${orderDoc.id}`)).toBeNull();
+  });
+});
+
+/**
+ * § super-admin manual payment orders — an order for a customer who has
+ * already paid in cash, by their own M-Pesa transfer, or by bank
+ * transfer. No STK push is made; the intent is settled from the super
+ * admin's own record.
+ *
+ * These run the real journey rather than mocking the service, because
+ * the property worth proving is that the *same* downstream path runs:
+ * a cash order must reserve stock, award referral commission, create a
+ * shipment and notify the customer exactly as a Daraja order does.
+ */
+describe('recording an order that is already paid (§ manual payment)', () => {
+  beforeEach(async () => {
+    await seedBusiness(SNACK_QUEST);
+    await seedPackages(SNACK_QUEST.businessId);
+    // Deliberately not `seedFreePickupStation`: its station sits in
+    // zone 'Nairobi', which is not one of Jumia's six real zones, and
+    // the *web* checkout path refuses an unzoned station outright
+    // (the WhatsApp path the other tests use never reaches that check).
+    await pickupStationRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        courier: 'jumia',
+        name: 'Zoned CBD Station',
+        latitude: -1.2833,
+        longitude: 36.8167,
+        description: 'Nairobi CBD',
+        county: 'Nairobi',
+        town: 'CBD',
+        zone: 'Zone 1',
+        shippingOrigin: 'Nairobi',
+        packageCategory: 'small',
+        deliveryFeeKes: 0,
+        isActive: true,
+        searchTokens: ['zoned', 'cbd', 'nairobi'],
+      },
+      'system',
+    );
+  });
+
+  const RECORDER = { recordedByUid: 'super-admin-uid', recordedByName: 'Kelvin' };
+
+  /** Package and station ids are generated at seed time, so they are looked up rather than hard-coded. */
+  async function seededIds() {
+    const boxes = await adminFirestore
+      .collection('packages')
+      .where('businessId', '==', SNACK_QUEST.businessId)
+      .get();
+    const starter = boxes.docs.find((doc) => doc.data().name === 'Starter Box');
+    const stations = await adminFirestore
+      .collection('pickupStations')
+      .where('businessId', '==', SNACK_QUEST.businessId)
+      .get();
+    return { packageId: starter!.id, pickupStationId: stations.docs[0].id };
+  }
+
+  async function takePaidOrder(
+    manualPayment: { method: 'cash' | 'mpesa_manual' | 'bank_transfer'; reference: string | null; note?: string | null },
+  ) {
+    const { packageId, pickupStationId } = await seededIds();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway);
+    const result = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId,
+      quantity: 1,
+      customerName: 'Wanjiru Kamau',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'pickup',
+      pickupStationId,
+      initiatedBy: { staffUid: RECORDER.recordedByUid, staffName: RECORDER.recordedByName },
+      manualPayment: { ...RECORDER, note: null, ...manualPayment },
+    });
+    return { result, gateway, packageId };
+  }
+
+  it('creates a confirmed order without ever calling Daraja', async () => {
+    const fetchMock = mockAllProviders();
+
+    const { result } = await takePaidOrder({ method: 'cash', reference: null });
+
+    expect(result.stkPushSent).toBe(false);
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(1);
+    expect(orders.docs[0].data().status).toBe('confirmed');
+
+    // The decisive assertion: no STK push request was ever made.
+    const darajaCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('stkpush'),
+    );
+    expect(darajaCalls).toHaveLength(0);
+  });
+
+  it('records who asserted the payment, on both the intent and the order', async () => {
+    mockAllProviders();
+
+    await takePaidOrder({ method: 'cash', reference: null, note: 'Paid at the Sarit stand' });
+
+    const order = (await adminFirestore.collection('orders').get()).docs[0].data();
+    expect(order.payment.manualPayment).toMatchObject({
+      method: 'cash',
+      reference: null,
+      recordedByUid: 'super-admin-uid',
+      recordedByName: 'Kelvin',
+      note: 'Paid at the Sarit stand',
+    });
+
+    const intent = await adminFirestore.collection('paymentIntents').doc(order.payment.paymentIntentId).get();
+    expect(intent.data()?.status).toBe('succeeded');
+    expect(intent.data()?.manualPayment).toMatchObject({ method: 'cash', recordedByUid: 'super-admin-uid' });
+  });
+
+  /**
+   * The single most important assertion here. A cash order has no
+   * Safaricom receipt, and inventing one would make an asserted payment
+   * indistinguishable from a verified one in every downstream report.
+   */
+  it('never fabricates an M-Pesa receipt for cash or a bank transfer', async () => {
+    mockAllProviders();
+
+    await takePaidOrder({ method: 'bank_transfer', reference: 'FT24ABCD1234' });
+
+    const order = (await adminFirestore.collection('orders').get()).docs[0].data();
+    expect(order.payment.mpesaReceiptNumber).toBeNull();
+    expect(order.payment.manualPayment.reference).toBe('FT24ABCD1234');
+  });
+
+  it('keeps a customer-sent M-Pesa code as the real receipt', async () => {
+    mockAllProviders();
+
+    await takePaidOrder({ method: 'mpesa_manual', reference: 'TXY9KL22PQ' });
+
+    const order = (await adminFirestore.collection('orders').get()).docs[0].data();
+    expect(order.payment.mpesaReceiptNumber).toBe('TXY9KL22PQ');
+  });
+
+  it('runs the whole downstream path: stock reserved, shipment created, customer confirmed', async () => {
+    mockAllProviders();
+    // The seeded box has no `stockCount` at all (unlimited), so a real
+    // count is set first — otherwise "stock was reserved" would pass
+    // against a box that never tracked stock in the first place.
+    const { packageId } = await seededIds();
+    await packageRepository.update(packageId, { stockCount: 5 }, 'system');
+
+    const { gateway } = await takePaidOrder({ method: 'cash', reference: null });
+
+    expect((await packageRepository.findById(SNACK_QUEST.businessId, packageId))?.stockCount).toBe(4);
+
+    const shipments = await adminFirestore.collection('shipments').get();
+    expect(shipments.size).toBe(1);
+
+    expect(gateway.sent.some((message) => message.text.includes('Payment received!'))).toBe(true);
+  });
+
+  /** No prompt is coming, so promising one would be a lie. */
+  it('does not tell the customer an M-Pesa prompt is on its way', async () => {
+    mockAllProviders();
+
+    const { gateway } = await takePaidOrder({ method: 'cash', reference: null });
+
+    expect(gateway.sent.some((message) => message.text.includes('An M-Pesa prompt is on its way'))).toBe(false);
+  });
+
+  /** "Receipt: ." would be worse than saying nothing. */
+  it('omits the receipt clause from the confirmation when there is no receipt', async () => {
+    mockAllProviders();
+
+    const { gateway } = await takePaidOrder({ method: 'cash', reference: null });
+
+    const confirmation = gateway.sent.find((message) => message.text.includes('Payment received!'));
+    expect(confirmation?.text).not.toContain('Receipt:');
+  });
+
+  it('still reserves stock atomically, refusing an out-of-stock box', async () => {
+    mockAllProviders();
+    const { packageId } = await seededIds();
+    await packageRepository.update(packageId, { stockCount: 0 }, 'system');
+
+    await expect(takePaidOrder({ method: 'cash', reference: null })).rejects.toThrow();
+
+    expect((await adminFirestore.collection('orders').get()).size).toBe(0);
   });
 });

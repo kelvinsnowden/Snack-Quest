@@ -11,7 +11,13 @@ import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
 import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
 import { formatOrderNumber } from '@/lib/orders/format';
-import type { ConversationCheckoutSnapshot, ConversionAttribution, Order, OrderStatus } from '@/types';
+import type {
+  ConversationCheckoutSnapshot,
+  ConversionAttribution,
+  ManualPaymentRecord,
+  Order,
+  OrderStatus,
+} from '@/types';
 
 /**
  * Owns order finalization (PLATFORM_ARCHITECTURE_V2.md §14/§16): an
@@ -31,7 +37,20 @@ export interface CreateOrderInput {
   snapshotId: string;
   snapshot: ConversationCheckoutSnapshot;
   paymentIntentId: string;
+  /**
+   * The real Safaricom receipt for a Daraja-settled order. Empty for a
+   * manually-recorded payment with no M-Pesa code behind it (cash, bank
+   * transfer) — never a placeholder that would read as a receipt to a
+   * downstream report; see `manualPayment` below.
+   */
   mpesaReceiptNumber: string;
+  /**
+   * Set only when a super admin recorded that payment already arrived
+   * outside Daraja (§ super-admin manual payment orders). Its presence
+   * is what distinguishes an asserted payment from a verified one on
+   * the order itself, without a join back to `paymentIntents`.
+   */
+  manualPayment?: ManualPaymentRecord | null;
   /** `Conversation.attributionSnapshot` (§ close the loop: ad-conversion attribution) — copied onto the order verbatim, null for a native WhatsApp-originated conversation. */
   attribution: ConversionAttribution | null;
 }
@@ -52,7 +71,7 @@ export class InvalidOrderTransitionError extends Error {
 
 class OrderService {
   async createFromConversationSnapshot(input: CreateOrderInput): Promise<{ orderId: string; orderNumber: number }> {
-    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber, attribution } = input;
+    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber, manualPayment, attribution } = input;
 
     // Absent on every snapshot frozen before the website checkout
     // existed, and on every WhatsApp one since — a conversation can
@@ -95,7 +114,11 @@ class OrderService {
           delivery: snapshot.delivery,
           payment: {
             paymentIntentId,
-            mpesaReceiptNumber,
+            // Normalised to null rather than stored as '' — an empty
+            // string would render as a blank receipt field in Admin
+            // instead of the honest "no receipt" this represents.
+            mpesaReceiptNumber: mpesaReceiptNumber || null,
+            manualPayment: manualPayment ?? null,
           },
           pricing: {
             subtotalKes: snapshot.subtotalKes,

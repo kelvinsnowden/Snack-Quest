@@ -7,8 +7,9 @@ import { pickupStationRepository } from '@/repositories/pickupStationRepository'
 import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
+import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
-import type { ConversionAttribution } from '@/types';
+import type { ConversionAttribution, ManualPaymentRecord } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
@@ -105,6 +106,42 @@ async function getAvailablePackages(businessId: string): Promise<PackageOption[]
   }));
 }
 
+/**
+ * What to tell the customer their payment was, in one short fragment
+ * that reads naturally inside the confirmation SMS for every payment
+ * route (§ super-admin manual payment orders):
+ *
+ *   "KES 2500 (M-Pesa NLJ7RT61SV)."   — a normal Daraja payment
+ *   "KES 2500 (M-Pesa TXY9KL22PQ)."   — a transfer the customer sent themselves
+ *   "KES 2500 (cash)."                — cash at a stand
+ *   "KES 2500 (bank transfer)."       — bank transfer
+ *
+ * Never invents a receipt: a method with no code says the method
+ * instead, which is both true and the thing the customer would
+ * recognise.
+ */
+function formatPaymentReference(
+  mpesaReceiptNumber: string | null,
+  manualPayment: ManualPaymentRecord | null | undefined,
+): string {
+  if (mpesaReceiptNumber) {
+    return `M-Pesa ${mpesaReceiptNumber}`;
+  }
+  switch (manualPayment?.method) {
+    case 'cash':
+      return 'cash';
+    case 'bank_transfer':
+      return manualPayment.reference ? `bank transfer ${manualPayment.reference}` : 'bank transfer';
+    case 'mpesa_manual':
+      return 'M-Pesa';
+    default:
+      // A Daraja payment whose callback somehow carried no receipt —
+      // already an anomaly the reconciliation sweep flags; the customer
+      // still gets a truthful confirmation rather than a blank.
+      return 'payment received';
+  }
+}
+
 function isNairobiCounty(county: string | undefined): boolean {
   return (county ?? '').toLowerCase().includes('nairobi');
 }
@@ -183,6 +220,21 @@ export class WebCheckoutConflictError extends Error {
 
 /** Exactly `WebCheckoutRequest`, but with the fields the route has already narrowed to real types. */
 export interface WebCheckoutInput {
+  /**
+   * Set only by the staff-initiated order route, only for a
+   * super admin, and only when the customer has *already* paid
+   * (§ super-admin manual payment orders): cash at a stand, an M-Pesa
+   * transfer they sent themselves, or a bank transfer.
+   *
+   * Its presence changes exactly two things — no STK push is sent, and
+   * the intent is settled from this record instead of from a Daraja
+   * callback. Everything before that point is byte-for-byte the normal
+   * checkout: same validation, same stock check, same pricing, same
+   * referral and wallet handling. There is deliberately no amount field
+   * here; a super admin can record *that* money arrived, never *how
+   * much*, so this can never become a discount mechanism.
+   */
+  manualPayment?: Omit<ManualPaymentRecord, 'recordedAt'>;
   packageId: string;
   quantity: number;
   customerName: string;
@@ -589,7 +641,11 @@ class ConversationService {
     // difference between a service and a scam — so this goes out ahead
     // of the push, not after it, and a send failure doesn't stop the
     // order (the staff member is on the phone with them anyway).
-    if (input.initiatedBy) {
+    //
+    // Skipped entirely for an already-paid order: there is no prompt
+    // coming, and promising one would be a lie. `completeOrder` sends
+    // that customer a real confirmation moments later instead.
+    if (input.initiatedBy && !input.manualPayment) {
       try {
         await this.reply(
           businessId,
@@ -614,6 +670,81 @@ class ConversationService {
       phoneNumber,
       amountKes: totalKes,
     });
+
+    /*
+     * Already-paid order (§ super-admin manual payment orders). No STK
+     * push is made at all — the intent is settled from the super
+     * admin's record, then handed to the exact same
+     * `handlePaymentResult` a real Daraja callback would go through.
+     *
+     * That reuse is the whole design. Order creation, the atomic stock
+     * decrement, referral commission, wallet redemption and milestone,
+     * shipment creation, ad-conversion dispatch, the admin notification
+     * and both customer confirmations are one code path for both kinds
+     * of payment — a cash order cannot silently skip a step that a
+     * Daraja order performs, because there is no second implementation
+     * for it to skip them in.
+     */
+    if (input.manualPayment) {
+      const settlement = await paymentService.recordManualPayment({
+        businessId,
+        intentId,
+        manualPayment: input.manualPayment,
+      });
+      if (!settlement.settled) {
+        throw new WebCheckoutConflictError(settlement.reason ?? 'Could not record this payment.');
+      }
+
+      await this.handlePaymentResult({
+        status: 'succeeded',
+        intentId,
+        conversationId,
+        snapshotId,
+        amountKes: totalKes,
+        // Only a customer-initiated M-Pesa transfer has a real code to
+        // record. Cash and bank transfers carry none rather than
+        // something shaped like a Safaricom receipt.
+        mpesaReceiptNumber:
+          input.manualPayment.method === 'mpesa_manual' ? (input.manualPayment.reference ?? '') : '',
+        // Admin-SDK Timestamp into a type declared with the client
+        // SDK's — the same cast every other write in this codebase
+        // uses at that boundary.
+        manualPayment: {
+          ...input.manualPayment,
+          recordedAt: Timestamp.now() as unknown as ManualPaymentRecord['recordedAt'],
+        },
+      });
+
+      await publishEvent(businessId, 'StaffRecordedPaidOrder', 'conversation', conversationId, {
+        staffUid: input.initiatedBy?.staffUid ?? null,
+        staffName: input.initiatedBy?.staffName ?? null,
+        method: input.manualPayment.method,
+        reference: input.manualPayment.reference,
+        phoneNumber,
+        packageId: input.packageId,
+        quantity,
+        totalKes,
+      });
+
+      return {
+        checkoutSessionId: conversationId,
+        payingPhone: phoneNumber,
+        // Nothing was pushed and nothing needs to be — the order is
+        // already complete by the time this returns.
+        stkPushSent: false,
+        pricing: {
+          packageLabel: box.name,
+          quantity,
+          unitPriceKes: box.priceKes,
+          subtotalKes,
+          discountKes,
+          walletCreditAppliedKes,
+          deliveryFeeKes: delivery.feeKes,
+          totalKes,
+          boltArrangedSeparately: delivery.method === 'door',
+        },
+      };
+    }
 
     let stkPushSent = true;
     try {
@@ -1875,6 +2006,7 @@ class ConversationService {
         snapshot,
         paymentIntentId: result.intentId,
         mpesaReceiptNumber: result.mpesaReceiptNumber,
+        manualPayment: result.manualPayment ?? null,
         attribution,
       }));
     } catch (error) {
@@ -2021,7 +2153,7 @@ class ConversationService {
         params: {
           orderRef,
           totalKes: String(snapshot.totalKes),
-          mpesaReceipt: result.mpesaReceiptNumber ?? 'n/a',
+          paymentRef: formatPaymentReference(result.mpesaReceiptNumber, result.manualPayment),
         },
         dedupeKey: `order-confirmed:${orderId}`,
       });
@@ -2051,10 +2183,17 @@ class ConversationService {
     // notice); door delivery has no pickup station or tracking URL to
     // reference — the human agent already told the customer the price,
     // so this just confirms the payment landed.
+    /*
+     * A cash or bank-transfer order has no M-Pesa receipt to quote, so
+     * the receipt clause is dropped rather than rendered as an empty
+     * "Receipt: ." — the customer is told their payment is recorded,
+     * which is the true and useful thing to say.
+     */
+    const receiptClause = result.mpesaReceiptNumber ? ` Receipt: ${result.mpesaReceiptNumber}.` : '';
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
-        ? `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
-        : `Payment received! Receipt: ${result.mpesaReceiptNumber}. Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
+        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
+        : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     const milestoneMessage =
       milestoneAwardKes > 0 ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.` : '';

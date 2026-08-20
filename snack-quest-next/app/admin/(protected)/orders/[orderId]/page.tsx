@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ManualPaymentMethod } from '@/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
@@ -25,6 +26,13 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
     </div>
   );
 }
+
+/** Mirrors `ManualPaymentMethod` — kept here rather than imported so this display copy reads for a human, not for a database. */
+const MANUAL_PAYMENT_LABELS: Record<ManualPaymentMethod, string> = {
+  cash: 'Cash',
+  mpesa_manual: 'M-Pesa (sent by customer)',
+  bank_transfer: 'Bank transfer',
+};
 
 export default async function AdminOrderDetailPage({
   params,
@@ -98,6 +106,30 @@ export default async function AdminOrderDetailPage({
               label="M-Pesa receipt"
               value={<span className="tabular-nums">{payment.mpesaReceiptNumber ?? '—'}</span>}
             />
+            {/*
+              An order settled outside Daraja says so plainly, and says
+              who vouched for it. Without this the Payment card would
+              show an em-dash receipt and look like a Daraja payment
+              that lost its callback — the one confusion that matters
+              when the books are being checked.
+            */}
+            {payment.manualPayment ? (
+              <>
+                <DetailRow
+                  label="Recorded as paid"
+                  value={
+                    <span className="text-warning font-medium">
+                      {MANUAL_PAYMENT_LABELS[payment.manualPayment.method]}
+                      {payment.manualPayment.reference ? ` · ${payment.manualPayment.reference}` : ''}
+                    </span>
+                  }
+                />
+                <DetailRow label="Recorded by" value={payment.manualPayment.recordedByName} />
+                {payment.manualPayment.note ? (
+                  <DetailRow label="Note" value={payment.manualPayment.note} />
+                ) : null}
+              </>
+            ) : null}
             <DetailRow label="Payment intent" value={<span className="text-xs tabular-nums">{payment.paymentIntentId}</span>} />
           </CardContent>
         </Card>
