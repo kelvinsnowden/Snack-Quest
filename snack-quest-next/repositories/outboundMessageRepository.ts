@@ -75,6 +75,59 @@ class OutboundMessageRepository {
     });
   }
 
+  /**
+   * § TextSMS delivery reports — the provider confirmed the handset
+   * actually received it, which `markSent` alone never establishes
+   * (that only means the aggregator accepted the message). This is the
+   * one writer of `deliveredAt`, which was `null` for every message
+   * until the DLR callback existed.
+   */
+  async markDelivered(id: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({
+      status: 'delivered',
+      deliveredAt: FieldValue.serverTimestamp(),
+      failureReason: null,
+    });
+  }
+
+  /**
+   * A delivery report saying the message will never arrive (rejected,
+   * expired, undeliverable). Distinct from `markFailed` on purpose:
+   * `'failed'` means *we* could not hand the message over and a retry
+   * may well work, so `listRetryable` picks it up — `'bounced'` means
+   * the provider accepted it and the network then refused it, which
+   * retrying would only repeat. Nothing re-sends a bounced message.
+   */
+  async markBounced(id: string, failureReason: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({
+      status: 'bounced',
+      failureReason,
+    });
+  }
+
+  /**
+   * § TextSMS delivery reports — resolves a provider's own message id
+   * back to the dispatch record, since a DLR callback identifies the
+   * message by that id and nothing else. Two equality filters only, so
+   * no composite index is needed (same reasoning as `getTemplateStats`
+   * below). Scoped by `businessId` so one tenant's callback can never
+   * reach another's dispatch log, even on an id collision.
+   */
+  async findByProviderMessageId(
+    businessId: string,
+    providerMessageId: string,
+  ): Promise<{ id: string; data: OutboundMessage } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('providerMessageId', '==', providerMessageId)
+      .limit(1)
+      .get();
+
+    const doc = snapshot.docs[0];
+    return doc ? { id: doc.id, data: doc.data() as OutboundMessage } : null;
+  }
+
   /** The sweep bumps this before re-attempting, so a message that keeps failing eventually crosses the retry ceiling instead of retrying forever. */
   async incrementRetryCount(id: string): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(id).update({ retryCount: FieldValue.increment(1) });

@@ -6,6 +6,7 @@ import { notificationRepository } from '@/repositories/notificationRepository';
 import { NotificationService, TemplateNotFoundError, notificationService } from '@/services/notificationService';
 import { MissingTemplateParamsError } from '@/lib/notifications/renderTemplate';
 import type { WhatsAppGateway, EmailGateway, SmsGateway } from '@/lib/integrations/types';
+import type { TextSmsDeliveryReport } from '@/lib/integrations/sms/parseTextSmsDlr';
 
 /**
  * `NotificationService` end to end against the real Firestore emulator
@@ -318,5 +319,132 @@ describe('NotificationService.listMessagesForRecipient', () => {
     const { messages } = await notificationService.listMessagesForRecipient(BUSINESS_ID, ['amina@example.com']);
 
     expect(messages.map((m) => m.id)).toEqual(['email:1']);
+  });
+});
+
+/**
+ * § TextSMS delivery reports. Real repository writes against the
+ * emulator, since the whole point of these is which Firestore fields
+ * end up set — `parseTextSmsDlr.test.ts` covers the status mapping that
+ * decides which branch runs, and `textSmsDlrWebhook.test.ts` the wire.
+ */
+describe('NotificationService.applySmsDeliveryReport', () => {
+  const SENT_MESSAGE_ID = 'sms:withdrawal-dlr';
+
+  async function seedSentSms(providerMessageId: string | null) {
+    await outboundMessageRepository.create(SENT_MESSAGE_ID, {
+      businessId: BUSINESS_ID,
+      notificationId: null,
+      channel: 'sms',
+      templateCode: 'withdrawal_paid_sms',
+      recipientRef: '254713482448',
+      renderedSubject: null,
+      renderedBody: 'Snack Quest: your withdrawal of KES 500 has been paid.',
+      renderedHtmlBody: null,
+      providerMessageId,
+      status: 'sent',
+      failureReason: null,
+      sentAt: null,
+      deliveredAt: null,
+      retryCount: 0,
+    });
+  }
+
+  function report(overrides: Partial<TextSmsDeliveryReport> = {}): TextSmsDeliveryReport {
+    return {
+      providerMessageId: '78726470',
+      outcome: 'delivered',
+      rawStatus: 'DELIVRD',
+      description: null,
+      mobile: '254713482448',
+      ...overrides,
+    };
+  }
+
+  it('stamps deliveredAt on a delivered report — the only thing that ever writes that field', async () => {
+    await seedSentSms('78726470');
+
+    const result = await notificationService.applySmsDeliveryReport(BUSINESS_ID, report());
+
+    expect(result).toEqual({ outcome: 'delivered', outboundMessageId: SENT_MESSAGE_ID });
+    const stored = await outboundMessageRepository.findById(SENT_MESSAGE_ID);
+    expect(stored?.status).toBe('delivered');
+    expect(stored?.deliveredAt).not.toBeNull();
+  });
+
+  it('marks a failed report bounced, keeping the provider’s own wording as the reason', async () => {
+    await seedSentSms('78726470');
+
+    const result = await notificationService.applySmsDeliveryReport(
+      BUSINESS_ID,
+      report({ outcome: 'failed', rawStatus: 'REJECTD', description: 'Blacklisted number' }),
+    );
+
+    expect(result.outcome).toBe('bounced');
+    const stored = await outboundMessageRepository.findById(SENT_MESSAGE_ID);
+    expect(stored?.status).toBe('bounced');
+    expect(stored?.failureReason).toBe('TextSMS delivery report: Blacklisted number');
+    expect(stored?.deliveredAt).toBeNull();
+  });
+
+  it('falls back to the raw status when a failed report carries no description', async () => {
+    await seedSentSms('78726470');
+
+    await notificationService.applySmsDeliveryReport(
+      BUSINESS_ID,
+      report({ outcome: 'failed', rawStatus: 'EXPIRED', description: null }),
+    );
+
+    const stored = await outboundMessageRepository.findById(SENT_MESSAGE_ID);
+    expect(stored?.failureReason).toBe('TextSMS delivery report: EXPIRED');
+  });
+
+  /**
+   * A bounce must not re-enter the retry sweep: the provider accepted
+   * the message and the network refused it, so re-sending would only
+   * repeat that. `listRetryable` looks for 'failed', never 'bounced'.
+   */
+  it('leaves a bounced message out of the retry backlog', async () => {
+    await seedSentSms('78726470');
+    await notificationService.applySmsDeliveryReport(BUSINESS_ID, report({ outcome: 'failed', rawStatus: 'REJECTD' }));
+
+    const retryable = await outboundMessageRepository.listRetryable(BUSINESS_ID, 5);
+
+    expect(retryable.map((entry) => entry.id)).not.toContain(SENT_MESSAGE_ID);
+  });
+
+  it('leaves the record untouched for a pending or unrecognised status', async () => {
+    await seedSentSms('78726470');
+
+    const result = await notificationService.applySmsDeliveryReport(
+      BUSINESS_ID,
+      report({ outcome: 'pending', rawStatus: 'SomeUndocumentedToken' }),
+    );
+
+    expect(result).toEqual({ outcome: 'ignored', outboundMessageId: SENT_MESSAGE_ID });
+    const stored = await outboundMessageRepository.findById(SENT_MESSAGE_ID);
+    expect(stored?.status).toBe('sent');
+    expect(stored?.deliveredAt).toBeNull();
+  });
+
+  it('reports no match when the provider message id belongs to no dispatch record', async () => {
+    await seedSentSms('78726470');
+
+    const result = await notificationService.applySmsDeliveryReport(
+      BUSINESS_ID,
+      report({ providerMessageId: 'not-a-message-we-sent' }),
+    );
+
+    expect(result).toEqual({ outcome: 'ignored', outboundMessageId: null });
+    expect((await outboundMessageRepository.findById(SENT_MESSAGE_ID))?.status).toBe('sent');
+  });
+
+  it('never lets one tenant’s callback reach another tenant’s dispatch log', async () => {
+    await seedSentSms('78726470');
+
+    const result = await notificationService.applySmsDeliveryReport('some-other-business', report());
+
+    expect(result).toEqual({ outcome: 'ignored', outboundMessageId: null });
+    expect((await outboundMessageRepository.findById(SENT_MESSAGE_ID))?.status).toBe('sent');
   });
 });

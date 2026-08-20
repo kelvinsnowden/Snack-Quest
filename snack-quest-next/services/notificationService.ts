@@ -9,6 +9,7 @@ import { notificationRepository } from '@/repositories/notificationRepository';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { renderTemplate, assertRequiredParams } from '@/lib/notifications/renderTemplate';
 import type { WhatsAppGateway, EmailGateway, SmsGateway } from '@/lib/integrations/types';
+import type { TextSmsDeliveryReport } from '@/lib/integrations/sms/parseTextSmsDlr';
 import type { NotificationChannel, NotificationRecipientType, OutboundMessage } from '@/types';
 
 export class TemplateNotFoundError extends Error {
@@ -127,6 +128,43 @@ class NotificationService {
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ messages: { id: string; data: OutboundMessage }[]; nextCursor: string | null }> {
     return outboundMessageRepository.listByRecipient(businessId, recipientRefs, options);
+  }
+
+  /**
+   * Applies one TextSMS delivery report to the dispatch log
+   * (§ TextSMS delivery reports). Returns what it did so the webhook
+   * route can record the outcome on the `webhookEvents` ledger without
+   * reaching into the repository itself.
+   *
+   * `'pending'` covers both a genuinely in-flight status (submitted,
+   * buffered) and a status the parser did not recognise — in both cases
+   * the right move is identical: leave the record alone. See
+   * `parseTextSmsDlr`'s header for why an unrecognised status resolves
+   * that way rather than being guessed at.
+   */
+  async applySmsDeliveryReport(
+    businessId: string,
+    report: TextSmsDeliveryReport,
+  ): Promise<{ outcome: 'delivered' | 'bounced' | 'ignored'; outboundMessageId: string | null }> {
+    const match = await outboundMessageRepository.findByProviderMessageId(businessId, report.providerMessageId);
+    if (!match) {
+      return { outcome: 'ignored', outboundMessageId: null };
+    }
+
+    if (report.outcome === 'delivered') {
+      await outboundMessageRepository.markDelivered(match.id);
+      return { outcome: 'delivered', outboundMessageId: match.id };
+    }
+
+    if (report.outcome === 'failed') {
+      // The provider's own words, so a bounce reason in Admin says what
+      // the network actually reported rather than our paraphrase of it.
+      const reason = report.description ?? report.rawStatus ?? 'undelivered';
+      await outboundMessageRepository.markBounced(match.id, `TextSMS delivery report: ${reason}`);
+      return { outcome: 'bounced', outboundMessageId: match.id };
+    }
+
+    return { outcome: 'ignored', outboundMessageId: match.id };
   }
 
   async retrySweep(businessId: string, retryCeiling = DEFAULT_RETRY_CEILING): Promise<{ attempted: number }> {
