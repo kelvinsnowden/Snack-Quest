@@ -15,7 +15,10 @@ import type { DarajaIntegrationSecret } from '@/types';
 export interface DarajaConfig {
   consumerKey: string;
   consumerSecret: string;
+  /** `PartyB` — the paybill or till that receives the funds. */
   shortcode: string;
+  /** `BusinessShortCode` — the organisation identifier the STK password is built from. Equal to `shortcode` for a Paybill; the Head Office number for a Buy Goods till. See `DarajaIntegrationSecret.headOfficeShortcode`. */
+  businessShortcode: string;
   /** See `DarajaIntegrationSecret.accountType`'s own doc comment. */
   accountType: 'paybill' | 'till';
   passkey: string;
@@ -117,6 +120,9 @@ export async function getDarajaConfig(businessId: string): Promise<DarajaConfig>
     consumerKey: secret.consumerKey,
     consumerSecret: secret.consumerSecret,
     shortcode: secret.shortcode,
+    // Absent means "same number for both", which is correct for every
+    // Paybill and for tills that genuinely share one shortcode.
+    businessShortcode: secret.headOfficeShortcode?.trim() || secret.shortcode,
     // A secret document saved before `accountType` existed has no such
     // field at runtime even though the type now requires one —
     // defaults to 'paybill', this codebase's actual behavior before

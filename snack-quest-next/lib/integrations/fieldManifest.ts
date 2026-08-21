@@ -36,6 +36,14 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
       options: ['paybill', 'till'],
       helpText: 'Till (Buy Goods) or Paybill — must match what this shortcode actually is, or STK Push requests will use the wrong M-Pesa transaction type.',
     },
+    {
+      key: 'headOfficeShortcode',
+      label: 'Head Office number (Buy Goods only)',
+      secret: false,
+      required: false,
+      helpText:
+        'Leave blank for a Paybill, or for a till that uses one number. For Buy Goods with a separate Head Office number, put it here — sending the till as both shortcodes is accepted by Safaricom and then silently delivers no prompt.',
+    },
     { key: 'passkey', label: 'Passkey', secret: true, required: true },
     { key: 'callbackUrl', label: 'Callback URL', secret: false, required: true },
     { key: 'env', label: 'Environment', secret: false, required: true, type: 'select', options: ['sandbox', 'production'] },
