@@ -135,9 +135,8 @@ export function PaymentWaiting({
           an answer arriving when the question does.
         */}
         <p className="text-muted-foreground text-base">
-          Check your phone for the M-Pesa prompt. It will show{' '}
-          <span className="text-foreground font-semibold">{MPESA_RECIPIENT_NAME}</span> — that is Snack Quest&rsquo;s
-          registered M-Pesa name. Enter your PIN to pay for your box.
+          You&rsquo;re paying <span className="text-foreground font-semibold">{MPESA_RECIPIENT_NAME}</span> for your
+          Snack Quest box. Check your phone for the M-Pesa prompt and enter your PIN to complete payment.
         </p>
         <p className="text-muted-foreground text-sm">
           This page updates on its own — no need to refresh.

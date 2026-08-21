@@ -4,6 +4,7 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { Button } from '@/components/ui/button';
 import { UnmatchedPaymentsList } from '@/components/reconciliation/UnmatchedPaymentsList';
+import { ReconcileNowButton } from '@/components/admin/ReconcileNowButton';
 
 export const metadata: Metadata = { title: 'Reconciliation' };
 
@@ -25,6 +26,8 @@ export default async function AdminReconciliationPage({
           Real M-Pesa STK callbacks Safaricom sent us that never matched a known payment attempt.
         </p>
       </div>
+
+      <ReconcileNowButton />
 
       <UnmatchedPaymentsList events={events} />
 
