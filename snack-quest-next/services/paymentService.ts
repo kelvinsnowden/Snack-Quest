@@ -3,7 +3,9 @@ import 'server-only';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
+import { publishEvent } from '@/lib/events/eventBus';
 import type { StkPushResult } from '@/lib/integrations/types';
+import type { ManualPaymentRecord } from '@/types';
 
 /**
  * Owns the payment lifecycle (PLATFORM_ARCHITECTURE_V2.md §7):
@@ -100,7 +102,18 @@ export type ProcessCallbackResult =
       conversationId: string;
       snapshotId: string;
       amountKes: number;
+      /** Empty string when a manually-recorded payment had no M-Pesa code behind it (cash, bank transfer) — never a fabricated one. */
       mpesaReceiptNumber: string;
+      /**
+       * Present only when a super admin settled this intent themselves
+       * rather than Daraja settling it (§ super-admin manual payment
+       * orders). Carried on the result so the entire downstream path —
+       * order creation, stock reservation, referral commission, wallet,
+       * shipment, notifications — is the same code for both, with the
+       * single difference being what gets recorded about how the money
+       * arrived.
+       */
+      manualPayment?: ManualPaymentRecord | null;
     }
   | {
       status: 'failed';
@@ -113,6 +126,67 @@ export type ProcessCallbackResult =
 class PaymentService {
   async createIntent(input: CreateIntentInput): Promise<string> {
     return paymentIntentRepository.create(input);
+  }
+
+  /**
+   * Settles an intent for money that arrived outside Daraja
+   * (§ super-admin manual payment orders) — cash at a stand, a
+   * customer-initiated M-Pesa transfer, or a bank transfer.
+   *
+   * This is the one place in the system where a `'succeeded'` payment
+   * exists on a human's word rather than on a provider callback, so
+   * three things are true of it deliberately:
+   *
+   * - It never fabricates an M-Pesa receipt. `mpesaReceiptNumber` on
+   *   the resulting order carries the real code only when the method is
+   *   `'mpesa_manual'` and the super admin typed one; cash and bank
+   *   transfers leave it null rather than inventing something that
+   *   looks like a Safaricom receipt to every downstream report.
+   * - It records *who* asserted it, on the intent itself, in the same
+   *   write that sets the status.
+   * - It refuses an intent that is not still `'pending'` — an intent
+   *   already settled by Daraja, or by another super admin a moment
+   *   earlier, must never be double-settled into a second order.
+   */
+  async recordManualPayment(input: {
+    businessId: string;
+    intentId: string;
+    manualPayment: Omit<ManualPaymentRecord, 'recordedAt'>;
+  }): Promise<{ settled: boolean; reason?: string }> {
+    const intent = await paymentIntentRepository.findById(input.intentId);
+    if (!intent) {
+      return { settled: false, reason: 'Payment intent not found' };
+    }
+    if (intent.businessId !== input.businessId) {
+      return { settled: false, reason: 'Payment intent not found' };
+    }
+    if (intent.status !== 'pending') {
+      return {
+        settled: false,
+        reason: `This payment is already ${intent.status} — it cannot be recorded as manually paid.`,
+      };
+    }
+
+    const { settled } = await paymentIntentRepository.recordManualPayment(
+      input.intentId,
+      input.manualPayment,
+      'pending',
+    );
+    if (!settled) {
+      // Lost the race against a Daraja callback or a second super
+      // admin between the read above and the transaction.
+      return { settled: false, reason: 'This payment was settled by someone else a moment ago.' };
+    }
+
+    await publishEvent(input.businessId, 'ManualPaymentRecorded', 'paymentIntent', input.intentId, {
+      method: input.manualPayment.method,
+      reference: input.manualPayment.reference,
+      amountKes: intent.amountKes,
+      recordedByUid: input.manualPayment.recordedByUid,
+      phoneNumber: intent.phoneNumber,
+    });
+
+    return { settled: true };
   }
 
   async initiateAttempt(

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { orderRepository } from '@/repositories/orderRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { Card } from '@/components/ui/card';
@@ -71,7 +72,7 @@ export default async function AdminOrdersPage({
             Every paid order — placed on the website, over WhatsApp, or taken by staff.
           </p>
         </div>
-        <StaffInitiatedOrderDialog boxes={orderableBoxes} />
+        <StaffInitiatedOrderDialog boxes={orderableBoxes} canRecordManualPayment={isSuperAdmin(session)} />
       </div>
 
       <Card className="p-4">

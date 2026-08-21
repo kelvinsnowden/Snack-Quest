@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DeliveryDetails } from './delivery';
+import type { ManualPaymentRecord } from './paymentIntent';
 
 /**
  * `pending` only ever exists transiently inside `OrderService`'s own
@@ -40,6 +41,20 @@ export interface OrderCustomer {
 export interface OrderPayment {
   paymentIntentId: string;
   mpesaReceiptNumber: string | null;
+  /**
+   * Copied from the settling `PaymentIntent` when a super admin
+   * recorded payment that arrived outside Daraja (§ super-admin manual
+   * payment orders) — cash, a customer-initiated M-Pesa transfer, or a
+   * bank transfer. Absent on every Daraja-settled order and on every
+   * order predating this field.
+   *
+   * Denormalised rather than joined through `paymentIntentId` for the
+   * same reason `delivery` and `attribution` are: the Admin order view
+   * must be able to say "paid in cash, recorded by X" without a second
+   * read, and this is a snapshot of what was asserted at the time, not
+   * a live pointer.
+   */
+  manualPayment?: ManualPaymentRecord | null;
 }
 
 export interface OrderPricing {

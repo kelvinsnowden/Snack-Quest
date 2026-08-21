@@ -8,8 +8,16 @@ import {
 } from '@/repositories/orderRepository';
 import { reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
 import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
-import type { ConversationCheckoutSnapshot, ConversionAttribution, Order, OrderStatus } from '@/types';
+import { formatOrderNumber } from '@/lib/orders/format';
+import type {
+  ConversationCheckoutSnapshot,
+  ConversionAttribution,
+  ManualPaymentRecord,
+  Order,
+  OrderStatus,
+} from '@/types';
 
 /**
  * Owns order finalization (PLATFORM_ARCHITECTURE_V2.md §14/§16): an
@@ -29,7 +37,20 @@ export interface CreateOrderInput {
   snapshotId: string;
   snapshot: ConversationCheckoutSnapshot;
   paymentIntentId: string;
+  /**
+   * The real Safaricom receipt for a Daraja-settled order. Empty for a
+   * manually-recorded payment with no M-Pesa code behind it (cash, bank
+   * transfer) — never a placeholder that would read as a receipt to a
+   * downstream report; see `manualPayment` below.
+   */
   mpesaReceiptNumber: string;
+  /**
+   * Set only when a super admin recorded that payment already arrived
+   * outside Daraja (§ super-admin manual payment orders). Its presence
+   * is what distinguishes an asserted payment from a verified one on
+   * the order itself, without a join back to `paymentIntents`.
+   */
+  manualPayment?: ManualPaymentRecord | null;
   /** `Conversation.attributionSnapshot` (§ close the loop: ad-conversion attribution) — copied onto the order verbatim, null for a native WhatsApp-originated conversation. */
   attribution: ConversionAttribution | null;
 }
@@ -50,7 +71,7 @@ export class InvalidOrderTransitionError extends Error {
 
 class OrderService {
   async createFromConversationSnapshot(input: CreateOrderInput): Promise<{ orderId: string; orderNumber: number }> {
-    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber, attribution } = input;
+    const { snapshotId, snapshot, paymentIntentId, mpesaReceiptNumber, manualPayment, attribution } = input;
 
     // Absent on every snapshot frozen before the website checkout
     // existed, and on every WhatsApp one since — a conversation can
@@ -93,7 +114,11 @@ class OrderService {
           delivery: snapshot.delivery,
           payment: {
             paymentIntentId,
-            mpesaReceiptNumber,
+            // Normalised to null rather than stored as '' — an empty
+            // string would render as a blank receipt field in Admin
+            // instead of the honest "no receipt" this represents.
+            mpesaReceiptNumber: mpesaReceiptNumber || null,
+            manualPayment: manualPayment ?? null,
           },
           pricing: {
             subtotalKes: snapshot.subtotalKes,
@@ -168,6 +193,42 @@ class OrderService {
       actor,
       reason: reason ?? null,
     });
+
+    /*
+     * Shipment SMS, sent from the one chokepoint every admin status
+     * change already goes through — a route that dispatched an order
+     * without texting the customer would have to bypass this method,
+     * which this method's own doc comment above exists to prevent.
+     *
+     * Guarded on the transition, not the resulting status: re-saving an
+     * already-dispatched order must not text again. `dedupeKey` makes
+     * that a second, independent guarantee rather than relying on the
+     * transition table alone.
+     *
+     * Best-effort by design. The status change is already committed and
+     * is the real source of truth; a texting failure is recorded on
+     * `outboundMessages` for the retry sweep and must never roll back
+     * or fail a dispatch a staff member just performed.
+     */
+    if (next === 'dispatched') {
+      try {
+        await notificationService.send(businessId, {
+          channel: 'sms',
+          templateCode: 'order_dispatched_sms',
+          recipientType: 'customer',
+          recipientId: orderId,
+          recipientRef: order.customer.phoneNumber,
+          params: {
+            orderRef: order.orderNumber ? formatOrderNumber(order.orderNumber) : orderId,
+          },
+          dedupeKey: `order-dispatched:${orderId}`,
+        });
+      } catch (error) {
+        await publishEvent(businessId, 'OrderDispatchedSmsFailed', 'order', orderId, {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
+    }
 
     return { ...order, status: next };
   }

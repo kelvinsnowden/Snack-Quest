@@ -14,6 +14,37 @@ export type PaymentIntentStatus =
   | 'failed'
   | 'expired';
 
+/**
+ * How money reached the business when it did not arrive through
+ * Daraja (§ super-admin manual payment orders) — cash at a stand, an
+ * M-Pesa transfer the customer sent themselves and read the code out
+ * over the phone, or a bank transfer.
+ *
+ * `mpesa_manual` is deliberately distinct from a normal Daraja
+ * payment: the money genuinely arrived over M-Pesa, but *this system
+ * never saw the callback that proves it* — a staff member typed the
+ * code in. Collapsing the two would make an asserted payment
+ * indistinguishable from a verified one in every report that reads
+ * this collection, which is precisely the distinction that matters
+ * when the books are wrong.
+ */
+export type ManualPaymentMethod = 'cash' | 'mpesa_manual' | 'bank_transfer';
+
+export interface ManualPaymentRecord {
+  method: ManualPaymentMethod;
+  /**
+   * The M-Pesa code or bank reference. Required for every method but
+   * `'cash'`, which genuinely has no reference to record — the
+   * accountable artifact there is `recordedByUid`, not a receipt.
+   */
+  reference: string | null;
+  /** Who asserted the money arrived. Never derived from the request body — always the authenticated super admin's own uid. */
+  recordedByUid: string;
+  recordedByName: string;
+  note: string | null;
+  recordedAt: Timestamp;
+}
+
 export interface PaymentIntent {
   businessId: string;
   conversationId: string;
@@ -22,6 +53,19 @@ export interface PaymentIntent {
   phoneNumber: string;
   amountKes: number;
   status: PaymentIntentStatus;
+  /**
+   * Set only when this intent was settled by a super admin asserting
+   * payment already arrived, rather than by a Daraja callback. Absent
+   * on every Daraja-settled intent and on every intent predating this
+   * field, so `manualPayment == null` reads as "settled the normal
+   * way" without a backfill.
+   *
+   * An intent carrying this has no `attempts` subcollection entry,
+   * since no STK push was ever made — which is also why the
+   * reconciliation view (built on unmatched *webhook events*) never
+   * sees these: there is no callback to be unmatched.
+   */
+  manualPayment?: ManualPaymentRecord | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

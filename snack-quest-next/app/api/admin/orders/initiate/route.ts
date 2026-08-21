@@ -4,6 +4,7 @@ import {
   forbiddenResponse,
 } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
+import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   conversationService,
   WebCheckoutConflictError,
@@ -15,6 +16,9 @@ import type {
   WebCheckoutRequest,
   WebCheckoutResponse,
 } from '@/types/webCheckout';
+import type { ManualPaymentMethod } from '@/types';
+
+const MANUAL_PAYMENT_METHODS: ManualPaymentMethod[] = ['cash', 'mpesa_manual', 'bank_transfer'];
 
 /**
  * `POST /api/admin/orders/initiate` (§ staff-initiated orders) — a
@@ -34,6 +38,17 @@ import type {
  * Authenticated by real staff session, and written to the audit log,
  * because this is the one action in the system where a staff member
  * causes money to be requested from a member of the public.
+ *
+ * `manualPayment` (§ super-admin manual payment orders) is the one
+ * branch that does NOT request money: the customer already paid — cash
+ * at a stand, an M-Pesa transfer they sent themselves, or a bank
+ * transfer — and this records that fact instead of pushing an STK
+ * prompt. It is restricted to super admins, above the `ADMIN_ONLY`
+ * gate the rest of this route uses, because it is the only way to
+ * create a paid order in this system without a provider callback
+ * proving the money moved. It still cannot change what an order costs:
+ * there is no amount field, and pricing runs through exactly the same
+ * code as every other checkout.
  */
 export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -64,6 +79,50 @@ export async function POST(request: Request): Promise<Response> {
     landmark,
     referralCode,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
+
+  const rawManualPayment = (body as { manualPayment?: unknown } | null)?.manualPayment;
+  let manualPayment:
+    | { method: ManualPaymentMethod; reference: string | null; recordedByUid: string; recordedByName: string; note: string | null }
+    | undefined;
+
+  if (rawManualPayment !== undefined && rawManualPayment !== null) {
+    if (!isSuperAdmin(session)) {
+      return Response.json(
+        { error: 'Only a super admin can record an order as already paid.' },
+        { status: 403 },
+      );
+    }
+    const { method, reference, note } = rawManualPayment as {
+      method?: unknown;
+      reference?: unknown;
+      note?: unknown;
+    };
+    if (typeof method !== 'string' || !MANUAL_PAYMENT_METHODS.includes(method as ManualPaymentMethod)) {
+      return Response.json(
+        { error: `manualPayment.method must be one of: ${MANUAL_PAYMENT_METHODS.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const trimmedReference = typeof reference === 'string' ? reference.trim() : '';
+    // Cash is the only method with genuinely nothing to reference. For
+    // the other two the reference is the only artifact tying this
+    // assertion to money that actually moved, so it is required.
+    if (method !== 'cash' && !trimmedReference) {
+      return Response.json(
+        { error: 'A payment reference is required for an M-Pesa or bank transfer.' },
+        { status: 400 },
+      );
+    }
+    manualPayment = {
+      method: method as ManualPaymentMethod,
+      reference: trimmedReference || null,
+      // Always the authenticated session, never anything the body
+      // claims — this field is the accountability record.
+      recordedByUid: session.uid,
+      recordedByName: session.displayName || session.email,
+      note: typeof note === 'string' && note.trim() ? note.trim() : null,
+    };
+  }
 
   if (
     typeof packageId !== 'string' ||
@@ -113,13 +172,14 @@ export async function POST(request: Request): Promise<Response> {
           staffUid: session.uid,
           staffName: session.displayName || session.email,
         },
+        ...(manualPayment ? { manualPayment } : {}),
       },
     );
 
     await auditLogRepository.record({
       businessId: session.businessId,
       actorId: session.uid,
-      action: 'order.initiate',
+      action: manualPayment ? 'order.initiate_already_paid' : 'order.initiate',
       entityType: 'conversation',
       entityId: result.checkoutSessionId,
       // Nothing existed before this action, so `before` is genuinely
@@ -131,6 +191,13 @@ export async function POST(request: Request): Promise<Response> {
         quantity: result.pricing.quantity,
         totalKes: result.pricing.totalKes,
         stkPushSent: result.stkPushSent,
+        ...(manualPayment
+          ? {
+              manualPaymentMethod: manualPayment.method,
+              manualPaymentReference: manualPayment.reference,
+              manualPaymentNote: manualPayment.note,
+            }
+          : {}),
       },
       ipAddress:
         request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '',

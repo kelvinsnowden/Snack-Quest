@@ -1,8 +1,14 @@
 import 'server-only';
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { PaymentAttempt, PaymentAttemptStatus, PaymentIntent, PaymentIntentStatus } from '@/types';
+import type {
+  ManualPaymentRecord,
+  PaymentAttempt,
+  PaymentAttemptStatus,
+  PaymentIntent,
+  PaymentIntentStatus,
+} from '@/types';
 
 /**
  * `paymentIntents` + `attempts` subcollection reads/writes
@@ -62,6 +68,42 @@ class PaymentIntentRepository {
     await adminFirestore.collection(COLLECTION).doc(intentId).update({
       status,
       updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  /**
+   * Settles an intent that never went through Daraja (§ super-admin
+   * manual payment orders). One `update()` writes both the record and
+   * the terminal status, so an intent can never be left `'succeeded'`
+   * with no evidence of who said so attached to it.
+   *
+   * Guarded with a `create`-style precondition rather than a blind
+   * write: `expectedCurrentStatus` is checked inside a transaction, so
+   * two super admins recording the same payment at once cannot both
+   * proceed. The caller decides what a rejection means; this returns
+   * `false` rather than throwing, the same shape `create` uses for a
+   * duplicate.
+   */
+  async recordManualPayment(
+    intentId: string,
+    manualPayment: Omit<ManualPaymentRecord, 'recordedAt'>,
+    expectedCurrentStatus: PaymentIntentStatus,
+  ): Promise<{ settled: boolean }> {
+    const ref = adminFirestore.collection(COLLECTION).doc(intentId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists) {
+        return { settled: false };
+      }
+      if ((snapshot.data() as PaymentIntent).status !== expectedCurrentStatus) {
+        return { settled: false };
+      }
+      tx.update(ref, {
+        status: 'succeeded' satisfies PaymentIntentStatus,
+        manualPayment: { ...manualPayment, recordedAt: Timestamp.now() },
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return { settled: true };
     });
   }
 
