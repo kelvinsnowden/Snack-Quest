@@ -148,15 +148,39 @@ export function StaffInitiatedOrderDialog({
             : {}),
         }),
       });
-      const payload = (await response.json()) as WebCheckoutResponse | { error: string };
+      /*
+       * Parsed defensively, because a 500 from Next is an HTML error
+       * page rather than JSON. Calling `response.json()` on it throws,
+       * and an unguarded throw here lands in the catch below — which
+       * reported "could not reach the server" for a request that
+       * reached the server perfectly well and failed inside it. That
+       * misdiagnosis is worth avoiding on this dialog in particular:
+       * it may have already recorded a real, paid order, and telling
+       * the operator the request never arrived invites them to submit
+       * it a second time.
+       */
+      const payload = (await response.json().catch(() => null)) as
+        | WebCheckoutResponse
+        | { error: string }
+        | null;
+
       if (!response.ok) {
-        setError('error' in payload ? payload.error : 'Could not start this order.');
+        setError(
+          payload && 'error' in payload
+            ? payload.error
+            : `The server rejected this order (HTTP ${response.status}). Check Orders before retrying — it may already have been recorded.`,
+        );
+        return;
+      }
+      if (!payload) {
+        setError('The order may have gone through, but the response could not be read. Check Orders before retrying.');
         return;
       }
       setSent(payload as WebCheckoutResponse);
       router.refresh();
     } catch {
-      setError('Could not reach the server. Try again.');
+      // Genuinely never reached the server — fetch itself rejected.
+      setError('Could not reach the server. Nothing was sent. Try again.');
     } finally {
       setSubmitting(false);
     }

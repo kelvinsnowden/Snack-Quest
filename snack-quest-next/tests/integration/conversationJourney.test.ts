@@ -1486,6 +1486,52 @@ describe('recording an order that is already paid (§ manual payment)', () => {
     expect(order.payment.mpesaReceiptNumber).toBe('TXY9KL22PQ');
   });
 
+  /**
+   * Regression: a disabled WhatsApp integration must not fail a paid order.
+   *
+   * `completeOrder` states its own discipline repeatedly — nothing past
+   * order creation may undo a paid, confirmed order — and every call in
+   * it honoured that except the two WhatsApp ones, purely by omission.
+   * In production that surfaced as "Could not reach the server" in Admin
+   * for an order that had in fact been created, so the same cash payment
+   * was recorded twice.
+   */
+  it('still creates the order when WhatsApp is switched off', async () => {
+    mockAllProviders();
+    const { packageId, pickupStationId } = await seededIds();
+
+    class DisabledWhatsAppGateway extends FakeWhatsAppGateway {
+      async sendMessage(): Promise<{ providerMessageId: string }> {
+        throw new Error(
+          'The whatchimp integration for business snack-quest has been disabled in Admin > Settings > Integrations.',
+        );
+      }
+    }
+
+    const service = new ConversationService(new DisabledWhatsAppGateway());
+
+    // The decisive assertion: this resolves rather than throwing. Before
+    // the fix the IntegrationDisabledError propagated out of
+    // startWebCheckout and became a 500 in Admin.
+    const result = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId,
+      quantity: 1,
+      customerName: 'Wanjiru Kamau',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'pickup',
+      pickupStationId,
+      initiatedBy: { staffUid: RECORDER.recordedByUid, staffName: RECORDER.recordedByName },
+      manualPayment: { ...RECORDER, method: 'cash', reference: null, note: null },
+    });
+
+    expect(result.stkPushSent).toBe(false);
+
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(1);
+    expect(orders.docs[0].data().status).toBe('confirmed');
+  });
+
   it('runs the whole downstream path: stock reserved, shipment created, customer confirmed', async () => {
     mockAllProviders();
     // The seeded box has no `stockCount` at all (unlimited), so a real

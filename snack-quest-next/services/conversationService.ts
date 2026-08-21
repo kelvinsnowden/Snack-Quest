@@ -2121,11 +2121,25 @@ class ConversationService {
       });
     }
 
-    await this.notifications.notifyAdmin(
-      businessId,
-      `New order ${orderRef}: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
-        `${formatDeliveryLabel(snapshot.delivery)}.`,
-    );
+    /*
+     * Best-effort, like every other call past order creation here.
+     * `notifyAdmin` goes out over WhatsApp, and WhatsApp can be
+     * switched off in Admin > Settings > Integrations — in which case
+     * the gateway throws `IntegrationDisabledError`. An admin courtesy
+     * ping is the least important thing this method does; it must not
+     * be the thing that fails a paid order.
+     */
+    try {
+      await this.notifications.notifyAdmin(
+        businessId,
+        `New order ${orderRef}: ${snapshot.packageLabel} — KES ${snapshot.totalKes} — ${snapshot.customerName}, ` +
+          `${formatDeliveryLabel(snapshot.delivery)}.`,
+      );
+    } catch (error) {
+      await publishEvent(businessId, 'AdminNotificationFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
 
     /*
      * Order confirmation by SMS, alongside — never instead of — the
@@ -2198,7 +2212,34 @@ class ConversationService {
     const milestoneMessage =
       milestoneAwardKes > 0 ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.` : '';
 
-    await this.reply(businessId, result.conversationId, phoneNumber, `${confirmationMessage}${milestoneMessage}`);
+    /*
+     * The last thing this method does, and — until it was fixed — the
+     * only call past order creation that could still throw. Everything
+     * else here is deliberately best-effort, on the stated principle
+     * that a paid, confirmed order is never undone by a downstream
+     * failure; the WhatsApp confirmation was the one exception, purely
+     * by omission.
+     *
+     * It matters because WhatsApp can be switched off in
+     * Admin > Settings > Integrations, and then the gateway throws
+     * `IntegrationDisabledError`. On the Daraja path that surfaced as a
+     * failed webhook for an order that had in fact been created; on the
+     * staff-initiated path it surfaced as an error dialog in Admin, for
+     * an order that had in fact been created. Both told the operator
+     * the opposite of the truth.
+     *
+     * The customer is not left uninformed by swallowing this: the
+     * `order_confirmed_sms` above is a separate channel that has
+     * already gone out, and it is the one that reaches a customer who
+     * never opens WhatsApp again.
+     */
+    try {
+      await this.reply(businessId, result.conversationId, phoneNumber, `${confirmationMessage}${milestoneMessage}`);
+    } catch (error) {
+      await publishEvent(businessId, 'OrderConfirmationWhatsAppFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
   }
 
   /** Pauses automatic bot replies — an agent has taken over this thread (§6). */
