@@ -15,11 +15,22 @@ const buttonVariants = cva(
         ghost: 'text-foreground hover:bg-border/40',
         danger: 'bg-danger text-danger-foreground shadow-sm hover:bg-danger/90',
       },
+      /*
+       * Every size is at least 44px on touch and keeps its old density
+       * from `md` up. An audit of the Creator Portal at 390px found
+       * sub-44px targets on all eight pages, and they were not page
+       * bugs — `sm` rendered 32px and the default 40px, so every button
+       * in every portal was under the minimum on a phone.
+       *
+       * On touch there is no meaningful "small button": the finger is
+       * one size. Density is a desktop affordance, which is why `sm`
+       * and `md` converge on mobile and separate again on a pointer.
+       */
       size: {
-        sm: 'h-8 px-3 text-xs',
-        md: 'h-10 px-4',
+        sm: 'h-11 px-3 text-xs md:h-8',
+        md: 'h-11 px-4 md:h-10',
         lg: 'h-12 px-6 text-base',
-        icon: 'size-10',
+        icon: 'size-11 md:size-10',
       },
     },
     defaultVariants: {

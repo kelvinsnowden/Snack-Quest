@@ -101,7 +101,7 @@ export function WithdrawalsHistoryList({ rows }: { rows: WithdrawalRow[] }) {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search by phone number or amount"
           aria-label="Search withdrawal history"
-          className="border-border bg-surface text-foreground placeholder:text-muted-foreground focus-visible:ring-primary focus-visible:ring-offset-background h-10 w-full rounded-full border pr-4 pl-9 text-sm shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="border-border bg-surface text-foreground placeholder:text-muted-foreground focus-visible:ring-primary focus-visible:ring-offset-background h-11 md:h-10 w-full rounded-full border pr-4 pl-9 text-sm shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-offset-2"
         />
       </div>
 

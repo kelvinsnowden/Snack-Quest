@@ -47,7 +47,8 @@ export function CreatorUserMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          /* Was 36x36. The avatar itself stays its size; the button around it grows to a real target. */
+          className="flex size-11 items-center justify-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background md:size-9"
           aria-label={`Account menu for ${displayName}`}
         >
           <Avatar>

@@ -101,7 +101,15 @@ export default async function CreatorHomePage() {
         canWithdraw={accessLevel === 'full'}
       />
 
-      <NextStepCard step={nextStep} />
+      {/*
+        Suppressed when the instruction is "withdraw". `resolveNextStep`
+        returns that exactly when there is an available balance — which
+        is exactly when the hero above already renders a Withdraw
+        button. Rendering both put two identical primary actions within
+        one screen of each other, the second one explaining the first.
+        Every other step points somewhere the hero does not.
+      */}
+      {nextStep.id === 'withdraw' ? null : <NextStepCard step={nextStep} />}
 
       <QuickActionRow actions={QUICK_ACTIONS} />
 
@@ -193,7 +201,7 @@ export default async function CreatorHomePage() {
           attributions.length > 0 ? (
             <Link
               href="/creator/earnings"
-              className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center gap-1 rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background -my-3 inline-flex min-h-11 items-center gap-1 rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             >
               See all
               <ArrowRight className="size-4" aria-hidden="true" />
@@ -218,7 +226,7 @@ export default async function CreatorHomePage() {
             </p>
             <Link
               href="/creator/referrals"
-              className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background mt-5 inline-flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold transition-transform duration-150 ease-out hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:translate-y-0"
+              className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background mt-5 inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold transition-transform duration-150 ease-out hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:translate-y-0"
             >
               Get your link
               <ArrowRight className="size-4" aria-hidden="true" />

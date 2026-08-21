@@ -318,7 +318,7 @@ function StatChip({
         {icon}
       </span>
       <div>
-        <dt className="text-[0.625rem] leading-none font-medium tracking-wide text-white/60 uppercase">{label}</dt>
+        <dt className="text-[0.6875rem] leading-none font-medium tracking-wide text-white/60 uppercase">{label}</dt>
         <dd className={`mt-1 text-sm leading-none font-semibold tabular-nums ${accent ? 'text-home-lime' : ''}`}>
           {value}
         </dd>

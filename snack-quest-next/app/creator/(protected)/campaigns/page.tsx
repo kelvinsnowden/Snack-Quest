@@ -54,7 +54,7 @@ export default async function CreatorCampaignsPage() {
                   className="focus-visible:ring-primary focus-visible:ring-offset-background block focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                 >
                   {data.assetsUrl && !isVideo ? (
-                    <div className="bg-muted relative aspect-[16/9] w-full">
+                    <div className="bg-foreground/5 relative aspect-[16/9] w-full">
                       <Image
                         src={data.assetsUrl}
                         alt={data.title}
@@ -73,7 +73,7 @@ export default async function CreatorCampaignsPage() {
                     </div>
                   ) : null}
 
-                  <h2 className="text-card-title text-foreground p-4 pb-0 font-semibold md:p-6 md:pb-0">
+                  <h2 className="text-lg text-foreground p-4 pb-0 font-semibold md:p-6 md:pb-0">
                     {data.title}
                   </h2>
                 </Link>
@@ -125,7 +125,7 @@ export default async function CreatorCampaignsPage() {
       )}
 
       <div>
-        <h2 className="text-card-title text-foreground font-semibold">
+        <h2 className="text-lg text-foreground font-semibold">
           Your submissions
         </h2>
         {submissions.length === 0 ? (
