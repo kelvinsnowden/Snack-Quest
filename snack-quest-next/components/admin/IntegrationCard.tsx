@@ -105,9 +105,20 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
       ) : null}
 
       {testResult ? (
-        <p className={`text-sm ${testResult.success ? 'text-success' : 'text-danger'}`}>
-          {testResult.success ? 'Connection succeeded.' : (testResult.error ?? 'Connection failed.')}
-        </p>
+        testResult.success ? (
+          <p className="text-success text-sm">Connection succeeded.</p>
+        ) : (
+          // A failure can now carry several findings at once (the Daraja
+          // preflight reports every problem it can see, not just the
+          // first), and they arrive pipe-separated. One paragraph per
+          // finding — run together they read as a wall and the operator
+          // acts on whichever clause they happen to parse first.
+          <ul className="text-danger flex flex-col gap-1.5 text-sm">
+            {(testResult.error ?? 'Connection failed.').split(' | ').map((finding) => (
+              <li key={finding}>{finding}</li>
+            ))}
+          </ul>
+        )
       ) : null}
 
       <div className="mt-auto flex gap-2">
