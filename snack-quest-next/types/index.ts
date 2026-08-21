@@ -42,3 +42,6 @@ export * from './marketingEmail';
 export * from './analyticsEvent';
 export * from './smsOptOut';
 export * from './marketingSms';
+export * from './snackItem';
+export * from './boxRecipe';
+export * from './shoppingRun';
