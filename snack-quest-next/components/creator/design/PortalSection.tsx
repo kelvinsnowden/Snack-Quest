@@ -27,7 +27,13 @@ export function PortalSection({
   return (
     <section aria-labelledby={id} className={cn('flex flex-col', className)}>
       <div className="flex items-center justify-between gap-4">
-        <h2 id={id} className="text-card-title text-foreground font-semibold">
+        {/*
+          Was `text-card-title` (24px), which made the section label
+          larger than the card titles beneath it — a heading outweighing
+          its own content. A section label's job is to group, not to
+          compete.
+        */}
+        <h2 id={id} className="text-foreground text-lg font-semibold">
           {title}
         </h2>
         {action}
