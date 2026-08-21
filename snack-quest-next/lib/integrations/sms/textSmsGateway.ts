@@ -2,6 +2,7 @@ import 'server-only';
 
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
+import { getTextSmsConfig } from './config';
 import type { SmsGateway, SmsSendResult } from '../types';
 
 const GATEWAY_NAME = 'textSms';
@@ -16,59 +17,13 @@ const GATEWAY_NAME = 'textSms';
  *
  * Sits behind `SmsGateway` exactly as its predecessor did, so
  * `NotificationService` is unaware of which provider is in use.
- */
-interface TextSmsConfig {
-  apiKey: string;
-  partnerId: string;
-  /**
-   * TextSMS's name for the sender ID, sent on *every* request rather
-   * than being an account-level setting. That's what makes the
-   * launch-time "promotional ID now, branded ID later" swap a single
-   * environment-variable change with no code edit and no deploy.
-   */
-  shortcode: string;
-  baseUrl: string;
-}
-
-/**
- * The vendor's own Postman collection parameterises the host, so this
- * is their documented production host rather than a value copied from
- * the collection. Overridable precisely because of that — if TextSMS
- * hands over a different host (a per-partner subdomain, say), it is an
- * env-var change, not a code change.
- */
-const DEFAULT_BASE_URL = 'https://sms.textsms.co.ke';
-
-/**
- * Which required settings are absent right now. Empty means ready.
  *
- * Named individually rather than as one "missing A, B or C" string,
- * because the answer to "which one" is the whole content of the
- * message: an operator reading it is about to go and look at exactly
- * one row in Vercel.
+ * Credentials are resolved per business by `./config.ts` — a business
+ * that has connected its own TextSMS account in Admin → Settings →
+ * Integrations sends from its own sender ID, and only one that hasn't
+ * falls back to this deployment's shared `TEXTSMS_*` variables. That
+ * is why every method here takes a `businessId`.
  */
-export function missingTextSmsConfig(): string[] {
-  return (['TEXTSMS_API_KEY', 'TEXTSMS_PARTNER_ID', 'TEXTSMS_SHORTCODE'] as const).filter(
-    (name) => !process.env[name],
-  );
-}
-
-function getConfig(): TextSmsConfig {
-  const missing = missingTextSmsConfig();
-  if (missing.length > 0) {
-    throw new Error(
-      `SMS is not configured — ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set on this deployment. ` +
-        'Check Vercel: a shared team variable also has to be linked to this project, and a change only takes effect on a new deployment.',
-    );
-  }
-  const baseUrl = (process.env.TEXTSMS_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
-  return {
-    apiKey: process.env.TEXTSMS_API_KEY!,
-    partnerId: process.env.TEXTSMS_PARTNER_ID!,
-    shortcode: process.env.TEXTSMS_SHORTCODE!,
-    baseUrl,
-  };
-}
 
 /**
  * `respose-code` is not a typo on our side — it is the key TextSMS
@@ -104,13 +59,13 @@ function readCode(entry: TextSmsResponseEntry): number | null {
 }
 
 class TextSmsGateway implements SmsGateway {
-  /** Throws if this gateway could not send to anyone. Lets a bulk caller stop before the loop rather than failing identically for every recipient. */
-  assertReady(): void {
-    getConfig();
+  /** Throws if this gateway could not send to anyone for this business. Lets a bulk caller stop before the loop rather than failing identically for every recipient. */
+  async assertReady(businessId: string): Promise<void> {
+    await getTextSmsConfig(businessId);
   }
 
-  async send(input: { to: string; body: string }): Promise<SmsSendResult> {
-    const config = getConfig();
+  async send(input: { businessId: string; to: string; body: string }): Promise<SmsSendResult> {
+    const config = await getTextSmsConfig(input.businessId);
     // TextSMS expects a bare `254XXXXXXXXX` MSISDN, which is exactly
     // what this returns — the same normalizer checkout already uses for
     // Daraja. Normalizing at the gateway boundary rather than trusting
@@ -133,7 +88,7 @@ class TextSmsGateway implements SmsGateway {
           partnerID: config.partnerId,
           mobile,
           message: input.body,
-          shortcode: config.shortcode,
+          shortcode: config.senderId,
           pass_type: 'plain',
         }),
       });
@@ -162,3 +117,53 @@ class TextSmsGateway implements SmsGateway {
 
 export const textSmsGateway = new TextSmsGateway();
 export { TextSmsGateway };
+
+/**
+ * "Test Connection" for the Integrations page (§ Integration Portal).
+ *
+ * Queries the account's SMS balance, because it is the only TextSMS
+ * call that exercises the credentials without sending anyone a real
+ * text — a send-based test would cost money and would need a
+ * throwaway number to aim at.
+ *
+ * Two honesty caveats, deliberately not papered over:
+ *
+ * - A **pass** proves the API key and partner ID are accepted. It does
+ *   *not* prove the sender ID is approved for the account, because the
+ *   balance call does not take one. An unapproved sender ID is
+ *   rejected at send time, and there is no pre-flight for it.
+ * - A **failure** is reported with whatever the provider actually
+ *   said, rather than being classified. This endpoint is the one part
+ *   of the TextSMS API not exercised by a real send in this codebase,
+ *   so an unexpected shape is surfaced verbatim instead of being
+ *   translated into a confident diagnosis that might be wrong.
+ */
+export async function testTextSmsConnection(businessId: string): Promise<void> {
+  const config = await getTextSmsConfig(businessId);
+
+  const response = await fetch(`${config.baseUrl}/api/services/getbalance/`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apikey: config.apiKey, partnerID: config.partnerId }),
+  });
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(`TextSMS rejected the credentials check: HTTP ${response.status}. ${raw.slice(0, 200)}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`TextSMS returned a response that was not JSON: ${raw.slice(0, 200)}`);
+  }
+
+  // Their balance payload nests the same entry shape a send does.
+  const entry = (parsed as { responses?: TextSmsResponseEntry[] }).responses?.[0] ?? (parsed as TextSmsResponseEntry);
+  const code = readCode(entry);
+  if (code !== null && code !== SUCCESS_CODE) {
+    const description = entry['response-description'] ?? 'no description given';
+    throw new Error(`TextSMS rejected the credentials check: ${description} (code ${code})`);
+  }
+}

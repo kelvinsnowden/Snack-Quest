@@ -212,7 +212,7 @@ class NotificationService {
       case 'email':
         return this.email.send({ businessId, to: recipientRef, subject: subject ?? '', body, html: htmlBody ?? undefined });
       case 'sms':
-        return this.sms.send({ to: recipientRef, body });
+        return this.sms.send({ businessId, to: recipientRef, body });
       case 'in_app':
         throw new Error('in_app is not a dispatchable channel');
     }

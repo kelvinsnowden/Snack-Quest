@@ -83,7 +83,7 @@ export interface LoyaltyConfig {
  * is unconditional deny, independent of whatever the parent
  * document's rule becomes.
  */
-export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta' | 'tiktok' | 'authEmail';
+export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta' | 'tiktok' | 'authEmail' | 'textSms';
 
 /**
  * Shared status/audit fields every per-tenant integration secret now
@@ -258,6 +258,34 @@ export interface AuthEmailIntegrationSecret extends IntegrationSecretMeta {
   password: string;
 }
 
+/**
+ * The TextSMS bulk-SMS account this business's messages go out through
+ * — order confirmations, dispatch notices, and Marketing SMS campaigns
+ * (`lib/integrations/sms/textSmsGateway.ts`).
+ *
+ * Per business for the same reason SMTP is: the sender ID recipients
+ * actually see is a piece of this business's branding, not a property
+ * of the deployment it happens to be hosted on. Before this existed,
+ * SMS was the one channel with nowhere to enter credentials — the
+ * Integrations page showed it as a status-only card, and a missing key
+ * could only be fixed by whoever had access to the hosting provider's
+ * environment variables *and* the ability to trigger a redeploy. That
+ * is a fine story for the database this app runs on; it is a bad one
+ * for a marketing channel the person sending the campaign is expected
+ * to operate.
+ *
+ * The deployment-wide `TEXTSMS_*` environment variables still work and
+ * are still read, as the fallback for any business that has not
+ * connected its own account.
+ */
+export interface TextSmsIntegrationSecret extends IntegrationSecretMeta {
+  apiKey: string;
+  partnerId: string;
+  /** TextSMS's own name for the sender ID — the name that appears as the sender on the recipient's handset. */
+  senderId: string;
+  baseUrl?: string;
+}
+
 export interface IntegrationSecretMap {
   daraja: DarajaIntegrationSecret;
   whatchimp: WhatchimpIntegrationSecret;
@@ -265,6 +293,7 @@ export interface IntegrationSecretMap {
   meta: MetaIntegrationSecret;
   tiktok: TiktokIntegrationSecret;
   authEmail: AuthEmailIntegrationSecret;
+  textSms: TextSmsIntegrationSecret;
 }
 
 /**

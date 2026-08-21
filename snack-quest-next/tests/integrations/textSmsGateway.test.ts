@@ -5,6 +5,14 @@ import { resetCircuitBreaker } from '@/lib/integrations/shared/withCircuitBreake
 const ENV_KEYS = ['TEXTSMS_API_KEY', 'TEXTSMS_PARTNER_ID', 'TEXTSMS_SHORTCODE', 'TEXTSMS_BASE_URL'] as const;
 const ORIGINAL: Record<string, string | undefined> = {};
 
+/**
+ * A business with no TextSMS account of its own, so every case in this
+ * file exercises the deployment-wide fallback — which is what these
+ * tests were always about. The per-business path has its own file
+ * (`tests/integrations/textSmsConfig.test.ts`).
+ */
+const BUSINESS_ID = 'biz-textsms-gateway';
+
 beforeEach(() => {
   for (const key of ENV_KEYS) {
     ORIGINAL[key] = process.env[key];
@@ -53,7 +61,7 @@ describe('TextSmsGateway.send', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(successBody()));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await textSmsGateway.send({ to: '0713482448', body: 'You earned KES 500' });
+    const result = await textSmsGateway.send({ businessId: BUSINESS_ID, to: '0713482448', body: 'You earned KES 500' });
 
     // messageid arrives as a JSON *number*; SmsSendResult.providerMessageId is a string.
     expect(result).toEqual({ providerMessageId: '78726470' });
@@ -76,7 +84,7 @@ describe('TextSmsGateway.send', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(successBody()));
     vi.stubGlobal('fetch', fetchMock);
 
-    await textSmsGateway.send({ to: '+254 713 482 448', body: 'hi' });
+    await textSmsGateway.send({ businessId: BUSINESS_ID, to: '+254 713 482 448', body: 'hi' });
 
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).mobile).toBe('254713482448');
   });
@@ -85,7 +93,7 @@ describe('TextSmsGateway.send', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(textSmsGateway.send({ to: '+1 415 555 0100', body: 'hi' })).rejects.toThrow(
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '+1 415 555 0100', body: 'hi' })).rejects.toThrow(
       /is not a valid Kenyan mobile number/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
@@ -96,7 +104,7 @@ describe('TextSmsGateway.send', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(successBody()));
     vi.stubGlobal('fetch', fetchMock);
 
-    await textSmsGateway.send({ to: '254713482448', body: 'hi' });
+    await textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' });
 
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).shortcode).toBe('SNACKQUEST');
   });
@@ -106,7 +114,7 @@ describe('TextSmsGateway.send', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(successBody()));
     vi.stubGlobal('fetch', fetchMock);
 
-    await textSmsGateway.send({ to: '254713482448', body: 'hi' });
+    await textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' });
 
     expect(fetchMock.mock.calls[0][0]).toBe('https://partner.textsms.co.ke/api/services/sendsms/');
   });
@@ -120,7 +128,7 @@ describe('TextSmsGateway.send', () => {
   it('reads the vendor’s misspelled respose-code key as the success signal', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(successBody())));
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).resolves.toEqual({
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).resolves.toEqual({
       providerMessageId: '78726470',
     });
   });
@@ -135,7 +143,7 @@ describe('TextSmsGateway.send', () => {
       ),
     );
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).resolves.toEqual({
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).resolves.toEqual({
       providerMessageId: '12345',
     });
   });
@@ -143,7 +151,7 @@ describe('TextSmsGateway.send', () => {
   it('treats a string "200" as success', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(successBody('55'))));
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).resolves.toEqual({
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).resolves.toEqual({
       providerMessageId: '55',
     });
   });
@@ -158,7 +166,7 @@ describe('TextSmsGateway.send', () => {
       ),
     );
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).rejects.toThrow(
       /TextSMS send failed: Insufficient balance \(code 1003\)/,
     );
   });
@@ -166,7 +174,7 @@ describe('TextSmsGateway.send', () => {
   it('throws on a non-2xx HTTP response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, 502)));
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).rejects.toThrow(
       /TextSMS send failed: HTTP 502/,
     );
   });
@@ -174,7 +182,7 @@ describe('TextSmsGateway.send', () => {
   it('throws when the payload has no responses array', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(/TextSMS send failed/);
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).rejects.toThrow(/TextSMS send failed/);
   });
 
   it('never reports success without a messageid to record', async () => {
@@ -183,7 +191,7 @@ describe('TextSmsGateway.send', () => {
       vi.fn().mockResolvedValue(jsonResponse({ responses: [{ 'respose-code': 200, 'response-description': 'Success' }] })),
     );
 
-    await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(/without a messageid/);
+    await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).rejects.toThrow(/without a messageid/);
   });
 
   it.each(ENV_KEYS.filter((key) => key !== 'TEXTSMS_BASE_URL'))(
@@ -195,8 +203,8 @@ describe('TextSmsGateway.send', () => {
 
       // Names the specific missing setting, not the whole list — an
       // operator reading this is about to look at exactly one row.
-      await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(
-        new RegExp(`${missingKey} is not set`),
+      await expect(textSmsGateway.send({ businessId: BUSINESS_ID, to: '254713482448', body: 'hi' })).rejects.toThrow(
+        new RegExp(`${missingKey} is unset`),
       );
       expect(fetchMock).not.toHaveBeenCalled();
     },
@@ -204,21 +212,32 @@ describe('TextSmsGateway.send', () => {
 });
 
 describe('TextSmsGateway.assertReady', () => {
-  it('passes when every required setting is present', () => {
-    expect(() => textSmsGateway.assertReady()).not.toThrow();
+  it('passes when every required setting is present', async () => {
+    await expect(textSmsGateway.assertReady(BUSINESS_ID)).resolves.toBeUndefined();
   });
 
   /** The point of the pre-flight: a bulk caller learns this once, before its send loop. */
-  it('names every missing setting at once, not just the first', () => {
+  it('names every missing setting at once, not just the first', async () => {
     delete process.env.TEXTSMS_API_KEY;
     delete process.env.TEXTSMS_SHORTCODE;
 
-    expect(() => textSmsGateway.assertReady()).toThrow(/TEXTSMS_API_KEY, TEXTSMS_SHORTCODE are not set/);
+    await expect(textSmsGateway.assertReady(BUSINESS_ID)).rejects.toThrow(
+      /TEXTSMS_API_KEY, TEXTSMS_SHORTCODE are unset/,
+    );
   });
 
-  it('says where to look, since the value being set in Vercel is not the same as it reaching this project', () => {
+  /**
+   * The whole point of the per-business account: the fix an operator
+   * can actually perform has to come first. Naming the environment
+   * variables alone sends them to whoever administers the hosting
+   * provider, and then to a redeploy — which is exactly the dead end
+   * this replaced.
+   */
+  it('leads with the admin page, not the environment variables', async () => {
     delete process.env.TEXTSMS_PARTNER_ID;
 
-    expect(() => textSmsGateway.assertReady()).toThrow(/linked to this project/);
+    await expect(textSmsGateway.assertReady(BUSINESS_ID)).rejects.toThrow(
+      /Admin → Settings → Integrations[\s\S]*no redeploy/,
+    );
   });
 });
