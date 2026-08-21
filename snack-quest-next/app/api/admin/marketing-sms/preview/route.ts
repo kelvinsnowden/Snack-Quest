@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
-import { marketingSmsService } from '@/services/marketingSmsService';
+import { marketingSmsService, MarketingSmsValidationError } from '@/services/marketingSmsService';
 import { parseSmsDraftBody, type SmsDraftBody } from '@/lib/marketingSms/parseDraftBody';
 
 /**
@@ -35,12 +35,21 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  const preview = await marketingSmsService.previewAudience(
-    session.businessId,
-    parsed.input.segment,
-    parsed.input.customRecipients,
-    parsed.input.bodyText,
-  );
-
-  return Response.json(preview);
+  try {
+    const preview = await marketingSmsService.previewAudience(
+      session.businessId,
+      parsed.input.segment,
+      parsed.input.customRecipients,
+      parsed.input.bodyText,
+      parsed.input.linkUrl,
+      parsed.input.offerText,
+    );
+    return Response.json(preview);
+  } catch (error) {
+    // A bad merge tag is a message the composer must show, not a 500.
+    if (error instanceof MarketingSmsValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
 }

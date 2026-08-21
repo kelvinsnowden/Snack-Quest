@@ -18,6 +18,8 @@ export interface SerializedMarketingSmsCampaign {
   id: string;
   name: string;
   bodyText: string;
+  linkUrl: string | null;
+  offerText: string | null;
   segment: MarketingSmsSegment;
   customRecipients: string[] | null;
   status: MarketingSmsStatus;
@@ -37,6 +39,8 @@ export function serializeSmsCampaign(id: string, data: MarketingSmsCampaign): Se
     id,
     name: data.name,
     bodyText: data.bodyText,
+    linkUrl: data.linkUrl ?? null,
+    offerText: data.offerText ?? null,
     segment: data.segment,
     customRecipients: data.customRecipients,
     status: data.status,

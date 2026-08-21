@@ -8,6 +8,7 @@ import { customerService } from '@/services/customerService';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { buildOptOutUrl, optOutSuffix, SmsOptOutSecretMissingError } from '@/lib/sms/optOutLink';
 import { calculateSmsCost } from '@/lib/sms/segments';
+import { firstNameOf, renderSmsBody, validateTokens } from '@/lib/marketingSms/tokens';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import type { SmsGateway } from '@/lib/integrations/types';
@@ -46,11 +47,20 @@ export class MarketingSmsNotEditableError extends Error {
 const MAX_BODY_LENGTH = 480;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** One person a campaign will text. Carries the name because merge tags need it, and because the phone number alone cannot produce a greeting. */
+export interface SmsRecipient {
+  phoneNumber: string;
+  /** Null for a hand-pasted custom list, where no customer record is attached to the number. */
+  customerName: string | null;
+}
+
 export interface MarketingSmsDraftInput {
   name: string;
   bodyText: string;
   segment: MarketingSmsSegment;
   customRecipients?: string[] | null;
+  linkUrl?: string | null;
+  offerText?: string | null;
 }
 
 export interface MarketingSmsSendResult {
@@ -68,10 +78,16 @@ export interface MarketingSmsAudiencePreview {
   optedOutCount: number;
   /** Who would actually be texted — `matchedCount - optedOutCount`. */
   recipientCount: number;
+  /** The worst case across recipients, since merge tags make messages different lengths. */
   segmentsPerMessage: number;
+  /** The exact sum across every recipient — what the campaign will really bill. */
   totalSegments: number;
   encoding: string;
   forcedUcs2By: string | null;
+  /** True when personalisation puts some recipients on more segments than others. Worth saying out loud, because it is invisible in a compose box. */
+  variesByRecipient: boolean;
+  /** One fully-rendered message, so the composer can show what a real person receives rather than the template. */
+  sampleMessage: string;
 }
 
 /**
@@ -84,23 +100,22 @@ export interface MarketingSmsAudiencePreview {
  * service rather than a channel flag on that one:
  *
  * 1. **Opt-out is not optional.** Every recipient list passes through
- *    `applyOptOuts` on its way out of `resolveRecipients`, which is the
+ *    the register on its way out of `resolveRecipients`, which is the
  *    only method that produces a recipient list at all — so there is no
  *    route through this class that can text someone who asked not to be
- *    texted. The preview and the send resolve the audience the same
- *    way, so what an operator is shown is what will actually happen.
+ *    texted.
  *
- * 2. **Sending costs money per recipient.** Email is effectively free
- *    per extra person; SMS is billed per segment per recipient, which
- *    is why the audience preview reports segments and why the campaign
- *    stores what it actually cost.
+ * 2. **Sending costs money per recipient**, and since merge tags landed,
+ *    it can cost a *different* amount per recipient: "Hey Jo" and "Hey
+ *    Bartholomew" are not the same length, so one campaign can bill one
+ *    segment for some people and two for others. Both the preview and
+ *    the stored result therefore sum real per-recipient costs rather
+ *    than multiplying one figure by a head count.
  *
  * Transactional SMS deliberately does not come through here.
  * `NotificationService` sends order confirmations and dispatch notices
  * without consulting the opt-out register, because those are service
- * messages about a purchase the customer chose to make — suppressing
- * them would withhold information they need rather than respect a
- * marketing preference.
+ * messages about a purchase the customer chose to make.
  */
 class MarketingSmsService {
   constructor(private readonly sms: SmsGateway = textSmsGateway) {}
@@ -116,15 +131,29 @@ class MarketingSmsService {
     businessId: string,
     segment: MarketingSmsSegment,
     customRecipients: string[] | null,
-  ): Promise<{ recipients: string[]; matchedCount: number; optedOutCount: number }> {
-    const matched =
+  ): Promise<{ recipients: SmsRecipient[]; matchedCount: number; optedOutCount: number }> {
+    const matched: SmsRecipient[] =
       segment === 'custom'
-        ? normalizeCustomRecipients(customRecipients ?? [])
-        : selectSegment(await customerService.listCustomers(businessId), segment).map((c) => c.phoneNumber);
+        ? normalizeCustomRecipients(customRecipients ?? []).map((phoneNumber) => ({ phoneNumber, customerName: null }))
+        : selectSegment(await customerService.listCustomers(businessId), segment).map((customer) => ({
+            phoneNumber: customer.phoneNumber,
+            customerName: customer.customerName,
+          }));
 
-    const unique = Array.from(new Set(matched));
+    // Deduped by number, keeping the first — `CustomerService` already
+    // aggregates one row per customer, so a duplicate here means the
+    // same person reached the list twice and should be texted once.
+    const seen = new Set<string>();
+    const unique = matched.filter((entry) => {
+      if (seen.has(entry.phoneNumber)) {
+        return false;
+      }
+      seen.add(entry.phoneNumber);
+      return true;
+    });
+
     const optedOut = await smsOptOutRepository.listOptedOutNumbers(businessId);
-    const recipients = unique.filter((phone) => !optedOut.has(phone));
+    const recipients = unique.filter((entry) => !optedOut.has(entry.phoneNumber));
 
     return {
       recipients,
@@ -133,32 +162,46 @@ class MarketingSmsService {
     };
   }
 
-  /** What the composer shows before anyone presses send — the same resolution the send itself will do, plus what it will cost. */
+  /** What the composer shows before anyone presses send — the same resolution the send itself will do, plus what it will really cost. */
   async previewAudience(
     businessId: string,
     segment: MarketingSmsSegment,
     customRecipients: string[] | null,
     bodyText: string,
+    linkUrl: string | null = null,
+    offerText: string | null = null,
   ): Promise<MarketingSmsAudiencePreview> {
+    const tokenProblem = validateTokens({ bodyText, linkUrl, offerText });
+    if (tokenProblem) {
+      throw new MarketingSmsValidationError(tokenProblem);
+    }
+
     const { recipients, matchedCount, optedOutCount } = await this.resolveRecipients(
       businessId,
       segment,
       customRecipients,
     );
-    // Costed with a real opt-out link attached, because that is what
-    // actually goes out — a preview that priced the bare body would
-    // under-report by ~42 characters and could show one segment for a
-    // message that bills as two.
-    const cost = calculateSmsCost(this.composeMessage(bodyText, sampleRecipient(recipients)));
+
+    const costs = recipients.map((recipient) =>
+      calculateSmsCost(this.composeMessage(bodyText, recipient, linkUrl, offerText)),
+    );
+
+    // With no audience there is still a message worth pricing, so a
+    // representative one is costed rather than reporting nothing.
+    const sample = costs.length > 0 ? costs : [calculateSmsCost(this.composeMessage(bodyText, SAMPLE_RECIPIENT, linkUrl, offerText))];
+    const segmentCounts = sample.map((cost) => cost.segments);
+    const worst = sample[segmentCounts.indexOf(Math.max(...segmentCounts))];
 
     return {
       matchedCount,
       optedOutCount,
       recipientCount: recipients.length,
-      segmentsPerMessage: cost.segments,
-      totalSegments: cost.segments * recipients.length,
-      encoding: cost.encoding,
-      forcedUcs2By: cost.forcedUcs2By,
+      segmentsPerMessage: Math.max(...segmentCounts),
+      totalSegments: costs.reduce((total, cost) => total + cost.segments, 0),
+      encoding: worst.encoding,
+      forcedUcs2By: worst.forcedUcs2By,
+      variesByRecipient: new Set(segmentCounts).size > 1,
+      sampleMessage: this.composeMessage(bodyText, recipients[0] ?? SAMPLE_RECIPIENT, linkUrl, offerText),
     };
   }
 
@@ -169,6 +212,8 @@ class MarketingSmsService {
         businessId,
         name: draft.name,
         bodyText: draft.bodyText,
+        linkUrl: draft.linkUrl,
+        offerText: draft.offerText,
         segment: draft.segment,
         customRecipients: draft.customRecipients,
         status: 'draft',
@@ -199,6 +244,8 @@ class MarketingSmsService {
     await marketingSmsRepository.update(campaignId, {
       name: draft.name,
       bodyText: draft.bodyText,
+      linkUrl: draft.linkUrl,
+      offerText: draft.offerText,
       segment: draft.segment,
       customRecipients: draft.customRecipients,
       updatedBy: actor,
@@ -227,6 +274,19 @@ class MarketingSmsService {
       throw new MarketingSmsNotEditableError(campaign.status);
     }
 
+    // Re-checked at send even though the draft was validated on save:
+    // the campaign may have been written before a token was introduced,
+    // and a literal "{{firstName}}" reaching a customer is not
+    // recoverable once the aggregator has it.
+    const tokenProblem = validateTokens({
+      bodyText: campaign.bodyText,
+      linkUrl: campaign.linkUrl,
+      offerText: campaign.offerText,
+    });
+    if (tokenProblem) {
+      throw new MarketingSmsValidationError(tokenProblem);
+    }
+
     const { recipients, optedOutCount } = await this.resolveRecipients(
       businessId,
       campaign.segment,
@@ -244,26 +304,27 @@ class MarketingSmsService {
     // leaves the campaign editable and re-sendable rather than stranded
     // mid-send. A marketing text whose opt-out link cannot be honoured
     // must never go out.
-    this.assertOptOutLinkAvailable(recipients[0]);
-
-    const segmentsPerMessage = calculateSmsCost(this.composeMessage(campaign.bodyText, recipients[0])).segments;
+    this.assertOptOutLinkAvailable(recipients[0].phoneNumber);
 
     await marketingSmsRepository.update(campaignId, {
       status: 'sending',
       recipientCount: recipients.length,
       optedOutSkippedCount: optedOutCount,
-      segmentsPerMessage,
       updatedBy: actor,
     });
 
-    const { sentCount, failedRecipients } = await this.dispatchToRecipients(campaign.bodyText, recipients);
+    const { sentCount, failedRecipients, segmentsSent, worstSegments } = await this.dispatchToRecipients(
+      campaign,
+      recipients,
+    );
 
     await marketingSmsRepository.update(campaignId, {
       status: sentCount > 0 ? 'sent' : 'failed',
       sentCount,
       failedCount: failedRecipients.length,
       failedRecipients: failedRecipients.length > 0 ? failedRecipients : null,
-      totalSegmentsSent: segmentsPerMessage * sentCount,
+      segmentsPerMessage: worstSegments,
+      totalSegmentsSent: segmentsSent,
       sentAt: FieldValue.serverTimestamp() as unknown as MarketingSmsCampaign['sentAt'],
       updatedBy: actor,
     });
@@ -273,7 +334,7 @@ class MarketingSmsService {
       sentCount,
       failedCount: failedRecipients.length,
       optedOutSkippedCount: optedOutCount,
-      totalSegmentsSent: segmentsPerMessage * sentCount,
+      totalSegmentsSent: segmentsSent,
     };
   }
 
@@ -285,6 +346,12 @@ class MarketingSmsService {
    * The opt-out register is consulted again rather than trusted from
    * the original send: someone who opted out in the minutes between the
    * two attempts must not be texted by the retry.
+   *
+   * Names are re-resolved from the current audience so the retry is
+   * personalised the same way the first attempt was; a number no longer
+   * in the segment falls back to the un-named greeting rather than
+   * being dropped, since it was a legitimate recipient when the
+   * campaign went out.
    */
   async resendFailed(businessId: string, campaignId: string, actor: string): Promise<MarketingSmsSendResult> {
     const campaign = await this.requireOwned(businessId, campaignId);
@@ -296,8 +363,15 @@ class MarketingSmsService {
       throw new MarketingSmsValidationError('This campaign has no failed recipients to resend to.');
     }
 
-    const optedOut = await smsOptOutRepository.listOptedOutNumbers(businessId);
-    const recipients = previouslyFailed.map((entry) => entry.phoneNumber).filter((phone) => !optedOut.has(phone));
+    const [optedOut, { recipients: current }] = await Promise.all([
+      smsOptOutRepository.listOptedOutNumbers(businessId),
+      this.resolveRecipients(businessId, campaign.segment, campaign.customRecipients),
+    ]);
+    const nameByPhone = new Map(current.map((entry) => [entry.phoneNumber, entry.customerName]));
+
+    const recipients: SmsRecipient[] = previouslyFailed
+      .filter((entry) => !optedOut.has(entry.phoneNumber))
+      .map((entry) => ({ phoneNumber: entry.phoneNumber, customerName: nameByPhone.get(entry.phoneNumber) ?? null }));
     const newlyOptedOut = previouslyFailed.length - recipients.length;
 
     if (recipients.length === 0) {
@@ -306,7 +380,10 @@ class MarketingSmsService {
       );
     }
 
-    const { sentCount, failedRecipients } = await this.dispatchToRecipients(campaign.bodyText, recipients);
+    const { sentCount, failedRecipients, segmentsSent, worstSegments } = await this.dispatchToRecipients(
+      campaign,
+      recipients,
+    );
 
     await marketingSmsRepository.update(campaignId, {
       status: sentCount + campaign.sentCount > 0 ? 'sent' : 'failed',
@@ -314,7 +391,8 @@ class MarketingSmsService {
       failedCount: failedRecipients.length,
       failedRecipients: failedRecipients.length > 0 ? failedRecipients : null,
       optedOutSkippedCount: campaign.optedOutSkippedCount + newlyOptedOut,
-      totalSegmentsSent: campaign.totalSegmentsSent + campaign.segmentsPerMessage * sentCount,
+      segmentsPerMessage: Math.max(campaign.segmentsPerMessage, worstSegments),
+      totalSegmentsSent: campaign.totalSegmentsSent + segmentsSent,
       updatedBy: actor,
     });
 
@@ -323,40 +401,65 @@ class MarketingSmsService {
       sentCount,
       failedCount: failedRecipients.length,
       optedOutSkippedCount: newlyOptedOut,
-      totalSegmentsSent: campaign.segmentsPerMessage * sentCount,
+      totalSegmentsSent: segmentsSent,
     };
   }
 
   /**
-   * The message one recipient receives: the composed body plus their
-   * own signed opt-out link. Public so the composer's character count
-   * and the real send are computed by the same code — a preview that
-   * measured something other than what ships is worse than no preview.
+   * The message one recipient receives: the body with their own merge
+   * tags filled in, plus their own signed opt-out link. Public so the
+   * composer's character count and the real send are computed by the
+   * same code — a preview that measured something other than what ships
+   * is worse than no preview.
    */
-  composeMessage(bodyText: string, phoneNumber: string): string {
-    return `${bodyText}${optOutSuffix(buildOptOutUrl(getSiteUrl(), phoneNumber))}`;
+  composeMessage(
+    bodyText: string,
+    recipient: SmsRecipient,
+    linkUrl: string | null,
+    offerText: string | null,
+  ): string {
+    const rendered = renderSmsBody(bodyText, {
+      firstName: firstNameOf(recipient.customerName),
+      linkUrl,
+      offerText,
+    });
+    return `${rendered}${optOutSuffix(buildOptOutUrl(getSiteUrl(), recipient.phoneNumber))}`;
   }
 
   /** The one place that actually dials the gateway — best-effort per recipient, with the real error captured per recipient rather than discarded. */
   private async dispatchToRecipients(
-    bodyText: string,
-    recipients: string[],
-  ): Promise<{ sentCount: number; failedRecipients: MarketingSmsFailedRecipient[] }> {
+    campaign: Pick<MarketingSmsCampaign, 'bodyText' | 'linkUrl' | 'offerText'>,
+    recipients: SmsRecipient[],
+  ): Promise<{
+    sentCount: number;
+    failedRecipients: MarketingSmsFailedRecipient[];
+    segmentsSent: number;
+    worstSegments: number;
+  }> {
     let sentCount = 0;
+    let segmentsSent = 0;
+    let worstSegments = 0;
     const failedRecipients: MarketingSmsFailedRecipient[] = [];
 
-    for (const phoneNumber of recipients) {
+    for (const recipient of recipients) {
+      const body = this.composeMessage(campaign.bodyText, recipient, campaign.linkUrl, campaign.offerText);
+      const segments = calculateSmsCost(body).segments;
+      worstSegments = Math.max(worstSegments, segments);
+
       try {
-        await this.sms.send({ to: phoneNumber, body: this.composeMessage(bodyText, phoneNumber) });
+        await this.sms.send({ to: recipient.phoneNumber, body });
         sentCount += 1;
+        // Counted only on success, so the recorded spend is what the
+        // provider will actually bill rather than what was attempted.
+        segmentsSent += segments;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`MarketingSmsService: send failed for ${phoneNumber}: ${message}`);
-        failedRecipients.push({ phoneNumber, error: message });
+        console.error(`MarketingSmsService: send failed for ${recipient.phoneNumber}: ${message}`);
+        failedRecipients.push({ phoneNumber: recipient.phoneNumber, error: message });
       }
     }
 
-    return { sentCount, failedRecipients };
+    return { sentCount, failedRecipients, segmentsSent, worstSegments };
   }
 
   private assertOptOutLinkAvailable(sampleNumber: string): void {
@@ -375,6 +478,8 @@ class MarketingSmsService {
   private validateDraft(input: MarketingSmsDraftInput): Required<MarketingSmsDraftInput> {
     const name = (input.name ?? '').trim();
     const bodyText = (input.bodyText ?? '').trim();
+    const linkUrl = normalizeLinkUrl(input.linkUrl);
+    const offerText = input.offerText?.trim() || null;
 
     if (!name) {
       throw new MarketingSmsValidationError('Give the campaign a name so you can find it later.');
@@ -388,15 +493,26 @@ class MarketingSmsService {
       );
     }
 
+    if (input.linkUrl?.trim() && !linkUrl) {
+      throw new MarketingSmsValidationError(
+        'That web address does not look valid. Include the full address, e.g. https://snackquests.shop/boxes.',
+      );
+    }
+
+    const tokenProblem = validateTokens({ bodyText, linkUrl, offerText });
+    if (tokenProblem) {
+      throw new MarketingSmsValidationError(tokenProblem);
+    }
+
     if (input.segment === 'custom') {
       const numbers = normalizeCustomRecipients(input.customRecipients ?? []);
       if (numbers.length === 0) {
         throw new MarketingSmsValidationError('Add at least one valid Kenyan mobile number, or pick a segment instead.');
       }
-      return { name, bodyText, segment: 'custom', customRecipients: numbers };
+      return { name, bodyText, segment: 'custom', customRecipients: numbers, linkUrl, offerText };
     }
 
-    return { name, bodyText, segment: input.segment, customRecipients: null };
+    return { name, bodyText, segment: input.segment, customRecipients: null, linkUrl, offerText };
   }
 
   private async requireOwned(businessId: string, campaignId: string): Promise<MarketingSmsCampaign> {
@@ -405,6 +521,32 @@ class MarketingSmsService {
       throw new MarketingSmsNotFoundError(campaignId);
     }
     return campaign;
+  }
+}
+
+/** Costing and sample rendering need a stand-in when the audience is empty. A name of average length, so the sample is representative rather than flattering. */
+const SAMPLE_RECIPIENT: SmsRecipient = { phoneNumber: '254700000000', customerName: 'Amina' };
+
+/**
+ * Accepts what someone would actually paste, and rejects what cannot be
+ * tapped. A bare `snackquests.shop/boxes` gets `https://` so the
+ * recipient's phone linkifies it; anything that is not a URL at all
+ * returns null for the caller to report.
+ */
+function normalizeLinkUrl(raw: string | null | undefined): string | null {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withScheme);
+    if (!url.hostname.includes('.')) {
+      return null;
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return null;
   }
 }
 
@@ -425,11 +567,6 @@ function normalizeCustomRecipients(raw: string[]): string[] {
     }
   }
   return Array.from(new Set(normalized));
-}
-
-/** Costing needs a number to build a sample link from; the link is a fixed length for every recipient, so any real one gives the right answer. The placeholder only matters for an empty audience, where the cost is academic. */
-function sampleRecipient(recipients: string[]): string {
-  return recipients[0] ?? '254700000000';
 }
 
 function selectSegment(customers: CustomerSummary[], segment: MarketingSmsSegment): CustomerSummary[] {

@@ -61,8 +61,19 @@ export interface MarketingSmsCampaign extends AuditFields {
   businessId: string;
   /** Internal label for the campaigns list — never sent to anyone. SMS has no subject line, so without this every campaign would be identified by the first few words of its own body. */
   name: string;
-  /** The message as composed. The per-recipient opt-out link is appended at send time and is deliberately NOT stored here — it differs per recipient, and storing one recipient's link on the campaign would misrepresent what everyone else received. */
+  /** The message as composed, including any `{{token}}` merge tags. The per-recipient opt-out link is appended at send time and is deliberately NOT stored here — it differs per recipient, and storing one recipient's link on the campaign would misrepresent what everyone else received. */
   bodyText: string;
+  /**
+   * What `{{link}}` resolves to. Null when the message does not use it.
+   *
+   * Stored on the campaign rather than pasted into the body so the
+   * composer can measure it: a URL is the single most expensive thing
+   * in an SMS, and knowing it as its own field is what lets the cost
+   * preview price the message someone will actually receive.
+   */
+  linkUrl: string | null;
+  /** What `{{offer}}` resolves to — "15% off your next box". Null when unused. */
+  offerText: string | null;
   segment: MarketingSmsSegment;
   /** Only meaningful when `segment === 'custom'` — normalised, deduped `254…` numbers. */
   customRecipients: string[] | null;
@@ -79,9 +90,18 @@ export interface MarketingSmsCampaign extends AuditFields {
    */
   optedOutSkippedCount: number;
   failedRecipients: MarketingSmsFailedRecipient[] | null;
-  /** Billable segments per message at send time — 1 for an ordinary message, more if it ran long or contained a non-GSM-7 character. See `lib/sms/segments.ts`. */
+  /**
+   * Billable segments for the LONGEST message this campaign produced.
+   *
+   * "Per message" stopped being a single number once merge tags
+   * existed: "Hey Jo" and "Hey Bartholomew" are different lengths, so
+   * two recipients on one campaign can bill differently. This records
+   * the worst case, and `totalSegmentsSent` records the real total —
+   * the two disagree exactly when personalisation pushed some
+   * recipients over a segment boundary and not others.
+   */
   segmentsPerMessage: number;
-  /** `segmentsPerMessage × sentCount`: what this campaign actually cost, in the unit the provider bills in. */
+  /** The summed billable segments of every message actually sent — not `segmentsPerMessage × sentCount`, which would be wrong whenever merge tags made the messages different lengths. */
   totalSegmentsSent: number;
   sentAt: Timestamp | null;
 }

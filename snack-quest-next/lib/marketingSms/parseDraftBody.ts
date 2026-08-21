@@ -27,6 +27,8 @@ export interface SmsDraftBody {
   bodyText?: unknown;
   segment?: unknown;
   customRecipients?: unknown;
+  linkUrl?: unknown;
+  offerText?: unknown;
 }
 
 export interface ParsedSmsDraft {
@@ -34,10 +36,12 @@ export interface ParsedSmsDraft {
   bodyText: string;
   segment: MarketingSmsSegment;
   customRecipients: string[] | null;
+  linkUrl: string | null;
+  offerText: string | null;
 }
 
 export function parseSmsDraftBody(body: SmsDraftBody): { input: ParsedSmsDraft } | { error: string } {
-  const { name, bodyText, segment, customRecipients } = body ?? {};
+  const { name, bodyText, segment, customRecipients, linkUrl, offerText } = body ?? {};
 
   if (typeof name !== 'string' || typeof bodyText !== 'string') {
     return { error: 'name and bodyText are required' };
@@ -55,6 +59,8 @@ export function parseSmsDraftBody(body: SmsDraftBody): { input: ParsedSmsDraft }
       bodyText,
       segment: segment as MarketingSmsSegment,
       customRecipients: Array.isArray(customRecipients) ? customRecipients.map(String) : null,
+      linkUrl: typeof linkUrl === 'string' ? linkUrl : null,
+      offerText: typeof offerText === 'string' ? offerText : null,
     },
   };
 }
