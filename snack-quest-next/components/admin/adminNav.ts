@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   Mail,
   MailPlus,
+  ChefHat,
+  Cookie,
   MessageSquare,
   BellOff,
   MapPinned,
@@ -105,6 +107,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { href: '/admin/products', label: 'Products', icon: Package, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/inventory', label: 'Inventory', icon: Boxes, section: 'orders', group: 'Catalogue & stock' },
+  { href: '/admin/snack-items', label: 'Snacks', icon: Cookie, section: 'orders', group: 'Catalogue & stock' },
+  { href: '/admin/recipes', label: 'Box recipes', shortLabel: 'Recipes', icon: ChefHat, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/purchase-orders', label: 'Purchase orders', icon: ClipboardCheck, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/suppliers', label: 'Suppliers', icon: Warehouse, section: 'orders', group: 'Catalogue & stock' },
 
