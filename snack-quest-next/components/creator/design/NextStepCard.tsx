@@ -60,7 +60,14 @@ export function NextStepCard({ step }: { step: NextStep }) {
           {step.cta ? (
             <Link
               href={step.cta.href}
-              className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background inline-flex w-fit items-center gap-1.5 rounded-md text-sm font-semibold transition-transform duration-150 ease-out hover:translate-x-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              /*
+                A real button, not a text link. This is the one action
+                the card exists to prompt, and as an inline link it was
+                108x20 — well under the 44px minimum, on the primary
+                CTA of the primary card of a portal used entirely on
+                phones.
+              */
+              className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-11 w-fit items-center gap-1.5 rounded-full px-5 text-sm font-semibold transition-transform duration-150 ease-out hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:translate-y-0"
             >
               {step.cta.label}
               <ArrowRight className="size-4" aria-hidden="true" />
@@ -69,7 +76,7 @@ export function NextStepCard({ step }: { step: NextStep }) {
           {step.secondaryCta ? (
             <Link
               href={step.secondaryCta.href}
-              className="text-muted-foreground hover:text-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex w-fit items-center gap-1.5 rounded-md text-sm font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              className="text-muted-foreground hover:text-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-11 w-fit items-center gap-1.5 rounded-md text-sm font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             >
               {step.secondaryCta.label}
             </Link>

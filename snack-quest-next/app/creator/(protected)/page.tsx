@@ -21,20 +21,6 @@ import { formatDate, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Home' };
 
-/** Nairobi is the only timezone this product operates in. */
-function timeOfDayGreeting(): string {
-  const hour = Number(
-    new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      hour12: false,
-      timeZone: 'Africa/Nairobi',
-    }).format(new Date()),
-  );
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
 const QUICK_ACTIONS = [
   { href: '/creator/referrals', label: 'Links', icon: Link2 },
   { href: '/creator/earnings', label: 'Earnings', icon: Banknote },
@@ -103,16 +89,14 @@ export default async function CreatorHomePage() {
       : null;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-8">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6 md:gap-8">
       <PortalHero
-        displayName={session.displayName}
-        photoURL={session.photoURL}
-        greeting={timeOfDayGreeting()}
         statusLabel={CREATOR_STATUS_LABELS[profile.status]}
         tierLabel={`${CREATOR_TIER_LABELS[profile.tier]} tier`}
         availableKes={profile.availableCashKes}
         pendingKes={profile.pendingEarningsKes}
         lifetimeKes={profile.lifetimeEarningsKes}
+        commissionRateKes={profile.commissionRateKes}
         referralCode={profile.referralCode}
         canWithdraw={accessLevel === 'full'}
       />
@@ -164,9 +148,21 @@ export default async function CreatorHomePage() {
             </p>
           </div>
 
-          {/* Visualised rather than tabulated, per the same reasoning. */}
+          {/*
+            Only drawn once there is a rate to draw. An empty track
+            under a "—" is the same fault the hero had: rendering the
+            shape of data that does not exist yet. The sentence below
+            says the useful thing instead.
+          */}
+          {conversionRate === null ? null : (
           <div
-            className="bg-muted mt-4 h-2 overflow-hidden rounded-full"
+            /*
+              Not `bg-muted`: that token is #756e5f, the same value as
+              --muted-foreground, so using it as a track made a 0% bar
+              render as a solid dark one — reading as complete when it
+              was empty.
+            */
+            className="bg-foreground/10 mt-4 h-2 overflow-hidden rounded-full"
             role="img"
             aria-label={
               conversionRate === null
@@ -179,6 +175,7 @@ export default async function CreatorHomePage() {
               style={{ width: `${Math.min(conversionRate ?? 0, 100)}%` }}
             />
           </div>
+          )}
 
           {conversionRate === null ? (
             <p className="text-muted-foreground mt-3 text-sm">

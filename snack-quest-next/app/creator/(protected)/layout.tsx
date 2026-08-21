@@ -51,7 +51,14 @@ export default async function CreatorProtectedLayout({
         earnings list scrolls over it, and pointer-events-none so it can
         never intercept a tap.
       */}
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+      {/*
+        Desktop only. Two 500px circles at blur-3xl are a real
+        compositing cost on a phone, and they were buying atmosphere
+        behind content that already sits on its own cards — the ambient
+        wash read as a slightly dirty background rather than as depth.
+        The desktop layout has the empty margins that make it land.
+      */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 hidden overflow-hidden md:block">
         <div className="bg-secondary/10 absolute -top-40 -left-32 size-[520px] rounded-full blur-3xl" />
         <div className="bg-primary/10 absolute -right-40 bottom-0 size-[460px] rounded-full blur-3xl" />
       </div>
