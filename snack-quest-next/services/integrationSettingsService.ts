@@ -12,6 +12,7 @@ import { testJumiaConnection } from '@/lib/integrations/jumia/jumiaGateway';
 import { testMetaConnection } from '@/lib/integrations/meta/metaConversionGateway';
 import { testTiktokConnection } from '@/lib/integrations/tiktok/tiktokConversionGateway';
 import { testAuthEmailConnection } from '@/lib/integrations/email/smtpEmailGateway';
+import { testTextSmsConnection } from '@/lib/integrations/sms/textSmsGateway';
 import type { IntegrationProvider, IntegrationSecretMap, IntegrationSecretMeta } from '@/types';
 
 export class IntegrationValidationError extends Error {
@@ -55,7 +56,7 @@ export interface IntegrationSummary {
   secretsEncryptedAtRest: boolean | null;
 }
 
-const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta', 'tiktok', 'authEmail'];
+const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta', 'tiktok', 'authEmail', 'textSms'];
 
 const TEST_CONNECTORS: Record<IntegrationProvider, (businessId: string) => Promise<void>> = {
   daraja: testDarajaConnection,
@@ -64,6 +65,7 @@ const TEST_CONNECTORS: Record<IntegrationProvider, (businessId: string) => Promi
   meta: testMetaConnection,
   tiktok: testTiktokConnection,
   authEmail: testAuthEmailConnection,
+  textSms: testTextSmsConnection,
 };
 
 function maskSecretValue(value: string): string {

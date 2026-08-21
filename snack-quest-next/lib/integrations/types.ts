@@ -518,14 +518,22 @@ export interface SmsSendResult {
 
 export interface SmsGateway {
   /**
-   * Optional pre-flight. Throws when the gateway cannot send at all —
-   * missing credentials rather than a per-message problem.
+   * Optional pre-flight. Throws when the gateway cannot send at all
+   * for this business — missing credentials rather than a per-message
+   * problem.
    *
    * Exists so a bulk sender can fail once, before spending a send loop
    * producing the same configuration error for every recipient. A
    * campaign to 500 people should not report 500 identical failures
-   * that were all one unset environment variable.
+   * that were all one credential nobody had entered.
    */
-  assertReady?(): void;
-  send(input: { to: string; body: string }): Promise<SmsSendResult>;
+  assertReady?(businessId: string): Promise<void>;
+  /**
+   * `businessId` because SMS is per-tenant now, for the same reason
+   * email is (see `EmailGateway`): a business that has connected its
+   * own TextSMS account in Admin sends from its own approved sender
+   * ID, and only one that hasn't falls back to the deployment-wide
+   * account.
+   */
+  send(input: { businessId: string; to: string; body: string }): Promise<SmsSendResult>;
 }

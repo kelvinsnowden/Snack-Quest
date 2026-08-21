@@ -137,6 +137,17 @@ export function IntegrationCard({ integration }: { integration: IntegrationSumma
         </p>
       ) : null}
 
+      {/* SMS-specific: the one card whose "Missing credentials" does not mean nothing sends. */}
+      {integration.provider === 'textSms' ? (
+        <p className="text-muted-foreground rounded-md bg-border/30 px-3 py-2 text-xs">
+          Every text this app sends — payment confirmations, dispatch notices and Marketing SMS campaigns —
+          goes out through these credentials, from your own approved sender ID. Leave this blank and SMS falls
+          back to whatever shared account this deployment was set up with, which is listed under
+          Platform-wide below. Test connection checks the API key and partner ID against your TextSMS balance;
+          it cannot check the sender ID, which TextSMS only validates when a real message is sent.
+        </p>
+      ) : null}
+
       <IntegrationEditDialog integration={integration} open={editOpen} onOpenChange={setEditOpen} />
     </Card>
   );

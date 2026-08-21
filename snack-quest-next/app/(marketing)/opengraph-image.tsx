@@ -16,13 +16,41 @@ export const contentType = 'image/png';
  */
 export const dynamic = 'force-dynamic';
 
+/**
+ * The logo as a data URI, or `null` if it could not be read.
+ *
+ * Never throws, on purpose. This route's only job is to hand social
+ * platforms a picture, and it gets exactly one attempt — a crawler
+ * that receives a 500 caches the failure and shows a blank grey card,
+ * which is strictly worse than a card with type but no mark. That is
+ * not hypothetical: reading this file used to be unguarded, and a
+ * missing logo in the deployed bundle blanked every link preview of
+ * the site for weeks (see `outputFileTracingIncludes` in
+ * next.config.ts, which is the fix for *why* it was missing — this is
+ * the guard for it happening again some other way).
+ */
+async function readLogoDataUrl(): Promise<string | null> {
+  try {
+    const buffer = await readFile(path.join(process.cwd(), 'public', 'logo.png'));
+    return `data:image/png;base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    console.error('opengraph-image: could not read public/logo.png', error);
+    return null;
+  }
+}
+
+/** Same reasoning as the logo: the tenant lookup is a Firestore round trip, and a preview that says "Snack Quest" beats no preview at all. */
+async function readBusinessName(): Promise<string> {
+  try {
+    return (await getCurrentBusiness())?.name ?? 'Snack Quest';
+  } catch (error) {
+    console.error('opengraph-image: could not load the current business', error);
+    return 'Snack Quest';
+  }
+}
+
 export default async function Image() {
-  const [business, logoBuffer] = await Promise.all([
-    getCurrentBusiness(),
-    readFile(path.join(process.cwd(), 'public', 'logo.png')),
-  ]);
-  const businessName = business?.name ?? 'Snack Quest';
-  const logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+  const [businessName, logoDataUrl] = await Promise.all([readBusinessName(), readLogoDataUrl()]);
 
   return new ImageResponse(
     (
@@ -41,13 +69,15 @@ export default async function Image() {
           fontFamily: 'sans-serif',
         }}
       >
-        <img
-          src={logoDataUrl}
-          alt=""
-          width={88}
-          height={88}
-          style={{ borderRadius: 24 }}
-        />
+        {logoDataUrl ? (
+          <img
+            src={logoDataUrl}
+            alt=""
+            width={88}
+            height={88}
+            style={{ borderRadius: 24 }}
+          />
+        ) : null}
         <div style={{ display: 'flex', fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>{businessName}</div>
         <div style={{ display: 'flex', fontSize: 32, color: '#756e5f' }}>Mystery snack boxes, delivered across Kenya</div>
       </div>

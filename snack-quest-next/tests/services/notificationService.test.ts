@@ -123,7 +123,11 @@ describe('NotificationService.send', () => {
       dedupeKey: 'withdrawal-1',
     });
 
+    // `businessId` is part of the assertion, not incidental: SMS
+    // credentials are per business now, so a dispatch that dropped it
+    // would send this text from another tenant's sender ID.
     expect(sms.send).toHaveBeenCalledWith({
+      businessId: BUSINESS_ID,
       to: '254700000000',
       body: 'Snack Quest: your withdrawal of KES 500 has been paid.',
     });
@@ -243,7 +247,11 @@ describe('NotificationService.retrySweep', () => {
     const result = await service.retrySweep(BUSINESS_ID);
 
     expect(result).toEqual({ attempted: 1 });
+    // `businessId` is part of the assertion, not incidental: SMS
+    // credentials are per business now, so a dispatch that dropped it
+    // would send this text from another tenant's sender ID.
     expect(sms.send).toHaveBeenCalledWith({
+      businessId: BUSINESS_ID,
       to: '254700000000',
       body: 'Snack Quest: your withdrawal of KES 500 has been paid.',
     });

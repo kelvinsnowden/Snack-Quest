@@ -27,6 +27,23 @@ const nextConfig: NextConfig = {
   // See the `--webpack` note on the build script in package.json for why
   // the bundler choice matters here.
   serverExternalPackages: ['firebase-admin', 'jwks-rsa', 'jose'],
+  // `app/(marketing)/opengraph-image.tsx` reads `public/logo.png` off
+  // disk at request time, with a path built from `process.cwd()`.
+  //
+  // Next's output file tracing follows static `import`s; it cannot see
+  // a path assembled at runtime, so the logo was never copied into the
+  // serverless function bundle. Being in the repo is not enough on its
+  // own: `public/` is uploaded to the CDN as static assets, which is a
+  // different place from the function's filesystem. Every production
+  // render therefore threw `ENOENT: /var/task/.../public/logo.png` and
+  // returned a 500 — which is why every WhatsApp/X/Facebook link
+  // preview of this site came back blank.
+  //
+  // The key is the *route* path, so the `(marketing)` route group is
+  // absent from it by design (route groups never appear in a URL).
+  outputFileTracingIncludes: {
+    '/opengraph-image': ['./public/logo.png'],
+  },
   images: {
     // Every uploaded image (snack/box photos, storage browser) lives in
     // Vercel Blob (services/storageService.ts) at

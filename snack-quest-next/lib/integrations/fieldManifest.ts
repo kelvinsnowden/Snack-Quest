@@ -91,6 +91,24 @@ export const INTEGRATION_FIELD_MANIFEST: Record<IntegrationProvider, Integration
     { key: 'username', label: 'SMTP username', secret: false, required: true },
     { key: 'password', label: 'SMTP password', secret: true, required: true, helpText: 'Stored encrypted here for this app’s own outbound email. Never shown back to you.' },
   ],
+  // The bulk-SMS account every text goes out through — order and
+  // dispatch notices, and Marketing SMS campaigns
+  // (`lib/integrations/sms/textSmsGateway.ts`). Deployment-wide
+  // `TEXTSMS_*` environment variables still work as the fallback for a
+  // business that has not connected its own account here.
+  textSms: [
+    { key: 'apiKey', label: 'API key', secret: true, required: true, helpText: 'From your TextSMS account dashboard. Stored encrypted and never shown back to you.' },
+    { key: 'partnerId', label: 'Partner ID', secret: false, required: true, helpText: 'The numeric partner ID issued with your TextSMS API key — shown next to it on the same page.' },
+    {
+      key: 'senderId',
+      label: 'Sender ID',
+      secret: false,
+      required: true,
+      helpText:
+        'What recipients see the message is from, e.g. SNACKQUEST. It has to be a sender ID TextSMS has already approved for your account — an unapproved one is rejected at send time, not saved time.',
+    },
+    { key: 'baseUrl', label: 'Base URL', secret: false, required: false, helpText: 'Defaults to the standard TextSMS API host if left blank. Only set this if TextSMS gave you a dedicated one.' },
+  ],
 };
 
 export function getIntegrationFieldManifest(provider: IntegrationProvider): IntegrationFieldSpec[] {

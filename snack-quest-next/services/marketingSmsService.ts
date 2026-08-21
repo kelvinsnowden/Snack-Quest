@@ -311,7 +311,7 @@ class MarketingSmsService {
     // 500 identical failures that were all one unset environment
     // variable is a worse answer to the same question.
     this.assertOptOutLinkAvailable(recipients[0].phoneNumber);
-    this.assertGatewayReady();
+    await this.assertGatewayReady(businessId);
 
     await marketingSmsRepository.update(campaignId, {
       status: 'sending',
@@ -321,6 +321,7 @@ class MarketingSmsService {
     });
 
     const { sentCount, failedRecipients, segmentsSent, worstSegments } = await this.dispatchToRecipients(
+      businessId,
       campaign,
       recipients,
     );
@@ -387,7 +388,13 @@ class MarketingSmsService {
       );
     }
 
+    // Same pre-flight as the first attempt, for the same reason: a
+    // resend to the 500 numbers a missing credential just failed should
+    // not fail all 500 again, one at a time, with the same message.
+    await this.assertGatewayReady(businessId);
+
     const { sentCount, failedRecipients, segmentsSent, worstSegments } = await this.dispatchToRecipients(
+      businessId,
       campaign,
       recipients,
     );
@@ -435,6 +442,7 @@ class MarketingSmsService {
 
   /** The one place that actually dials the gateway — best-effort per recipient, with the real error captured per recipient rather than discarded. */
   private async dispatchToRecipients(
+    businessId: string,
     campaign: Pick<MarketingSmsCampaign, 'bodyText' | 'linkUrl' | 'offerText'>,
     recipients: SmsRecipient[],
   ): Promise<{
@@ -454,7 +462,7 @@ class MarketingSmsService {
       worstSegments = Math.max(worstSegments, segments);
 
       try {
-        await this.sms.send({ to: recipient.phoneNumber, body });
+        await this.sms.send({ businessId, to: recipient.phoneNumber, body });
         sentCount += 1;
         // Counted only on success, so the recorded spend is what the
         // provider will actually bill rather than what was attempted.
@@ -470,9 +478,9 @@ class MarketingSmsService {
   }
 
   /** Surfaces a gateway that cannot send at all as one campaign-level error rather than N recipient-level ones. */
-  private assertGatewayReady(): void {
+  private async assertGatewayReady(businessId: string): Promise<void> {
     try {
-      this.sms.assertReady?.();
+      await this.sms.assertReady?.(businessId);
     } catch (error) {
       throw new MarketingSmsValidationError(
         error instanceof Error ? `${error.message} Nothing was sent.` : 'SMS is not configured. Nothing was sent.',
