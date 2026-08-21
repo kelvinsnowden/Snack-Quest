@@ -179,6 +179,21 @@ service cloud.firestore {
       allow read, write: if false; // Admin SDK only, always
     }
 
+    // snackItems / boxRecipes / shoppingRuns: the fulfilment recipe
+    // system (§ Box Recipes). Server-only like every other operational
+    // collection — the warehouse and admin surfaces that read and write
+    // these are Server Components and route handlers using the Admin
+    // SDK, and no browser ever talks to Firestore directly here.
+    match /snackItems/{itemId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+    match /boxRecipes/{recipeId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+    match /shoppingRuns/{runId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+
     // smsOptOuts: the marketing-SMS opt-out register (§ marketing SMS
     // opt-out). Server-only despite being written on a customer's
     // action: the customer has no Firebase Auth account to be

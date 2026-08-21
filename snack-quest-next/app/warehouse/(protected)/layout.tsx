@@ -8,6 +8,8 @@ import { AdminUserMenu } from '@/components/admin/AdminUserMenu';
 
 const NAV_ITEMS = [
   { href: '/warehouse', label: 'Queue' },
+  { href: '/warehouse/recipes', label: 'Recipes' },
+  { href: '/warehouse/shopping', label: 'Shopping' },
   { href: '/warehouse/inventory', label: 'Inventory' },
 ];
 
@@ -57,7 +59,25 @@ export default async function WarehouseLayout({ children }: { children: React.Re
         </div>
         <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'warehouse'} />
       </header>
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+      <main className="flex-1 overflow-y-auto p-4 pb-20 sm:pb-4 md:p-8">{children}</main>
+      {/*
+        The header nav is `sm:flex`, so until now a phone had no
+        navigation at all — on a workspace whose users are, by
+        definition, holding a phone. This is the whole nav for them:
+        pinned to the bottom where a thumb reaches, four equal targets,
+        no menu to open first.
+      */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface/95 backdrop-blur sm:hidden">
+        {NAV_ITEMS.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="flex min-h-16 flex-1 flex-col items-center justify-center gap-0.5 text-caption font-medium text-muted-foreground active:bg-border/40"
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }
