@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "outputDirectory": ".next",
+  "regions": ["cpt1"],
   "crons": [
     {
       "path": "/api/cron/retry-notifications",
