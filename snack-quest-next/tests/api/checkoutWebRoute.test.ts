@@ -125,14 +125,40 @@ describe('POST /api/checkout/web attribution capture', () => {
     );
   });
 
-  it('still marks the conversation web-originated with no click-id cookies present', async () => {
+  /**
+   * Regression: this used to assert
+   * `{ channel: 'web', landingUrl: undefined, ttclid: undefined, fbclid: undefined }`
+   * and passed, because `startWebCheckout` is mocked here and the value
+   * never reached Firestore. In production it did, and Firestore
+   * rejects a document containing an undefined value — so the public
+   * checkout returned a 500 for every visitor who arrived without a
+   * TikTok or Facebook click cookie, which is nearly all of them.
+   *
+   * The test now asserts the shape Firestore can actually store:
+   * absent keys, not keys set to undefined.
+   */
+  it('omits click-id keys entirely when the cookies are absent', async () => {
     await checkoutWebRoute(request(VALID_BODY));
 
     expect(startWebCheckoutMock).toHaveBeenCalledWith(
       'biz-1',
-      expect.objectContaining({
-        attribution: { channel: 'web', landingUrl: undefined, ttclid: undefined, fbclid: undefined },
-      }),
+      expect.objectContaining({ attribution: { channel: 'web' } }),
     );
+
+    // The invariant, stated directly: nothing bound for Firestore may
+    // carry an undefined value.
+    const { attribution } = startWebCheckoutMock.mock.calls[0][1];
+    expect(Object.values(attribution).some((value) => value === undefined)).toBe(false);
+    expect('ttclid' in attribution).toBe(false);
+    expect('fbclid' in attribution).toBe(false);
+    expect('landingUrl' in attribution).toBe(false);
+  });
+
+  it('keeps only the click ids that are actually present', async () => {
+    await checkoutWebRoute(request(VALID_BODY, { cookie: 'sq_ttclid=tt-abc' }));
+
+    const { attribution } = startWebCheckoutMock.mock.calls[0][1];
+    expect(attribution).toEqual({ channel: 'web', ttclid: 'tt-abc' });
+    expect(Object.values(attribution).some((value) => value === undefined)).toBe(false);
   });
 });
