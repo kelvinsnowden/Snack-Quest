@@ -9,6 +9,12 @@ import {
 } from './config';
 import { withRetry } from '../shared/withRetry';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
+import {
+  formatPreflightFailure,
+  inspectDarajaConfig,
+  interpretStkCredentialProbe,
+  type DarajaPreflightIssue,
+} from './preflight';
 import type {
   B2CPaymentResult,
   B2CResultCallback,
@@ -80,15 +86,85 @@ async function fetchAccessToken(
 }
 
 /**
- * "Test Connection" (§ Integration Portal) — real, side-effect-free:
- * the OAuth token fetch above is the one Daraja call with no
- * transactional consequence, so this forces a fresh (non-cached)
- * attempt and reports success/failure. Never initiates an STK push,
- * B2C payout, or reversal — those all move real money.
+ * A `CheckoutRequestID` in Safaricom's format that cannot correspond to
+ * a real transaction — the zeroes are not a value their sequence
+ * produces. Used to ask the query endpoint a question whose answer is
+ * about the credentials rather than about any customer's payment.
+ */
+const PROBE_CHECKOUT_REQUEST_ID = 'ws_CO_00000000000000000000000000';
+
+/**
+ * Asks Safaricom to validate this shortcode and passkey, without
+ * charging anyone.
+ *
+ * The STK *query* endpoint checks `BusinessShortCode` and `Password`
+ * before it looks up the `CheckoutRequestID`, so querying an id that
+ * cannot exist separates "these credentials are wrong" from "that
+ * transaction is unknown". Nothing is initiated and no prompt is sent
+ * — this is the closest thing to a dry run that Daraja offers.
+ */
+async function probeStkCredentials(
+  businessId: string,
+  config: DarajaConfig,
+  accessToken: string,
+): Promise<DarajaPreflightIssue | null> {
+  const timestamp = timestampNow();
+  const response = await fetch(`${config.baseUrl}/mpesa/stkpushquery/v1/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      BusinessShortCode: config.businessShortcode,
+      Password: buildPassword(config, timestamp),
+      Timestamp: timestamp,
+      CheckoutRequestID: PROBE_CHECKOUT_REQUEST_ID,
+    }),
+  });
+
+  return interpretStkCredentialProbe({ ok: response.ok, body: await response.text() });
+}
+
+/**
+ * "Test Connection" (§ Integration Portal) — real, side-effect-free,
+ * and no longer misleadingly narrow.
+ *
+ * It used to fetch an OAuth token and call that a pass. A token proves
+ * the consumer key and secret are a valid pair and nothing else: not
+ * the shortcode, not the passkey, not that a prompt can reach a phone.
+ * So it reported "connection succeeded" on an account where every
+ * checkout was failing — which is worse than no button at all, because
+ * it moved the search away from what was actually broken.
+ *
+ * Now it checks, in order: the token; the stored configuration
+ * (`inspectDarajaConfig`); and the shortcode/passkey pairing, live,
+ * against Safaricom. Still never initiates an STK push, B2C payout or
+ * reversal — those all move real money.
+ *
+ * Warnings are reported without failing the test. Only a blocker
+ * throws, because a Test Connection that fails a working configuration
+ * would repeat the original sin in the other direction.
  */
 export async function testDarajaConnection(businessId: string): Promise<void> {
   const config = await getDarajaConfig(businessId);
-  await fetchAccessToken(businessId, config, { forceRefresh: true });
+  const accessToken = await fetchAccessToken(businessId, config, { forceRefresh: true });
+
+  const issues = inspectDarajaConfig(config);
+
+  // Only worth asking Safaricom if the credentials are at least
+  // well-formed — probing with a shortcode that cannot be one produces
+  // an error about the shortcode, which is already known.
+  if (!issues.some((issue) => issue.severity === 'blocker')) {
+    const probe = await probeStkCredentials(businessId, config, accessToken);
+    if (probe) {
+      issues.push(probe);
+    }
+  }
+
+  if (issues.some((issue) => issue.severity === 'blocker')) {
+    throw new Error(formatPreflightFailure(issues));
+  }
+  if (issues.length > 0) {
+    console.warn(`Daraja preflight warnings for ${businessId}: ${formatPreflightFailure(issues)}`);
+  }
 }
 
 /**
@@ -289,7 +365,14 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              BusinessShortCode: config.shortcode,
+              // `businessShortcode`, matching `buildPassword` — NOT
+              // `shortcode`. Safaricom validates the password against
+              // whatever is declared here, so for a Buy Goods till with
+              // a separate Head Office number the two disagreeing is a
+              // guaranteed "Wrong credentials" on every reconciliation
+              // query, against a push that itself works fine. Same
+              // pairing the STK push above sends.
+              BusinessShortCode: config.businessShortcode,
               Password: password,
               Timestamp: timestamp,
               CheckoutRequestID: input.checkoutRequestId,

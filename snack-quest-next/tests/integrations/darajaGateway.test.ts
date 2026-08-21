@@ -858,14 +858,86 @@ describe('testDarajaConnection', () => {
     vi.unstubAllGlobals();
   });
 
-  it('resolves when Daraja accepts the OAuth credentials', async () => {
+  /**
+   * Test Connection makes two calls now, not one: the OAuth token, then
+   * a credentials probe against the STK query endpoint. A token alone
+   * proves the consumer key and secret are a valid pair and nothing
+   * else — it was reporting success on an account where every checkout
+   * was silently failing.
+   *
+   * A fresh Response per call, because a body can only be read once.
+   */
+  function stubDaraja(probeBody: string, probeStatus = 500) {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/oauth/v1/generate')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: 'tok-1', expires_in: '3599' }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response(probeBody, { status: probeStatus }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  /** Being told the (deliberately impossible) transaction is unknown means the shortcode and passkey were accepted, which is the whole question. */
+  const PROBE_CREDENTIALS_OK = JSON.stringify({
+    errorCode: '500.001.1001',
+    errorMessage: 'Invalid CheckoutRequestID',
+  });
+
+  it('resolves when the credentials are accepted and the configuration is sound', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ access_token: 'tok-1', expires_in: '3599' }), { status: 200 }),
-      ),
-    );
+    stubDaraja(PROBE_CREDENTIALS_OK);
+
+    await expect(testDarajaConnection(BUSINESS_ID)).resolves.toBeUndefined();
+  });
+
+  it('probes the credentials without initiating anything that moves money', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const fetchMock = stubDaraja(PROBE_CREDENTIALS_OK);
+
+    await testDarajaConnection(BUSINESS_ID);
+
+    const urls = fetchMock.mock.calls.map(([url]) => url as string);
+    expect(urls.some((url) => url.includes('/mpesa/stkpushquery/v1/query'))).toBe(true);
+    expect(urls.some((url) => url.includes('/stkpush/v1/processrequest'))).toBe(false);
+    expect(urls.some((url) => url.includes('/b2c/'))).toBe(false);
+  });
+
+  /**
+   * The failure this whole change exists for: Safaricom accepts the
+   * push, returns a CheckoutRequestID, and delivers no prompt. The only
+   * place that is visible before a customer hits it is here.
+   */
+  it('fails when M-Pesa rejects the shortcode and passkey together', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    stubDaraja(JSON.stringify({ ResultCode: 4999, ResultDesc: 'Wrong credentials' }));
+
+    await expect(testDarajaConnection(BUSINESS_ID)).rejects.toThrow(/passkey does not belong to this shortcode/);
+  });
+
+  it('fails on a sandbox passkey in production without needing to ask Safaricom', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', {
+      ...SECRET,
+      env: 'production' as const,
+      shortcode: '4346089',
+      passkey: 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
+    });
+    const fetchMock = stubDaraja(PROBE_CREDENTIALS_OK);
+
+    await expect(testDarajaConnection(BUSINESS_ID)).rejects.toThrow(/sandbox passkey/i);
+    // No point asking Safaricom about credentials already known to be wrong.
+    expect(fetchMock.mock.calls.some(([url]) => (url as string).includes('/stkpushquery/'))).toBe(false);
+  });
+
+  /** A warning is worth logging and not worth failing over — failing a working account would repeat the original problem in the other direction. */
+  it('still passes when the only finding is a warning', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', {
+      ...SECRET,
+      passkey: 'not-the-shape-safaricom-issues',
+    });
+    stubDaraja(PROBE_CREDENTIALS_OK);
 
     await expect(testDarajaConnection(BUSINESS_ID)).resolves.toBeUndefined();
   });
