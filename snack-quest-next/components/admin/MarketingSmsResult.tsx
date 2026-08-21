@@ -67,8 +67,28 @@ export function MarketingSmsResult({ campaign }: { campaign: SerializedMarketing
           <Badge variant={STATUS_VARIANT[campaign.status]}>{campaign.status}</Badge>
         </div>
         <p className="whitespace-pre-wrap rounded-md bg-border/20 p-4 text-sm text-foreground">{campaign.bodyText}</p>
+
+        {/* What the tags resolved to, so a sent campaign is fully readable after the fact. */}
+        {campaign.offerText || campaign.linkUrl ? (
+          <dl className="flex flex-col gap-1.5 text-sm">
+            {campaign.offerText ? (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground">{'{{offer}}'}</dt>
+                <dd className="text-foreground">{campaign.offerText}</dd>
+              </div>
+            ) : null}
+            {campaign.linkUrl ? (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground">{'{{link}}'}</dt>
+                <dd className="break-all text-foreground">{campaign.linkUrl}</dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : null}
+
         <p className="text-caption text-muted-foreground">
-          Plus each recipient&rsquo;s own opt-out link. Body alone: {cost.characters} characters, {cost.encoding}.
+          Plus each recipient&rsquo;s own name and opt-out link. Body alone: {cost.characters} characters,{' '}
+          {cost.encoding}.
         </p>
       </Card>
 

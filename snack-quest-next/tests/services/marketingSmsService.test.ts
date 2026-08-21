@@ -10,6 +10,7 @@ import {
 } from '@/services/marketingSmsService';
 import type { SmsGateway } from '@/lib/integrations/types';
 import type { Order } from '@/types';
+import { calculateSmsCost } from '@/lib/sms/segments';
 
 const BUSINESS_ID = 'biz-marketing-sms-test';
 const ACTOR = 'staff-1';
@@ -233,14 +234,14 @@ describe('MarketingSmsService — segments', () => {
     const service = new MarketingSmsService(fakeSms());
     const { recipients } = await service.resolveRecipients(BUSINESS_ID, segment, null);
 
-    expect(recipients.sort()).toEqual([...expected].sort());
+    expect(recipients.map((r) => r.phoneNumber).sort()).toEqual([...expected].sort());
   });
 
   it('deduplicates a customer who has ordered several times', async () => {
     const service = new MarketingSmsService(fakeSms());
     const { recipients } = await service.resolveRecipients(BUSINESS_ID, 'all_customers', null);
 
-    expect(recipients.filter((phone) => phone === '254700000003')).toHaveLength(1);
+    expect(recipients.filter((r) => r.phoneNumber === '254700000003')).toHaveLength(1);
   });
 
   it('normalises and dedupes a hand-pasted custom list, dropping what is not a Kenyan mobile', async () => {
@@ -253,7 +254,7 @@ describe('MarketingSmsService — segments', () => {
       '254733000000',
     ]);
 
-    expect(recipients.sort()).toEqual(['254712345678', '254733000000']);
+    expect(recipients.map((r) => r.phoneNumber).sort()).toEqual(['254712345678', '254733000000']);
   });
 });
 
@@ -440,5 +441,221 @@ describe('MarketingSmsService — transactional sends are unaffected', () => {
     const notificationServiceSource = await import('@/services/notificationService');
     expect(Object.keys(notificationServiceSource)).toContain('notificationService');
     expect(await smsOptOutRepository.isOptedOut(BUSINESS_ID, '254700000001')).toBe(true);
+  });
+});
+
+/**
+ * § Merge tags. The sample message this feature was built for:
+ *
+ *   Hey {{firstName}} Your Snack Quest cravings called...
+ *   enjoy {{offer}}. Order now: {{link}}
+ */
+describe('MarketingSmsService — merge tags', () => {
+  const WIN_BACK =
+    'Hey {{firstName}} Your Snack Quest cravings called. Come back and enjoy {{offer}}. Order now: {{link}}';
+
+  async function draftWithTags(service: MarketingSmsService, overrides: Record<string, unknown> = {}) {
+    return service.createDraft(
+      BUSINESS_ID,
+      {
+        name: 'August win-back',
+        bodyText: WIN_BACK,
+        segment: 'all_customers',
+        linkUrl: 'https://snackquests.shop/boxes',
+        offerText: '15% off your next box',
+        ...overrides,
+      },
+      ACTOR,
+    );
+  }
+
+  it('fills each recipient’s own first name into their own message', async () => {
+    await seedOrder({ phoneNumber: '254700000001', customerName: 'Jane Wanjiru' });
+    await seedOrder({ phoneNumber: '254700000002', customerName: 'Otieno Odhiambo' });
+
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    await service.send(BUSINESS_ID, await draftWithTags(service), ACTOR);
+
+    const bodies = (sms.send as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0].body);
+    expect(bodies.some((b: string) => b.startsWith('Hey Jane '))).toBe(true);
+    expect(bodies.some((b: string) => b.startsWith('Hey Otieno '))).toBe(true);
+    // First name only — a marketing greeting does not use a surname.
+    expect(bodies.every((b: string) => !b.includes('Wanjiru'))).toBe(true);
+  });
+
+  it('substitutes the offer and the link into every message', async () => {
+    await seedOrder({ phoneNumber: '254700000001', customerName: 'Jane' });
+
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    await service.send(BUSINESS_ID, await draftWithTags(service), ACTOR);
+
+    const body = (sms.send as ReturnType<typeof vi.fn>).mock.calls[0][0].body;
+    expect(body).toContain('15% off your next box');
+    expect(body).toContain('https://snackquests.shop/boxes');
+    expect(body).not.toContain('{{');
+  });
+
+  /** "Hey Guest" and "Hey " are both worse than not personalising at all. */
+  it.each([
+    ['a customer with no name', ''],
+    ['the internal Guest placeholder', 'Guest'],
+  ])('falls back to a greeting for %s', async (_label, customerName) => {
+    await seedOrder({ phoneNumber: '254700000001', customerName });
+
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    await service.send(BUSINESS_ID, await draftWithTags(service), ACTOR);
+
+    expect((sms.send as ReturnType<typeof vi.fn>).mock.calls[0][0].body).toMatch(/^Hey there /);
+  });
+
+  it('has no name to use for a hand-pasted custom list, and still reads correctly', async () => {
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    const campaignId = await draftWithTags(service, { segment: 'custom', customRecipients: ['0712345678'] });
+    await service.send(BUSINESS_ID, campaignId, ACTOR);
+
+    expect((sms.send as ReturnType<typeof vi.fn>).mock.calls[0][0].body).toContain('Hey there ');
+  });
+
+  /**
+   * The failure this validation exists to prevent: a mistyped tag is
+   * delivered literally to every customer, and cannot be recalled.
+   */
+  it('refuses a mistyped tag and names the correction', async () => {
+    const service = new MarketingSmsService(fakeSms());
+
+    await expect(draftWithTags(service, { bodyText: 'Hey {{firstname}}, come back.' })).rejects.toThrow(
+      /did you mean “\{\{firstName\}\}”/,
+    );
+  });
+
+  it('refuses a tag that does not exist at all', async () => {
+    const service = new MarketingSmsService(fakeSms());
+
+    await expect(draftWithTags(service, { bodyText: 'Hey {{discountCode}}, come back.' })).rejects.toThrow(
+      /isn’t a tag/,
+    );
+  });
+
+  it.each([
+    ['{{link}} with no address set', { bodyText: 'Order now: {{link}}', linkUrl: null }],
+    ['{{offer}} with no offer set', { bodyText: 'Enjoy {{offer}}', offerText: null }],
+  ])('refuses %s', async (_label, overrides) => {
+    const service = new MarketingSmsService(fakeSms());
+    await expect(draftWithTags(service, overrides)).rejects.toThrow(MarketingSmsValidationError);
+  });
+
+  it('accepts a bare domain and makes it tappable', async () => {
+    await seedOrder({ phoneNumber: '254700000001', customerName: 'Jane' });
+
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    const campaignId = await draftWithTags(service, { linkUrl: 'snackquests.shop/boxes' });
+    await service.send(BUSINESS_ID, campaignId, ACTOR);
+
+    expect((sms.send as ReturnType<typeof vi.fn>).mock.calls[0][0].body).toContain('https://snackquests.shop/boxes');
+  });
+
+  it('rejects a web address that is not one', async () => {
+    const service = new MarketingSmsService(fakeSms());
+    await expect(draftWithTags(service, { linkUrl: 'not a url' })).rejects.toThrow(/does not look valid/);
+  });
+
+  it('leaves a message with no tags exactly as written', async () => {
+    await seedOrder({ phoneNumber: '254700000001', customerName: 'Jane' });
+
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    const campaignId = await service.createDraft(
+      BUSINESS_ID,
+      { name: 'Plain', bodyText: 'Snack Quest: new Japan box just landed.', segment: 'all_customers' },
+      ACTOR,
+    );
+    await service.send(BUSINESS_ID, campaignId, ACTOR);
+
+    expect((sms.send as ReturnType<typeof vi.fn>).mock.calls[0][0].body).toMatch(
+      /^Snack Quest: new Japan box just landed\./,
+    );
+  });
+});
+
+/**
+ * § Merge tags and cost. The subtlety that makes personalisation
+ * genuinely different from a fixed body: two recipients on one campaign
+ * can bill differently, so a single "segments per message" figure is no
+ * longer a true statement about the send.
+ */
+describe('MarketingSmsService — per-recipient cost', () => {
+  it('sums the real cost per recipient rather than multiplying one figure', async () => {
+    const SHORT = { phoneNumber: '254700000001', customerName: 'Jo' };
+    const LONG = { phoneNumber: '254700000002', customerName: 'Bartholomewvictoria' };
+    await seedOrder(SHORT);
+    await seedOrder(LONG);
+
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+
+    /*
+     * The body length that straddles a segment boundary is computed,
+     * not hardcoded: it depends on how long the opt-out link is, which
+     * depends on the site URL and differs between test and production.
+     * A magic number here would pass today and break for a reason
+     * nobody would connect to this test.
+     */
+    let padding = 60;
+    let bodyText = '';
+    for (; padding < 240; padding += 1) {
+      bodyText = `Hey {{firstName}} ${'a'.repeat(padding)}`;
+      const shortSegments = calculateSmsCost(service.composeMessage(bodyText, SHORT, null, null)).segments;
+      const longSegments = calculateSmsCost(service.composeMessage(bodyText, LONG, null, null)).segments;
+      if (shortSegments === 1 && longSegments === 2) {
+        break;
+      }
+    }
+    expect(padding).toBeLessThan(240);
+
+    const campaignId = await service.createDraft(
+      BUSINESS_ID,
+      { name: 'Edge', bodyText, segment: 'all_customers' },
+      ACTOR,
+    );
+
+    const preview = await service.previewAudience(BUSINESS_ID, 'all_customers', null, bodyText);
+    const result = await service.send(BUSINESS_ID, campaignId, ACTOR);
+
+    // The decisive assertion: the total is the sum of two different
+    // per-recipient costs, not one cost times two.
+    expect(preview.variesByRecipient).toBe(true);
+    expect(preview.totalSegments).toBe(3);
+    expect(result.totalSegmentsSent).toBe(3);
+    expect(preview.segmentsPerMessage).toBe(2);
+  });
+
+  it('shows a fully rendered sample rather than the template', async () => {
+    await seedOrder({ phoneNumber: '254700000001', customerName: 'Jane Wanjiru' });
+
+    const service = new MarketingSmsService(fakeSms());
+    const preview = await service.previewAudience(
+      BUSINESS_ID,
+      'all_customers',
+      null,
+      'Hey {{firstName}}, enjoy {{offer}}. {{link}}',
+      'https://snackquests.shop',
+      '15% off',
+    );
+
+    expect(preview.sampleMessage).toContain('Hey Jane,');
+    expect(preview.sampleMessage).toContain('15% off');
+    expect(preview.sampleMessage).not.toContain('{{');
+  });
+
+  it('reports a bad tag from the preview instead of pricing something that cannot send', async () => {
+    const service = new MarketingSmsService(fakeSms());
+    await expect(
+      service.previewAudience(BUSINESS_ID, 'all_customers', null, 'Hey {{nope}}'),
+    ).rejects.toThrow(MarketingSmsValidationError);
   });
 });
