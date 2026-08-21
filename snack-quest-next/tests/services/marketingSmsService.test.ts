@@ -659,3 +659,61 @@ describe('MarketingSmsService — per-recipient cost', () => {
     ).rejects.toThrow(MarketingSmsValidationError);
   });
 });
+
+/**
+ * § Gateway pre-flight.
+ *
+ * A production campaign failed with the same "SMS is not configured"
+ * error repeated once per recipient. One unset environment variable
+ * should be one error, reported before the send loop — not N identical
+ * ones reported after it, with the campaign left marked as sent.
+ */
+describe('MarketingSmsService — unconfigured gateway', () => {
+  function unconfiguredSms(): SmsGateway {
+    return {
+      send: vi.fn(),
+      assertReady: () => {
+        throw new Error('SMS is not configured — TEXTSMS_API_KEY is not set on this deployment.');
+      },
+    };
+  }
+
+  it('fails once, before the send loop, naming the missing setting', async () => {
+    await seedOrder({ phoneNumber: '254700000001' });
+    await seedOrder({ phoneNumber: '254700000002' });
+    await seedOrder({ phoneNumber: '254700000003' });
+
+    const sms = unconfiguredSms();
+    const service = new MarketingSmsService(sms);
+    const campaignId = await draft(service);
+
+    await expect(service.send(BUSINESS_ID, campaignId, ACTOR)).rejects.toThrow(/TEXTSMS_API_KEY is not set/);
+    // The decisive assertion: not one attempt per recipient.
+    expect(sms.send).not.toHaveBeenCalled();
+  });
+
+  it('leaves the campaign a draft, so it can be sent once the setting is fixed', async () => {
+    await seedOrder({ phoneNumber: '254700000001' });
+
+    const service = new MarketingSmsService(unconfiguredSms());
+    const campaignId = await draft(service);
+    await expect(service.send(BUSINESS_ID, campaignId, ACTOR)).rejects.toThrow(MarketingSmsValidationError);
+
+    const stored = await marketingSmsRepository.findById(campaignId);
+    expect(stored?.status).toBe('draft');
+    expect(stored?.sentCount).toBe(0);
+    expect(stored?.failedCount).toBe(0);
+  });
+
+  it('still sends when the gateway offers no pre-flight at all', async () => {
+    await seedOrder({ phoneNumber: '254700000001' });
+
+    // `assertReady` is optional on the interface; a gateway without one
+    // must not be treated as unconfigured.
+    const sms = fakeSms();
+    const service = new MarketingSmsService(sms);
+    const result = await service.send(BUSINESS_ID, await draft(service), ACTOR);
+
+    expect(result.sentCount).toBe(1);
+  });
+});
