@@ -62,3 +62,44 @@ export function withWebhookSecret(url: string, secret: string | undefined): stri
   withKey.searchParams.set('key', secret);
   return withKey.toString();
 }
+
+/**
+ * Separator between a businessId and its webhook secret in a URL path.
+ *
+ * `~` is RFC 3986 "unreserved" — it never needs percent-encoding, so
+ * the URL Safaricom stores is the URL they call. It also cannot appear
+ * in a business slug or in the hex secret, so the split is unambiguous.
+ */
+export const WEBHOOK_SECRET_SEPARATOR = '~';
+
+/**
+ * Embeds the secret in the path instead of a query string.
+ *
+ * Safaricom's own URL rules are restrictive about callback URLs, and
+ * query strings are the part most commonly reported as silently
+ * dropped or rejected — which matches what production showed: two STK
+ * pushes accepted with real CheckoutRequestIDs, and not one callback
+ * ever delivered to a `?key=`-suffixed URL.
+ *
+ * Attached to the **businessId segment** rather than the end of the
+ * URL, because several Daraja callbacks are nested under it
+ * (`…/{businessId}/b2c-result`). Appending to the last segment would
+ * produce `…/b2c-result~secret`, which no longer matches that route.
+ */
+export function withBusinessIdSecret(url: string, secret: string | undefined): string {
+  if (!secret) {
+    return url;
+  }
+  const parsed = new URL(url);
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${WEBHOOK_SECRET_SEPARATOR}${secret}`;
+  return parsed.toString();
+}
+
+/** Splits `snack-quest~abc123` back into its parts. A bare id yields a null key, which `checkWebhookSecret` then treats as "no key supplied". */
+export function splitBusinessIdSecret(param: string): { businessId: string; key: string | null } {
+  const index = (param ?? '').indexOf(WEBHOOK_SECRET_SEPARATOR);
+  if (index === -1) {
+    return { businessId: param, key: null };
+  }
+  return { businessId: param.slice(0, index), key: param.slice(index + 1) || null };
+}

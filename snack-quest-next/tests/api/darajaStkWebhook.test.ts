@@ -49,7 +49,7 @@ describe('POST /api/webhooks/daraja/[businessId]', () => {
   });
 
   it('processes a verified callback and acks 200', async () => {
-    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true });
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
     const payload = { Body: { stkCallback: { ResultCode: 0 } } };
     const result = { status: 'succeeded' as const, intentId: 'i1', conversationId: 'c1', snapshotId: 's1', amountKes: 2500, mpesaReceiptNumber: 'ABC123' };
     processCallbackMock.mockResolvedValue(result);
