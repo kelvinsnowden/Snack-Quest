@@ -37,31 +37,39 @@ export default async function AdminOrdersPage({
   const session = await requireStaffSession();
   const { q, status, cursor } = await searchParams;
 
+  const trimmedQuery = q?.trim();
+
+  /*
+   * The box list and the order list are independent, so they are
+   * awaited together rather than one after the other. That matters more
+   * here than it looks: Firestore lives in `africa-south1` and the
+   * functions in `cpt1`, so every round trip has a real floor, and two
+   * sequential reads cost twice one. See docs/HOSTING_REGIONS.md.
+   */
+  const [boxes, orderResult] = await Promise.all([
+    packageRepository.listActive(session.businessId),
+    (async () => {
+      if (trimmedQuery) {
+        const found = PHONE_LIKE.test(trimmedQuery)
+          ? await orderRepository.searchByPhoneNumber(session.businessId, trimmedQuery)
+          : await orderRepository.searchByCustomerNamePrefix(session.businessId, trimmedQuery);
+        return { orders: found, nextCursor: null as string | null };
+      }
+      const validStatus = STATUS_FILTERS.includes(status as OrderStatus) ? (status as OrderStatus) : undefined;
+      return orderRepository.listByBusiness(session.businessId, { status: validStatus, cursor });
+    })(),
+  ]);
+
   // Projected to plain fields: `Package` carries Firestore Timestamps,
   // which cannot cross into a Client Component.
-  const orderableBoxes = (await packageRepository.listActive(session.businessId)).map(({ id, data }) => ({
+  const orderableBoxes = boxes.map(({ id, data }) => ({
     id,
     name: data.name,
     priceKes: data.priceKes,
   }));
 
-  let orders: { id: string; data: Order }[];
-  let nextCursor: string | null = null;
-
-  const trimmedQuery = q?.trim();
-  if (trimmedQuery) {
-    orders = PHONE_LIKE.test(trimmedQuery)
-      ? await orderRepository.searchByPhoneNumber(session.businessId, trimmedQuery)
-      : await orderRepository.searchByCustomerNamePrefix(session.businessId, trimmedQuery);
-  } else {
-    const validStatus = STATUS_FILTERS.includes(status as OrderStatus) ? (status as OrderStatus) : undefined;
-    const result = await orderRepository.listByBusiness(session.businessId, {
-      status: validStatus,
-      cursor,
-    });
-    orders = result.orders;
-    nextCursor = result.nextCursor;
-  }
+  const orders: { id: string; data: Order }[] = orderResult.orders;
+  const nextCursor: string | null = orderResult.nextCursor;
 
   return (
     <div className="flex flex-col gap-6">
