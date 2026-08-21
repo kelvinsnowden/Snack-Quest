@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
+import { MPESA_RECIPIENT_NAME } from '@/lib/config/mpesaRecipient';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
 
@@ -124,9 +125,22 @@ export function PaymentWaiting({
 
       <div className="flex flex-col gap-3">
         <h1 className="text-page-title text-foreground font-bold tracking-tight">Waiting for payment…</h1>
+        {/*
+          The recipient name belongs here, not on the form before this.
+          The prompt is on the customer's screen right now saying
+          "Snowden Collections", and the question it raises — "who is
+          that, I ordered from Snack Quest" — is being asked at this
+          exact moment, with a PIN pad open. Said one screen earlier it
+          was a caveat to read past before committing; said here it is
+          an answer arriving when the question does.
+        */}
         <p className="text-muted-foreground text-base">
-          Check your phone for the M-Pesa prompt and enter your PIN. This page updates on its own — no need to
-          refresh.
+          Check your phone for the M-Pesa prompt. It will show{' '}
+          <span className="text-foreground font-semibold">{MPESA_RECIPIENT_NAME}</span> — that is Snack Quest&rsquo;s
+          registered M-Pesa name. Enter your PIN to pay for your box.
+        </p>
+        <p className="text-muted-foreground text-sm">
+          This page updates on its own — no need to refresh.
         </p>
       </div>
 

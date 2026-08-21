@@ -124,6 +124,27 @@ export interface DarajaIntegrationSecret extends IntegrationSecretMeta {
    * not assumed here.
    */
   accountType: 'paybill' | 'till';
+  /**
+   * Buy Goods only — the Head Office (store) number, when it differs
+   * from the till.
+   *
+   * Safaricom's STK Push takes two shortcodes: `BusinessShortCode`,
+   * which identifies the organisation and is what the password is
+   * built from, and `PartyB`, which receives the funds. For a Paybill
+   * they are the same number. For Buy Goods they usually are not — Go
+   * Live issues a Head Office number alongside the till, and the push
+   * must send the Head Office as `BusinessShortCode` and the till as
+   * `PartyB`.
+   *
+   * Sending the till as both is accepted by Safaricom — it returns a
+   * real CheckoutRequestID — and then no prompt is ever delivered and
+   * no callback ever arrives. It fails silently, which is why this is
+   * its own field rather than something inferred.
+   *
+   * Optional: absent means "same as `shortcode`", which is correct for
+   * every Paybill and for the tills that genuinely share one number.
+   */
+  headOfficeShortcode?: string;
   passkey: string;
   callbackUrl: string;
   env: 'sandbox' | 'production';

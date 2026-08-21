@@ -91,8 +91,17 @@ export async function testDarajaConnection(businessId: string): Promise<void> {
   await fetchAccessToken(businessId, config, { forceRefresh: true });
 }
 
+/**
+ * Built from `businessShortcode`, not `shortcode`.
+ *
+ * Safaricom validates the password against whatever is sent as
+ * `BusinessShortCode`, so for a Buy Goods till whose Head Office number
+ * differs, hashing the till instead produces a password that does not
+ * match the request — the subtlest half of the same bug the two-field
+ * split exists to fix.
+ */
 function buildPassword(config: DarajaConfig, timestamp: string): string {
-  return Buffer.from(`${config.shortcode}${config.passkey}${timestamp}`).toString(
+  return Buffer.from(`${config.businessShortcode}${config.passkey}${timestamp}`).toString(
     'base64',
   );
 }
@@ -178,7 +187,9 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            BusinessShortCode: config.shortcode,
+            // Identifies the organisation. Equal to `shortcode` for a
+            // Paybill; the Head Office number for a Buy Goods till.
+            BusinessShortCode: config.businessShortcode,
             Password: password,
             Timestamp: timestamp,
             // 'CustomerBuyGoodsOnline' for a Till (Buy Goods) shortcode,
@@ -190,6 +201,7 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
             TransactionType: config.accountType === 'till' ? 'CustomerBuyGoodsOnline' : 'CustomerPayBillOnline',
             Amount: Math.round(input.amountKes),
             PartyA: input.phone,
+            // Receives the funds — always the paybill or till itself.
             PartyB: config.shortcode,
             PhoneNumber: input.phone,
             CallBackURL: config.callbackUrl,

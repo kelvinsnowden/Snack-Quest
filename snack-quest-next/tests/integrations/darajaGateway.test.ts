@@ -915,3 +915,94 @@ describe('testDarajaConnection', () => {
     expect(oauthCalls.length).toBe(2);
   });
 });
+
+/**
+ * § Buy Goods Head Office number.
+ *
+ * Safaricom's STK Push carries two shortcodes: `BusinessShortCode`
+ * identifies the organisation and is what the password is hashed
+ * against, `PartyB` receives the funds. A Paybill uses one number for
+ * both. A Buy Goods till usually does not — Go Live issues a Head
+ * Office number alongside it.
+ *
+ * Sending the till as both is *accepted* by Safaricom, which returns a
+ * real CheckoutRequestID, and then no prompt is delivered and no
+ * callback ever arrives. It is a silent failure, which is exactly why
+ * it needs a test.
+ */
+describe('DarajaGateway.initiateStkPush — Buy Goods shortcodes', () => {
+  function acceptingFetch() {
+    return vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'token-abc', expires_in: '3599' }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                MerchantRequestID: 'm-1',
+                CheckoutRequestID: 'ws_CO_1',
+                ResponseCode: '0',
+                ResponseDescription: 'Success',
+                CustomerMessage: 'Success',
+              }),
+              { status: 200 },
+            ),
+      ),
+    );
+  }
+
+  async function pushWith(secret: Record<string, unknown>) {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', secret as never);
+    const fetchMock = acceptingFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    await darajaGateway.initiateStkPush({
+      businessId: BUSINESS_ID,
+      phone: '254712345678',
+      amountKes: 1750,
+      accountReference: 'SQ-1',
+      transactionDesc: 'Snack Quest box',
+    });
+    const pushCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/stkpush/v1/processrequest'));
+    return JSON.parse(String(pushCall![1].body));
+  }
+
+  it('sends the Head Office number as BusinessShortCode and the till as PartyB', async () => {
+    const body = await pushWith({ ...SECRET, shortcode: '4346089', headOfficeShortcode: '4346000' });
+
+    expect(body.BusinessShortCode).toBe('4346000');
+    expect(body.PartyB).toBe('4346089');
+    expect(body.TransactionType).toBe('CustomerBuyGoodsOnline');
+  });
+
+  /** The subtler half: Safaricom validates the password against whatever was sent as BusinessShortCode. */
+  it('hashes the password against the Head Office number, not the till', async () => {
+    const timestampOf = (b: Record<string, string>) => b.Timestamp;
+    const body = await pushWith({ ...SECRET, shortcode: '4346089', headOfficeShortcode: '4346000' });
+
+    const decoded = Buffer.from(body.Password, 'base64').toString('utf8');
+    expect(decoded).toBe(`4346000${SECRET.passkey}${timestampOf(body)}`);
+    expect(decoded.startsWith('4346089')).toBe(false);
+  });
+
+  it('uses the one shortcode for both when no Head Office number is set', async () => {
+    const body = await pushWith({ ...SECRET, shortcode: '174379' });
+
+    expect(body.BusinessShortCode).toBe('174379');
+    expect(body.PartyB).toBe('174379');
+    expect(Buffer.from(body.Password, 'base64').toString('utf8')).toBe(
+      `174379${SECRET.passkey}${body.Timestamp}`,
+    );
+  });
+
+  it('leaves a Paybill on one shortcode even if a Head Office number is present', async () => {
+    const body = await pushWith({
+      ...SECRET,
+      accountType: 'paybill',
+      shortcode: '174379',
+      headOfficeShortcode: '  ',
+    });
+
+    expect(body.BusinessShortCode).toBe('174379');
+    expect(body.PartyB).toBe('174379');
+    expect(body.TransactionType).toBe('CustomerPayBillOnline');
+  });
+});
