@@ -56,14 +56,14 @@ export default async function CreatorCampaignDetailPage({
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <Link
         href="/creator/campaigns"
-        className="text-muted-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex w-fit items-center gap-1.5 text-sm font-medium hover:text-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+        className="text-muted-foreground focus-visible:ring-primary focus-visible:ring-offset-background -my-3 inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium hover:text-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
         All campaigns
       </Link>
 
       {campaign.assetsUrl && !isVideo ? (
-        <div className="bg-muted relative aspect-[16/9] w-full overflow-hidden rounded-lg">
+        <div className="bg-foreground/5 relative aspect-[16/9] w-full overflow-hidden rounded-lg">
           <Image src={campaign.assetsUrl} alt={campaign.title} fill sizes="768px" className="object-cover" />
         </div>
       ) : campaign.assetsUrl && isVideo ? (
@@ -79,6 +79,7 @@ export default async function CreatorCampaignDetailPage({
       ) : null}
 
       <PortalPageHeader
+        variant="content"
         title={campaign.title}
         description={`${campaign.targetNiche} · Ends ${formatDate(campaign.deadline)}`}
         action={
@@ -145,7 +146,7 @@ export default async function CreatorCampaignDetailPage({
                   href={url}
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-muted relative aspect-square overflow-hidden rounded-md"
+                  className="bg-foreground/5 relative aspect-square overflow-hidden rounded-md"
                 >
                   <Image src={url} alt="" fill sizes="120px" className="object-cover" unoptimized />
                 </a>
@@ -156,7 +157,7 @@ export default async function CreatorCampaignDetailPage({
       </PortalCard>
 
       <div>
-        <h2 className="text-card-title text-foreground font-semibold">Your submissions for this campaign</h2>
+        <h2 className="text-lg text-foreground font-semibold">Your submissions for this campaign</h2>
         {submissions.length === 0 ? (
           <p className="text-muted-foreground mt-2 text-sm">You haven&apos;t submitted anything for this campaign yet.</p>
         ) : (

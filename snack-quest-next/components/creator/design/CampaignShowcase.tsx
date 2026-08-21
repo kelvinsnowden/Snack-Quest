@@ -30,12 +30,12 @@ export function CampaignCarousel({ campaigns }: { campaigns: CampaignEntry[] }) 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-card-title text-foreground font-semibold">
+        <h2 className="text-lg text-foreground font-semibold">
           Active campaigns
         </h2>
         <Link
           href="/creator/campaigns"
-          className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center gap-1 rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background -my-3 inline-flex min-h-11 items-center gap-1 rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           See all
           <ArrowRight className="size-4" aria-hidden="true" />

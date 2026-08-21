@@ -93,7 +93,7 @@ export function ProfileForm({ initialValues }: { initialValues: ProfileFormValue
           value={followersRange}
           onChange={(event) => setFollowersRange(event.target.value)}
           disabled={submitting}
-          className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 md:h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
         >
           {FOLLOWER_RANGES.map((range) => (
             <option key={range} value={range}>
@@ -110,7 +110,7 @@ export function ProfileForm({ initialValues }: { initialValues: ProfileFormValue
           value={paymentPreference}
           onChange={(event) => setPaymentPreference(event.target.value as PaymentPreference)}
           disabled={submitting}
-          className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 md:h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="mpesa">M-Pesa</option>
           <option value="bank">Bank transfer</option>

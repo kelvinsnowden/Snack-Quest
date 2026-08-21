@@ -69,7 +69,8 @@ export default async function CreatorProtectedLayout({
         <header className="border-border bg-surface/95 sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur md:h-16 md:px-8">
           <Link
             href="/creator"
-            className="focus-visible:ring-primary focus-visible:ring-offset-background flex items-center gap-2.5 rounded-md focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            /* Was 108x32 on every page — the header's home link, under the touch minimum portal-wide. */
+            className="focus-visible:ring-primary focus-visible:ring-offset-background -mx-2 flex min-h-11 items-center gap-2.5 rounded-md px-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             <Image
               src="/logo.png"
