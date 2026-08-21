@@ -76,11 +76,25 @@ export async function POST(request: Request): Promise<Response> {
   // app has real cookies/headers to attribute the eventual order with.
   const cookieHeader = request.headers.get('cookie');
   const cookies = cookieHeader ? parseCookie(cookieHeader) : {};
+  /*
+   * Absent keys, not keys set to `undefined`.
+   *
+   * `ttclid: cookies[TTCLID_COOKIE]` looks equivalent, and in
+   * TypeScript it is — the field is declared `ttclid?: string`, so
+   * undefined means absent. Firestore disagrees: it rejects a document
+   * containing an undefined value outright, so a visitor who arrived
+   * without a TikTok or Facebook click cookie — which is nearly all of
+   * them — took down the entire checkout with
+   * "Cannot use undefined as a Firestore value".
+   */
+  const referer = request.headers.get('referer');
+  const ttclid = cookies[TTCLID_COOKIE];
+  const fbclid = cookies[FBCLID_COOKIE];
   const attribution: ConversionAttribution = {
     channel: 'web',
-    landingUrl: request.headers.get('referer') ?? undefined,
-    ttclid: cookies[TTCLID_COOKIE],
-    fbclid: cookies[FBCLID_COOKIE],
+    ...(referer ? { landingUrl: referer } : {}),
+    ...(ttclid ? { ttclid } : {}),
+    ...(fbclid ? { fbclid } : {}),
   };
 
   // The creator discount (§ Creator-Only Offers) is derived from the

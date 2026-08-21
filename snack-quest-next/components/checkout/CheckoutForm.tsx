@@ -181,9 +181,28 @@ export function CheckoutForm({
         }),
       });
 
-      const payload = (await response.json()) as WebCheckoutResponse | { error: string };
+      /*
+       * Parsed defensively: a 500 from Next is an HTML error page, so
+       * `response.json()` throws and an unguarded throw lands in the
+       * catch below — which told customers to check their connection
+       * for a request that reached us perfectly well and failed inside.
+       * On a payment form that is the worst possible misdirection.
+       */
+      const payload = (await response.json().catch(() => null)) as
+        | WebCheckoutResponse
+        | { error: string }
+        | null;
+
       if (!response.ok) {
-        setError('error' in payload ? payload.error : 'Something went wrong. Please try again.');
+        setError(
+          payload && 'error' in payload
+            ? payload.error
+            : 'Something went wrong on our end — no payment was taken. Please try again in a moment.',
+        );
+        return;
+      }
+      if (!payload) {
+        setError('Something went wrong on our end — no payment was taken. Please try again in a moment.');
         return;
       }
 
@@ -192,7 +211,8 @@ export function CheckoutForm({
       // prompt never arrived.
       router.push(`/checkout/${(payload as WebCheckoutResponse).checkoutSessionId}`);
     } catch {
-      setError("We couldn't reach Snack Quest. Check your connection and try again.");
+      // Genuinely never reached us — fetch itself rejected.
+      setError("We couldn't reach Snack Quest. No payment was taken. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }

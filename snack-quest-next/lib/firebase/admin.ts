@@ -88,7 +88,33 @@ function getAdminApp(): App {
 }
 
 export const adminAuth: Auth = lazy(() => getAuth(getAdminApp()));
-export const adminFirestore: Firestore = lazy(() => getFirestore(getAdminApp()));
+export const adminFirestore: Firestore = lazy(() => {
+  const firestore = getFirestore(getAdminApp());
+  /*
+   * `undefined` means "absent", the same as it does in TypeScript.
+   *
+   * Without this, Firestore rejects any document containing an
+   * undefined value, so a field declared `ttclid?: string` and assigned
+   * from a cookie that is not there takes down the whole write. That is
+   * not hypothetical: it is exactly how the public checkout broke for
+   * every visitor who arrived without a TikTok or Facebook click
+   * cookie, which is nearly all of them.
+   *
+   * The pattern is pervasive — one route alone has seven optional
+   * fields assigned this way — so fixing call sites one at a time is
+   * whack-a-mole on the payment path. This aligns Firestore's rule with
+   * the type system's.
+   *
+   * The trade being made: a field intended as `null` but written as
+   * `undefined` is now silently omitted rather than throwing. That is
+   * survivable here because every repository in this codebase writes
+   * `deletedAt: null` explicitly rather than leaving it undefined, and
+   * because the alternative is a crash on absent optional data in the
+   * one flow that takes money.
+   */
+  firestore.settings({ ignoreUndefinedProperties: true });
+  return firestore;
+});
 
 /**
  * An OAuth access token for the same service account the Admin SDK
