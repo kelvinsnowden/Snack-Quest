@@ -179,6 +179,18 @@ service cloud.firestore {
       allow read, write: if false; // Admin SDK only, always
     }
 
+    // smsOptOuts: the marketing-SMS opt-out register (§ marketing SMS
+    // opt-out). Server-only despite being written on a customer's
+    // action: the customer has no Firebase Auth account to be
+    // authenticated as (see types/smsOptOut.ts), so the write goes
+    // through /api/sms/opt-out, which authorises it by verifying the
+    // signed token from their own message. A client-writable rule would
+    // have nothing better than the phone number to check, which is not
+    // a secret.
+    match /smsOptOuts/{optOutId} {
+      allow read, write: if false; // Admin SDK only, always
+    }
+
     // conversations: the transactional surface (§6). Most Snack Quest
     // customers never have a Firebase Auth account at all (WhatsApp is
     // the identity), so in practice almost every read of this
