@@ -193,8 +193,32 @@ describe('TextSmsGateway.send', () => {
       const fetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
 
-      await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(/Missing TEXTSMS_API_KEY/);
+      // Names the specific missing setting, not the whole list — an
+      // operator reading this is about to look at exactly one row.
+      await expect(textSmsGateway.send({ to: '254713482448', body: 'hi' })).rejects.toThrow(
+        new RegExp(`${missingKey} is not set`),
+      );
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('TextSmsGateway.assertReady', () => {
+  it('passes when every required setting is present', () => {
+    expect(() => textSmsGateway.assertReady()).not.toThrow();
+  });
+
+  /** The point of the pre-flight: a bulk caller learns this once, before its send loop. */
+  it('names every missing setting at once, not just the first', () => {
+    delete process.env.TEXTSMS_API_KEY;
+    delete process.env.TEXTSMS_SHORTCODE;
+
+    expect(() => textSmsGateway.assertReady()).toThrow(/TEXTSMS_API_KEY, TEXTSMS_SHORTCODE are not set/);
+  });
+
+  it('says where to look, since the value being set in Vercel is not the same as it reaching this project', () => {
+    delete process.env.TEXTSMS_PARTNER_ID;
+
+    expect(() => textSmsGateway.assertReady()).toThrow(/linked to this project/);
+  });
 });

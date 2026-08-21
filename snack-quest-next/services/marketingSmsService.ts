@@ -300,11 +300,18 @@ class MarketingSmsService {
       );
     }
 
-    // Checked before the status moves off 'draft', so a missing secret
-    // leaves the campaign editable and re-sendable rather than stranded
-    // mid-send. A marketing text whose opt-out link cannot be honoured
-    // must never go out.
+    // Both checked before the status moves off 'draft', so a
+    // configuration fault leaves the campaign editable and re-sendable
+    // rather than stranded mid-send.
+    //
+    // A marketing text whose opt-out link cannot be honoured must never
+    // go out; and a gateway that cannot send to anyone should say so
+    // once, here, instead of producing the same credentials error
+    // separately for every recipient. A campaign to 500 people reporting
+    // 500 identical failures that were all one unset environment
+    // variable is a worse answer to the same question.
     this.assertOptOutLinkAvailable(recipients[0].phoneNumber);
+    this.assertGatewayReady();
 
     await marketingSmsRepository.update(campaignId, {
       status: 'sending',
@@ -460,6 +467,17 @@ class MarketingSmsService {
     }
 
     return { sentCount, failedRecipients, segmentsSent, worstSegments };
+  }
+
+  /** Surfaces a gateway that cannot send at all as one campaign-level error rather than N recipient-level ones. */
+  private assertGatewayReady(): void {
+    try {
+      this.sms.assertReady?.();
+    } catch (error) {
+      throw new MarketingSmsValidationError(
+        error instanceof Error ? `${error.message} Nothing was sent.` : 'SMS is not configured. Nothing was sent.',
+      );
+    }
   }
 
   private assertOptOutLinkAvailable(sampleNumber: string): void {

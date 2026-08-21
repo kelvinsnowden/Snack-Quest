@@ -517,5 +517,15 @@ export interface SmsSendResult {
 }
 
 export interface SmsGateway {
+  /**
+   * Optional pre-flight. Throws when the gateway cannot send at all —
+   * missing credentials rather than a per-message problem.
+   *
+   * Exists so a bulk sender can fail once, before spending a send loop
+   * producing the same configuration error for every recipient. A
+   * campaign to 500 people should not report 500 identical failures
+   * that were all one unset environment variable.
+   */
+  assertReady?(): void;
   send(input: { to: string; body: string }): Promise<SmsSendResult>;
 }

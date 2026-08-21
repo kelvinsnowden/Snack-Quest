@@ -39,17 +39,35 @@ interface TextSmsConfig {
  */
 const DEFAULT_BASE_URL = 'https://sms.textsms.co.ke';
 
+/**
+ * Which required settings are absent right now. Empty means ready.
+ *
+ * Named individually rather than as one "missing A, B or C" string,
+ * because the answer to "which one" is the whole content of the
+ * message: an operator reading it is about to go and look at exactly
+ * one row in Vercel.
+ */
+export function missingTextSmsConfig(): string[] {
+  return (['TEXTSMS_API_KEY', 'TEXTSMS_PARTNER_ID', 'TEXTSMS_SHORTCODE'] as const).filter(
+    (name) => !process.env[name],
+  );
+}
+
 function getConfig(): TextSmsConfig {
-  const apiKey = process.env.TEXTSMS_API_KEY;
-  const partnerId = process.env.TEXTSMS_PARTNER_ID;
-  const shortcode = process.env.TEXTSMS_SHORTCODE;
-  if (!apiKey || !partnerId || !shortcode) {
+  const missing = missingTextSmsConfig();
+  if (missing.length > 0) {
     throw new Error(
-      'Missing TEXTSMS_API_KEY, TEXTSMS_PARTNER_ID or TEXTSMS_SHORTCODE — all three are required to send SMS. See .env.local.example.',
+      `SMS is not configured — ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set on this deployment. ` +
+        'Check Vercel: a shared team variable also has to be linked to this project, and a change only takes effect on a new deployment.',
     );
   }
   const baseUrl = (process.env.TEXTSMS_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
-  return { apiKey, partnerId, shortcode, baseUrl };
+  return {
+    apiKey: process.env.TEXTSMS_API_KEY!,
+    partnerId: process.env.TEXTSMS_PARTNER_ID!,
+    shortcode: process.env.TEXTSMS_SHORTCODE!,
+    baseUrl,
+  };
 }
 
 /**
@@ -86,6 +104,11 @@ function readCode(entry: TextSmsResponseEntry): number | null {
 }
 
 class TextSmsGateway implements SmsGateway {
+  /** Throws if this gateway could not send to anyone. Lets a bulk caller stop before the loop rather than failing identically for every recipient. */
+  assertReady(): void {
+    getConfig();
+  }
+
   async send(input: { to: string; body: string }): Promise<SmsSendResult> {
     const config = getConfig();
     // TextSMS expects a bare `254XXXXXXXXX` MSISDN, which is exactly
