@@ -63,7 +63,7 @@ describe('POST /api/webhooks/daraja/[businessId]/transaction-status-result', () 
   });
 
   it('forwards the payload to the service, scoped to the URL businessId, and acks 200', async () => {
-    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true });
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
     handleTransactionStatusResultMock.mockResolvedValue(undefined);
     const payload = { Result: { ResultCode: 0 } };
 
@@ -107,7 +107,7 @@ describe('POST /api/webhooks/daraja/[businessId]/transaction-status-timeout', ()
   });
 
   it('forwards the payload to the same handler and acks 200', async () => {
-    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true });
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
     handleTransactionStatusResultMock.mockResolvedValue(undefined);
     const payload = { Result: { ResultCode: 1 } };
 

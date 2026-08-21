@@ -496,8 +496,8 @@ describe('DarajaGateway.initiateB2CPayment', () => {
     // Safaricom's real B2C v3 field is spelled "Occassion" — verified,
     // not a typo, see darajaGateway.ts's own comment.
     expect(body.Occassion).toBe('');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-result?key=test-webhook-secret`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/b2c-timeout?key=test-webhook-secret`);
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}~test-webhook-secret/b2c-result`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}~test-webhook-secret/b2c-timeout`);
   });
 
   it('throws when Daraja rejects the B2C request', async () => {
@@ -640,8 +640,8 @@ describe('DarajaGateway.initiateReversal', () => {
     expect(body.Amount).toBe(2500);
     expect(body.ReceiverParty).toBe('174379');
     expect(body.RecieverIdentifierType).toBe('11');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-result?key=test-webhook-secret`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/reversal-timeout?key=test-webhook-secret`);
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}~test-webhook-secret/reversal-result`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}~test-webhook-secret/reversal-timeout`);
   });
 
   it('throws when Daraja rejects the reversal request', async () => {
@@ -768,8 +768,8 @@ describe('DarajaGateway.queryTransactionStatus', () => {
     expect(body.OriginatorConversationID).toBe('original-txn-orig-id');
     expect(body.Initiator).toBe('testapiuser');
     expect(body.SecurityCredential).toBe('encrypted-credential-base64');
-    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/transaction-status-result?key=test-webhook-secret`);
-    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}/transaction-status-timeout?key=test-webhook-secret`);
+    expect(body.ResultURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}~test-webhook-secret/transaction-status-result`);
+    expect(body.QueueTimeOutURL).toBe(`https://example.com/api/webhooks/daraja/${BUSINESS_ID}~test-webhook-secret/transaction-status-timeout`);
   });
 
   it('throws when Daraja rejects the query request', async () => {

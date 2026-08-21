@@ -51,7 +51,7 @@ describe('POST /api/webhooks/daraja/[businessId]/b2c-result', () => {
   });
 
   it('forwards the payload to the service, scoped to the URL businessId, and acks 200', async () => {
-    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true });
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
     handleB2CResultMock.mockResolvedValue(undefined);
     const payload = { Result: { ResultCode: 0 } };
 
@@ -77,7 +77,7 @@ describe('POST /api/webhooks/daraja/[businessId]/b2c-timeout', () => {
   });
 
   it('forwards the payload to the same handler and acks 200', async () => {
-    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true });
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
     handleB2CResultMock.mockResolvedValue(undefined);
     const payload = { Result: { ResultCode: 1 } };
 

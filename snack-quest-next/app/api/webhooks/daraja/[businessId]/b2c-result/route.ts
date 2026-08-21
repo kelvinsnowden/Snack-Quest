@@ -16,11 +16,13 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ businessId: string }> },
 ): Promise<Response> {
-  const { businessId } = await params;
-  const verification = await verifyDarajaWebhookRequest(businessId, request);
+  const { businessId: businessIdParam } = await params;
+  const verification = await verifyDarajaWebhookRequest(businessIdParam, request);
   if (!verification.ok) {
     return verification.response;
   }
+  // The route param may carry the webhook secret; this is the real tenant id.
+  const businessId = verification.businessId;
 
   const payload = await request.json();
   await withdrawalService.handleB2CResult(businessId, payload);

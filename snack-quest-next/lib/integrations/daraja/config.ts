@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
-import { withWebhookSecret } from '@/lib/webhooks/webhookSecret';
+import { withBusinessIdSecret, WEBHOOK_SECRET_SEPARATOR } from '@/lib/webhooks/webhookSecret';
 import { assertIntegrationEnabled } from '../shared/assertEnabled';
 import type { DarajaIntegrationSecret } from '@/types';
 
@@ -106,6 +106,11 @@ export class DarajaTransactionStatusNotConfiguredError extends Error {
   }
 }
 
+/** `snack-quest` + secret → `snack-quest~<secret>`, the path segment every nested Daraja callback URL is built on. */
+function keyed(businessId: string, webhookSecret: string | undefined): string {
+  return webhookSecret ? `${businessId}${WEBHOOK_SECRET_SEPARATOR}${webhookSecret}` : businessId;
+}
+
 function toBaseUrl(secret: DarajaIntegrationSecret): string {
   return secret.env === 'production'
     ? 'https://api.safaricom.co.ke'
@@ -129,7 +134,7 @@ export async function getDarajaConfig(businessId: string): Promise<DarajaConfig>
     // the field was introduced, never silently assumed 'till'.
     accountType: secret.accountType === 'till' ? 'till' : 'paybill',
     passkey: secret.passkey,
-    callbackUrl: withWebhookSecret(secret.callbackUrl, webhookSecret),
+    callbackUrl: withBusinessIdSecret(secret.callbackUrl, webhookSecret),
     baseUrl: toBaseUrl(secret),
   };
 }
@@ -150,8 +155,8 @@ export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CC
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-result`, webhookSecret),
-    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/b2c-timeout`, webhookSecret),
+    resultUrl: `${origin}/api/webhooks/daraja/${keyed(businessId, webhookSecret)}/b2c-result`,
+    queueTimeoutUrl: `${origin}/api/webhooks/daraja/${keyed(businessId, webhookSecret)}/b2c-timeout`,
   };
 }
 
@@ -171,8 +176,8 @@ export async function getDarajaReversalConfig(businessId: string): Promise<Daraj
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-result`, webhookSecret),
-    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/reversal-timeout`, webhookSecret),
+    resultUrl: `${origin}/api/webhooks/daraja/${keyed(businessId, webhookSecret)}/reversal-result`,
+    queueTimeoutUrl: `${origin}/api/webhooks/daraja/${keyed(businessId, webhookSecret)}/reversal-timeout`,
   };
 }
 
@@ -192,7 +197,7 @@ export async function getDarajaTransactionStatusConfig(businessId: string): Prom
     initiatorName: secret.b2cInitiatorName,
     securityCredential: secret.b2cSecurityCredential,
     baseUrl: toBaseUrl(secret),
-    resultUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/transaction-status-result`, webhookSecret),
-    queueTimeoutUrl: withWebhookSecret(`${origin}/api/webhooks/daraja/${businessId}/transaction-status-timeout`, webhookSecret),
+    resultUrl: `${origin}/api/webhooks/daraja/${keyed(businessId, webhookSecret)}/transaction-status-result`,
+    queueTimeoutUrl: `${origin}/api/webhooks/daraja/${keyed(businessId, webhookSecret)}/transaction-status-timeout`,
   };
 }
