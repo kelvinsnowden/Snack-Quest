@@ -40,3 +40,5 @@ export * from './review';
 export * from './pageView';
 export * from './marketingEmail';
 export * from './analyticsEvent';
+export * from './smsOptOut';
+export * from './marketingSms';

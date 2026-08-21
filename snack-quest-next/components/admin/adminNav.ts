@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   Mail,
   MailPlus,
+  MessageSquare,
+  BellOff,
   MapPinned,
   Megaphone,
   MessageCircle,
@@ -119,6 +121,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { href: '/admin/faqs', label: 'FAQ', icon: HelpCircle, section: 'marketing', group: 'Marketing' },
   { href: '/admin/marketing-emails', label: 'Marketing Emails', icon: Mail, section: 'marketing', group: 'Marketing' },
+  { href: '/admin/marketing-sms', label: 'Marketing SMS', shortLabel: 'SMS', icon: MessageSquare, section: 'marketing', group: 'Marketing' },
+  { href: '/admin/sms-opt-outs', label: 'SMS opt-outs', shortLabel: 'Opt-outs', icon: BellOff, section: 'marketing', group: 'Marketing' },
   { href: '/admin/notification-templates', label: 'Notification Templates', icon: MailPlus, section: 'marketing', group: 'Marketing' },
 
   { href: '/admin/storage', label: 'Storage', icon: FolderOpen, section: 'operations', group: 'System' },
