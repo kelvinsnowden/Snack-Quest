@@ -1,11 +1,10 @@
-import { BoltIcon } from '@/components/icons/BoltIcon';
 import { FargoIcon } from '@/components/icons/FargoIcon';
 import { MpesaLogo } from '@/components/icons/MpesaLogo';
 
 /**
  * "Is this legitimate?" answered visually rather than in a sentence —
- * the real operational partners behind every order: Bolt for door
- * delivery, Fargo Courier for pickup points, M-Pesa for payment. All three
+ * the real operational partners behind every order: Fargo Courier for
+ * delivery and collection, M-Pesa for payment. Both
  * are already real integrations elsewhere in this codebase
  * (`MPESA_RECIPIENT_NAME`, the Fargo delivery copy on
  * `/how-it-works`) — nothing invented for this strip. Shared between
@@ -21,8 +20,8 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  *
  * Real brand colours throughout, deliberately not recoloured to
  * Snack Quest's own palette: the entire point of a partner marquee is
- * that a visitor recognises Bolt-green and M-Pesa-green as belonging
- * to Bolt and M-Pesa, not to this site.
+ * that a visitor recognises M-Pesa-green as belonging to M-Pesa,
+ * not to this site.
  *
  * The track renders the logo list twice and scrolls exactly `-50%` —
  * see `animate-marquee`'s doc comment in `globals.css` for why that
@@ -39,10 +38,9 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  * with something instead of being empty.
  */
 const PARTNERS = [
-  { Icon: BoltIcon, name: 'Bolt', className: 'h-6 sm:h-7' },
-  // Taller than its neighbours on purpose: Bolt and M-Pesa are wide
-  // wordmarks, Fargo's asset is a square badge, and matching their
-  // height would leave it reading as much smaller than both.
+  // Taller than its neighbour on purpose: M-Pesa is a wide
+  // wordmark, Fargo's asset is a square badge, and matching its
+  // height would leave it reading as much smaller.
   { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-9 sm:h-10' },
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;

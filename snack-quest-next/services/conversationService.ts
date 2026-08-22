@@ -24,6 +24,7 @@ import {
   isMetroLocation,
   isSameDayAvailableAt,
   SAME_DAY_CUTOFF_HOUR,
+  WHATSAPP_DOOR_SERVICE_LEVEL,
   type FargoServiceLevel,
 } from '@/lib/delivery/fargoPricing';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
@@ -863,7 +864,7 @@ class ConversationService {
    * takes that station's own fee — the same figure the WhatsApp flow
    * reads, from the same collection.
    *
-   * Door delivery deliberately carries `feeKes: 0`. Bolt's fare is
+   * Door delivery carries a real fee now. It used to be zero: Bolt's fare was
    * dynamic and per-trip; nobody has quoted it at the moment of
    * checkout, the customer pays the rider directly, and the ride is
    * arranged over WhatsApp afterwards. Charging a made-up figure here
@@ -1216,6 +1217,17 @@ class ConversationService {
         availablePackages,
         isNairobi: isNairobiCounty(stateBlob.county),
         pickupStationMatches,
+        // Resolved here rather than in the state machine, which never
+        // touches Firestore. WhatsApp door orders are always next-day —
+        // see WHATSAPP_DOOR_SERVICE_LEVEL for why same-day is not
+        // offered over a conversation that can sit idle for hours.
+        doorDeliveryFeeKes: await deliveryZoneRuleRepository.findFee(
+          businessId,
+          fargoZoneFor('nairobi-metro', WHATSAPP_DOOR_SERVICE_LEVEL),
+          FARGO_SHIPPING_ORIGIN,
+          FARGO_PACKAGE_CATEGORY,
+          FARGO_COURIER,
+        ),
       },
     });
 
@@ -1581,7 +1593,7 @@ class ConversationService {
     }
 
     const lines = [
-      'Door delivery needs price confirmation (Bolt):',
+      'Door delivery needs price confirmation:',
       `Customer: ${stateBlob.customerName ?? 'unknown'} (${phoneNumber})`,
       `Box: ${stateBlob.packageLabel ?? 'unknown'} — KES ${stateBlob.priceKes ?? 0}`,
       `County: ${stateBlob.county ?? 'unknown'}`,

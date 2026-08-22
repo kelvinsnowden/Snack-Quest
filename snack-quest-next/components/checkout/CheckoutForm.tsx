@@ -442,7 +442,7 @@ export function CheckoutForm({
             onSelect={() => setDeliveryMethod('door')}
             icon={<Truck className="size-5" aria-hidden="true" />}
             title="Nairobi door delivery"
-            detail="We arrange a Bolt rider on WhatsApp after payment. You pay the rider directly."
+            detail="Fargo Courier brings it to your address. Next day, or same day if you order before 1pm."
           />
         </div>
 
@@ -451,10 +451,10 @@ export function CheckoutForm({
         ) : (
           <div className="flex flex-col gap-4">
             <div className="border-border bg-primary/5 rounded-lg border p-4">
-              <p className="text-foreground text-sm font-medium">Bolt is arranged separately</p>
+              <p className="text-foreground text-sm font-medium">Delivered by Fargo Courier</p>
               <p className="text-muted-foreground mt-2 text-sm">
-                Today&apos;s checkout covers your Snack Quest order only. Once you&apos;ve paid, we&apos;ll message you
-                on WhatsApp to arrange the Bolt rider — the fare is quoted per trip and paid directly to the rider.
+                We hand your box to Fargo within 24 hours and they bring it to the address you give below.
+                The delivery fee is in your total — nothing to arrange or pay afterwards.
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -532,7 +532,7 @@ export function CheckoutForm({
         />
         <p className="text-muted-foreground text-sm">
           {deliveryMethod === 'door'
-            ? 'Bolt delivery is not included — it is arranged and paid separately after checkout.'
+            ? 'Fargo Courier delivers to your address. The fee is included in the total above.'
             : 'You’ll be prompted for exactly this amount on M-Pesa.'}
         </p>
         {error ? (

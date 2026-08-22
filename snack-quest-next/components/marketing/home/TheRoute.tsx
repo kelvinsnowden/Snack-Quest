@@ -4,11 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { MpesaLogo } from '@/components/icons/MpesaLogo';
 import { FargoIcon } from '@/components/icons/FargoIcon';
-import { BoltIcon } from '@/components/icons/BoltIcon';
 
 /**
  * What each checkpoint badge shows (§ real-logo pass) — `logo`/
- * `mpesa`/`jumia`/`bolt` render the actual brand: the Snack Quest mark
+ * `mpesa`/`fargo` render the actual brand: the Snack Quest mark
  * for step 1, and the real payment/delivery partners for the steps
  * that are genuinely about them — step 2 is the M-Pesa prompt, step 3
  * is fulfilled by either door delivery or a Fargo pickup point, hence two
@@ -23,7 +22,7 @@ type Badge =
   | { kind: 'photo'; src: string; alt: string }
   | { kind: 'mpesa' }
   | { kind: 'fargo' }
-  | { kind: 'bolt' };
+  ;
 
 interface Checkpoint {
   badges: Badge[];
@@ -43,7 +42,7 @@ const CHECKPOINTS: Checkpoint[] = [
     body: 'Fill in where it goes, see your total, and approve the M-Pesa prompt on your phone. No account needed.',
   },
   {
-    badges: [{ kind: 'fargo' }, { kind: 'bolt' }],
+    badges: [{ kind: 'fargo' }],
     title: 'Fast Delivery Across Kenya',
     body: 'Hand-packed within 24 hours. To your door in Nairobi, or a Fargo Courier pickup point countrywide.',
   },
@@ -125,8 +124,6 @@ function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
       return <MpesaLogo className={wide} />;
     case 'fargo':
       return <FargoIcon className={wide} />;
-    case 'bolt':
-      return <BoltIcon className={wide} />;
     case 'emoji':
       return (
         <span className="text-2xl md:text-3xl" aria-hidden="true">
@@ -137,14 +134,14 @@ function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
 }
 
 /**
- * A real logo (mpesa/jumia/bolt) is designed for a white background —
+ * A real logo (mpesa/fargo) is designed for a white background —
  * unlike the Snack Quest mark, which already carries its own dark
  * backdrop, or the emoji, which reads fine on the section's own dark
  * green. `bg-white` plus padding only applies to those three, so
  * nothing gets recoloured to fit the dark "expedition" palette.
  */
 function BadgeCircle({ badge, active, dual }: { badge: Badge; active: boolean; dual: boolean }) {
-  const isRealLogo = badge.kind === 'mpesa' || badge.kind === 'fargo' || badge.kind === 'bolt';
+  const isRealLogo = badge.kind === 'mpesa' || badge.kind === 'fargo';
   return (
     <div
       className={[

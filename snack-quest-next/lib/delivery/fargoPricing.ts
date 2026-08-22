@@ -141,6 +141,18 @@ export const FARGO_SEED_FEES_KES: Record<FargoZone, number> = {
   Upcountry: 450,
 };
 
+/**
+ * What a WhatsApp door order gets.
+ *
+ * Next-day, always. The web checkout can offer same-day because it can
+ * see the clock at the moment of ordering and withdraw the option after
+ * 13:00; a WhatsApp conversation can sit unanswered for hours between
+ * the customer choosing and actually paying, so promising a same-day
+ * arrival there would be promising something the elapsed time could
+ * already have made impossible.
+ */
+export const WHATSAPP_DOOR_SERVICE_LEVEL: FargoServiceLevel = 'next-day';
+
 /** The hour, in Nairobi time, after which same-day can no longer be promised. */
 export const SAME_DAY_CUTOFF_HOUR = 13;
 

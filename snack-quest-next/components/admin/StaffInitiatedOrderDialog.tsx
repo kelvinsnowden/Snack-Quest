@@ -362,7 +362,7 @@ export function StaffInitiatedOrderDialog({
                       placeholder="Kilimani, Argwings Kodhek Rd"
                     />
                     <p className="text-muted-foreground text-sm">
-                      Bolt is not charged here — arrange it with the customer after payment.
+                      Fargo delivers to the address given, and the fee is in the total above.
                     </p>
                   </div>
                 )}

@@ -21,7 +21,8 @@ import type {
  * Two delivery methods diverge at `awaiting_delivery_selection`
  * (redesign: multi-delivery-method checkout). `pickup` (Fargo,
  * automated, nationwide) continues through station search/selection
- * straight to a priced order summary. `door` (Bolt, Nairobi-only,
+ * straight to a priced order summary. `door` (Fargo, Nairobi and
+ * surrounding towns,
  * dynamic pricing) collects address details and then hands off to a
  * human agent — this module never prices a door-delivery order
  * itself; `sideEffect: 'ESCALATE_TO_AGENT'` is as far as it goes.
@@ -52,6 +53,14 @@ export interface ConversationTransitionContext {
    * while `currentStep === 'awaiting_pickup_station_selection'`.
    */
   pickupStationMatches?: PickupStationCandidate[];
+  /**
+   * The Fargo door rate for this business, resolved by the Service
+   * before calling `transition()` — this module never touches
+   * Firestore, exactly as with `pickupStationMatches`. `null` (or
+   * absent) means no rate is configured, which is a real state and not
+   * a reason to guess: the conversation escalates to a human instead.
+   */
+  doorDeliveryFeeKes?: number | null;
 }
 
 export interface ConversationTransitionInput {
@@ -69,11 +78,19 @@ export interface ConversationTransitionResult {
   sideEffect?: 'FREEZE_SNAPSHOT' | 'ESCALATE_TO_AGENT';
 }
 
-/** The exact required copy (redesign spec) when Door Delivery is selected and escalated — Bolt's pricing is dynamic, so no fee is ever guessed here. */
-export const DOOR_DELIVERY_ESCALATION_MESSAGE =
-  "Great choice! Door delivery within Nairobi is handled by Bolt, whose pricing changes based " +
-  'on distance and traffic. One of our team members will contact you shortly to confirm your ' +
-  'delivery cost and complete your order.';
+/**
+ * Door delivery is priced, not escalated.
+ *
+ * This used to hand the conversation to a human because Bolt's fare
+ * moved with distance and traffic, so no figure could be quoted up
+ * front. Fargo charges a flat rate inside its Nairobi area, which
+ * means the bot can price a door order the same way it prices a pickup
+ * one — and the customer gets a number immediately instead of waiting
+ * for someone to call back.
+ */
+export const DOOR_DELIVERY_PRICED_MESSAGE =
+  'Great choice! Door delivery in Nairobi and the surrounding towns is handled by Fargo Courier, ' +
+  'and it is included in your total below.';
 
 const WELCOME_MESSAGE =
   "Welcome to Snack Quest! We curate snack boxes and deliver them anywhere in Kenya. Let's get you a box.";
@@ -299,7 +316,7 @@ export function formatFinalOrderSummaryMessage(stateBlob: ConversationStateBlob)
   if (discountKes) {
     lines.push(`Discount: -KES ${discountKes}`);
   }
-  const deliveryLabel = isPickup ? 'Delivery' : 'Bolt Delivery';
+  const deliveryLabel = 'Delivery';
   const feeText = deliveryFeeKes > 0 ? `KES ${deliveryFeeKes}` : 'to be confirmed';
   lines.push(`${deliveryLabel}: ${feeText}`);
   lines.push(`Total: KES ${totalKes}`);
@@ -404,14 +421,29 @@ export function transition(
           botReply: `Sorry, I didn't catch all of that.\n\n${DOOR_DELIVERY_DETAILS_PROMPT}`,
         };
       }
-      // Delivery fee is deliberately NOT calculated here — Bolt's
-      // pricing is dynamic; a human agent prices it next (see
-      // ConversationService.escalateToAgent / priceDoorDelivery).
+      // Priced here rather than escalated. The fee comes from the same
+      // Fargo zone rule the web checkout reads, resolved by the Service
+      // and handed back on `context` — the state machine stays free of
+      // repository access, exactly as it is for pickup stations.
+      const doorFeeKes = context.doorDeliveryFeeKes ?? null;
+      if (doorFeeKes === null) {
+        // No configured rate means an unknown cost, and quoting one
+        // would be inventing a price. A human takes it from here — the
+        // same fallback pickup uses for an unpriced station.
+        return {
+          nextStep: 'awaiting_agent_pricing',
+          stateBlobPatch: details,
+          botReply:
+            "Thanks! One of our team members will confirm your delivery cost shortly and complete your order.",
+          sideEffect: 'ESCALATE_TO_AGENT',
+        };
+      }
       return {
-        nextStep: 'awaiting_agent_pricing',
-        stateBlobPatch: details,
-        botReply: DOOR_DELIVERY_ESCALATION_MESSAGE,
-        sideEffect: 'ESCALATE_TO_AGENT',
+        nextStep: 'awaiting_referral_code',
+        stateBlobPatch: { ...details, deliveryFeeKes: doorFeeKes },
+        botReply:
+          `${DOOR_DELIVERY_PRICED_MESSAGE}\n\nDelivery: KES ${doorFeeKes}.\n\n` +
+          "Do you have a referral code? Reply with the code, or reply 'no'.",
       };
     }
 

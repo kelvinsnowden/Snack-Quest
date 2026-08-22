@@ -191,7 +191,7 @@ describe('conversationTurnService — channel-agnostic engine', () => {
     const escalated = await turn('123 Ngong Road, near ABC Bank, Kilimani, 254733445566');
     expect(escalated.nextStep).toBe('awaiting_agent_pricing');
     expect(escalated.messages).toHaveLength(1);
-    expect(escalated.messageText).toContain('Door delivery within Nairobi is handled by Bolt');
+    expect(escalated.messageText).toContain('confirm your delivery cost shortly');
 
     const conversation = await conversationRepository.findById(escalated.conversationId);
     expect(conversation?.status).toBe('agent_assigned');
