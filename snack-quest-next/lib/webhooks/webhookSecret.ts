@@ -85,12 +85,25 @@ export const WEBHOOK_SECRET_SEPARATOR = '~';
  * URL, because several Daraja callbacks are nested under it
  * (`…/{businessId}/b2c-result`). Appending to the last segment would
  * produce `…/b2c-result~secret`, which no longer matches that route.
+ *
+ * Clears any existing query string and hash on the way in. This
+ * function replaced `withWebhookSecret`'s `?key=` suffix for Daraja
+ * specifically to get rid of a query string Safaricom's callback
+ * delivery was suspected of silently dropping — but the operator's
+ * stored "Callback URL" field was never edited when that change
+ * shipped, only told to leave it alone. If that field still carried
+ * `?key=<old secret>` from before, this would have quietly reattached
+ * it (`new URL().toString()` always includes `.search`), reintroducing
+ * the exact query string this exists to remove. A callback URL has no
+ * legitimate reason to carry either on the way in.
  */
 export function withBusinessIdSecret(url: string, secret: string | undefined): string {
   if (!secret) {
     return url;
   }
   const parsed = new URL(url);
+  parsed.search = '';
+  parsed.hash = '';
   parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${WEBHOOK_SECRET_SEPARATOR}${secret}`;
   return parsed.toString();
 }
