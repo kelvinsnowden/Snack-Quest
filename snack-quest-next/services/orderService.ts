@@ -109,6 +109,10 @@ class OrderService {
             customerId: snapshot.customerId,
             phoneNumber: snapshot.phoneNumber,
             customerName: snapshot.customerName,
+            // Absent key rather than `undefined`, which Firestore
+            // rejects outright — most orders have no email, since the
+            // field is optional and WhatsApp orders never collect one.
+            ...(snapshot.customerEmail ? { email: snapshot.customerEmail } : {}),
             county: snapshot.county,
           },
           delivery: snapshot.delivery,

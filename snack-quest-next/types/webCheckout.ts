@@ -17,6 +17,13 @@ export interface WebCheckoutRequest {
   customerName: string;
   /** Any Kenyan form — `0712…`, `+254712…`, `254712…`. Normalized server-side. */
   phone: string;
+  /**
+   * Optional. Every order is reachable by phone already, so an address
+   * is an extra for receipts and updates rather than a requirement —
+   * an unusable one is dropped server-side instead of failing the
+   * checkout, because losing the sale is the worse outcome.
+   */
+  email?: string;
   county: string;
   deliveryMethod: DeliveryMethod;
   /** Required when `deliveryMethod` is `'pickup'` — which Jumia station to ship to. */
@@ -93,4 +100,11 @@ export interface WebCheckoutStatusResponse {
   deliveryMethod: DeliveryMethod | null;
   customerName: string | null;
   packageLabel: string | null;
+  /**
+   * When the order was created, ISO-8601, for the confirmation
+   * screen's receipt line. Null until an order exists. A string rather
+   * than a Timestamp because this crosses the wire to a client poll,
+   * and formatting happens where the customer's locale is known.
+   */
+  paidAt: string | null;
 }

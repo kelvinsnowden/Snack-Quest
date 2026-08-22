@@ -12,6 +12,7 @@ import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import type { ConversionAttribution, ManualPaymentRecord } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
+import { normalizeEmail } from '@/lib/checkout/email';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { stkRetryWaitSeconds } from '@/lib/checkout/stkTiming';
 import { toMillis } from '@/lib/firestoreTimestamp';
@@ -241,6 +242,8 @@ export interface WebCheckoutInput {
   quantity: number;
   customerName: string;
   phone: string;
+  /** Optional (§ optional email capture). Dropped rather than rejected when unusable — an unreachable address is not a reason to refuse a paying customer. */
+  email?: string;
   county: string;
   deliveryMethod: DeliveryMethod;
   pickupStationId?: string;
@@ -536,6 +539,11 @@ class ConversationService {
     // mis-normalized number charges a stranger.
     const phoneNumber = normalizeKenyanPhone(input.phone);
 
+    // Normalized to null rather than validated into an error: the field
+    // is optional, and a customer who mistyped their address still
+    // wants their snacks.
+    const customerEmail = normalizeEmail(input.email);
+
     const box = await packageRepository.findById(businessId, input.packageId);
     if (!box || !box.isActive || isOfferExpired(box.offerExpiresAt)) {
       throw new WebCheckoutValidationError(`Box ${input.packageId} is not available`);
@@ -658,6 +666,7 @@ class ConversationService {
           priceKes: box.priceKes,
           quantity,
           customerName,
+          customerEmail,
           county,
           referralCode: input.referralCode,
           isRescueOffer: box.isRescueOffer,
@@ -1091,6 +1100,18 @@ class ConversationService {
       }
     }
 
+    // The receipt line on the confirmation screen. Read from the order
+    // rather than taken as "now", so revisiting the URL a week later
+    // still shows when the payment actually happened.
+    let paidAt: string | null = null;
+    if (base.orderId) {
+      const order = await orderRepository.findById(base.orderId);
+      const createdAtMs = toMillis(order?.createdAt);
+      if (createdAtMs > 0) {
+        paidAt = new Date(createdAtMs).toISOString();
+      }
+    }
+
     return {
       checkoutSessionId: base.checkoutSessionId,
       paymentStatus: base.paymentStatus,
@@ -1100,6 +1121,7 @@ class ConversationService {
       deliveryMethod,
       customerName,
       packageLabel,
+      paidAt,
     };
   }
 
@@ -1178,6 +1200,8 @@ class ConversationService {
       /** Unit count. Omitted by every WhatsApp path — a conversation can only ever buy one box. */
       quantity?: number;
       customerName: string;
+      /** Website checkout only; every WhatsApp path omits it. */
+      customerEmail?: string | null;
       county: string;
       referralCode?: string;
       /**
@@ -1248,6 +1272,10 @@ class ConversationService {
       packageLabel: common.packageLabel,
       quantity,
       customerName: common.customerName,
+      // Absent key, never `undefined` — Firestore rejects a document
+      // containing an undefined value outright, and this field is
+      // omitted for every WhatsApp order.
+      ...(common.customerEmail ? { customerEmail: common.customerEmail } : {}),
       county: common.county,
       delivery,
       referralCode: common.referralCode ?? null,

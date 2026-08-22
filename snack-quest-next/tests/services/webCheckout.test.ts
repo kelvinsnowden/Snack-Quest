@@ -20,6 +20,7 @@ import { conversationCheckoutSnapshotRepository } from '@/repositories/conversat
 import { packageRepository } from '@/repositories/packageRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
+import { orderRepository } from '@/repositories/orderRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
 import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
@@ -700,6 +701,71 @@ describe('startWebCheckout — retrying after a prompt that never arrived', () =
         initiatedBy: { staffUid: 'staff-1', staffName: 'Amina' },
       }),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * Optional email capture (§ optional email capture).
+ *
+ * The property under test is the same one throughout: this field never
+ * costs a sale. Every order is reachable by phone already, so an
+ * address is an extra, and a bad one is dropped rather than allowed to
+ * reject a paying customer.
+ */
+describe('startWebCheckout — optional email', () => {
+  async function snapshotFor(sessionId: string) {
+    const conversation = await conversationRepository.findById(sessionId);
+    return conversationCheckoutSnapshotRepository.findById(conversation!.conversationCheckoutSnapshotId!);
+  }
+
+  it('stores a usable address on the frozen snapshot, normalized', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ email: '  Wanjiru.Kamau@Example.COM ' }),
+    );
+
+    expect((await snapshotFor(result.checkoutSessionId))?.customerEmail).toBe('wanjiru.kamau@example.com');
+  });
+
+  /**
+   * Absent, never `undefined`. Firestore rejects a document containing
+   * an undefined value outright — the same fault that took the whole
+   * checkout down once already, over an unrelated field.
+   */
+  it('omits the key entirely when no address was given', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    const snapshot = await snapshotFor(result.checkoutSessionId);
+
+    expect(snapshot).not.toBeNull();
+    expect('customerEmail' in (snapshot as object)).toBe(false);
+  });
+
+  it.each(['not-an-email', 'wanjiru@', '@example.com', '   '])(
+    'takes the order anyway when the address is unusable (%s)',
+    async (email) => {
+      const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ email, phone: '0712345699' }));
+
+      expect(result.stkPushSent).toBe(true);
+      expect('customerEmail' in ((await snapshotFor(result.checkoutSessionId)) as object)).toBe(false);
+    },
+  );
+
+  it('carries the address onto the order once payment completes', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput({ email: 'wanjiru@example.com' }));
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
+
+    await service().handlePaymentResult({
+      status: 'succeeded',
+      intentId: intents[0].id,
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      amountKes: result.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+
+    const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
+    expect(order?.data.customer.email).toBe('wanjiru@example.com');
   });
 });
 

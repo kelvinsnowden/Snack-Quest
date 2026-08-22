@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { PickupStationPicker, type SelectedStation } from './PickupStationPicker';
 import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
+import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
@@ -68,6 +69,7 @@ export function CheckoutForm({
   const [quantity, setQuantity] = useState(1);
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
@@ -131,6 +133,10 @@ export function CheckoutForm({
   if (!box) problems.push('Choose a box');
   if (customerName.trim().length < 2) problems.push('Enter your name');
   if (!isValidKenyanPhone(phone)) problems.push('Enter a valid Kenyan mobile number');
+  // Blank passes: the field is optional. Only something typed that
+  // cannot be an address is worth stopping for, and only because the
+  // customer can still fix it while they are looking at it.
+  if (!isAcceptableEmailInput(email)) problems.push('Check your email address');
   if (deliveryMethod === 'pickup' && !station) problems.push('Choose a pickup station');
   if (deliveryMethod === 'door' && addressText.trim().length < 5) problems.push('Enter your delivery address');
   const ready = problems.length === 0 && !outOfStock;
@@ -165,6 +171,7 @@ export function CheckoutForm({
           quantity,
           customerName: customerName.trim(),
           phone: phone.trim(),
+          email: email.trim() || undefined,
           // Pickup takes the county from the station the customer
           // picked; door delivery is Nairobi-only by policy.
           county: deliveryMethod === 'pickup' ? (station?.county ?? '') : 'Nairobi',
@@ -388,6 +395,34 @@ export function CheckoutForm({
               required
             />
             <p className="text-muted-foreground text-sm">The payment prompt comes to this number.</p>
+          </div>
+          {/*
+            Optional, and labelled as optional rather than merely
+            lacking `required` — an unmarked field on a checkout reads
+            as one more thing standing between the customer and their
+            snacks. Full width beneath the pair above so it is
+            visibly the extra rather than a third of three equals.
+          */}
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="checkout-email">
+              Email <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="checkout-email"
+              type="email"
+              value={email}
+              onChange={(event) => {
+                markFormStarted();
+                setEmail(event.target.value);
+              }}
+              inputMode="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              aria-invalid={!isAcceptableEmailInput(email)}
+            />
+            <p className="text-muted-foreground text-sm">
+              For your receipt and order updates. We&apos;ll still message you on WhatsApp either way.
+            </p>
           </div>
         </div>
       </section>
