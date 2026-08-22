@@ -20,7 +20,18 @@ import Image from 'next/image';
  * `fill` so it reserves its own space and nothing below shifts as it
  * loads.
  */
-export const BOX_HERO_SRC = '/snack-box-hero.png';
+/**
+ * `.webp`, and named accurately on purpose. The file arrived as a WebP
+ * with a `.png` extension — browsers mostly sniff past that, but the
+ * server would have been advertising `Content-Type: image/png` over a
+ * WebP body, which is a mismatch waiting to be believed by something.
+ * WebP is also the smaller format, and every browser this storefront
+ * targets reads it.
+ */
+export const BOX_HERO_SRC = '/snack-box-hero.webp';
+
+/** The asset's true intrinsic size, so the reserved space matches the picture and nothing shifts as it loads. */
+const INTRINSIC = { width: 1214, height: 1295 };
 
 export function SnackBoxHero({ className = '' }: { className?: string }) {
   const [failed, setFailed] = useState(false);
@@ -38,8 +49,8 @@ export function SnackBoxHero({ className = '' }: { className?: string }) {
       <Image
         src={BOX_HERO_SRC}
         alt="A Snack Quest box with Japanese, Korean and Thai snacks bursting out of it"
-        width={1216}
-        height={1316}
+        width={INTRINSIC.width}
+        height={INTRINSIC.height}
         unoptimized
         priority
         onError={() => setFailed(true)}
