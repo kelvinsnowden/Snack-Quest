@@ -88,6 +88,28 @@ describe('withBusinessIdSecret / splitBusinessIdSecret', () => {
     );
   });
 
+  /**
+   * The real production bug this exists to close: this function
+   * replaced a `?key=<secret>` query string specifically to stop
+   * Safaricom's callback delivery from silently dropping it, but the
+   * operator's stored "Callback URL" field was never migrated when
+   * that shipped — it was told to stay as it was. If it still carried
+   * the old `?key=` from before, `new URL(url).toString()` would
+   * happily reattach it after the path was rewritten, since only
+   * `.pathname` was touched, putting a query string back on the exact
+   * URL this was built to strip one from.
+   */
+  it('strips a query string already on the stored URL, not just avoids adding one', () => {
+    const url = withBusinessIdSecret(
+      'https://snackquests.shop/api/webhooks/daraja/snack-quest?key=OLDSECRET',
+      'NEWSECRET',
+    );
+
+    expect(url).toBe('https://snackquests.shop/api/webhooks/daraja/snack-quest~NEWSECRET');
+    expect(url).not.toContain('OLDSECRET');
+    expect(new URL(url).search).toBe('');
+  });
+
   it('round-trips back to the real business id', () => {
     expect(splitBusinessIdSecret('snack-quest~abc123')).toEqual({ businessId: 'snack-quest', key: 'abc123' });
   });
