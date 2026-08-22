@@ -21,7 +21,7 @@ import type {
  * Two delivery methods diverge at `awaiting_delivery_selection`
  * (redesign: multi-delivery-method checkout). `pickup` (Fargo,
  * automated, nationwide) continues through station search/selection
- * straight to a priced order summary. `door` (Fargo, Nairobi and
+ * straight to a priced order summary. `door` (Tushop, Nairobi and
  * surrounding towns,
  * dynamic pricing) collects address details and then hands off to a
  * human agent — this module never prices a door-delivery order
@@ -89,7 +89,7 @@ export interface ConversationTransitionResult {
  * for someone to call back.
  */
 export const DOOR_DELIVERY_PRICED_MESSAGE =
-  'Great choice! Door delivery in Nairobi and the surrounding towns is handled by Fargo Courier, ' +
+  'Great choice! Door delivery in Nairobi and the surrounding towns is handled by Tushop, ' +
   'and it is included in your total below.';
 
 const WELCOME_MESSAGE =

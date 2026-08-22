@@ -105,7 +105,7 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
 
       {isDoorDelivery ? (
         <p className="mt-10 text-sm text-pretty text-white/60">
-          Your box is packed and sent within 24 hours, and Fargo Courier brings it to the address you
+          Your box is packed and sent within 24 hours, and Tushop brings it to the address you
           gave us. We&rsquo;ll text you the waybill number as soon as it&rsquo;s on its way.
         </p>
       ) : (

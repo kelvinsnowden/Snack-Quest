@@ -29,6 +29,8 @@ export interface QuoteSelection {
   packageId: string | null;
   quantity: number;
   deliveryMethod: DeliveryMethod;
+  /** Door delivery only — the quote must price the speed the customer actually picked, or it disagrees with the charge. */
+  serviceLevel?: 'next-day' | 'same-day';
   pickupStationId?: string;
   referralCode: string;
   phone: string;
@@ -60,7 +62,7 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
     // it — never the response body, the phone number or the referral
     // code, none of which belong in an analytics record.
     function reportQuoteError(category: 'http_error' | 'network_error' | 'empty_response') {
-      const signature = `${category}:${current.deliveryMethod}:${current.packageId}`;
+      const signature = `${category}:${current.deliveryMethod}:${current.serviceLevel ?? ''}:${current.packageId}`;
       if (reportedErrors.current.has(signature)) {
         return;
       }
@@ -85,6 +87,7 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
           packageId: current.packageId,
           quantity: current.quantity,
           deliveryMethod: current.deliveryMethod,
+          ...(current.serviceLevel ? { serviceLevel: current.serviceLevel } : {}),
           pickupStationId: current.pickupStationId,
           referralCode: current.referralCode || undefined,
           phone: current.phone || undefined,

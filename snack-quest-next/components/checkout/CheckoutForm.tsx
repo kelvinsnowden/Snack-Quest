@@ -11,6 +11,11 @@ import { PickupStationPicker, type SelectedStation } from './PickupStationPicker
 import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
+import {
+  isSameDayAvailableAt,
+  SAME_DAY_ARRIVAL_HOUR,
+  SAME_DAY_CUTOFF_HOUR,
+} from '@/lib/delivery/deliveryPricing';
 import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
@@ -71,6 +76,13 @@ export function CheckoutForm({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
+  const [serviceLevel, setServiceLevel] = useState<'next-day' | 'same-day'>('next-day');
+  // Whether Tushop will still accept a same-day parcel. Computed on the
+  // client, from the customer's own clock read in Nairobi time, so the
+  // option disappears the moment the cut-off passes rather than at the
+  // next page load. The server refuses it independently — this only
+  // decides whether to offer it.
+  const sameDayOpen = isSameDayAvailableAt();
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
   const [estate, setEstate] = useState('');
@@ -124,6 +136,7 @@ export function CheckoutForm({
     pickupStationId: station?.id,
     referralCode: referralCode.trim(),
     phone,
+    serviceLevel: deliveryMethod === 'door' ? serviceLevel : undefined,
   });
 
   const maxQuantity = Math.min(MAX_QUANTITY, box?.stockCount ?? MAX_QUANTITY);
@@ -183,6 +196,7 @@ export function CheckoutForm({
                 estate: estate.trim() || undefined,
                 landmark: landmark.trim() || undefined,
               }),
+          ...(deliveryMethod === 'door' ? { serviceLevel } : {}),
           referralCode: referralCode.trim() || undefined,
         }),
       });
@@ -442,7 +456,7 @@ export function CheckoutForm({
             onSelect={() => setDeliveryMethod('door')}
             icon={<Truck className="size-5" aria-hidden="true" />}
             title="Nairobi door delivery"
-            detail="Fargo Courier brings it to your address. Next day, or same day if you order before 1pm."
+            detail="Tushop brings it to your address. Next day, or same day if you order before 1pm."
           />
         </div>
 
@@ -450,10 +464,40 @@ export function CheckoutForm({
           <PickupStationPicker selected={station} onSelect={setStation} />
         ) : (
           <div className="flex flex-col gap-4">
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-foreground text-sm font-medium">How fast?</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <SpeedOption
+                  selected={serviceLevel === 'next-day'}
+                  onSelect={() => setServiceLevel('next-day')}
+                  title="Next day"
+                  detail="Arrives tomorrow."
+                />
+                {/*
+                  Only offered while Tushop will still accept it. Shown
+                  disabled rather than hidden after the cut-off, because
+                  a customer who came back for same-day deserves to be
+                  told it closed at 1pm rather than left wondering where
+                  the option went.
+                */}
+                <SpeedOption
+                  selected={serviceLevel === 'same-day'}
+                  onSelect={() => sameDayOpen && setServiceLevel('same-day')}
+                  disabled={!sameDayOpen}
+                  title="Same day"
+                  detail={
+                    sameDayOpen
+                      ? `Guaranteed by ${SAME_DAY_ARRIVAL_HOUR % 12}pm today.`
+                      : `Closed for today — orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
+                  }
+                />
+              </div>
+            </fieldset>
+
             <div className="border-border bg-primary/5 rounded-lg border p-4">
-              <p className="text-foreground text-sm font-medium">Delivered by Fargo Courier</p>
+              <p className="text-foreground text-sm font-medium">Delivered by Tushop</p>
               <p className="text-muted-foreground mt-2 text-sm">
-                We hand your box to Fargo within 24 hours and they bring it to the address you give below.
+                We hand your box to Tushop within 24 hours and they bring it to the address you give below.
                 The delivery fee is in your total — nothing to arrange or pay afterwards.
               </p>
             </div>
@@ -532,7 +576,7 @@ export function CheckoutForm({
         />
         <p className="text-muted-foreground text-sm">
           {deliveryMethod === 'door'
-            ? 'Fargo Courier delivers to your address. The fee is included in the total above.'
+            ? 'Tushop delivers to your address. The fee is included in the total above.'
             : 'You’ll be prompted for exactly this amount on M-Pesa.'}
         </p>
         {error ? (
@@ -693,6 +737,39 @@ function SectionHeading({ step, title, optional }: { step: number; title: string
       <h2 className="text-foreground text-base font-semibold sm:text-[length:var(--text-card-title)]">{title}</h2>
       {optional ? <span className="text-muted-foreground text-sm">Optional</span> : null}
     </div>
+  );
+}
+
+function SpeedOption({
+  selected,
+  onSelect,
+  title,
+  detail,
+  disabled = false,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  detail: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      aria-pressed={selected}
+      className={`flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition-colors ${
+        disabled
+          ? 'border-border bg-muted/40 cursor-not-allowed opacity-60'
+          : selected
+            ? 'border-primary bg-primary/5'
+            : 'border-border hover:border-primary/50'
+      }`}
+    >
+      <span className="text-foreground text-sm font-medium">{title}</span>
+      <span className="text-muted-foreground text-sm">{detail}</span>
+    </button>
   );
 }
 

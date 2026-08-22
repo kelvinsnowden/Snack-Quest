@@ -23,7 +23,11 @@ import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BUSINESS_ID = process.env.BUSINESS_ID ?? 'snack-quest';
-const COURIER = 'fargo';
+// Tushop is who Snack Quest hands parcels to, for every order. Fargo
+// is Tushop's onward partner, and appears only as the branch a customer
+// outside the radius collects from — hence 'Fargo <branch>' names on a
+// point whose courier is Tushop.
+const COURIER = 'tushop';
 const SHIPPING_ORIGIN = 'Nairobi';
 const PACKAGE_CATEGORY = 'small';
 const COMMIT = process.argv.includes('--commit');

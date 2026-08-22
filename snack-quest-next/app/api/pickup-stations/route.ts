@@ -1,6 +1,6 @@
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { isFargoZone } from '@/lib/delivery/fargoPricing';
+import { isFargoZone } from '@/lib/delivery/deliveryPricing';
 import {
   groupStationsByCounty,
   stationsInCounty,
