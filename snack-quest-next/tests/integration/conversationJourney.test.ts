@@ -783,7 +783,7 @@ describe('the full Fargo pickup point journey: search, select, auto-priced fee, 
   });
 });
 
-describe('door delivery (human-assisted checkout via a human agent)', () => {
+describe('door delivery, human-assisted fallback (used only when no Fargo rate is configured)', () => {
   beforeAll(() => {
     process.env.INTERNAL_AGENT_API_KEY = 'test-secret';
   });
@@ -806,9 +806,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
       text: '123 Ngong Road, near ABC Bank, Kilimani, 0712345678',
     });
     expect(escalationTurn.botReply).toBe(
-      "Great choice! Door delivery within Nairobi is handled by Bolt, whose pricing changes based " +
-        'on distance and traffic. One of our team members will contact you shortly to confirm your ' +
-        'delivery cost and complete your order.',
+      "Thanks! One of our team members will confirm your delivery cost shortly and complete your order.",
     );
 
     const conversation = await conversationRepository.findActiveByPhoneNumber(
@@ -822,7 +820,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
 
     const adminMessages = gateway.sent.filter((m) => m.phone === SNACK_QUEST.adminWhatsappPhone);
     expect(adminMessages).toHaveLength(1);
-    expect(adminMessages[0].text).toContain('Bolt');
+    expect(adminMessages[0].text).toContain('Door delivery');
     expect(adminMessages[0].text).toContain('123 Ngong Road');
     expect(adminMessages[0].text).toContain('Kilimani');
 
@@ -888,7 +886,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     // `gateway`) — read the persisted transcript instead of `gateway.sent`.
     const messagesAfterPricing = await conversationRepository.listMessages(conversationId);
     const quotation = messagesAfterPricing.at(-1)?.body ?? '';
-    expect(quotation).toContain('Bolt Delivery: KES 400');
+    expect(quotation).toContain('Delivery: KES 400');
     expect(quotation).toContain('Total: KES 2900');
     expect(quotation).toContain('Reply PAY whenever you are ready to receive the M-Pesa payment request.');
     expect(quotation).not.toContain('check your phone'); // no STK sent yet
@@ -907,7 +905,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     expect(snapshot?.delivery.provider).toBe('fargo');
     expect(snapshot?.delivery.feeKes).toBe(400);
     expect(snapshot?.delivery.addressText).toBe('123 Ngong Road');
-    expect(snapshot?.totalKes).toBe(2900); // 2500 box + 400 Bolt fee, no automated referral step for door delivery
+    expect(snapshot?.totalKes).toBe(2900); // 2500 box + a 400 fee the agent quoted, no automated referral step
 
     const paymentIntentsAfterPay = await adminFirestore.collection('paymentIntents').get();
     expect(paymentIntentsAfterPay.size).toBe(1);
@@ -927,11 +925,11 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     expect(order.delivery.feeKes).toBe(400);
     expect(order.delivery.addressText).toBe('123 Ngong Road');
     expect(order.delivery.estate).toBe('Kilimani');
-    expect(order.delivery.trackingUrl).toBeNull(); // no generic Bolt tracker exists
+    expect(order.delivery.trackingUrl).toBeNull(); // manual booking carries no tracker
     expect(order.pricing.totalKes).toBe(2900);
     expect(order.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
 
-    // Bolt has no automated booking API in this codebase — a human
+    // Fargo has no booking API in this codebase — a human
     // agent must book the courier themselves; the shipment record
     // reflects that real state, not a fabricated "created" status.
     const shipment = await shipmentRepository.findByOrderId(ordersSnapshot.docs[0].id);

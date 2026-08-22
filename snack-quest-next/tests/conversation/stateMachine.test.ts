@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DOOR_DELIVERY_ESCALATION_MESSAGE,
+  DOOR_DELIVERY_PRICED_MESSAGE,
   PAYMENT_CONFIRMATION_KEYWORDS,
   PAYMENT_CONFIRMATION_REMINDER,
   formatFinalOrderSummaryMessage,
@@ -18,6 +18,9 @@ const PACKAGES = [
 const nairobiContext: ConversationTransitionContext = {
   availablePackages: PACKAGES,
   isNairobi: true,
+  // Fargo's configured door rate, resolved by the Service before the
+  // state machine runs — the machine never reads Firestore.
+  doorDeliveryFeeKes: 250,
 };
 
 const upcountryContext: ConversationTransitionContext = {
@@ -151,32 +154,40 @@ describe('transition: awaiting_delivery_selection', () => {
 });
 
 describe('transition: awaiting_door_delivery_details', () => {
-  it('collects address/landmark/estate/phone and escalates to a human agent with the exact required copy', () => {
+  it('collects address/landmark/estate/phone and prices the delivery itself', () => {
     const result = transition({
       currentStep: 'awaiting_door_delivery_details',
       stateBlob: { deliveryMethod: 'door', customerName: 'Jane Doe', county: 'Nairobi' },
       inboundText: '123 Ngong Road, near ABC Bank, Kilimani, 0712345678',
       context: nairobiContext,
     });
-    expect(result.nextStep).toBe('awaiting_agent_pricing');
-    expect(result.sideEffect).toBe('ESCALATE_TO_AGENT');
+    // No human in the loop any more. Bolt's fare moved with distance and
+    // traffic so nothing could be quoted up front; Fargo charges a flat
+    // rate, so the customer gets a number immediately instead of waiting
+    // for a call back.
+    expect(result.nextStep).toBe('awaiting_referral_code');
+    expect(result.sideEffect).toBeUndefined();
     expect(result.stateBlobPatch).toEqual({
       addressText: '123 Ngong Road',
       landmark: 'near ABC Bank',
       estate: 'Kilimani',
       contactPhone: '0712345678',
+      deliveryFeeKes: 250,
     });
-    expect(result.botReply).toBe(DOOR_DELIVERY_ESCALATION_MESSAGE);
+    expect(result.botReply).toContain(DOOR_DELIVERY_PRICED_MESSAGE);
+    expect(result.botReply).toContain('KES 250');
   });
 
-  it('never calculates a delivery fee itself — Bolt pricing is dynamic', () => {
+  /** No configured rate means an unknown cost, and quoting one would be inventing a price. */
+  it('still escalates to a human when no door rate is configured', () => {
     const result = transition({
       currentStep: 'awaiting_door_delivery_details',
-      stateBlob: { deliveryMethod: 'door' },
+      stateBlob: { deliveryMethod: 'door', customerName: 'Jane Doe', county: 'Nairobi' },
       inboundText: '123 Ngong Road, near ABC Bank, Kilimani, 0712345678',
-      context: nairobiContext,
+      context: { ...nairobiContext, doorDeliveryFeeKes: null },
     });
-    expect(result.stateBlobPatch).not.toHaveProperty('deliveryFeeKes');
+    expect(result.nextStep).toBe('awaiting_agent_pricing');
+    expect(result.sideEffect).toBe('ESCALATE_TO_AGENT');
   });
 
   it('re-prompts when fewer than 4 comma-separated fields are given', () => {
@@ -336,7 +347,7 @@ describe('formatFinalOrderSummaryMessage', () => {
     expect(message).toContain('To continue, reply PAY whenever you are ready to receive the M-Pesa payment prompt.');
   });
 
-  it('labels the fee "Bolt Delivery" and closes with the door-delivery PAY copy', () => {
+  it('labels the fee "Delivery" and closes with the door-delivery PAY copy', () => {
     const message = formatFinalOrderSummaryMessage({
       packageLabel: 'Deluxe Box',
       priceKes: 3500,
@@ -347,7 +358,7 @@ describe('formatFinalOrderSummaryMessage', () => {
       estate: 'Kilimani',
       deliveryFeeKes: 420,
     });
-    expect(message).toContain('Bolt Delivery: KES 420');
+    expect(message).toContain('Delivery: KES 420');
     expect(message).toContain('Total: KES 3920');
     expect(message).toContain('Reply PAY whenever you are ready to receive the M-Pesa payment request.');
   });

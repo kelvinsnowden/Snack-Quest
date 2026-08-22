@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 /**
- * A human agent's Bolt quote for a door-delivery order (§ Human Sales
+ * A human agent's manual quote for a door-delivery order (§ Human Sales
  * Agent workspace). Submitting only sends the customer an itemized
  * total ending in "reply PAY" — it does not charge them. M-Pesa STK
  * only fires once the customer themselves replies PAY, a deliberate
@@ -56,12 +56,12 @@ export function DoorDeliveryPricingForm({ conversationId }: { conversationId: st
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          Get a quote from Bolt for this delivery, then enter it below. The customer gets an itemized total and is
+          Door delivery is normally priced automatically from the Fargo rate. This form is the fallback for when no rate is configured, or the address needs a quote of its own. The customer gets an itemized total and is
           asked to reply PAY — M-Pesa only charges them once they do.
         </p>
         <form onSubmit={onSubmit} className="flex items-end gap-3">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="feeKes">Bolt delivery fee (KES)</Label>
+            <Label htmlFor="feeKes">Delivery fee (KES)</Label>
             <Input
               id="feeKes"
               type="number"
