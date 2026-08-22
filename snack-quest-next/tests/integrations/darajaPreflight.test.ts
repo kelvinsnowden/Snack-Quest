@@ -93,10 +93,31 @@ describe('inspectDarajaConfig', () => {
    * original sin in the other direction.
    */
   it('flags a passkey of the wrong shape without failing the test', () => {
-    const issues = inspectDarajaConfig(config({ passkey: 'not-a-passkey' }));
+    // Long enough to be a credential, just not Safaricom's format.
+    const issues = inspectDarajaConfig(config({ passkey: 'not-a-passkey-but-long-enough-to-be-one' }));
 
     expect(issues).toHaveLength(1);
     expect(issues[0].severity).toBe('warning');
+  });
+
+  /**
+   * Found in production: a seven-character passkey. Every STK push was
+   * accepted with a real CheckoutRequestID and no prompt ever rang,
+   * because the password is validated downstream and asynchronously.
+   * A blocker rather than a warning — no Safaricom passkey has ever
+   * been a handful of characters, so this is a placeholder or a
+   * truncated paste, never a format this app failed to anticipate.
+   */
+  it('blocks a passkey far too short to be one, and says how short', () => {
+    const issues = blockers(inspectDarajaConfig(config({ passkey: 'abc1234' })));
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].title).toContain('7 characters');
+    expect(issues[0].detail).toMatch(/never reach a phone/);
+  });
+
+  it('does not escalate a merely unexpected shape to a blocker', () => {
+    expect(blockers(inspectDarajaConfig(config({ passkey: 'z'.repeat(64) })))).toEqual([]);
   });
 
   describe('the callback URL', () => {
