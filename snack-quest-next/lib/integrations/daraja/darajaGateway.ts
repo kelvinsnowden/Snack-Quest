@@ -247,6 +247,16 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
     const timestamp = timestampNow();
     const password = buildPassword(config, timestamp);
 
+    // Temporary diagnostic (§ payment reconciliation: callback never
+    // arrives). Nothing here proved which URL Safaricom actually
+    // received on a push that got a real CheckoutRequestID back but no
+    // callback, ever — this logs it, secret redacted, so the next
+    // attempt answers that directly instead of by inference. Remove
+    // once the callback is confirmed arriving again.
+    console.log(
+      `[daraja] STK push CallBackURL for ${input.businessId}: ${config.callbackUrl.replace(/~[^/?]+/, '~<redacted>')}`,
+    );
+
     // Deliberately NOT wrapped in withRetry: Daraja's STK push has no
     // dedup key, so a blind retry after a network failure risks
     // sending a second real prompt to the customer's phone. Whether to
