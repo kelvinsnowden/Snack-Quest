@@ -12,7 +12,17 @@ function ruleId(
   packageCategory: string,
   courier: string,
 ): string {
-  return `${zone}:${shippingOrigin}:${packageCategory}:${courier}`.toLowerCase().replace(/\s+/g, '-');
+  // Every zone name with an em dash in it ("Nairobi Metro — Next Day")
+  // used to produce a different id here than the one the seed and
+  // migration scripts wrote, because only they collapsed the dash into
+  // a hyphen. "Upcountry" has no dash, so pickup pricing worked while
+  // every door-delivery lookup silently missed and fell back to no fee
+  // at all. Both em dash (—) and hyphen (-) are folded the same way
+  // whitespace is, so this always matches what those scripts write.
+  return `${zone}:${shippingOrigin}:${packageCategory}:${courier}`
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/—/g, '-');
 }
 
 export interface UpsertDeliveryZoneRuleInput {

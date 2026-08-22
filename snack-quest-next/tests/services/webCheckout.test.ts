@@ -472,6 +472,47 @@ describe('startWebCheckout — delivery', () => {
     });
   });
 
+  /**
+   * The production bug: `deliveryZoneRules` was seeded by
+   * `scripts/seedFargoPickupPoints.mjs`, a plain script, not through
+   * this repository. It collapses the em dash in "Nairobi Metro —
+   * Next Day" into a hyphen when building the document id; the
+   * repository's own id builder used to leave the em dash in place.
+   * Every door lookup went to a different document than the one the
+   * script wrote, so it always missed — while "Upcountry" has no dash
+   * and worked, which is why pickup pricing looked fine and only door
+   * delivery quoted nothing. Seeding through `upsertIfMissing` instead
+   * of a raw write would hide this, since it uses the same builder as
+   * the read — so this writes the document exactly as the script does.
+   */
+  it('finds the door rate even when it was seeded with the em dash already collapsed to a hyphen', async () => {
+    await adminFirestore
+      .collection('deliveryZoneRules')
+      .doc('nairobi-metro---next-day:nairobi:small:tushop')
+      .set({
+        businessId: BUSINESS_ID,
+        zone: 'Nairobi Metro — Next Day',
+        shippingOrigin: 'Nairobi',
+        packageCategory: 'small',
+        courier: 'tushop',
+        feeKes: 250,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        deliveryMethod: 'door',
+        pickupStationId: undefined,
+        addressText: 'Kilimani, Argwings Kodhek Rd',
+        estate: 'Wood Avenue Court',
+      }),
+    );
+
+    expect(result.pricing.deliveryFeeKes).toBe(250);
+  });
+
   it('refuses door delivery outside Nairobi rather than promising it', async () => {
     await expect(
       service().startWebCheckout(
