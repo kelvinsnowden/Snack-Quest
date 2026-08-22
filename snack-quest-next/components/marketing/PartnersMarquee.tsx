@@ -40,7 +40,10 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  */
 const PARTNERS = [
   { Icon: BoltIcon, name: 'Bolt', className: 'h-6 sm:h-7' },
-  { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-7 sm:h-8' },
+  // Taller than its neighbours on purpose: Bolt and M-Pesa are wide
+  // wordmarks, Fargo's asset is a square badge, and matching their
+  // height would leave it reading as much smaller than both.
+  { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-9 sm:h-10' },
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;
 

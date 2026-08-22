@@ -22,7 +22,7 @@ type Badge =
   | { kind: 'logo'; src: string; alt: string }
   | { kind: 'photo'; src: string; alt: string }
   | { kind: 'mpesa' }
-  | { kind: 'jumia' }
+  | { kind: 'fargo' }
   | { kind: 'bolt' };
 
 interface Checkpoint {
@@ -43,7 +43,7 @@ const CHECKPOINTS: Checkpoint[] = [
     body: 'Fill in where it goes, see your total, and approve the M-Pesa prompt on your phone. No account needed.',
   },
   {
-    badges: [{ kind: 'jumia' }, { kind: 'bolt' }],
+    badges: [{ kind: 'fargo' }, { kind: 'bolt' }],
     title: 'Fast Delivery Across Kenya',
     body: 'Hand-packed within 24 hours. Jumia pickup stations countrywide, or Bolt Package to your door in Nairobi.',
   },
@@ -123,7 +123,7 @@ function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
       );
     case 'mpesa':
       return <MpesaLogo className={wide} />;
-    case 'jumia':
+    case 'fargo':
       return <FargoIcon className={wide} />;
     case 'bolt':
       return <BoltIcon className={wide} />;
@@ -144,7 +144,7 @@ function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
  * nothing gets recoloured to fit the dark "expedition" palette.
  */
 function BadgeCircle({ badge, active, dual }: { badge: Badge; active: boolean; dual: boolean }) {
-  const isRealLogo = badge.kind === 'mpesa' || badge.kind === 'jumia' || badge.kind === 'bolt';
+  const isRealLogo = badge.kind === 'mpesa' || badge.kind === 'fargo' || badge.kind === 'bolt';
   return (
     <div
       className={[
