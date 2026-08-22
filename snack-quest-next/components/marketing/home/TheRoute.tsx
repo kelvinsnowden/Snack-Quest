@@ -39,7 +39,7 @@ const CHECKPOINTS: Checkpoint[] = [
   {
     badges: [{ kind: 'mpesa' }],
     title: 'Check Out & Pay',
-    body: 'Fill in where it goes, see your total, and approve the M-Pesa prompt on your phone. No account needed.',
+    body: 'Fill in where it goes, see your total, and approve the M-Pesa prompt on your phone.',
   },
   {
     badges: [{ kind: 'fargo' }],

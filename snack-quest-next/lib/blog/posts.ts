@@ -55,7 +55,7 @@ const POSTS: BlogPost[] = [
       {
         type: 'list',
         items: [
-          "You enter your name and M-Pesa number — no account or password needed, just the number the prompt should go to.",
+          "You enter your name and M-Pesa number — just the number the prompt should go to.",
           "You see a final total before anything is charged — at Snack Quest, this includes any delivery or pickup fee, calculated automatically, so there's no separate charge later.",
           "You approve the prompt on your own phone, using your own M-Pesa PIN — the website never sees or asks for that PIN.",
           "The page confirms automatically once Safaricom confirms the payment — no refreshing, no waiting for an email.",
@@ -155,7 +155,7 @@ const POSTS: BlogPost[] = [
       {
         type: 'list',
         items: [
-          'Pick a box on the website — no app, no account.',
+          'Pick a box on the website — no app to install.',
           'Pay with M-Pesa, approved on your own phone.',
           'Door delivery in Nairobi and the surrounding towns, or a Fargo Courier pickup point anywhere else in Kenya.',
           'Boxes are hand-packed and usually arrive within 24–48 hours.',
