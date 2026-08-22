@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
+import { STK_ATTEMPT_ABANDON_AFTER_MS } from '@/lib/checkout/stkTiming';
 
 const { initiateStkPushMock } = vi.hoisted(() => ({ initiateStkPushMock: vi.fn() }));
 
@@ -599,6 +601,105 @@ describe('startWebCheckout — validation', () => {
       WebCheckoutConflictError,
     );
     expect(initiateStkPushMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A customer whose M-Pesa prompt never arrived must be able to try
+ * again (§ Daraja M-Pesa Express production readiness).
+ *
+ * The guard that blocks a second checkout while the first is
+ * `awaiting_payment` is real and protects a real thing — a second
+ * snapshot frozen against a not-yet-debited wallet balance would apply
+ * one balance as a discount twice. But it was unbounded, and its own
+ * comment said it never stranded anyone because a failure callback
+ * resets the status. That holds only while Safaricom actually reports.
+ * A push accepted and never delivered — exactly what a passkey that
+ * does not match its shortcode produces — sends no callback ever, so
+ * the status never reset and the customer could not buy anything
+ * again, from that phone number, indefinitely.
+ */
+describe('startWebCheckout — retrying after a prompt that never arrived', () => {
+  /** The conversation's own clock: `appendMessage` stamps `lastMessageAt`, and the checkout appends right before it starts paying. */
+  async function ageAwaitingPayment(conversationId: string, ageMs: number) {
+    await adminFirestore
+      .collection('conversations')
+      .doc(conversationId)
+      .update({ lastMessageAt: Timestamp.fromMillis(Date.now() - ageMs) });
+  }
+
+  it('still blocks a second push while the first prompt could be on the customer’s phone', async () => {
+    const first = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    await ageAwaitingPayment(first.checkoutSessionId, 30_000);
+    initiateStkPushMock.mockClear();
+
+    await expect(service().startWebCheckout(BUSINESS_ID, pickupInput())).rejects.toBeInstanceOf(
+      WebCheckoutConflictError,
+    );
+    expect(initiateStkPushMock).not.toHaveBeenCalled();
+  });
+
+  /** A dead end is not an error message. It has to say when, or the customer just presses the button again. */
+  it('tells the customer how long until they can retry', async () => {
+    const first = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    await ageAwaitingPayment(first.checkoutSessionId, 30_000);
+
+    await expect(service().startWebCheckout(BUSINESS_ID, pickupInput())).rejects.toThrow(
+      /you can try again in \d+ seconds/,
+    );
+  });
+
+  /** The fix. Past the window the first prompt cannot still be answerable, so the race is over and a fresh attempt is allowed. */
+  it('allows a fresh attempt once the prompt can no longer be answered', async () => {
+    const first = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    await ageAwaitingPayment(first.checkoutSessionId, STK_ATTEMPT_ABANDON_AFTER_MS + 1_000);
+    initiateStkPushMock.mockClear();
+
+    const second = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+
+    expect(second.stkPushSent).toBe(true);
+    expect(initiateStkPushMock).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The exact production sequence, end to end: a push Safaricom accepts
+   * and never delivers, no callback, and the customer coming back to
+   * the checkout page. Before this fix the second call threw and there
+   * was no wait long enough to change that.
+   */
+  it('recovers from a push that was accepted and never delivered', async () => {
+    const first = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    expect(first.stkPushSent).toBe(true);
+
+    // No callback is processed here — that is the whole scenario.
+    await ageAwaitingPayment(first.checkoutSessionId, STK_ATTEMPT_ABANDON_AFTER_MS + 1_000);
+
+    const retry = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    expect(retry.pricing.totalKes).toBe(first.pricing.totalKes);
+  });
+
+  /** Failing open on an unreadable timestamp is the deliberate direction: a reconcilable race beats a customer who can never buy again. */
+  it('does not lock the customer out when the timestamp is missing', async () => {
+    const first = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    await adminFirestore
+      .collection('conversations')
+      .doc(first.checkoutSessionId)
+      .update({ lastMessageAt: FieldValue.delete() });
+
+    await expect(service().startWebCheckout(BUSINESS_ID, pickupInput())).resolves.toBeDefined();
+  });
+
+  /** Staff were always exempt — someone on the phone with a customer is not the race this guards against. */
+  it('never blocked staff, and still does not', async () => {
+    const first = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    await ageAwaitingPayment(first.checkoutSessionId, 5_000);
+
+    await expect(
+      service().startWebCheckout(BUSINESS_ID, {
+        ...pickupInput(),
+        initiatedBy: { staffUid: 'staff-1', staffName: 'Amina' },
+      }),
+    ).resolves.toBeDefined();
   });
 });
 

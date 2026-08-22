@@ -13,6 +13,8 @@ import type { ConversionAttribution, ManualPaymentRecord } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
+import { stkRetryWaitSeconds } from '@/lib/checkout/stkTiming';
+import { toMillis } from '@/lib/firestoreTimestamp';
 import { isJumiaZone } from '@/lib/delivery/jumiaZones';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
@@ -572,10 +574,39 @@ class ConversationService {
     // succeed. Staff exempt for the same reason `agent_assigned` is:
     // a staff member placing a fresh order over the phone is not the
     // race this guards against.
+    //
+    // Bounded by `STK_ATTEMPT_ABANDON_AFTER_MS`, and that bound is the
+    // whole point. The paragraph above used to end "so this never
+    // strands a customer whose payment genuinely failed" — which was
+    // true only while Safaricom actually reports. When a push is
+    // accepted but never delivered (a passkey that does not match the
+    // shortcode does exactly this: real CheckoutRequestID, no prompt,
+    // no callback), nothing ever resets the status, and the customer
+    // is locked out of paying for good. They were being shown "try
+    // again if it expired" by a screen that had already given up, and
+    // then refused when they did.
+    //
+    // Once the window passes, the first prompt cannot still be sitting
+    // unanswered on the customer's phone, so the race this guards
+    // against is over and a fresh attempt is allowed. The stale intent
+    // is left `processing` for the reconciliation sweep to resolve
+    // against Safaricom — and a genuinely late callback still lands
+    // correctly either way, because `processCallback` matches on the
+    // attempt's `checkoutRequestId` and never consults the intent's or
+    // the conversation's status.
+    //
+    // Note `toMillis` yields 0 for a missing timestamp, which makes an
+    // unreadable one release the guard rather than hold it. That is the
+    // deliberate direction to fail in: the worst case on release is a
+    // race that needs one wallet balance reconciled, and the worst case
+    // on hold is a customer who can never buy anything again.
     if (existing?.conversation.status === 'awaiting_payment' && !input.initiatedBy) {
-      throw new WebCheckoutConflictError(
-        'You already have a payment in progress — check your phone for the M-Pesa prompt. Give it a minute and try again if it expired.',
-      );
+      const waitSeconds = stkRetryWaitSeconds(toMillis(existing.conversation.lastMessageAt));
+      if (waitSeconds > 0) {
+        throw new WebCheckoutConflictError(
+          `You already have a payment in progress — check your phone for the M-Pesa prompt. If nothing arrived, you can try again in ${waitSeconds} second${waitSeconds === 1 ? '' : 's'}.`,
+        );
+      }
     }
 
     const { delivery, stateBlob } = await this.buildWebDeliveryDetails(businessId, county, input);
