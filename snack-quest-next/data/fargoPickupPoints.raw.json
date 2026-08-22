@@ -275,8 +275,7 @@
       "phone": "0770 575 030",
       "town": "Limuru",
       "county": "Kiambu",
-      "region": "nairobi-metro",
-      "regionNeedsConfirmation": true
+      "region": "nairobi-metro"
     },
     {
       "name": "Tala",
@@ -284,8 +283,7 @@
       "phone": "0774 355 219",
       "town": "Tala",
       "county": "Machakos",
-      "region": "upcountry",
-      "regionNeedsConfirmation": true
+      "region": "upcountry"
     },
     {
       "name": "Kitengela",
@@ -301,8 +299,7 @@
       "phone": "0774 912 302",
       "town": "Thika",
       "county": "Kiambu",
-      "region": "nairobi-metro",
-      "regionNeedsConfirmation": true
+      "region": "nairobi-metro"
     },
     {
       "name": "Murang'a",
@@ -801,5 +798,5 @@
       "region": "upcountry"
     }
   ],
-  "regionNote": "region is this codebase's best read of Fargo's 50km Nairobi radius, derived from the town rather than from coordinates (none are stored, because nothing reads them). Points flagged regionNeedsConfirmation sit close enough to the boundary that the business should confirm which rate Fargo actually bills before relying on it."
+  "regionNote": "region marks which side of Fargo's Nairobi radius a town sits on, confirmed with the business (Thika and Limuru inside; Tala outside). It decides the delivery MODEL, not just the price: inside the radius a customer gets door delivery and types an address, so those branches are never offered as pickup points. Only the upcountry branches are customer-facing."
 }

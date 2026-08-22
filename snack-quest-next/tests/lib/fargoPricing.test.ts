@@ -5,6 +5,8 @@ import {
   FARGO_SEED_FEES_KES,
   fargoZoneFor,
   isFargoZone,
+  deliveryMethodForRegion,
+  isCustomerFacingPickupPoint,
   isSameDayAvailableAt,
   SAME_DAY_CUTOFF_HOUR,
 } from '@/lib/delivery/fargoPricing';
@@ -106,5 +108,24 @@ describe('availableServiceLevels', () => {
   /** Upcountry has one speed at any hour — the cut-off is irrelevant there, and offering a choice would be inventing a service. */
   it.each([6, 12])('offers only next-day upcountry, regardless of the hour (%s UTC)', (hour) => {
     expect(availableServiceLevels('upcountry', new Date(Date.UTC(2026, 7, 20, hour)))).toEqual(['next-day']);
+  });
+});
+
+describe('the region decides the delivery model, not just the price', () => {
+  /**
+   * The correction that matters most here. Inside the radius the parcel
+   * comes to the door and the customer types an address; outside it,
+   * they pick a branch. An earlier pass treated every Fargo location as
+   * a pickup point, which would have shown Nairobi customers a list of
+   * 35 branches they are never meant to visit.
+   */
+  it('sends the metro to the door and everywhere else to a branch', () => {
+    expect(deliveryMethodForRegion('nairobi-metro')).toBe('door');
+    expect(deliveryMethodForRegion('upcountry')).toBe('pickup');
+  });
+
+  it('only ever offers a pickup point outside the radius', () => {
+    expect(isCustomerFacingPickupPoint('nairobi-metro')).toBe(false);
+    expect(isCustomerFacingPickupPoint('upcountry')).toBe(true);
   });
 });

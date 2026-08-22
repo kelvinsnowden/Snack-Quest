@@ -1,30 +1,35 @@
 /**
- * Fargo Courier pickup pricing (§ Jumia to Fargo migration).
+ * Fargo Courier delivery: what it costs, and which service a customer
+ * is even offered (§ Jumia to Fargo migration).
  *
- * Three rates, not one. An earlier pass modelled this as a flat
- * nationwide fee; the real card the business negotiated has a
- * geographic split and, inside Nairobi, a speed the customer chooses:
+ * The radius does not just set a price, it picks the delivery model.
+ * That is the thing to hold on to, because two earlier passes at this
+ * file got it wrong — first as a flat nationwide fee, then as a
+ * zone-priced pickup network:
  *
- *   Upcountry (beyond the Nairobi radius)   KES 450
- *   Nairobi metro, next day                 KES 250
- *   Nairobi metro, same day                 KES 439
+ *   Inside the Nairobi radius   DOOR delivery. The customer types an
+ *                               address; nothing is picked from a list.
+ *                                 next day  KES 250
+ *                                 same day  KES 439, ordered by 13:00,
+ *                                           guaranteed by 18:00
  *
- * Two consequences follow from that shape, and both are why this file
- * is more than a lookup table.
+ *   Outside the radius          PICKUP at a Fargo branch, KES 450.
  *
- * **Speed is not a property of the pickup point.** The same Nairobi
- * branch can be served next day or same day, so the rate cannot be
- * read off the station alone the way Jumia's zone could. A station
- * carries its `region`; the customer's chosen `serviceLevel` completes
- * the key at checkout.
+ * So the metro branches are never shown to a customer. They exist in
+ * the dataset because they are real Fargo locations, not because
+ * anybody picks one — inside the radius the parcel comes to the door.
  *
- * **Same day is only real before the cut-off.** It is guaranteed to
- * arrive by 18:00 and only if the order is placed by 13:00, so
- * offering it at 4pm would be selling a promise that cannot be kept.
- * `isSameDayAvailableAt` is the gate, and it is evaluated in Nairobi
- * time rather than the server's — this app runs in Cape Town, an hour
- * behind, which would otherwise keep same-day on sale for an hour
- * after the courier stopped accepting it.
+ * Fargo now covers both methods. Bolt is gone: it only ever handled
+ * Nairobi door delivery, and it handled it as an unpriced hand-off
+ * arranged over WhatsApp with the fare paid to the rider. A door
+ * service with a fixed price and a stated guarantee replaces that
+ * outright, which also means door delivery is charged at checkout for
+ * the first time rather than settled later between customer and rider.
+ *
+ * Same-day is only real before the cut-off, and the cut-off is Nairobi
+ * time. These functions run in Cape Town, an hour behind, so a naive
+ * local-hour check keeps same-day on sale until 14:00 Nairobi and sells
+ * a 18:00 guarantee the courier has stopped accepting.
  */
 
 export const FARGO_COURIER = 'fargo';
@@ -47,6 +52,21 @@ export const FARGO_PACKAGE_CATEGORY = 'small';
  */
 export const FARGO_REGIONS = ['nairobi-metro', 'upcountry'] as const;
 export type FargoRegion = (typeof FARGO_REGIONS)[number];
+
+/**
+ * Which delivery method a region gets. One function rather than a
+ * condition repeated at checkout, in the station API and in the
+ * conversation flow — the three places that would otherwise each have
+ * their own idea of where the radius ends.
+ */
+export function deliveryMethodForRegion(region: FargoRegion): 'door' | 'pickup' {
+  return region === 'nairobi-metro' ? 'door' : 'pickup';
+}
+
+/** A pickup point is only ever offered outside the radius; inside it, the parcel comes to the door. */
+export function isCustomerFacingPickupPoint(region: FargoRegion): boolean {
+  return deliveryMethodForRegion(region) === 'pickup';
+}
 
 /** What the customer picks. Only meaningful inside the metro; upcountry has one speed. */
 export const FARGO_SERVICE_LEVELS = ['next-day', 'same-day'] as const;
