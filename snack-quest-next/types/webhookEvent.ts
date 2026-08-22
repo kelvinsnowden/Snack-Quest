@@ -4,13 +4,13 @@ import type { Timestamp } from 'firebase/firestore';
  * `webhookEvents/{provider}:{providerEventId}` — the shared inbound
  * idempotency ledger every provider webhook writes to before doing
  * anything else (PLATFORM_ARCHITECTURE_V2.md §7/§13/§15). Daraja,
- * Whatchimp, and Jumia all deliver at-least-once with documented
+ * and Whatchimp both deliver at-least-once with documented
  * redelivery on timeout, so every inbound handler must check this
  * ledger first and short-circuit to a no-op success response on a
  * duplicate, never reprocess. Server-only — no client ever reads or
  * writes this collection.
  */
-export type WebhookProvider = 'daraja' | 'whatchimp' | 'jumia' | 'textsms';
+export type WebhookProvider = 'daraja' | 'whatchimp' | 'textsms';
 
 export type WebhookEventStatus = 'received' | 'processed' | 'failed';
 

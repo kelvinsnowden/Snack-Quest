@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { MpesaLogo } from '@/components/icons/MpesaLogo';
-import { JumiaIcon } from '@/components/icons/JumiaIcon';
+import { FargoIcon } from '@/components/icons/FargoIcon';
 import { BoltIcon } from '@/components/icons/BoltIcon';
 
 /**
@@ -124,7 +124,7 @@ function BadgeGlyph({ badge, wide }: { badge: Badge; wide: string }) {
     case 'mpesa':
       return <MpesaLogo className={wide} />;
     case 'jumia':
-      return <JumiaIcon className={wide} />;
+      return <FargoIcon className={wide} />;
     case 'bolt':
       return <BoltIcon className={wide} />;
     case 'emoji':

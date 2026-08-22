@@ -26,7 +26,7 @@ export interface WebCheckoutRequest {
   email?: string;
   county: string;
   deliveryMethod: DeliveryMethod;
-  /** Required when `deliveryMethod` is `'pickup'` — which Jumia station to ship to. */
+  /** Required when `deliveryMethod` is `'pickup'` — which Fargo Courier pickup point to ship to. */
   pickupStationId?: string;
   /** Required when `deliveryMethod` is `'door'`. Collected so the Bolt rider can be dispatched over WhatsApp after payment. */
   addressText?: string;

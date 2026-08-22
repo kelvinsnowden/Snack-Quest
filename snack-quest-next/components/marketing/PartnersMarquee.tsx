@@ -1,11 +1,11 @@
 import { BoltIcon } from '@/components/icons/BoltIcon';
-import { JumiaIcon } from '@/components/icons/JumiaIcon';
+import { FargoIcon } from '@/components/icons/FargoIcon';
 import { MpesaLogo } from '@/components/icons/MpesaLogo';
 
 /**
  * "Is this legitimate?" answered visually rather than in a sentence —
  * the real operational partners behind every order: Bolt for door
- * delivery, Jumia for pickup stations, M-Pesa for payment. All three
+ * delivery, Fargo Courier for pickup points, M-Pesa for payment. All three
  * are already real integrations elsewhere in this codebase
  * (`MPESA_RECIPIENT_NAME`, the Bolt/Jumia delivery copy on
  * `/how-it-works`) — nothing invented for this strip. Shared between
@@ -40,7 +40,7 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  */
 const PARTNERS = [
   { Icon: BoltIcon, name: 'Bolt', className: 'h-6 sm:h-7' },
-  { Icon: JumiaIcon, name: 'Jumia', className: 'h-7 sm:h-8' },
+  { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-7 sm:h-8' },
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;
 

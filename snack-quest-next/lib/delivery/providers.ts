@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { jumiaGateway } from '@/lib/integrations/jumia/jumiaGateway';
 import type { CourierGateway } from '@/lib/integrations/types';
 
 /**
@@ -10,12 +9,18 @@ import type { CourierGateway } from '@/lib/integrations/types';
  * branch inside `DeliveryService` itself.
  *
  * `pricingMode: 'automatic'` means a real fee is computed and a real
- * shipment-creation HTTP call happens (Jumia today). `'manual'` means
- * a human prices and books the courier themselves — Bolt's real
- * workflow (dynamic, distance/traffic pricing with no merchant API
- * this codebase has credentials for), not a placeholder for one we
- * intend to automate later. A manual provider has no `gateway`: there
- * is nothing to call.
+ * shipment-creation HTTP call happens. `'manual'` means a human books
+ * the courier themselves — not a placeholder for something we intend
+ * to automate later. A manual provider has no `gateway`: there is
+ * nothing to call.
+ *
+ * No provider is automatic today. Jumia was, against an API this
+ * codebase never had verified credentials for, and it went with the
+ * Jumia integration. Fargo Courier is booked by taking parcels to a
+ * branch and recording the waybill number, so it is genuinely manual —
+ * and a flat rate needs no call to price. The `automatic` branch and
+ * the `CourierGateway` seam are kept because they are the documented
+ * extension point, not because anything uses them right now.
  */
 export type DeliveryPricingMode = 'automatic' | 'manual';
 
@@ -26,10 +31,9 @@ export interface DeliveryProviderDefinition {
 }
 
 export const DELIVERY_PROVIDERS: Record<string, DeliveryProviderDefinition> = {
-  jumia: {
-    provider: 'jumia',
-    pricingMode: 'automatic',
-    gateway: jumiaGateway,
+  fargo: {
+    provider: 'fargo',
+    pricingMode: 'manual',
   },
   bolt: {
     provider: 'bolt',

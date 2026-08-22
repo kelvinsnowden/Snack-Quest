@@ -83,7 +83,7 @@ export interface LoyaltyConfig {
  * is unconditional deny, independent of whatever the parent
  * document's rule becomes.
  */
-export type IntegrationProvider = 'daraja' | 'whatchimp' | 'jumia' | 'meta' | 'tiktok' | 'authEmail' | 'textSms';
+export type IntegrationProvider = 'daraja' | 'whatchimp' | 'meta' | 'tiktok' | 'authEmail' | 'textSms';
 
 /**
  * Shared status/audit fields every per-tenant integration secret now
@@ -202,21 +202,6 @@ export interface WhatchimpIntegrationSecret extends IntegrationSecretMeta {
   teamMemberId?: string;
 }
 
-export interface JumiaIntegrationSecret extends IntegrationSecretMeta {
-  apiKey: string;
-  merchantId: string;
-  baseUrl?: string;
-  /**
-   * Real origin verification for this business's Jumia tracking
-   * webhook (§ Logistics: wire tracking webhook consumption) — same
-   * URL-embedded-shared-secret mechanism and same fail-open-when-
-   * absent discipline as `DarajaIntegrationSecret.webhookSecret` (see
-   * that field's own comment, and `lib/webhooks/webhookSecret.ts`).
-   * Jumia's real API has no documented signing scheme to verify
-   * instead — same honest gap as Daraja/Whatchimp.
-   */
-  webhookSecret?: string;
-}
 
 export interface MetaIntegrationSecret extends IntegrationSecretMeta {
   pixelId: string;
@@ -289,7 +274,6 @@ export interface TextSmsIntegrationSecret extends IntegrationSecretMeta {
 export interface IntegrationSecretMap {
   daraja: DarajaIntegrationSecret;
   whatchimp: WhatchimpIntegrationSecret;
-  jumia: JumiaIntegrationSecret;
   meta: MetaIntegrationSecret;
   tiktok: TiktokIntegrationSecret;
   authEmail: AuthEmailIntegrationSecret;

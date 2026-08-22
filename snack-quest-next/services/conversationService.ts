@@ -6,7 +6,6 @@ import { packageRepository, OutOfStockError } from '@/repositories/packageReposi
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import type { ConversionAttribution, ManualPaymentRecord } from '@/types';
@@ -16,7 +15,7 @@ import { normalizeEmail } from '@/lib/checkout/email';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { stkRetryWaitSeconds } from '@/lib/checkout/stkTiming';
 import { toMillis } from '@/lib/firestoreTimestamp';
-import { isJumiaZone } from '@/lib/delivery/jumiaZones';
+import { isFargoZone } from '@/lib/delivery/fargoPricing';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
@@ -865,11 +864,11 @@ class ConversationService {
       if (!station || !station.isActive) {
         throw new WebCheckoutValidationError(`Pickup station ${input.pickupStationId} is not available`);
       }
-      // A station Jumia hasn't zoned has an unknown delivery cost. The
+      // A station without a priced zone has an unknown delivery cost. The
       // picker already hides those, but the id arrives from the client,
       // so refusing it here is what actually prevents an order shipping
       // for free — the filter is presentation, this is the rule.
-      if (!isJumiaZone(station.zone)) {
+      if (!isFargoZone(station.zone)) {
         throw new WebCheckoutValidationError(
           'We can’t deliver to that pickup station yet — please choose another one.',
         );
@@ -889,7 +888,10 @@ class ConversationService {
           estate: null,
           contactPhone: null,
           courierShipmentRef: null,
-          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+          // Fargo is booked by hand at a branch, so there is no
+          // tracking URL at order time — the waybill number reaches the
+          // customer by SMS once the parcel is dropped off.
+          trackingUrl: null,
         },
         stateBlob: {
           deliveryMethod: 'pickup',
@@ -1345,7 +1347,10 @@ class ConversationService {
           // The generic tracker is known up front — the same URL for
           // every Jumia shipment, not something a shipment-creation
           // call returns.
-          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+          // Fargo is booked by hand at a branch, so there is no
+          // tracking URL at order time — the waybill number reaches the
+          // customer by SMS once the parcel is dropped off.
+          trackingUrl: null,
         }
       : {
           method: 'door',
@@ -2265,7 +2270,7 @@ class ConversationService {
     const receiptClause = result.mpesaReceiptNumber ? ` Receipt: ${result.mpesaReceiptNumber}.` : '';
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
-        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
+        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Fargo Courier. We'll text you the Fargo waybill number as soon as it is dispatched, and you'll get a message from Fargo when it reaches your selected pickup point.`
         : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     const milestoneMessage =
