@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
 import { MPESA_RECIPIENT_NAME } from '@/lib/config/mpesaRecipient';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
+import { STK_ATTEMPT_ABANDON_AFTER_MS } from '@/lib/checkout/stkTiming';
 import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
 
 /**
@@ -26,8 +27,13 @@ import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
  */
 
 const POLL_INTERVAL_MS = 3_000;
-/** Comfortably past Safaricom's STK prompt expiry (~2 min) plus callback delivery time. */
-const POLL_TIMEOUT_MS = 4 * 60 * 1000;
+/**
+ * The same window the server uses to decide a started prompt is dead
+ * (`lib/checkout/stkTiming.ts`). Shared rather than duplicated because
+ * the two disagreeing is what stranded customers: this screen offered
+ * "start again" while the checkout endpoint was still refusing one.
+ */
+const POLL_TIMEOUT_MS = STK_ATTEMPT_ABANDON_AFTER_MS;
 
 export function PaymentWaiting({
   sessionId,
