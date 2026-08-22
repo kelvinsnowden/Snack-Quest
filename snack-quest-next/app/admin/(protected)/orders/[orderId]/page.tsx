@@ -93,6 +93,17 @@ export default async function AdminOrderDetailPage({
           <CardContent className="divide-y divide-border">
             <DetailRow label="Name" value={customer.customerName || 'Guest'} />
             <DetailRow label="Phone number" value={<span className="tabular-nums">{customer.phoneNumber}</span>} />
+            {/* Only when there is one — the field is optional at checkout and absent on every WhatsApp order, so an empty "Email —" row would be noise on most orders. */}
+            {customer.email ? (
+              <DetailRow
+                label="Email"
+                value={
+                  <a href={`mailto:${customer.email}`} className="text-primary hover:underline">
+                    {customer.email}
+                  </a>
+                }
+              />
+            ) : null}
             <DetailRow label="County" value={customer.county} />
           </CardContent>
         </Card>

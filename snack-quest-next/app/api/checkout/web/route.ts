@@ -39,6 +39,7 @@ export async function POST(request: Request): Promise<Response> {
     quantity,
     customerName,
     phone,
+    email,
     county,
     deliveryMethod,
     pickupStationId,
@@ -109,6 +110,9 @@ export async function POST(request: Request): Promise<Response> {
       quantity,
       customerName,
       phone,
+      // Normalized (or dropped) in the Service, which is where every
+      // other field is validated — the route stays parsing only.
+      email: typeof email === 'string' ? email : undefined,
       county,
       deliveryMethod,
       pickupStationId: typeof pickupStationId === 'string' ? pickupStationId : undefined,

@@ -35,6 +35,15 @@ export interface OrderCustomer {
   customerId: string | null;
   phoneNumber: string;
   customerName: string;
+  /**
+   * Optional, and website-checkout only (§ optional email capture) —
+   * copied from the frozen snapshot when the order is created, so it
+   * records the address given at purchase rather than whatever the
+   * customer's latest one might be. Absent on every WhatsApp order,
+   * every order predating the field, and every customer who left it
+   * blank.
+   */
+  email?: string | null;
   county: string;
 }
 

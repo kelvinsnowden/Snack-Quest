@@ -46,13 +46,13 @@ export default async function CheckoutSessionPage({
     throw error;
   }
 
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
-      {status.paymentStatus === 'succeeded' ? (
-        <CheckoutSuccess status={status} />
-      ) : (
-        <PaymentWaiting sessionId={sessionId} initialStatus={status} />
-      )}
-    </div>
+  // No container. Each state renders its own full-bleed dark surface
+  // (`PaymentShell`) — this is the one screen in the storefront that is
+  // a moment rather than a page, and boxing it into the standard
+  // content column is what made it look like an error report.
+  return status.paymentStatus === 'succeeded' ? (
+    <CheckoutSuccess status={status} />
+  ) : (
+    <PaymentWaiting sessionId={sessionId} initialStatus={status} />
   );
 }

@@ -42,6 +42,8 @@ export interface ConversationCheckoutSnapshot {
    */
   quantity?: number;
   customerName: string;
+  /** Optional, website checkout only (§ optional email capture). Absent on every WhatsApp order and on every snapshot predating the field. */
+  customerEmail?: string | null;
   county: string;
   delivery: DeliveryDetails;
   referralCode: string | null;
