@@ -19,8 +19,8 @@ export type DeliveryProvider = string;
 
 /** Today's only method->provider mapping. Nothing prevents a method having more than one provider later (e.g. a second pickup network); this is just what's true today. */
 export const DELIVERY_PROVIDER_FOR_METHOD: Record<DeliveryMethod, DeliveryProvider> = {
-  pickup: 'fargo',
-  door: 'fargo',
+  pickup: 'tushop',
+  door: 'tushop',
 };
 
 /**

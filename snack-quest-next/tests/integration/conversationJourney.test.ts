@@ -327,7 +327,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     expect(order.customer.customerId).toBeNull();
     expect(order.customer.phoneNumber).toBe(PHONE);
     expect(order.delivery.method).toBe('pickup');
-    expect(order.delivery.provider).toBe('fargo');
+    expect(order.delivery.provider).toBe('tushop');
     expect(order.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
     // A native WhatsApp-originated order has no browser to attribute to.
     expect(order.attribution).toBeNull();
@@ -771,7 +771,7 @@ describe('the full Fargo pickup point journey: search, select, auto-priced fee, 
     expect(order.delivery.pickupStationName).toBe('G4S Kasarani Station');
     expect(order.delivery.feeKes).toBe(250);
     expect(order.delivery.shippingOrigin).toBe('Nairobi');
-    expect(order.delivery.provider).toBe('fargo');
+    expect(order.delivery.provider).toBe('tushop');
     // Fargo is booked by hand, so nothing to link to at order time.
     expect(order.delivery.trackingUrl).toBeNull();
     expect(order.pricing.totalKes).toBe(2750);
@@ -783,7 +783,7 @@ describe('the full Fargo pickup point journey: search, select, auto-priced fee, 
   });
 });
 
-describe('door delivery, human-assisted fallback (used only when no Fargo rate is configured)', () => {
+describe('door delivery, human-assisted fallback (used only when no Tushop rate is configured)', () => {
   beforeAll(() => {
     process.env.INTERNAL_AGENT_API_KEY = 'test-secret';
   });
@@ -902,7 +902,7 @@ describe('door delivery, human-assisted fallback (used only when no Fargo rate i
     const snapshotId = pricedAndConfirmed!.conversationCheckoutSnapshotId!;
     const snapshot = await conversationCheckoutSnapshotRepository.findById(snapshotId);
     expect(snapshot?.delivery.method).toBe('door');
-    expect(snapshot?.delivery.provider).toBe('fargo');
+    expect(snapshot?.delivery.provider).toBe('tushop');
     expect(snapshot?.delivery.feeKes).toBe(400);
     expect(snapshot?.delivery.addressText).toBe('123 Ngong Road');
     expect(snapshot?.totalKes).toBe(2900); // 2500 box + a 400 fee the agent quoted, no automated referral step
@@ -921,7 +921,7 @@ describe('door delivery, human-assisted fallback (used only when no Fargo rate i
     expect(ordersSnapshot.size).toBe(1);
     const order = ordersSnapshot.docs[0].data();
     expect(order.delivery.method).toBe('door');
-    expect(order.delivery.provider).toBe('fargo');
+    expect(order.delivery.provider).toBe('tushop');
     expect(order.delivery.feeKes).toBe(400);
     expect(order.delivery.addressText).toBe('123 Ngong Road');
     expect(order.delivery.estate).toBe('Kilimani');
@@ -934,7 +934,7 @@ describe('door delivery, human-assisted fallback (used only when no Fargo rate i
     // reflects that real state, not a fabricated "created" status.
     const shipment = await shipmentRepository.findByOrderId(ordersSnapshot.docs[0].id);
     expect(shipment?.data.status).toBe('pending_manual_booking');
-    expect(shipment?.data.provider).toBe('fargo');
+    expect(shipment?.data.provider).toBe('tushop');
     expect(shipment?.data.courierShipmentRef).toBeNull();
 
     const finalMessage = gateway.sent.at(-1)?.text ?? '';

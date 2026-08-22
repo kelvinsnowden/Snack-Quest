@@ -9,7 +9,7 @@ import {
   isCustomerFacingPickupPoint,
   isSameDayAvailableAt,
   SAME_DAY_CUTOFF_HOUR,
-} from '@/lib/delivery/fargoPricing';
+} from '@/lib/delivery/deliveryPricing';
 
 /**
  * Fargo's rate card (§ Jumia to Fargo migration).

@@ -14,9 +14,12 @@ import type { CourierGateway } from '@/lib/integrations/types';
  * to automate later. A manual provider has no `gateway`: there is
  * nothing to call.
  *
- * Fargo is the only provider, and it is manual: parcels are taken to a
- * branch and the waybill number recorded, so there is nothing to call.
- * Bolt was here until Fargo took over door delivery — it was removed
+ * One provider, and it is manual. Every parcel is handed to Tushop —
+ * they deliver to the door inside the Nairobi radius and use their own
+ * Fargo partnership to reach everywhere else. There is no booking API
+ * this codebase holds credentials for; a parcel is handed over and its
+ * reference recorded, so there is nothing to call.
+ * Bolt was here until Tushop took over door delivery — it was removed
  * once the last two orders referencing it were deleted, since a
  * provider definition only has to survive as long as an order that
  * names it.
@@ -34,8 +37,8 @@ export interface DeliveryProviderDefinition {
 }
 
 export const DELIVERY_PROVIDERS: Record<string, DeliveryProviderDefinition> = {
-  fargo: {
-    provider: 'fargo',
+  tushop: {
+    provider: 'tushop',
     pricingMode: 'manual',
   },
 };

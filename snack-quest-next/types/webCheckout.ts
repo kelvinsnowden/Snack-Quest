@@ -26,6 +26,13 @@ export interface WebCheckoutRequest {
   email?: string;
   county: string;
   deliveryMethod: DeliveryMethod;
+  /**
+   * Door delivery only. Absent means next-day, the service every
+   * address in the area can have. Same-day is refused server-side once
+   * Tushop's cut-off has passed, rather than downgraded — a customer
+   * who chose it is buying the arrival guarantee.
+   */
+  serviceLevel?: 'next-day' | 'same-day';
   /** Required when `deliveryMethod` is `'pickup'` — which Fargo Courier pickup point to ship to. */
   pickupStationId?: string;
   /** Required when `deliveryMethod` is `'door'`. Collected so Fargo has a number to call on the doorstep when it differs from the paying one. */

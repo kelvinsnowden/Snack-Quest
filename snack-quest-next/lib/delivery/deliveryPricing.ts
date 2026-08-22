@@ -1,30 +1,38 @@
 /**
- * Fargo Courier delivery: what it costs, and which service a customer
+ * Delivery: what it costs, who carries it, and which service a customer
  * is even offered (§ Jumia to Fargo migration).
+ *
+ * One courier, Tushop, and one boundary that decides how a parcel
+ * reaches the customer. That is why this file is named for the concern
+ * rather than for a courier — it was `fargoPricing` until it turned out
+ * Fargo is Tushop's partner rather than Snack Quest's.
  *
  * The radius does not just set a price, it picks the delivery model.
  * That is the thing to hold on to, because two earlier passes at this
  * file got it wrong — first as a flat nationwide fee, then as a
  * zone-priced pickup network:
  *
- *   Inside the Nairobi radius   DOOR delivery. The customer types an
- *                               address; nothing is picked from a list.
+ *   Inside the Nairobi radius   DOOR delivery by Tushop. The customer
+ *                               types an address; nothing is picked
+ *                               from a list.
  *                                 next day  KES 250
  *                                 same day  KES 439, ordered by 13:00,
  *                                           guaranteed by 18:00
  *
  *   Outside the radius          PICKUP at a Fargo branch, KES 450.
+ *                               Still handed to Tushop; Fargo is their
+ *                               onward partner, not Snack Quest's.
  *
  * So the metro branches are never shown to a customer. They exist in
  * the dataset because they are real Fargo locations, not because
  * anybody picks one — inside the radius the parcel comes to the door.
  *
- * Fargo now covers both methods. Bolt is gone: it only ever handled
- * Nairobi door delivery, and it handled it as an unpriced hand-off
- * arranged over WhatsApp with the fare paid to the rider. A door
- * service with a fixed price and a stated guarantee replaces that
- * outright, which also means door delivery is charged at checkout for
- * the first time rather than settled later between customer and rider.
+ * Bolt is gone: it only ever handled Nairobi door delivery, and it
+ * handled it as an unpriced hand-off arranged over WhatsApp with the
+ * fare paid to the rider. Tushop's door service has a fixed price and a
+ * stated guarantee, which also means door delivery is charged at
+ * checkout for the first time rather than settled later between
+ * customer and rider.
  *
  * Same-day is only real before the cut-off, and the cut-off is Nairobi
  * time. These functions run in Cape Town, an hour behind, so a naive
@@ -32,7 +40,21 @@
  * a 18:00 guarantee the courier has stopped accepting.
  */
 
-export const FARGO_COURIER = 'fargo';
+/**
+ * The one company Snack Quest hands boxes to, for every order.
+ *
+ * Tushop delivers to the door inside the Nairobi radius themselves, and
+ * uses their own partnership with Fargo Courier to reach everywhere
+ * else. That relationship is Tushop's, not Snack Quest's — the
+ * warehouse hands every parcel to Tushop and Tushop handles the rest.
+ *
+ * So the courier on a shipment, and in the pricing key
+ * (`zone + shippingOrigin + packageCategory + courier`), is always
+ * Tushop. Fargo appears in this codebase only as the branch network a
+ * customer physically collects from, which is why pickup points are
+ * still named for it.
+ */
+export const DELIVERY_COURIER = 'tushop';
 
 /** Every parcel leaves from the Nairobi hub. Part of the pricing key so a second origin later is a new rule, not a new code path. */
 export const FARGO_SHIPPING_ORIGIN = 'Nairobi';

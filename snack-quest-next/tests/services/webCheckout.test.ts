@@ -125,6 +125,7 @@ beforeEach(async () => {
     'pickupStations',
     'paymentIntents',
     'referralLinks',
+    'deliveryZoneRules',
     'domainEvents',
     'customerWallets',
   ]) {
@@ -404,19 +405,6 @@ describe('startWebCheckout — pricing authority', () => {
     expect(quote?.referralCodeRejected).toBe(true);
     expect(quote?.pricing.discountKes).toBe(0);
   });
-
-  it('quotes a door delivery without a Bolt fare it has no way to know', async () => {
-    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
-      packageId,
-      quantity: 1,
-      deliveryMethod: 'door',
-    });
-
-    expect(quote?.pricing.deliveryFeeKes).toBe(0);
-    // Door delivery is a charged Fargo service now, with a speed attached.
-    expect(quote?.pricing.serviceLevel).toBe('next-day');
-    expect(quote?.pricing.totalKes).toBe(2500);
-  });
 });
 
 describe('startWebCheckout — delivery', () => {
@@ -429,7 +417,7 @@ describe('startWebCheckout — delivery', () => {
     );
     expect(snapshot?.delivery).toMatchObject({
       method: 'pickup',
-      provider: 'fargo',
+      provider: 'tushop',
       status: 'pending',
       pickupStationId: stationId,
       pickupStationName: 'Kasarani Pickup Station',
@@ -444,13 +432,13 @@ describe('startWebCheckout — delivery', () => {
    * checkout; Fargo quotes a fixed price, so leaving it free would ship
    * every Nairobi order at the business's expense.
    */
-  it('charges the Fargo door rate on a Nairobi delivery', async () => {
+  it('charges the Tushop door rate on a Nairobi delivery', async () => {
     await deliveryZoneRuleRepository.upsertIfMissing({
       businessId: BUSINESS_ID,
       zone: 'Nairobi Metro — Next Day',
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
-      courier: 'fargo',
+      courier: 'tushop',
       feeKes: 250,
     });
 
@@ -475,7 +463,7 @@ describe('startWebCheckout — delivery', () => {
     );
     expect(snapshot?.delivery).toMatchObject({
       method: 'door',
-      provider: 'fargo',
+      provider: 'tushop',
       status: 'pending_manual_booking',
       feeKes: 250,
       addressText: 'Kilimani, Argwings Kodhek Rd',
@@ -781,6 +769,73 @@ describe('startWebCheckout — optional email', () => {
 
     const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
     expect(order?.data.customer.email).toBe('wanjiru@example.com');
+  });
+});
+
+/**
+ * The quote and the charge must agree (§ Tushop door delivery).
+ *
+ * This is the invariant the file already rests on for pickup, and it
+ * broke for door delivery the moment Tushop started charging for it:
+ * `startWebCheckout` learned the new fee, `quoteWebCheckout` did not,
+ * and the page showed "Free" before taking KES 250. A customer being
+ * charged more than they were quoted is the worst class of bug this
+ * checkout can have.
+ */
+describe('quoting door delivery', () => {
+  async function seedDoorRate(feeKes: number, serviceLevel: 'next-day' | 'same-day' = 'next-day') {
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: BUSINESS_ID,
+      zone: serviceLevel === 'same-day' ? 'Nairobi Metro — Same Day' : 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes,
+    });
+  }
+
+  it('quotes exactly what the door order will be charged', async () => {
+    await seedDoorRate(250);
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      phone: PHONE_TYPED,
+    });
+    const charged = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ deliveryMethod: 'door', pickupStationId: undefined, addressText: 'Kilimani, Argwings Kodhek Rd' }),
+    );
+
+    expect(quote?.pricing.deliveryFeeKes).toBe(250);
+    expect(quote?.pricing).toEqual(charged.pricing);
+  });
+
+  /** Never "Free". A zero here would quote a delivery the charge path is about to refuse as unpriced. */
+  it('declines to quote at all when no door rate is configured', async () => {
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote).toBeNull();
+  });
+
+  it('quotes the same-day rate when same-day is asked for', async () => {
+    await seedDoorRate(439, 'same-day');
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      serviceLevel: 'same-day',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.pricing.deliveryFeeKes).toBe(439);
   });
 });
 

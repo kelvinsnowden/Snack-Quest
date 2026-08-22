@@ -17,7 +17,7 @@ import { stkRetryWaitSeconds } from '@/lib/checkout/stkTiming';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import {
   fargoZoneFor,
-  FARGO_COURIER,
+  DELIVERY_COURIER,
   FARGO_PACKAGE_CATEGORY,
   FARGO_SHIPPING_ORIGIN,
   isFargoZone,
@@ -26,7 +26,7 @@ import {
   SAME_DAY_CUTOFF_HOUR,
   WHATSAPP_DOOR_SERVICE_LEVEL,
   type FargoServiceLevel,
-} from '@/lib/delivery/fargoPricing';
+} from '@/lib/delivery/deliveryPricing';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
@@ -958,7 +958,7 @@ class ConversationService {
       doorZone,
       FARGO_SHIPPING_ORIGIN,
       FARGO_PACKAGE_CATEGORY,
-      FARGO_COURIER,
+      DELIVERY_COURIER,
     );
     if (doorFeeKes === null) {
       throw new WebCheckoutValidationError(
@@ -1049,6 +1049,31 @@ class ConversationService {
         }
         deliveryFeeKes = station.deliveryFeeKes;
       }
+    } else {
+      // Door delivery is priced here too, from the same rule
+      // `startWebCheckout` charges from.
+      //
+      // This branch did not exist while door delivery was Bolt and cost
+      // nothing on the site, and not adding it when Tushop started
+      // charging is how the checkout came to quote "Free" and then take
+      // KES 250 — the exact quote-versus-charge divergence this method
+      // exists to prevent.
+      const doorFee = await deliveryZoneRuleRepository.findFee(
+        businessId,
+        fargoZoneFor('nairobi-metro', input.serviceLevel === 'same-day' ? 'same-day' : 'next-day'),
+        FARGO_SHIPPING_ORIGIN,
+        FARGO_PACKAGE_CATEGORY,
+        DELIVERY_COURIER,
+      );
+      if (doorFee === null) {
+        // No configured rate. Falling back to 0 here would quote "Free"
+        // for an order `startWebCheckout` is about to refuse as
+        // unpriced — the same divergence in the other direction. No
+        // quote is the honest answer, and it is what an unavailable
+        // station already returns.
+        return null;
+      }
+      deliveryFeeKes = doorFee;
     }
 
     let referral = input.referralCode
@@ -1226,7 +1251,7 @@ class ConversationService {
           fargoZoneFor('nairobi-metro', WHATSAPP_DOOR_SERVICE_LEVEL),
           FARGO_SHIPPING_ORIGIN,
           FARGO_PACKAGE_CATEGORY,
-          FARGO_COURIER,
+          DELIVERY_COURIER,
         ),
       },
     });

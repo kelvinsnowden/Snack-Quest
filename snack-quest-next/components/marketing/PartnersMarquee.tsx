@@ -4,10 +4,11 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
 
 /**
  * "Is this legitimate?" answered visually rather than in a sentence —
- * the real operational partners behind every order: Fargo Courier for
- * delivery and collection, Tushop, and M-Pesa for payment. All
+ * the real operational partners behind every order: Tushop for door
+ * delivery in Nairobi, Fargo Courier for pickup points everywhere
+ * else, M-Pesa for payment. All
  * are already real integrations elsewhere in this codebase
- * (`MPESA_RECIPIENT_NAME`, the Fargo delivery copy on
+ * (`MPESA_RECIPIENT_NAME`, the delivery copy on
  * `/how-it-works`) — nothing invented for this strip. Shared between
  * the home page (replacing `PickYourBox`'s old plain-text "M-Pesa
  * accepted · Door delivery in Nairobi · Fargo pickup countrywide"

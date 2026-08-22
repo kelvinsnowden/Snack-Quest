@@ -82,7 +82,7 @@ export function CompleteManualBookingDialog({ shipmentId }: { shipmentId: string
               id="courierShipmentRef"
               value={courierShipmentRef}
               onChange={(event) => setCourierShipmentRef(event.target.value)}
-              placeholder="e.g. Fargo waybill number"
+              placeholder="e.g. Tushop or Fargo tracking reference"
               aria-invalid={Boolean(error) || undefined}
             />
           </div>
