@@ -289,3 +289,101 @@ describe('PaymentService.reconcileStuckIntents', () => {
     expect(queryStkStatusMock).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The action `needsManualReview`'s own review reason names but never
+ * had a way to actually do: Daraja confirms success, no callback ever
+ * arrived, and a human reads the real receipt off the M-Pesa statement.
+ */
+describe('PaymentService.completeManually', () => {
+  it('settles a processing intent and resolves its dangling attempt', async () => {
+    const { intentId } = await seedStuckIntent();
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: 'QGH7ABC123',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(true);
+    expect(outcome.result).toMatchObject({
+      status: 'succeeded',
+      intentId,
+      conversationId: 'conv-1',
+      snapshotId: 'snapshot-1',
+      amountKes: 2500,
+      mpesaReceiptNumber: 'QGH7ABC123',
+    });
+    expect(outcome.result?.manualPayment).toMatchObject({
+      method: 'mpesa_manual',
+      reference: 'QGH7ABC123',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+    });
+
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('succeeded');
+
+    const pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    expect(pending).toBeNull(); // no longer 'initiated' — it was resolved
+  });
+
+  it('refuses an intent that never went through a real STK attempt', async () => {
+    const intentId = await paymentIntentRepository.create({
+      businessId: BUSINESS_ID,
+      conversationId: 'conv-2',
+      conversationCheckoutSnapshotId: 'snapshot-2',
+      customerId: null,
+      phoneNumber: '254700000001',
+      amountKes: 1000,
+    });
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: 'QGH7XYZ999',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(false);
+    expect(outcome.reason).toMatch(/already pending/);
+  });
+
+  it('refuses an intent already resolved, so a real callback and this can never both win', async () => {
+    const { intentId } = await seedStuckIntent();
+    await paymentIntentRepository.updateStatus(intentId, 'succeeded');
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: 'QGH7ABC123',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(false);
+  });
+
+  it('never fabricates a receipt when none is given', async () => {
+    const { intentId } = await seedStuckIntent();
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: '   ',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(false);
+    const intent = await paymentIntentRepository.findById(intentId);
+    expect(intent?.status).toBe('processing');
+  });
+});

@@ -2154,6 +2154,16 @@ class ConversationService {
     if (!snapshot) {
       return;
     }
+    if (snapshot.status === 'completed') {
+      // Already turned into an order by an earlier success signal for
+      // this same snapshot — a manual reconciliation
+      // (§ payment reconciliation: complete manually) and a real Daraja
+      // callback can each independently believe they are the one
+      // confirming payment. Only the first is allowed to create an
+      // order; a second "succeeded" for a snapshot already completed
+      // must be a no-op, not a second order for one payment.
+      return;
+    }
 
     let orderId: string;
     let orderNumber: number;

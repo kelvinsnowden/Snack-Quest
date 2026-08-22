@@ -189,6 +189,118 @@ class PaymentService {
     return { settled: true };
   }
 
+  /**
+   * Completes an intent Daraja itself already confirmed succeeded —
+   * via the STK Push Query `reconcileStuckIntents` runs — but whose
+   * callback never arrived at all, ever (§ payment reconciliation:
+   * complete manually). That sweep's own `needsManualReview` outcome
+   * names exactly this gap ("confirm against the M-Pesa statement and
+   * resolve manually") without anything that actually resolved it —
+   * this is that action.
+   *
+   * Deliberately a different method from `recordManualPayment` above,
+   * not a relaxed version of it: that one settles an intent no STK
+   * push was ever attempted against, and refuses anything but
+   * `'pending'`. This one settles an intent that *did* get a real STK
+   * attempt — it has a live `attempts` entry a `'pending'` intent
+   * never has — and requires `'processing'`, so the two can never be
+   * used on each other's intents by accident.
+   *
+   * Never fabricates a receipt: the caller must already have one, read
+   * off the M-Pesa statement or the confirmation SMS. Guarded exactly
+   * like `recordManualPayment` — refuses anything but the expected
+   * status, so a real callback landing in the same instant cannot be
+   * double-settled by this. The still-open risk this alone cannot
+   * close is a callback that lands *after* this call returns; closing
+   * that is `ConversationService.completeOrder`'s job, which now
+   * refuses to create a second order for a snapshot already completed.
+   */
+  async completeManually(input: {
+    businessId: string;
+    intentId: string;
+    mpesaReceiptNumber: string;
+    recordedByUid: string;
+    recordedByName: string;
+    note: string | null;
+  }): Promise<{ settled: boolean; reason?: string; result?: Extract<ProcessCallbackResult, { status: 'succeeded' }> }> {
+    const intent = await paymentIntentRepository.findById(input.intentId);
+    if (!intent) {
+      return { settled: false, reason: 'Payment intent not found' };
+    }
+    if (intent.businessId !== input.businessId) {
+      return { settled: false, reason: 'Payment intent not found' };
+    }
+    if (intent.status !== 'processing') {
+      return {
+        settled: false,
+        reason: `This payment is already ${intent.status} — it cannot be completed manually.`,
+      };
+    }
+    const mpesaReceiptNumber = input.mpesaReceiptNumber.trim();
+    if (!mpesaReceiptNumber) {
+      return { settled: false, reason: 'An M-Pesa receipt number is required.' };
+    }
+
+    const manualPayment: Omit<ManualPaymentRecord, 'recordedAt'> = {
+      method: 'mpesa_manual',
+      reference: mpesaReceiptNumber,
+      recordedByUid: input.recordedByUid,
+      recordedByName: input.recordedByName,
+      note: input.note,
+    };
+
+    const { settled } = await paymentIntentRepository.recordManualPayment(
+      input.intentId,
+      manualPayment,
+      'processing',
+    );
+    if (!settled) {
+      // Lost the race against the real callback finally arriving, or
+      // against another super admin doing this same thing a moment ago.
+      return { settled: false, reason: 'This payment was just resolved by something else — a late callback may have arrived.' };
+    }
+
+    // The real STK attempt is left dangling in 'initiated' otherwise —
+    // resolve it so the record this intent carries is consistent with
+    // what actually happened, not just with what recordManualPayment
+    // touches.
+    const pending = await paymentIntentRepository.getPendingAttempt(input.intentId);
+    if (pending) {
+      await paymentIntentRepository.resolveAttempt(input.intentId, pending.attemptId, {
+        status: 'succeeded',
+        resultCode: 0,
+        resultDesc: `Manually confirmed by ${input.recordedByName}`,
+        mpesaReceiptNumber,
+      });
+    }
+
+    // Re-read rather than fabricate a client-side timestamp for the
+    // result below — `recordedAt` is whatever the transaction above
+    // actually persisted.
+    const updated = await paymentIntentRepository.findById(input.intentId);
+
+    await publishEvent(input.businessId, 'ManualPaymentRecorded', 'paymentIntent', input.intentId, {
+      method: 'mpesa_manual',
+      reference: mpesaReceiptNumber,
+      amountKes: intent.amountKes,
+      recordedByUid: input.recordedByUid,
+      phoneNumber: intent.phoneNumber,
+    });
+
+    return {
+      settled: true,
+      result: {
+        status: 'succeeded',
+        intentId: input.intentId,
+        conversationId: intent.conversationId,
+        snapshotId: intent.conversationCheckoutSnapshotId,
+        amountKes: intent.amountKes,
+        mpesaReceiptNumber,
+        manualPayment: updated?.manualPayment ?? null,
+      },
+    };
+  }
+
   async initiateAttempt(
     businessId: string,
     intentId: string,

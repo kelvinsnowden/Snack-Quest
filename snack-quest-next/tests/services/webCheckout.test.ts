@@ -814,6 +814,42 @@ describe('startWebCheckout — optional email', () => {
 });
 
 /**
+ * A payment can be confirmed succeeded twice for one real transaction:
+ * a super admin completes it manually (§ payment reconciliation:
+ * complete manually) after Daraja confirms success but the callback
+ * never arrives, and then the real callback turns up late anyway. Both
+ * call `handlePaymentResult` believing they are the one confirming
+ * payment — only the first is allowed to create an order.
+ */
+describe('handlePaymentResult — a snapshot already turned into an order', () => {
+  it('does not create a second order for a second "succeeded" signal', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
+    const succeeded = {
+      status: 'succeeded' as const,
+      intentId: intents[0].id,
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      amountKes: result.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    };
+
+    await service().handlePaymentResult(succeeded);
+    // A late real callback, or a second reconciliation pass, believing
+    // the same thing all over again.
+    await service().handlePaymentResult({ ...succeeded, mpesaReceiptNumber: 'DIFFERENTCODE' });
+
+    const orders = await adminFirestore
+      .collection('orders')
+      .where('businessId', '==', BUSINESS_ID)
+      .where('conversationId', '==', result.checkoutSessionId)
+      .get();
+    expect(orders.size).toBe(1);
+  });
+});
+
+/**
  * The quote and the charge must agree (§ Tushop door delivery).
  *
  * This is the invariant the file already rests on for pickup, and it
