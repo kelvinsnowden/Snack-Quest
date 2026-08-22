@@ -47,7 +47,7 @@ const EVERY_BOX_INCLUDES = [
   `A mix from ${SNACK_ORIGIN_COUNTRIES.slice(0, -1).join(', ')} and ${SNACK_ORIGIN_COUNTRIES.at(-1)}`,
   'Hand-picked and personally tasted before it ships',
   'Packed and dispatched within 24 hours',
-  'Pay by M-Pesa — no app, no account',
+  'Pay by M-Pesa — no app to install',
 ];
 
 export default async function BoxDetailPage({

@@ -29,7 +29,7 @@ const FACTS = [
   {
     icon: Smartphone,
     title: 'How you pay',
-    body: 'On the website, with M-Pesa. No app to install, no account to create — just a name, a phone number, and an M-Pesa PIN.',
+    body: 'On the website, with M-Pesa. No app to install — just a name, a phone number, and an M-Pesa PIN.',
   },
   {
     icon: MapPin,

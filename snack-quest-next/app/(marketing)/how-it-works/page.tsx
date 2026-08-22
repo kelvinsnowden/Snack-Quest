@@ -20,7 +20,7 @@ import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 export const metadata: Metadata = buildPageMetadata({
   title: 'How it works',
   description:
-    'Four steps from box to doorstep: pick a box, choose pickup or Nairobi door delivery, pay with M-Pesa, and we pack and ship. No app, no account.',
+    'Four steps from box to doorstep: pick a box, choose pickup or Nairobi door delivery, pay with M-Pesa, and we pack and ship. No app to install.',
   path: '/how-it-works',
 });
 
@@ -38,7 +38,7 @@ const STEPS = [
     icon: Package,
     title: 'Pick your box',
     description:
-      "Browse the current boxes and prices, then tap Buy now. There's no app to install and no account to create, and you can change your mind right up until you pay.",
+      "Browse the current boxes and prices, then tap Buy now. There's no app to install, and you can change your mind right up until you pay.",
   },
   {
     icon: Truck,
@@ -86,7 +86,7 @@ export default async function HowItWorksPage() {
         eyebrowIcon={Compass}
         title="How it"
         accent="works."
-        subtitle="No app, no account, no waiting for a reply. Order in about a minute and pay with M-Pesa."
+        subtitle="No app, no waiting for a reply. Order in about a minute and pay with M-Pesa."
       />
 
       <ol className="mt-14 flex flex-col gap-6">
