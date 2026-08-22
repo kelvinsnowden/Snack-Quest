@@ -39,13 +39,13 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  * with something instead of being empty.
  */
 const PARTNERS = [
-  // Taller than its neighbour on purpose: M-Pesa is a wide
-  // wordmark, Fargo's asset is a square badge, and matching its
-  // height would leave it reading as much smaller.
-  { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-9 sm:h-10' },
-  // Square badge like Fargo's, so it takes the same taller sizing —
-  // matching the M-Pesa wordmark's height would leave it reading small.
-  { Icon: TushopIcon, name: 'Tushop', className: 'h-9 sm:h-10' },
+  // Sized against optical area, not height. M-Pesa is a wide wordmark —
+  // about 200px across at 28px tall — so it covers roughly four times
+  // the area of a square badge of the same height. Matching heights, or
+  // even nudging them up a step, still leaves the badges reading as the
+  // small ones in the row. These are set to balance the mass instead.
+  { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-12 sm:h-14' },
+  { Icon: TushopIcon, name: 'Tushop', className: 'h-12 sm:h-14' },
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;
 

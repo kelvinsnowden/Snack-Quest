@@ -26,9 +26,9 @@ export const DELIVERY_PROVIDER_FOR_METHOD: Record<DeliveryMethod, DeliveryProvid
 /**
  * Fulfillment lifecycle only — pricing/checkout state already lives on
  * `Conversation.status` and `ConversationCheckoutSnapshot.status`, so
- * this doesn't duplicate it. `pending_manual_booking` is Bolt's real
+ * this doesn't duplicate it. `pending_manual_booking` is Fargo's real
  * state today: a human agent must book the courier themselves: no
- * automated Bolt API integration exists (or is asked for) in this codebase.
+ * automated courier API integration exists (or is asked for) in this codebase.
  */
 export type DeliveryStatus =
   | 'pending'

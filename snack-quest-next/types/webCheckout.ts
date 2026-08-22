@@ -28,7 +28,7 @@ export interface WebCheckoutRequest {
   deliveryMethod: DeliveryMethod;
   /** Required when `deliveryMethod` is `'pickup'` — which Fargo Courier pickup point to ship to. */
   pickupStationId?: string;
-  /** Required when `deliveryMethod` is `'door'`. Collected so the Bolt rider can be dispatched over WhatsApp after payment. */
+  /** Required when `deliveryMethod` is `'door'`. Collected so Fargo has a number to call on the doorstep when it differs from the paying one. */
   addressText?: string;
   estate?: string;
   landmark?: string;
@@ -42,7 +42,7 @@ export interface WebCheckoutRequest {
  * checkout UI renders this rather than any figure it computed itself.
  *
  * Both methods carry a real `deliveryFeeKes` now. Door delivery used to
- * price at zero because Bolt's fare was settled between customer and
+ * price at zero because the old courier's fare was settled between customer and
  * rider after checkout; Fargo quotes a fixed price for it, so it is
  * charged here like any other line.
  */
@@ -93,10 +93,10 @@ export interface WebCheckoutStatusResponse {
   checkoutSessionId: string;
   paymentStatus: OrderPaymentStatus;
   orderId: string | null;
-  /** The human-friendly reference (§ order references) shown on the success screen and folded into the "Arrange Bolt Delivery" WhatsApp message — null until `orderId` is set. */
+  /** The human-friendly reference (§ order references) shown on the success screen and and in the WhatsApp follow-up message — null until `orderId` is set. */
   orderNumber: number | null;
   totalKes: number | null;
-  /** Set once an order exists — drives the success page's "Arrange Bolt Delivery on WhatsApp" call to action. */
+  /** Set once an order exists — the success page words its delivery line differently for door and pickup. */
   deliveryMethod: DeliveryMethod | null;
   customerName: string | null;
   packageLabel: string | null;

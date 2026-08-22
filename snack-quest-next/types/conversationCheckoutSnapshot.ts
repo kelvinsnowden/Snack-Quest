@@ -14,7 +14,7 @@ import type { DeliveryDetails } from './delivery';
  * checkout): the automated Fargo-pickup flow freezes it the instant
  * the customer replies YES to the order summary; the Nairobi
  * door-delivery flow freezes it only once a human agent has priced
- * the (dynamic, Bolt) delivery fee — both paths converge on this same
+ * the delivery fee — both paths converge on this same
  * shape, `delivery` carrying whichever method/provider applies.
  */
 

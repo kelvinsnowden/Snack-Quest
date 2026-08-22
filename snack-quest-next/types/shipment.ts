@@ -9,7 +9,7 @@ import type { DeliveryMethod } from './delivery';
  * it, doesn't mean the order isn't paid).
  *
  * `pending_manual_booking` is the real state for a provider whose
- * `pricingMode` is 'manual' (Bolt today, see lib/delivery/providers.ts) —
+ * `pricingMode` is 'manual' (Fargo, see lib/delivery/providers.ts) —
  * no automated courier API created this shipment, a human agent still
  * has to book it themselves.
  */

@@ -14,13 +14,16 @@ import type { CourierGateway } from '@/lib/integrations/types';
  * to automate later. A manual provider has no `gateway`: there is
  * nothing to call.
  *
- * No provider is automatic today. Jumia was, against an API this
- * codebase never had verified credentials for, and it went with the
- * Jumia integration. Fargo Courier is booked by taking parcels to a
- * branch and recording the waybill number, so it is genuinely manual —
- * and a flat rate needs no call to price. The `automatic` branch and
- * the `CourierGateway` seam are kept because they are the documented
- * extension point, not because anything uses them right now.
+ * Fargo is the only provider, and it is manual: parcels are taken to a
+ * branch and the waybill number recorded, so there is nothing to call.
+ * Bolt was here until Fargo took over door delivery — it was removed
+ * once the last two orders referencing it were deleted, since a
+ * provider definition only has to survive as long as an order that
+ * names it.
+ *
+ * The `automatic` branch and the `CourierGateway` seam stay because
+ * they are the documented extension point, not because anything uses
+ * them right now.
  */
 export type DeliveryPricingMode = 'automatic' | 'manual';
 
@@ -33,10 +36,6 @@ export interface DeliveryProviderDefinition {
 export const DELIVERY_PROVIDERS: Record<string, DeliveryProviderDefinition> = {
   fargo: {
     provider: 'fargo',
-    pricingMode: 'manual',
-  },
-  bolt: {
-    provider: 'bolt',
     pricingMode: 'manual',
   },
 };

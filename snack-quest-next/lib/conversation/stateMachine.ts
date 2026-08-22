@@ -301,7 +301,7 @@ export const PAYMENT_CONFIRMATION_REMINDER =
  * The final, itemized total — the last thing shown before the
  * customer is asked to explicitly opt into payment. Used both when
  * first entering `awaiting_customer_payment_confirmation` (from the
- * automated Fargo-pickup referral step, or from a human agent's Bolt
+ * automated Fargo-pickup referral step, or from a human agent's manual
  * quotation) and, unchanged, is exactly what a real order is priced
  * at — never re-derived or re-guessed later.
  */
