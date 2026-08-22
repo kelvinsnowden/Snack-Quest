@@ -1,10 +1,11 @@
 import { FargoIcon } from '@/components/icons/FargoIcon';
+import { TushopIcon } from '@/components/icons/TushopIcon';
 import { MpesaLogo } from '@/components/icons/MpesaLogo';
 
 /**
  * "Is this legitimate?" answered visually rather than in a sentence —
  * the real operational partners behind every order: Fargo Courier for
- * delivery and collection, M-Pesa for payment. Both
+ * delivery and collection, Tushop, and M-Pesa for payment. All
  * are already real integrations elsewhere in this codebase
  * (`MPESA_RECIPIENT_NAME`, the Fargo delivery copy on
  * `/how-it-works`) — nothing invented for this strip. Shared between
@@ -42,6 +43,9 @@ const PARTNERS = [
   // wordmark, Fargo's asset is a square badge, and matching its
   // height would leave it reading as much smaller.
   { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-9 sm:h-10' },
+  // Square badge like Fargo's, so it takes the same taller sizing —
+  // matching the M-Pesa wordmark's height would leave it reading small.
+  { Icon: TushopIcon, name: 'Tushop', className: 'h-9 sm:h-10' },
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;
 
