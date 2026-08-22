@@ -3,7 +3,6 @@ import 'server-only';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { getDeliveryProviderDefinition } from '@/lib/delivery/providers';
 import { VALID_SHIPMENT_TRANSITIONS } from '@/lib/delivery/transitions';
-import { mapJumiaStatusToShipmentStatus } from '@/lib/delivery/jumiaStatusMapping';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { DeliveryDetails, Shipment, ShipmentStatus } from '@/types';
 import type { TrackingStatus } from '@/lib/integrations/types';
@@ -28,8 +27,8 @@ export class InvalidShipmentTransitionError extends Error {
  * shipment from `lib/delivery/providers.ts` — never hardcodes a
  * courier — and branches on that provider's `pricingMode`:
  *
- * - `'automatic'` (Jumia today): calls the provider's `CourierGateway`
- *   for a real shipment reference + tracking URL, same as before.
+ * - `'automatic'`: calls the provider's `CourierGateway` for a real
+ *   shipment reference + tracking URL. No provider is automatic today.
  * - `'manual'` (Bolt today): there is no automated Bolt integration to
  *   call — a human agent books the courier themselves after the order
  *   is paid. The shipment record is created as `pending_manual_booking`
@@ -176,48 +175,6 @@ class DeliveryService {
     });
   }
 
-  /**
-   * The real courier tracking webhook's write path (§ Logistics: wire
-   * tracking webhook consumption) — always records the raw event for
-   * audit, and additionally applies a `ShipmentStatusChanged`
-   * transition only when Jumia's raw status maps to a known
-   * `ShipmentStatus` (`lib/delivery/jumiaStatusMapping.ts`) AND that
-   * transition is actually valid from the shipment's current status.
-   * A courier redelivering a stale/duplicate/out-of-order status
-   * update is recorded, never silently applied as a regression (e.g.
-   * `in_transit` arriving after `delivered`).
-   *
-   * Returns `null` when no shipment matches this business's
-   * `courierShipmentRef` — the caller (the webhook route) decides how
-   * to record that as a failed/unmatched webhook event, this Service
-   * doesn't own that ledger.
-   */
-  async applyTrackingUpdate(businessId: string, tracking: TrackingStatus): Promise<{ shipmentId: string } | null> {
-    const match = await shipmentRepository.findByCourierShipmentRef(businessId, tracking.courierShipmentRef);
-    if (!match) {
-      return null;
-    }
-
-    const mappedStatus = mapJumiaStatusToShipmentStatus(tracking.status);
-    const canTransition =
-      mappedStatus !== null && VALID_SHIPMENT_TRANSITIONS[match.data.status].includes(mappedStatus);
-
-    await shipmentRepository.recordTrackingUpdate(match.id, {
-      event: { status: tracking.status, description: null, occurredAt: new Date(tracking.lastUpdatedAt) },
-      nextStatus: canTransition ? (mappedStatus as ShipmentStatus) : undefined,
-    });
-
-    if (canTransition) {
-      await publishEvent(businessId, 'ShipmentStatusChanged', 'order', match.data.orderId, {
-        shipmentId: match.id,
-        from: match.data.status,
-        to: mappedStatus,
-        actor: 'jumia_tracking_webhook',
-      });
-    }
-
-    return { shipmentId: match.id };
-  }
 
   async listShipments(
     businessId: string,

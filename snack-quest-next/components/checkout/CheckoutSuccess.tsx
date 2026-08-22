@@ -23,8 +23,7 @@ import type { WebCheckoutStatusResponse } from '@/types/webCheckout';
  * Rebuilt as a celebration rather than a receipt: the badge, the
  * display headline and the box artwork are the screen, and the figures
  * sit under them. What did *not* change is everything below the fold —
- * the Bolt hand-off for door delivery, the packing timeline for
- * pickup, the creator invitation. Those are the parts of this page
+ * the delivery timeline, the creator invitation. Those are the parts of this page
  * that do actual work, and a redesign that dropped them would trade
  * function for a nicer photograph.
  */
@@ -105,29 +104,14 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
       </a>
 
       {isDoorDelivery ? (
-        <div className="mt-10 w-full rounded-2xl border border-primary/30 bg-primary/10 p-5 text-left">
-          <p className="text-sm font-bold text-white">One more step: arrange your Bolt rider</p>
-          <p className="mt-2 text-sm text-white/70">
-            Your Snack Quest order is paid for. Bolt delivery is arranged separately — message us and
-            we&rsquo;ll book the rider. The fare is quoted for your trip and paid directly to the rider on
-            arrival.
-          </p>
-          <a
-            href={buildWhatsAppOrderUrl(
-              `Hi! I've paid for order ${orderRef} and I'd like to arrange Bolt delivery.`,
-            )}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-bold text-white"
-          >
-            <WhatsAppIcon className="size-4" />
-            Arrange Bolt delivery
-          </a>
-        </div>
+        <p className="mt-10 text-sm text-pretty text-white/60">
+          Your box is packed and sent within 24 hours, and Fargo Courier brings it to the address you
+          gave us. We&rsquo;ll text you the waybill number as soon as it&rsquo;s on its way.
+        </p>
       ) : (
         <p className="mt-10 text-sm text-pretty text-white/60">
-          Your box is packed and sent within 24 hours, and usually reaches the station within 24&ndash;48
-          hours after that. Message us any time to check where yours is.
+          Your box is packed and sent within 24 hours. We&rsquo;ll text you the Fargo waybill number when
+          it&rsquo;s dispatched, and Fargo will let you know once it reaches your pickup point.
         </p>
       )}
 

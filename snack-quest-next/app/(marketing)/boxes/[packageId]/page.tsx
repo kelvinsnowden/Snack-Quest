@@ -224,7 +224,7 @@ export default async function BoxDetailPage({
             <p className="text-muted-foreground flex items-start gap-2 text-sm">
               <Store className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>
-                Collect from a Jumia pickup station anywhere in Kenya — the fee for your station is
+                Collect from a Fargo Courier pickup point anywhere in Kenya — the fee for your point is
                 added to your total before you pay, so nothing is a surprise.
               </span>
             </p>

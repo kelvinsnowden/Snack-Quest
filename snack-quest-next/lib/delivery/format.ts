@@ -10,8 +10,8 @@ import type { DeliveryDetails } from '@/types';
 export function formatDeliveryLabel(delivery: DeliveryDetails): string {
   if (delivery.method === 'pickup') {
     return delivery.pickupStationName
-      ? `${delivery.pickupStationName}, ${delivery.county} (Jumia pickup)`
-      : `${delivery.county} — Jumia pickup station`;
+      ? `${delivery.pickupStationName}, ${delivery.county} (Fargo Courier pickup)`
+      : `${delivery.county} — Fargo Courier pickup point`;
   }
   const parts = [delivery.addressText, delivery.estate, delivery.landmark].filter(Boolean);
   return `${parts.join(', ')} (door delivery, ${delivery.county})`;

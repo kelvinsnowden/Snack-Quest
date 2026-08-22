@@ -26,7 +26,7 @@ export interface WebCheckoutRequest {
   email?: string;
   county: string;
   deliveryMethod: DeliveryMethod;
-  /** Required when `deliveryMethod` is `'pickup'` — which Jumia station to ship to. */
+  /** Required when `deliveryMethod` is `'pickup'` — which Fargo Courier pickup point to ship to. */
   pickupStationId?: string;
   /** Required when `deliveryMethod` is `'door'`. Collected so the Bolt rider can be dispatched over WhatsApp after payment. */
   addressText?: string;
@@ -41,11 +41,10 @@ export interface WebCheckoutRequest {
  * What the customer is actually about to be charged, itemized. The
  * checkout UI renders this rather than any figure it computed itself.
  *
- * For `'door'`, `deliveryFeeKes` is always 0 and `boltArrangedSeparately`
- * is true: Bolt's fare is dynamic, is quoted per-trip over WhatsApp
- * after payment, and is paid by the customer directly to the rider —
- * charging a guessed figure here would be charging for a service at a
- * price nobody has quoted yet.
+ * Both methods carry a real `deliveryFeeKes` now. Door delivery used to
+ * price at zero because Bolt's fare was settled between customer and
+ * rider after checkout; Fargo quotes a fixed price for it, so it is
+ * charged here like any other line.
  */
 export interface WebCheckoutPricing {
   packageLabel: string;
@@ -56,7 +55,8 @@ export interface WebCheckoutPricing {
   walletCreditAppliedKes: number;
   deliveryFeeKes: number;
   totalKes: number;
-  boltArrangedSeparately: boolean;
+  /** Door delivery only — which Fargo speed was bought. Null on pickup, which has one service. */
+  serviceLevel: 'next-day' | 'same-day' | null;
 }
 
 /**

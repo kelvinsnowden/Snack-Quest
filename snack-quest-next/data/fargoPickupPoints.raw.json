@@ -1,0 +1,802 @@
+{
+  "source": "Fargo Courier branch and collection-point list supplied by the business, compiled from Fargo's published directories (2021-2024).",
+  "caveat": "Fargo runs 100+ branches and reshuffles collection points regularly - host locations (petrol stations, malls) and phone numbers change. Confirm with the branch or the hub before routing a shipment. Coordinates are deliberately absent: nothing in this codebase reads a pickup station's latitude or longitude, and inventing them would put fabricated data in the database to satisfy a field no one looks at.",
+  "hub": {
+    "name": "Fargo Courier Hub",
+    "location": "Central Business Park, Road C, off Enterprise Road, off Mombasa Road (behind Sameer Business Park), Nairobi",
+    "phones": [
+      "+254 703 077 000",
+      "+254 20 493 0000",
+      "+254 728 606 461"
+    ],
+    "email": "couriercs@fargocourier.co.ke",
+    "hours": "Mon-Fri 7:00am-5:00pm, Sat 7:00am-12:00pm, closed Sunday"
+  },
+  "points": [
+    {
+      "name": "Head Office / CBP Hub",
+      "location": "Central Business Park, Road C, off Enterprise Rd",
+      "phone": "0703 077 000",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Central Business Park",
+      "location": "Fargo Courier hub, off Road C",
+      "phone": "0773 712 682",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Fargo House",
+      "location": "South C, Red Cross Rd, opposite The Boma Hotel",
+      "phone": "0771 601 110",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Fargo Archives",
+      "location": "Road C, near Bio Foods, Industrial Area",
+      "phone": "0770 777 591",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Enterprise Road",
+      "location": "Enterprise Rd, opposite Total petrol station",
+      "phone": "0776 997 115",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Buru Buru",
+      "location": "Kenol petrol station, off Jogoo Rd, opposite Naivas",
+      "phone": "0772 099 179",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Eastleigh",
+      "location": "Ground floor, Diamond Palace Hotel building, stall 22",
+      "phone": "0773 712 682",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Galleria Mall",
+      "location": "Bomas of Kenya / Langata Rd junction",
+      "phone": "0774 264 762",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Gigiri",
+      "location": "Rubis (Kenol) petrol station, UN Avenue, off Limuru Rd",
+      "phone": "0770 633 500",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Globe Cinema",
+      "location": "Green Belt parking, Murang'a Rd, Globe roundabout",
+      "phone": "0771 601 114",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Highridge",
+      "location": "Outside Chandarana, Highridge Shopping Centre",
+      "phone": "0771 601 113",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Hurlingham",
+      "location": "APA Arcade car park, Argwings Kodhek Rd",
+      "phone": "0774 920 975",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Karen",
+      "location": "City council parking, Karen Shopping Centre",
+      "phone": "0770 777 593",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Kimathi Street",
+      "location": "Outside Kilimanjaro Hotel, opposite Equity Kimathi",
+      "phone": "0776 253 515",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Latema Road",
+      "location": "Latema Shell petrol station",
+      "phone": "0110 944 855",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Lavington",
+      "location": "James Gichuru Rd, outside Lavington Mall",
+      "phone": "0776 605 153",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Loita Street",
+      "location": "Opposite Kipande House",
+      "phone": "0770 435 826",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Lusaka Road",
+      "location": "Shell/Kobil petrol station, next to Simco Plaza",
+      "phone": "0770 352 507",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Luthuli Avenue",
+      "location": "1st floor, Ribeiro House, opposite Kalsi House",
+      "phone": "0772 554 235",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Mountain Mall",
+      "location": "Mountain Mall parking, Roasters, Thika Rd",
+      "phone": "0775 861 552",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Ngong Road",
+      "location": "Inside Lexo (Shell) petrol station, next to China Centre",
+      "phone": "0770 405 062",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Pipeline",
+      "location": "Kenol petrol station, North Airport Rd, Embakasi",
+      "phone": "0772 099 164",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "River Road",
+      "location": "Kenol Kobil petrol station, next to Haripharma",
+      "phone": "0770 777 590",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Ronald Ngala Street",
+      "location": "Opposite Naivas Supermarket",
+      "phone": "0770 352 526",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Semco Industrial Park",
+      "location": "Semco Park, off Mombasa Rd",
+      "phone": "0770 575 032",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Taifa Road",
+      "location": "Opposite High Court, adjacent to Kencom",
+      "phone": "0770 575 089",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Tom Mboya Street (Imenti)",
+      "location": "Imenti House, entrance opposite Equity Bank",
+      "phone": "0773 326 842",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Upperhill",
+      "location": "Outside Blue Shield Towers, Hospital Rd",
+      "phone": "0771 284 712",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Westlands",
+      "location": "The Mall, Waiyaki Way",
+      "phone": "0770 575 072",
+      "town": "Nairobi",
+      "county": "Nairobi",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Ruiru",
+      "location": "Opposite National Bank, Ruiru-Kiambu Rd",
+      "phone": "0772 446 587",
+      "town": "Ruiru",
+      "county": "Kiambu",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Kiambu",
+      "location": "Kenyatta Rd, outside Metropolitan Sacco, next to Family Bank",
+      "phone": "0110 944 856",
+      "town": "Kiambu",
+      "county": "Kiambu",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Kikuyu",
+      "location": "Inside Shell petrol station, Kikuyu main road",
+      "phone": "0110 944 857",
+      "town": "Kikuyu",
+      "county": "Kiambu",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Limuru",
+      "location": "Magua Rd, same building as Rafiki DTM / KWFT",
+      "phone": "0770 575 030",
+      "town": "Limuru",
+      "county": "Kiambu",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Tala",
+      "location": "Homeland Plaza, Kangundo Rd, opposite KWFT",
+      "phone": "0774 355 219",
+      "town": "Tala",
+      "county": "Machakos",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kitengela",
+      "location": "Inside National Oil station, Nairobi-Namanga highway",
+      "phone": "0770 777 606",
+      "town": "Kitengela",
+      "county": "Kajiado",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Thika",
+      "location": "Kenyatta Ave, next to Zuhura Place / Mama Ngina St",
+      "phone": "0774 912 302",
+      "town": "Thika",
+      "county": "Kiambu",
+      "region": "nairobi-metro"
+    },
+    {
+      "name": "Murang'a",
+      "location": "Kagonyi House, Manyeki St, opposite Central Driving School",
+      "phone": "0770 575 083",
+      "town": "Murang'a",
+      "county": "Murang'a",
+      "region": "upcountry"
+    },
+    {
+      "name": "Nyeri",
+      "location": "Karsons Photo House, Kimathi St, next to Telkom",
+      "phone": "0770 575 054",
+      "town": "Nyeri",
+      "county": "Nyeri",
+      "region": "upcountry"
+    },
+    {
+      "name": "Karatina",
+      "location": "Nawama Flats, behind Eco Bank",
+      "phone": "0770 575 045",
+      "town": "Karatina",
+      "county": "Nyeri",
+      "region": "upcountry"
+    },
+    {
+      "name": "Othaya",
+      "location": "Outside KCB Bank",
+      "phone": null,
+      "town": "Othaya",
+      "county": "Nyeri",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kerugoya",
+      "location": "Tescom building, ground floor, opposite Catholic School",
+      "phone": "0770 575 082",
+      "town": "Kerugoya",
+      "county": "Kirinyaga",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mwea",
+      "location": "Care of Kerugoya branch",
+      "phone": "0770 575 035",
+      "town": "Mwea",
+      "county": "Kirinyaga",
+      "region": "upcountry"
+    },
+    {
+      "name": "Embu",
+      "location": "Rurima building, ground floor, Sports Rd",
+      "phone": "0770 575 035",
+      "town": "Embu",
+      "county": "Embu",
+      "region": "upcountry"
+    },
+    {
+      "name": "Chuka",
+      "location": "Mutegi Murango building above Equity, Chuka-Embu highway",
+      "phone": "0770 575 085",
+      "town": "Chuka",
+      "county": "Tharaka-Nithi",
+      "region": "upcountry"
+    },
+    {
+      "name": "Meru",
+      "location": "Off Meru-Nanyuki Rd, Intercity Centre building",
+      "phone": "0770 575 026",
+      "town": "Meru",
+      "county": "Meru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Maua",
+      "location": "Kainga building, opposite Wama Pharmacy",
+      "phone": "0770 575 026",
+      "town": "Maua",
+      "county": "Meru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Nanyuki",
+      "location": "1st floor, Nanyuki Mall, Nyeri-Nanyuki Rd",
+      "phone": "0770 575 063",
+      "town": "Nanyuki",
+      "county": "Laikipia",
+      "region": "upcountry"
+    },
+    {
+      "name": "Isiolo",
+      "location": "Pasoda, next to Wambera Primary / Adhi Chemist",
+      "phone": "0770 777 591",
+      "town": "Isiolo",
+      "county": "Isiolo",
+      "region": "upcountry"
+    },
+    {
+      "name": "Machakos",
+      "location": "Utangwa building, opposite County social hall",
+      "phone": "0770 575 039",
+      "town": "Machakos",
+      "county": "Machakos",
+      "region": "upcountry"
+    },
+    {
+      "name": "Matuu",
+      "location": "Muamba House, next to KCB",
+      "phone": "0771 302 386",
+      "town": "Matuu",
+      "county": "Machakos",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kitui",
+      "location": "Valley Crest building, off Mama Ngina St, opposite Co-op",
+      "phone": "0770 777 597",
+      "town": "Kitui",
+      "county": "Kitui",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mutomo",
+      "location": "Aliju building, adjacent to Mutomo airstrip",
+      "phone": "0792 987 389",
+      "town": "Mutomo",
+      "county": "Kitui",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mwingi",
+      "location": "Mwingi trading centre, behind Post Bank",
+      "phone": "0774 920 983",
+      "town": "Mwingi",
+      "county": "Kitui",
+      "region": "upcountry"
+    },
+    {
+      "name": "Wote",
+      "location": "Mbithi House, opposite Co-op Bank",
+      "phone": "0773 835 785",
+      "town": "Wote",
+      "county": "Makueni",
+      "region": "upcountry"
+    },
+    {
+      "name": "Emali",
+      "location": "Mombasa highway, between M-Kopa shop and Post Office",
+      "phone": "0770 911 135",
+      "town": "Emali",
+      "county": "Makueni",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kibwezi",
+      "location": "Posta Rd, next to Busala Hardware",
+      "phone": "0773 835 940",
+      "town": "Kibwezi",
+      "county": "Makueni",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mtito Andei",
+      "location": "Mumias House, opposite Total, next to KCB, Nairobi-Mombasa highway",
+      "phone": null,
+      "town": "Mtito Andei",
+      "county": "Makueni",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kajiado",
+      "location": "Simba Centre, room 15, opposite KCB",
+      "phone": "0774 920 982",
+      "town": "Kajiado",
+      "county": "Kajiado",
+      "region": "upcountry"
+    },
+    {
+      "name": "Loitokitok",
+      "location": "Lentada House, opposite Equity Bank",
+      "phone": "0772 075 090",
+      "town": "Loitokitok",
+      "county": "Kajiado",
+      "region": "upcountry"
+    },
+    {
+      "name": "Garissa",
+      "location": "Bayusuf building, Biashara St, opposite Jamia Mosque",
+      "phone": "0770 911 611",
+      "town": "Garissa",
+      "county": "Garissa",
+      "region": "upcountry"
+    },
+    {
+      "name": "Nakuru",
+      "location": "Rurima building, Mama Ngina St",
+      "phone": "0770 575 025",
+      "town": "Nakuru",
+      "county": "Nakuru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Nakuru (Club Road)",
+      "location": "Gilani's Supermarket, Club Rd",
+      "phone": null,
+      "town": "Nakuru",
+      "county": "Nakuru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Naivasha",
+      "location": "Wambugu building, near Post Office",
+      "phone": "0770 575 042",
+      "town": "Naivasha",
+      "county": "Nakuru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Gilgil",
+      "location": "Option Hotel building, next to Chawaka Supermarket",
+      "phone": "0770 575 043",
+      "town": "Gilgil",
+      "county": "Nakuru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Molo",
+      "location": "Main street, opposite Jamhuri Clinic",
+      "phone": "0772 017 779",
+      "town": "Molo",
+      "county": "Nakuru",
+      "region": "upcountry"
+    },
+    {
+      "name": "Ol Kalou",
+      "location": "Bullhead Hotel, Church Rd, opposite Co-op Bank",
+      "phone": "0772 017 779",
+      "town": "Ol Kalou",
+      "county": "Nyandarua",
+      "region": "upcountry"
+    },
+    {
+      "name": "Nyahururu",
+      "location": "Chestnut building, next to Co-op Bank",
+      "phone": "0770 575 062",
+      "town": "Nyahururu",
+      "county": "Laikipia",
+      "region": "upcountry"
+    },
+    {
+      "name": "Narok",
+      "location": "Narok-Nairobi main road, opposite Narok Museum",
+      "phone": "0770 575 056",
+      "town": "Narok",
+      "county": "Narok",
+      "region": "upcountry"
+    },
+    {
+      "name": "Eldoret",
+      "location": "Elgeyo Marakwet Rd, next to Central Primary",
+      "phone": "0770 575 009",
+      "town": "Eldoret",
+      "county": "Uasin Gishu",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kitale",
+      "location": "Sudi Way, opposite Restoration Global Ministries",
+      "phone": "0772 098 892",
+      "town": "Kitale",
+      "county": "Trans Nzoia",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kapsabet",
+      "location": "Naivas building, ground floor, next to Easy Coach",
+      "phone": "0774 920 981",
+      "town": "Kapsabet",
+      "county": "Nandi",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kericho",
+      "location": "Jemi House, Kericho-Nakuru highway",
+      "phone": "0770 575 012",
+      "town": "Kericho",
+      "county": "Kericho",
+      "region": "upcountry"
+    },
+    {
+      "name": "Bomet",
+      "location": "AFC building",
+      "phone": "0770 575 012",
+      "town": "Bomet",
+      "county": "Bomet",
+      "region": "upcountry"
+    },
+    {
+      "name": "Lodwar",
+      "location": "Naivas Supermarket building, Lodwar-Lokichogio Rd",
+      "phone": "0770 352 615",
+      "town": "Lodwar",
+      "county": "Turkana",
+      "region": "upcountry"
+    },
+    {
+      "name": "Lokichogio",
+      "location": "Tawaka building, opposite Todonyang' Stores",
+      "phone": "0774 920 976",
+      "town": "Lokichogio",
+      "county": "Turkana",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kakamega",
+      "location": "ACK compound, Kakamega-Webuye Rd, next to Smep",
+      "phone": "0770 575 010",
+      "town": "Kakamega",
+      "county": "Kakamega",
+      "region": "upcountry"
+    },
+    {
+      "name": "Bungoma",
+      "location": "Nasimaka House, Bungoma-Mumias Rd, opposite Eroko Club",
+      "phone": "0770 575 046",
+      "town": "Bungoma",
+      "county": "Bungoma",
+      "region": "upcountry"
+    },
+    {
+      "name": "Webuye",
+      "location": "Webuye-Kitale Rd, next to KPLC offices",
+      "phone": null,
+      "town": "Webuye",
+      "county": "Bungoma",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mumias",
+      "location": "Seruji building, Nabongo St",
+      "phone": "0770 575 063",
+      "town": "Mumias",
+      "county": "Kakamega",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mbale",
+      "location": "Kakamega-Mbale highway, next to Vihiga Teachers Benevolent",
+      "phone": "0773 513 215",
+      "town": "Mbale",
+      "county": "Vihiga",
+      "region": "upcountry"
+    },
+    {
+      "name": "Busia",
+      "location": "Florida House Hotel, Busia-Kisumu highway",
+      "phone": "0773 644 411",
+      "town": "Busia",
+      "county": "Busia",
+      "region": "upcountry"
+    },
+    {
+      "name": "Malaba",
+      "location": "1st floor, Equity building, main Uganda highway",
+      "phone": "0770 777 604",
+      "town": "Malaba",
+      "county": "Busia",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kisumu",
+      "location": "Milimani Estate, off Tom Mboya Drive, next to FIDA",
+      "phone": "0770 575 053",
+      "town": "Kisumu",
+      "county": "Kisumu",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kisii",
+      "location": "Ouru Complex, near Equity Bank",
+      "phone": "0770 575 031",
+      "town": "Kisii",
+      "county": "Kisii",
+      "region": "upcountry"
+    },
+    {
+      "name": "Homa Bay",
+      "location": "Garage Rd, behind KCB, next to Hardrock Hotel",
+      "phone": "0770 352 506",
+      "town": "Homa Bay",
+      "county": "Homa Bay",
+      "region": "upcountry"
+    },
+    {
+      "name": "Migori",
+      "location": "Outside Nyaranga Chemist, next to Bansi Wholesalers",
+      "phone": "0720 354 382",
+      "town": "Migori",
+      "county": "Migori",
+      "region": "upcountry"
+    },
+    {
+      "name": "Siaya",
+      "location": "ACK compound, opposite Municipal Council",
+      "phone": "0770 575 071",
+      "town": "Siaya",
+      "county": "Siaya",
+      "region": "upcountry"
+    },
+    {
+      "name": "Bondo",
+      "location": "Gumba House, opposite Olumbe Hardware",
+      "phone": "0774 158 764",
+      "town": "Bondo",
+      "county": "Siaya",
+      "region": "upcountry"
+    },
+    {
+      "name": "Muhoroni",
+      "location": "Market stalls, opposite KCB",
+      "phone": "0712 604 699",
+      "town": "Muhoroni",
+      "county": "Kisumu",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mombasa",
+      "location": "Ground floor, Juma Plaza, near Mombasa Railway Station",
+      "phone": "0770 575 014",
+      "town": "Mombasa",
+      "county": "Mombasa",
+      "region": "upcountry"
+    },
+    {
+      "name": "Moi Avenue (Mombasa)",
+      "location": "Telkom parking, opposite Consolidated Bank",
+      "phone": "0772 099 179",
+      "town": "Mombasa",
+      "county": "Mombasa",
+      "region": "upcountry"
+    },
+    {
+      "name": "Mariakani",
+      "location": "Opposite Co-operative Bank building",
+      "phone": "0774 110 613",
+      "town": "Mariakani",
+      "county": "Kilifi",
+      "region": "upcountry"
+    },
+    {
+      "name": "Kilifi",
+      "location": "Shop 4, Equity building, opposite Fly540 offices",
+      "phone": "0770 575 023",
+      "town": "Kilifi",
+      "county": "Kilifi",
+      "region": "upcountry"
+    },
+    {
+      "name": "Malindi",
+      "location": "Ground floor, Stanchart Arcade, Lamu Rd",
+      "phone": "0770 575 087",
+      "town": "Malindi",
+      "county": "Kilifi",
+      "region": "upcountry"
+    },
+    {
+      "name": "Watamu",
+      "location": "Kaluma building, inside Lang'ata Link",
+      "phone": "0770 575 030",
+      "town": "Watamu",
+      "county": "Kilifi",
+      "region": "upcountry"
+    },
+    {
+      "name": "Diani",
+      "location": "Universal Plaza, Beach Rd, next to Equity Bank",
+      "phone": "040 320 2018",
+      "town": "Diani",
+      "county": "Kwale",
+      "region": "upcountry"
+    },
+    {
+      "name": "Voi",
+      "location": "Mbololo Ushirika compound, Biashara St, next to town mosque",
+      "phone": "0770 575 049",
+      "town": "Voi",
+      "county": "Taita-Taveta",
+      "region": "upcountry"
+    },
+    {
+      "name": "Lamu",
+      "location": "Paradise House, Lamu Island",
+      "phone": "0772 075 065",
+      "town": "Lamu",
+      "county": "Lamu",
+      "region": "upcountry"
+    }
+  ],
+  "regionNote": "region marks which side of Fargo's Nairobi radius a town sits on, confirmed with the business (Thika and Limuru inside; Tala outside). It decides the delivery MODEL, not just the price: inside the radius a customer gets door delivery and types an address, so those branches are never offered as pickup points. Only the upcountry branches are customer-facing."
+}

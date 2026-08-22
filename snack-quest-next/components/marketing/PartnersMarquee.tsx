@@ -1,16 +1,16 @@
 import { BoltIcon } from '@/components/icons/BoltIcon';
-import { JumiaIcon } from '@/components/icons/JumiaIcon';
+import { FargoIcon } from '@/components/icons/FargoIcon';
 import { MpesaLogo } from '@/components/icons/MpesaLogo';
 
 /**
  * "Is this legitimate?" answered visually rather than in a sentence —
  * the real operational partners behind every order: Bolt for door
- * delivery, Jumia for pickup stations, M-Pesa for payment. All three
+ * delivery, Fargo Courier for pickup points, M-Pesa for payment. All three
  * are already real integrations elsewhere in this codebase
- * (`MPESA_RECIPIENT_NAME`, the Bolt/Jumia delivery copy on
+ * (`MPESA_RECIPIENT_NAME`, the Fargo delivery copy on
  * `/how-it-works`) — nothing invented for this strip. Shared between
  * the home page (replacing `PickYourBox`'s old plain-text "M-Pesa
- * accepted · Jumia pickup countrywide · Bolt Package home delivery"
+ * accepted · Door delivery in Nairobi · Fargo pickup countrywide"
  * line — the same three names, just illegible as a sentence next to
  * an actual marquee of them) and the Creator Program page (§ Creator
  * Program CRO pass).
@@ -40,7 +40,10 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  */
 const PARTNERS = [
   { Icon: BoltIcon, name: 'Bolt', className: 'h-6 sm:h-7' },
-  { Icon: JumiaIcon, name: 'Jumia', className: 'h-7 sm:h-8' },
+  // Taller than its neighbours on purpose: Bolt and M-Pesa are wide
+  // wordmarks, Fargo's asset is a square badge, and matching their
+  // height would leave it reading as much smaller than both.
+  { Icon: FargoIcon, name: 'Fargo Courier', className: 'h-9 sm:h-10' },
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;
 

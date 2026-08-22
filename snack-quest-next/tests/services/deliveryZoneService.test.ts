@@ -10,7 +10,7 @@ const OTHER_BUSINESS_ID = 'biz-delivery-zone-service-other';
 function station(overrides: Partial<Parameters<typeof pickupStationRepository.create>[0]> = {}) {
   return {
     businessId: BUSINESS_ID,
-    courier: 'jumia',
+    courier: 'fargo',
     name: 'Test Station',
     latitude: -1.2921,
     longitude: 36.8219,
@@ -41,7 +41,7 @@ describe('DeliveryZoneService.listZones', () => {
       zone: 'Nairobi',
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
-      courier: 'jumia',
+      courier: 'fargo',
       feeKes: null,
     });
     await pickupStationRepository.create(station({ name: 'Station A' }), 'system');
@@ -61,7 +61,7 @@ describe('DeliveryZoneService.listZones', () => {
       zone: 'Nairobi',
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
-      courier: 'jumia',
+      courier: 'fargo',
       feeKes: 200,
     });
 
@@ -71,7 +71,7 @@ describe('DeliveryZoneService.listZones', () => {
 });
 
 describe('DeliveryZoneService.setZoneFee', () => {
-  const key = { zone: 'Nairobi', shippingOrigin: 'Nairobi', packageCategory: 'small', courier: 'jumia' };
+  const key = { zone: 'Nairobi', shippingOrigin: 'Nairobi', packageCategory: 'small', courier: 'fargo' };
 
   it('sets the zone fee and fans it out to every matching station', async () => {
     await deliveryZoneRuleRepository.upsertIfMissing({ businessId: BUSINESS_ID, ...key, feeKes: null });

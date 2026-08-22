@@ -34,17 +34,17 @@ describe('IntegrationSettingsService.listSummaries', () => {
   });
 
   it('reports connected once required fields are present, with secret values masked', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
       apiKey: 'super-secret-key-1234',
-      merchantId: 'merchant-1',
+      phoneNumberId: 'merchant-1',
     });
 
-    const summary = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+    const summary = await integrationSettingsService.getSummary(BUSINESS_ID, 'whatchimp');
     expect(summary.status).toBe('connected');
     const apiKeyField = summary.fields.find((f) => f.key === 'apiKey');
     expect(apiKeyField?.value).toBe('••••1234');
     expect(apiKeyField?.value).not.toContain('super-secret');
-    const merchantField = summary.fields.find((f) => f.key === 'merchantId');
+    const merchantField = summary.fields.find((f) => f.key === 'phoneNumberId');
     expect(merchantField?.value).toBe('merchant-1');
   });
 
@@ -77,20 +77,20 @@ describe('IntegrationSettingsService.listSummaries', () => {
   });
 
   it('reports secretsEncryptedAtRest as null when unconfigured, false when plaintext, true once encrypted', async () => {
-    const unconfigured = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+    const unconfigured = await integrationSettingsService.getSummary(BUSINESS_ID, 'whatchimp');
     expect(unconfigured.secretsEncryptedAtRest).toBeNull();
 
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
       apiKey: 'plain-key',
-      merchantId: 'merchant-1',
+      phoneNumberId: 'merchant-1',
     });
-    const plaintext = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+    const plaintext = await integrationSettingsService.getSummary(BUSINESS_ID, 'whatchimp');
     expect(plaintext.secretsEncryptedAtRest).toBe(false);
 
     process.env.SECRET_ENCRYPTION_KEY = 'c'.repeat(64);
     try {
-      await businessIntegrationSecretRepository.update(BUSINESS_ID, 'jumia', { apiKey: 'plain-key' });
-      const encrypted = await integrationSettingsService.getSummary(BUSINESS_ID, 'jumia');
+      await businessIntegrationSecretRepository.update(BUSINESS_ID, 'whatchimp', { apiKey: 'plain-key' });
+      const encrypted = await integrationSettingsService.getSummary(BUSINESS_ID, 'whatchimp');
       expect(encrypted.secretsEncryptedAtRest).toBe(true);
     } finally {
       delete process.env.SECRET_ENCRYPTION_KEY;
@@ -116,8 +116,8 @@ describe('IntegrationSettingsService.updateSecret', () => {
   it('creates a new secret and returns masked before/after', async () => {
     const { before, after } = await integrationSettingsService.updateSecret(
       BUSINESS_ID,
-      'jumia',
-      { apiKey: 'new-key-5678', merchantId: 'merchant-9' },
+      'whatchimp',
+      { apiKey: 'new-key-5678', phoneNumberId: 'merchant-9' },
       'staff-1',
     );
 
@@ -146,7 +146,7 @@ describe('IntegrationSettingsService.updateSecret', () => {
 
   it('rejects a patch that would leave a required field empty', async () => {
     await expect(
-      integrationSettingsService.updateSecret(BUSINESS_ID, 'jumia', { apiKey: 'only-this' }, 'staff-1'),
+      integrationSettingsService.updateSecret(BUSINESS_ID, 'whatchimp', { apiKey: 'only-this' }, 'staff-1'),
     ).rejects.toBeInstanceOf(IntegrationValidationError);
   });
 
@@ -192,19 +192,19 @@ describe('IntegrationSettingsService.testConnection', () => {
   });
 
   it('reports a clear error instead of testing when nothing is configured', async () => {
-    const result = await integrationSettingsService.testConnection(BUSINESS_ID, 'jumia');
+    const result = await integrationSettingsService.testConnection(BUSINESS_ID, 'whatchimp');
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/no credentials configured/i);
   });
 
   it('refuses to test a disabled integration', async () => {
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
       apiKey: 'key-1',
-      merchantId: 'merchant-1',
+      phoneNumberId: 'merchant-1',
       enabled: false,
     });
 
-    const result = await integrationSettingsService.testConnection(BUSINESS_ID, 'jumia');
+    const result = await integrationSettingsService.testConnection(BUSINESS_ID, 'whatchimp');
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/disabled/i);
   });

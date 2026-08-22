@@ -11,7 +11,7 @@ import type { DeliveryDetails } from './delivery';
  * can change mid-conversation, and the customer paid the frozen price.
  *
  * Created from exactly two paths (redesign: multi-delivery-method
- * checkout): the automated Jumia-pickup flow freezes it the instant
+ * checkout): the automated Fargo-pickup flow freezes it the instant
  * the customer replies YES to the order summary; the Nairobi
  * door-delivery flow freezes it only once a human agent has priced
  * the (dynamic, Bolt) delivery fee — both paths converge on this same

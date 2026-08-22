@@ -20,7 +20,7 @@ export type ConversationStatus =
  * through. Matches §6's "structured operation with required steps in
  * a partial order" reasoning — a decision tree, not free-form chat.
  * The two delivery methods diverge after `awaiting_delivery_selection`:
- * `pickup` (Jumia) continues through automated station search/pricing;
+ * `pickup` (Fargo) continues through automated pickup-point search/pricing;
  * `door` (Bolt) collects address details, then escalates to a human
  * agent — `awaiting_agent_pricing` is a "parked" step the state
  * machine itself never advances past (see
@@ -68,7 +68,9 @@ export interface ConversationStateBlob {
   deliveryMethod?: DeliveryMethod;
   pickupStationId?: string;
   pickupStationName?: string;
-  /** Populated from the selected station's zone fee — 0 until a real Jumia rate card is entered, never fabricated. */
+  /** Door delivery only — which Fargo speed the customer bought. Absent on pickup orders and on every order predating the field. */
+  serviceLevel?: 'next-day' | 'same-day';
+  /** Populated from the selected station's zone fee, or from the door zone rule — never fabricated. */
   deliveryFeeKes?: number;
   /** The most recent search results shown to the customer, so replying with a number needs no new Firestore lookup. */
   pickupStationCandidates?: PickupStationCandidate[];

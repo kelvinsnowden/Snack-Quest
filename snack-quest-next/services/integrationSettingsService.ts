@@ -8,7 +8,6 @@ import { isEncryptionConfigured } from '@/lib/secrets/secretCipher';
 import { getIntegrationFieldManifest, getRequiredFieldKeys, type IntegrationFieldSpec } from '@/lib/integrations/fieldManifest';
 import { testDarajaConnection } from '@/lib/integrations/daraja/darajaGateway';
 import { testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { testJumiaConnection } from '@/lib/integrations/jumia/jumiaGateway';
 import { testMetaConnection } from '@/lib/integrations/meta/metaConversionGateway';
 import { testTiktokConnection } from '@/lib/integrations/tiktok/tiktokConversionGateway';
 import { testAuthEmailConnection } from '@/lib/integrations/email/smtpEmailGateway';
@@ -56,12 +55,11 @@ export interface IntegrationSummary {
   secretsEncryptedAtRest: boolean | null;
 }
 
-const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'jumia', 'meta', 'tiktok', 'authEmail', 'textSms'];
+const PROVIDERS: IntegrationProvider[] = ['daraja', 'whatchimp', 'meta', 'tiktok', 'authEmail', 'textSms'];
 
 const TEST_CONNECTORS: Record<IntegrationProvider, (businessId: string) => Promise<void>> = {
   daraja: testDarajaConnection,
   whatchimp: testWhatchimpConnection,
-  jumia: testJumiaConnection,
   meta: testMetaConnection,
   tiktok: testTiktokConnection,
   authEmail: testAuthEmailConnection,

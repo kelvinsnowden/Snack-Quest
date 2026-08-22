@@ -74,7 +74,7 @@ describe('webhookEventRepository', () => {
     });
     const b = await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
-      provider: 'whatchimp',
+      provider: 'textsms',
       eventKind: 'inbound_message',
       providerEventId: 'shared-id',
       payload: {},
@@ -105,16 +105,16 @@ describe('webhookEventRepository', () => {
   it('markProcessed transitions status and sets processedAt', async () => {
     await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
-      provider: 'jumia',
+      provider: 'textsms',
       eventKind: 'inbound_message',
       providerEventId: 'evt-3',
       payload: {},
     });
-    await webhookEventRepository.markProcessed(BUSINESS_ID, 'jumia', 'evt-3');
+    await webhookEventRepository.markProcessed(BUSINESS_ID, 'textsms', 'evt-3');
 
     const doc = await adminFirestore
       .collection('webhookEvents')
-      .doc(`${BUSINESS_ID}:jumia:evt-3`)
+      .doc(`${BUSINESS_ID}:textsms:evt-3`)
       .get();
     expect(doc.data()?.status).toBe('processed');
     expect(doc.data()?.processedAt).not.toBeNull();
@@ -123,21 +123,21 @@ describe('webhookEventRepository', () => {
   it('markFailed transitions status and records the error', async () => {
     await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
-      provider: 'jumia',
+      provider: 'textsms',
       eventKind: 'inbound_message',
       providerEventId: 'evt-4',
       payload: {},
     });
     await webhookEventRepository.markFailed(
       BUSINESS_ID,
-      'jumia',
+      'textsms',
       'evt-4',
       'signature mismatch',
     );
 
     const doc = await adminFirestore
       .collection('webhookEvents')
-      .doc(`${BUSINESS_ID}:jumia:evt-4`)
+      .doc(`${BUSINESS_ID}:textsms:evt-4`)
       .get();
     expect(doc.data()?.status).toBe('failed');
     expect(doc.data()?.error).toBe('signature mismatch');
@@ -238,12 +238,12 @@ describe('webhookEventRepository.listFailed', () => {
 
     await webhookEventRepository.recordIfNew({
       businessId: BUSINESS_ID,
-      provider: 'jumia',
+      provider: 'textsms',
       eventKind: 'tracking_update',
       providerEventId: 'tracking-ok',
       payload: {},
     });
-    await webhookEventRepository.markProcessed(BUSINESS_ID, 'jumia', 'tracking-ok');
+    await webhookEventRepository.markProcessed(BUSINESS_ID, 'textsms', 'tracking-ok');
 
     const failures = await webhookEventRepository.listFailed(BUSINESS_ID);
     expect(failures).toHaveLength(1);

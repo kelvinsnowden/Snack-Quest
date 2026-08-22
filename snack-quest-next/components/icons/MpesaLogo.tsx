@@ -2,7 +2,7 @@
  * The full M-Pesa lockup (wordmark + the phone/flag mark between "M"
  * and "PESA") for the partner marquee — a fuller reproduction than
  * `MpesaBadge.tsx`'s small text-only pill, built the same way as
- * `BoltIcon`/`JumiaIcon`: real brand green, `textLength`-pinned text
+ * `BoltIcon`: real brand green, `textLength`-pinned text
  * so it can't drift against its neighbours, and a simplified vector
  * approximation of the phone-and-flag mark rather than a traced copy.
  */

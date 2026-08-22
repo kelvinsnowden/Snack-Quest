@@ -160,7 +160,7 @@ export default async function AdminOperationsPage() {
 
       <Section
         title="Webhook failures"
-        description="Inbound provider callbacks (Daraja, Whatchimp, Jumia) that failed to process."
+        description="Inbound provider callbacks (Daraja, Whatchimp, TextSMS) that failed to process."
         count={snapshot.failedWebhookEvents.length}
       >
         {snapshot.failedWebhookEvents.length === 0 ? (

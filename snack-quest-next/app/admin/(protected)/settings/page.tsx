@@ -43,7 +43,7 @@ export default async function AdminSettingsPage() {
                 Integrations
               </p>
               <p className="text-caption text-muted-foreground">
-                Daraja, WhatsApp, Jumia, Meta, and more — credentials and
+                Daraja, WhatsApp, Meta, SMS, and more — credentials and
                 connection status.
               </p>
             </div>

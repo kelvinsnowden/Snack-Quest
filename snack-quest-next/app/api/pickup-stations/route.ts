@@ -1,6 +1,6 @@
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { isJumiaZone } from '@/lib/delivery/jumiaZones';
+import { isFargoZone } from '@/lib/delivery/fargoPricing';
 import {
   groupStationsByCounty,
   stationsInCounty,
@@ -45,7 +45,7 @@ const SEARCH_LIMIT = 12;
  * Admin > Delivery zones; nothing here needs changing for that.
  */
 function isPriced(entry: { data: { zone: string | null } }): boolean {
-  return isJumiaZone(entry.data.zone);
+  return isFargoZone(entry.data.zone);
 }
 
 function toDirectoryStation(entry: {

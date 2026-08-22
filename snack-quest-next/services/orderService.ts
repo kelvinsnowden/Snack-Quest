@@ -29,7 +29,7 @@ import type {
  * `snapshot.delivery` is copied onto the order as-is — the snapshot is
  * already the single source of truth for method/provider/fee/tracking
  * URL by the time payment succeeds, whether it was priced
- * automatically (Jumia pickup) or by a human agent (Bolt door
+ * by a human agent (Fargo door
  * delivery); this Service never re-derives delivery details itself.
  */
 

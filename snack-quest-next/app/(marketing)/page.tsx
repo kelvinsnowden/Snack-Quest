@@ -63,7 +63,7 @@ export default async function MarketingHomePage() {
         averageRating={reviews.averageRating}
         ratingCounts={reviews.ratingCounts}
       />
-      <PartnersMarquee label="M-Pesa accepted · Jumia pickup countrywide · Bolt door delivery" />
+      <PartnersMarquee label="M-Pesa accepted · Door delivery in Nairobi · Fargo pickup countrywide" />
       <TheRoute />
       {/*
         Founder story moved below pricing and how-it-works (§ CRO

@@ -6,7 +6,6 @@ import { packageRepository, OutOfStockError } from '@/repositories/packageReposi
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
-import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import type { ConversionAttribution, ManualPaymentRecord } from '@/types';
@@ -16,7 +15,18 @@ import { normalizeEmail } from '@/lib/checkout/email';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { stkRetryWaitSeconds } from '@/lib/checkout/stkTiming';
 import { toMillis } from '@/lib/firestoreTimestamp';
-import { isJumiaZone } from '@/lib/delivery/jumiaZones';
+import {
+  fargoZoneFor,
+  FARGO_COURIER,
+  FARGO_PACKAGE_CATEGORY,
+  FARGO_SHIPPING_ORIGIN,
+  isFargoZone,
+  isMetroLocation,
+  isSameDayAvailableAt,
+  SAME_DAY_CUTOFF_HOUR,
+  type FargoServiceLevel,
+} from '@/lib/delivery/fargoPricing';
+import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
@@ -245,6 +255,14 @@ export interface WebCheckoutInput {
   /** Optional (§ optional email capture). Dropped rather than rejected when unusable — an unreachable address is not a reason to refuse a paying customer. */
   email?: string;
   county: string;
+  /**
+   * Door delivery only. Fargo's "Nairobi and surrounding" area does not
+   * follow county lines, so a Kiambu address needs its town to know
+   * whether it is Thika (served) or somewhere further out (not).
+   */
+  town?: string;
+  /** Door delivery only. Absent means next-day, which is the service every metro address can have. */
+  serviceLevel?: 'next-day' | 'same-day';
   deliveryMethod: DeliveryMethod;
   pickupStationId?: string;
   addressText?: string;
@@ -309,6 +327,8 @@ export interface WebCheckoutQuoteInput {
   packageId: string;
   quantity: number;
   deliveryMethod: DeliveryMethod;
+  /** Door delivery only — the quote has to show the speed the customer will actually be charged for. */
+  serviceLevel?: 'next-day' | 'same-day';
   pickupStationId?: string;
   referralCode?: string;
   /** Optional — only used to look up wallet credit, and ignored when it isn't yet a valid number. */
@@ -781,7 +801,7 @@ class ConversationService {
           walletCreditAppliedKes,
           deliveryFeeKes: delivery.feeKes,
           totalKes,
-          boltArrangedSeparately: delivery.method === 'door',
+          serviceLevel: delivery.method === 'door' ? (stateBlob.serviceLevel ?? 'next-day') : null,
         },
       };
     }
@@ -833,7 +853,7 @@ class ConversationService {
         walletCreditAppliedKes,
         deliveryFeeKes: delivery.feeKes,
         totalKes,
-        boltArrangedSeparately: delivery.method === 'door',
+        serviceLevel: delivery.method === 'door' ? (stateBlob.serviceLevel ?? 'next-day') : null,
       },
     };
   }
@@ -865,11 +885,11 @@ class ConversationService {
       if (!station || !station.isActive) {
         throw new WebCheckoutValidationError(`Pickup station ${input.pickupStationId} is not available`);
       }
-      // A station Jumia hasn't zoned has an unknown delivery cost. The
+      // A station without a priced zone has an unknown delivery cost. The
       // picker already hides those, but the id arrives from the client,
       // so refusing it here is what actually prevents an order shipping
       // for free — the filter is presentation, this is the rule.
-      if (!isJumiaZone(station.zone)) {
+      if (!isFargoZone(station.zone)) {
         throw new WebCheckoutValidationError(
           'We can’t deliver to that pickup station yet — please choose another one.',
         );
@@ -889,7 +909,10 @@ class ConversationService {
           estate: null,
           contactPhone: null,
           courierShipmentRef: null,
-          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+          // Fargo is booked by hand at a branch, so there is no
+          // tracking URL at order time — the waybill number reaches the
+          // customer by SMS once the parcel is dropped off.
+          trackingUrl: null,
         },
         stateBlob: {
           deliveryMethod: 'pickup',
@@ -900,14 +923,46 @@ class ConversationService {
       };
     }
 
-    if (!isNairobiCounty(county)) {
+    // The door-delivery area is Fargo's "Nairobi and surrounding", which
+    // does not follow county lines — see `isMetroLocation`.
+    if (!isMetroLocation(county, input.town)) {
       throw new WebCheckoutValidationError(
-        'Door delivery is only available in Nairobi — choose a pickup station for other counties',
+        'Door delivery covers Nairobi and the surrounding towns — choose a Fargo pickup point for anywhere else',
       );
     }
     const addressText = (input.addressText ?? '').trim();
     if (!addressText) {
       throw new WebCheckoutValidationError('addressText is required for door delivery');
+    }
+
+    // Same-day is refused rather than silently downgraded once the
+    // cut-off has passed. A customer who chose it is buying the 18:00
+    // guarantee; quietly charging them for next-day instead would be
+    // selling something they did not ask for.
+    const requested: FargoServiceLevel = input.serviceLevel === 'same-day' ? 'same-day' : 'next-day';
+    if (requested === 'same-day' && !isSameDayAvailableAt()) {
+      throw new WebCheckoutValidationError(
+        `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00 — choose next-day delivery instead.`,
+      );
+    }
+
+    // Door delivery is charged now. It used to price at zero because
+    // Bolt's fare was settled between customer and rider after
+    // checkout; Fargo quotes a fixed price, so leaving this at zero
+    // would ship every Nairobi order free — the same revenue leak the
+    // pickup zones were introduced to close.
+    const doorZone = fargoZoneFor('nairobi-metro', requested);
+    const doorFeeKes = await deliveryZoneRuleRepository.findFee(
+      businessId,
+      doorZone,
+      FARGO_SHIPPING_ORIGIN,
+      FARGO_PACKAGE_CATEGORY,
+      FARGO_COURIER,
+    );
+    if (doorFeeKes === null) {
+      throw new WebCheckoutValidationError(
+        'Door delivery pricing is not configured yet — please choose a pickup point, or contact us.',
+      );
     }
     // Optional and validated only if given: the rider calls the paying
     // number when there's no alternate.
@@ -919,9 +974,11 @@ class ConversationService {
       delivery: {
         method: 'door',
         provider: DELIVERY_PROVIDER_FOR_METHOD.door,
+        // Still manual: Fargo is booked by hand at a branch, there is
+        // just a real price attached to it now.
         status: 'pending_manual_booking',
-        shippingOrigin: 'Nairobi',
-        feeKes: 0,
+        shippingOrigin: FARGO_SHIPPING_ORIGIN,
+        feeKes: doorFeeKes,
         county,
         pickupStationId: null,
         pickupStationName: null,
@@ -934,7 +991,8 @@ class ConversationService {
       },
       stateBlob: {
         deliveryMethod: 'door',
-        deliveryFeeKes: 0,
+        deliveryFeeKes: doorFeeKes,
+        serviceLevel: requested,
         addressText,
         ...(input.estate?.trim() ? { estate: input.estate.trim() } : {}),
         ...(input.landmark?.trim() ? { landmark: input.landmark.trim() } : {}),
@@ -1055,7 +1113,7 @@ class ConversationService {
         quantity,
         unitPriceKes: box.priceKes,
         ...totals,
-        boltArrangedSeparately: input.deliveryMethod === 'door',
+        serviceLevel: input.deliveryMethod === 'door' ? (input.serviceLevel ?? 'next-day') : null,
       },
       // The customer typed a code; saying whether it worked is the
       // whole point of showing them a quote.
@@ -1345,7 +1403,10 @@ class ConversationService {
           // The generic tracker is known up front — the same URL for
           // every Jumia shipment, not something a shipment-creation
           // call returns.
-          trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+          // Fargo is booked by hand at a branch, so there is no
+          // tracking URL at order time — the waybill number reaches the
+          // customer by SMS once the parcel is dropped off.
+          trackingUrl: null,
         }
       : {
           method: 'door',
@@ -2265,7 +2326,7 @@ class ConversationService {
     const receiptClause = result.mpesaReceiptNumber ? ` Receipt: ${result.mpesaReceiptNumber}.` : '';
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
-        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Jumia for delivery. Once your package reaches your selected Jumia Pickup Station, you will receive an SMS from Jumia containing your tracking number and pickup instructions. You can track your shipment anytime at: ${JUMIA_PACKAGE_TRACKER_URL}`
+        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Fargo Courier. We'll text you the Fargo waybill number as soon as it is dispatched, and you'll get a message from Fargo when it reaches your selected pickup point.`
         : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     const milestoneMessage =

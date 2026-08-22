@@ -11,6 +11,6 @@ describe('assertIntegrationEnabled', () => {
   });
 
   it('throws IntegrationDisabledError when enabled is false', () => {
-    expect(() => assertIntegrationEnabled('biz-1', 'jumia', { enabled: false })).toThrow(IntegrationDisabledError);
+    expect(() => assertIntegrationEnabled('biz-1', 'whatchimp', { enabled: false })).toThrow(IntegrationDisabledError);
   });
 });

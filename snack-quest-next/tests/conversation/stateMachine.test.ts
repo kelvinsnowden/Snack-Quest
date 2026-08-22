@@ -88,7 +88,7 @@ describe('transition: awaiting_customer_details', () => {
       county: 'Nairobi',
     });
     expect(result.botReply).toContain('Door Delivery');
-    expect(result.botReply).toContain('Jumia Pickup');
+    expect(result.botReply).toContain('Fargo Pickup');
   });
 
   it('re-prompts when the reply has no comma-separated county', () => {
@@ -103,7 +103,7 @@ describe('transition: awaiting_customer_details', () => {
 });
 
 describe('transition: awaiting_delivery_selection', () => {
-  it('offers only Jumia pickup outside Nairobi', () => {
+  it('offers only Fargo pickup outside Nairobi', () => {
     const result = transition({
       currentStep: 'awaiting_delivery_selection',
       stateBlob: { county: 'Kisumu' },
