@@ -15,7 +15,11 @@ const SECRET = {
   consumerSecret: 'test-secret',
   shortcode: '174379',
   accountType: 'till' as const,
-  passkey: 'test-passkey',
+  // Shaped like a real Safaricom passkey (64 hex characters) rather
+  // than a short placeholder — the preflight now blocks a passkey too
+  // short to be one, having found a seven-character value in
+  // production silently killing every push.
+  passkey: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90',
   callbackUrl: `https://example.com/api/webhooks/daraja/${BUSINESS_ID}`,
   env: 'sandbox' as const,
 };

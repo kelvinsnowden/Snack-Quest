@@ -48,6 +48,14 @@ const PASSKEY_PATTERN = /^[0-9a-f]{64}$/i;
 /** Paybills and tills are 5–7 digits. Anything else was mistyped or is a different identifier entirely. */
 const SHORTCODE_PATTERN = /^\d{5,7}$/;
 
+/**
+ * Below this, a passkey is not a passkey under any plausible format —
+ * it is a placeholder or a truncated paste. Set well under Safaricom's
+ * own 64 so that a future format change does not turn this into a
+ * blocker on a working account.
+ */
+const IMPLAUSIBLY_SHORT_PASSKEY = 20;
+
 function isProduction(config: DarajaConfig): boolean {
   return config.baseUrl.includes('api.safaricom.co.ke');
 }
@@ -82,7 +90,23 @@ export function inspectDarajaConfig(config: DarajaConfig): DarajaPreflightIssue[
     });
   }
 
-  if (!PASSKEY_PATTERN.test(config.passkey.trim())) {
+  const passkey = config.passkey.trim();
+  if (passkey.length < IMPLAUSIBLY_SHORT_PASSKEY) {
+    // Severity split from the shape check below on purpose. Safaricom's
+    // 64-hex format is an observation about the keys they have issued,
+    // not a promise, so a merely unexpected shape stays a warning. A
+    // value this short is a different claim: no credential of this kind
+    // has ever been a handful of characters, so it is a placeholder, a
+    // truncated paste, or the wrong field entirely — and it produces
+    // exactly the failure that is hardest to diagnose, an accepted push
+    // that never rings.
+    issues.push({
+      severity: 'blocker',
+      title: `The passkey is only ${passkey.length} characters long`,
+      detail:
+        'Safaricom passkeys are 64 hexadecimal characters. A value this short cannot be one, so every STK push will be accepted, return a CheckoutRequestID, and never reach a phone. Copy the passkey from the Daraja portal: your live app → M-Pesa Express → the passkey issued for this shortcode.',
+    });
+  } else if (!PASSKEY_PATTERN.test(passkey)) {
     issues.push({
       severity: 'warning',
       title: 'The passkey is not the shape Safaricom issues',
