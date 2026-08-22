@@ -7,10 +7,10 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  * the real operational partners behind every order: Bolt for door
  * delivery, Fargo Courier for pickup points, M-Pesa for payment. All three
  * are already real integrations elsewhere in this codebase
- * (`MPESA_RECIPIENT_NAME`, the Bolt/Jumia delivery copy on
+ * (`MPESA_RECIPIENT_NAME`, the Fargo delivery copy on
  * `/how-it-works`) — nothing invented for this strip. Shared between
  * the home page (replacing `PickYourBox`'s old plain-text "M-Pesa
- * accepted · Jumia pickup countrywide · Bolt Package home delivery"
+ * accepted · Door delivery in Nairobi · Fargo pickup countrywide"
  * line — the same three names, just illegible as a sentence next to
  * an actual marquee of them) and the Creator Program page (§ Creator
  * Program CRO pass).

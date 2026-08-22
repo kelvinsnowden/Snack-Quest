@@ -34,7 +34,7 @@ const FACTS = [
   {
     icon: MapPin,
     title: 'Where it ships',
-    body: 'Anywhere in Kenya, via a Jumia pickup station, or by Bolt door delivery in Nairobi. Most orders arrive within 24–48 hours.',
+    body: 'To your door in Nairobi and the surrounding towns, or to a Fargo Courier pickup point anywhere else in Kenya. Most orders arrive within 24–48 hours.',
   },
 ];
 

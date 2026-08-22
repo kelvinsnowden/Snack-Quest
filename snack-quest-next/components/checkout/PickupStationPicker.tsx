@@ -7,7 +7,7 @@ import { formatKes } from '@/lib/orders/format';
 import type { CountyGroup, DirectoryStation } from '@/lib/pickupStations/directory';
 
 /**
- * The Jumia pickup-station selector (§ Website Becomes the Primary
+ * The Fargo pickup-point selector (§ Website Becomes the Primary
  * Commerce Channel — "a modern, intuitive interface" for choosing a
  * station, explicitly not "a long, overwhelming dropdown list" of the
  * ~200 stations nationwide).

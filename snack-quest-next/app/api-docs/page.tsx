@@ -216,7 +216,7 @@ export default function ApiDocsPage() {
                     Per-business webhook secret
                   </dt>
                   <dd className="text-small text-muted-foreground mt-1">
-                    Daraja and Jumia callbacks are verified against a secret
+                    Daraja callbacks are verified against a secret
                     stored on the business record, so each tenant&apos;s
                     callbacks are independently authenticated.
                   </dd>

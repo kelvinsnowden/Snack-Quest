@@ -102,14 +102,14 @@ describe('conversationTurnService — channel-agnostic engine', () => {
     await pickupStationRepository.create(
       {
         businessId: BUSINESS_ID,
-        courier: 'jumia',
+        courier: 'fargo',
         name: 'Naivas CBD Station',
         latitude: -1.2833,
         longitude: 36.8167,
         description: 'Nairobi CBD',
         county: 'Nairobi',
         town: 'CBD',
-        zone: 'Nairobi',
+        zone: 'Upcountry',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 250,

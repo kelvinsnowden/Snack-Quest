@@ -157,7 +157,7 @@ const POSTS: BlogPost[] = [
         items: [
           'Pick a box on the website — no app, no account.',
           'Pay with M-Pesa, approved on your own phone.',
-          'Choose a Jumia pickup station anywhere in Kenya, or Bolt door delivery in Nairobi.',
+          'Door delivery in Nairobi and the surrounding towns, or a Fargo Courier pickup point anywhere else in Kenya.',
           'Boxes are hand-packed and usually arrive within 24–48 hours.',
         ],
       },
@@ -215,7 +215,7 @@ const POSTS: BlogPost[] = [
       { type: 'h2', text: 'Getting them in Kenya' },
       {
         type: 'p',
-        text: "A handful of specialty import grocers in Nairobi carry individual Japanese items, but it means knowing what to look for and buying piece by piece. The easier way in is a curated box: Snack Quest hand-picks a mix that includes Japanese snacks alongside Korean, Chinese, and Thai ones, delivered to a Jumia pickup station anywhere in Kenya or by Bolt in Nairobi — no hunting required, though which Japanese items land in your specific box is part of the surprise.",
+        text: "A handful of specialty import grocers in Nairobi carry individual Japanese items, but it means knowing what to look for and buying piece by piece. The easier way in is a curated box: Snack Quest hand-picks a mix that includes Japanese snacks alongside Korean, Chinese, and Thai ones, delivered to your door in Nairobi or to a Fargo Courier pickup point anywhere else in Kenya — no hunting required, though which Japanese items land in your specific box is part of the surprise.",
       },
       {
         type: 'links',

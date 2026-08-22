@@ -232,8 +232,8 @@ export function StaffInitiatedOrderDialog({
                 <SummaryRow
                   label="Delivery"
                   value={
-                    sent.pricing.boltArrangedSeparately
-                      ? 'Bolt, arranged separately'
+                    sent.pricing.serviceLevel
+                      ? `${formatKes(sent.pricing.deliveryFeeKes)} · ${sent.pricing.serviceLevel === 'same-day' ? 'same-day' : 'next-day'}`
                       : formatKes(sent.pricing.deliveryFeeKes)
                   }
                 />
@@ -254,11 +254,6 @@ export function StaffInitiatedOrderDialog({
                 ) : null}
               </dl>
 
-              {sent.pricing.boltArrangedSeparately ? (
-                <p className="text-muted-foreground text-sm">
-                  Bolt was not charged. Arrange the rider with the customer on WhatsApp once payment lands.
-                </p>
-              ) : null}
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>
@@ -349,7 +344,7 @@ export function StaffInitiatedOrderDialog({
                             : 'border-border bg-surface text-muted-foreground hover:bg-border/30',
                         )}
                       >
-                        {method === 'pickup' ? 'Jumia pickup' : 'Nairobi door'}
+                        {method === 'pickup' ? 'Fargo pickup' : 'Nairobi door'}
                       </button>
                     ))}
                   </div>

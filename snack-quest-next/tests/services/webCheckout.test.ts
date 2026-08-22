@@ -21,8 +21,8 @@ import { packageRepository } from '@/repositories/packageRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { orderRepository } from '@/repositories/orderRepository';
+import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
-import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
 
 /**
@@ -60,14 +60,14 @@ async function seed(overrides: { priceKes?: number; stockCount?: number; station
   stationId = await pickupStationRepository.create(
     {
       businessId: BUSINESS_ID,
-      courier: 'jumia',
+      courier: 'fargo',
       name: 'Kasarani Pickup Station',
       latitude: 0,
       longitude: 0,
       description: 'Next to the mall',
       county: 'Nairobi',
       town: 'Kasarani',
-      zone: 'Zone 1',
+      zone: 'Upcountry',
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
       deliveryFeeKes: overrides.stationFeeKes ?? 300,
@@ -145,7 +145,7 @@ describe('startWebCheckout — pricing authority', () => {
       discountKes: 0,
       deliveryFeeKes: 300,
       totalKes: 2800,
-      boltArrangedSeparately: false,
+      serviceLevel: null,
     });
     expect(result.stkPushSent).toBe(true);
     expect(result.payingPhone).toBe(PHONE_NORMALIZED);
@@ -413,13 +413,14 @@ describe('startWebCheckout — pricing authority', () => {
     });
 
     expect(quote?.pricing.deliveryFeeKes).toBe(0);
-    expect(quote?.pricing.boltArrangedSeparately).toBe(true);
+    // Door delivery is a charged Fargo service now, with a speed attached.
+    expect(quote?.pricing.serviceLevel).toBe('next-day');
     expect(quote?.pricing.totalKes).toBe(2500);
   });
 });
 
 describe('startWebCheckout — delivery', () => {
-  it('records the chosen station and the Jumia tracker on the snapshot', async () => {
+  it('records the chosen pickup point on the snapshot, with no tracking link to promise', async () => {
     const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
 
     const conversation = await conversationRepository.findById(result.checkoutSessionId);
@@ -428,16 +429,31 @@ describe('startWebCheckout — delivery', () => {
     );
     expect(snapshot?.delivery).toMatchObject({
       method: 'pickup',
-      provider: 'jumia',
+      provider: 'fargo',
       status: 'pending',
       pickupStationId: stationId,
       pickupStationName: 'Kasarani Pickup Station',
       feeKes: 300,
-      trackingUrl: JUMIA_PACKAGE_TRACKER_URL,
+      trackingUrl: null,
     });
   });
 
-  it('never charges for Bolt on a door delivery', async () => {
+  /**
+   * The inverse of what this used to assert. Door delivery priced at
+   * zero while Bolt's fare was settled between customer and rider after
+   * checkout; Fargo quotes a fixed price, so leaving it free would ship
+   * every Nairobi order at the business's expense.
+   */
+  it('charges the Fargo door rate on a Nairobi delivery', async () => {
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: BUSINESS_ID,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'fargo',
+      feeKes: 250,
+    });
+
     const result = await service().startWebCheckout(
       BUSINESS_ID,
       pickupInput({
@@ -448,11 +464,10 @@ describe('startWebCheckout — delivery', () => {
       }),
     );
 
-    expect(result.pricing.deliveryFeeKes).toBe(0);
-    expect(result.pricing.boltArrangedSeparately).toBe(true);
-    // The customer pays for the box only; the rider is settled directly.
-    expect(result.pricing.totalKes).toBe(2500);
-    expect(initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 2500 }));
+    expect(result.pricing.deliveryFeeKes).toBe(250);
+    expect(result.pricing.serviceLevel).toBe('next-day');
+    expect(result.pricing.totalKes).toBe(2750);
+    expect(initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 2750 }));
 
     const conversation = await conversationRepository.findById(result.checkoutSessionId);
     const snapshot = await conversationCheckoutSnapshotRepository.findById(
@@ -460,9 +475,9 @@ describe('startWebCheckout — delivery', () => {
     );
     expect(snapshot?.delivery).toMatchObject({
       method: 'door',
-      provider: 'bolt',
+      provider: 'fargo',
       status: 'pending_manual_booking',
-      feeKes: 0,
+      feeKes: 250,
       addressText: 'Kilimani, Argwings Kodhek Rd',
       estate: 'Wood Avenue Court',
       trackingUrl: null,
@@ -497,7 +512,7 @@ describe('startWebCheckout — delivery', () => {
     const unzoned = await pickupStationRepository.create(
       {
         businessId: BUSINESS_ID,
-        courier: 'jumia',
+        courier: 'fargo',
         name: 'Nyali Pickup Station',
         latitude: 0,
         longitude: 0,
@@ -524,14 +539,14 @@ describe('startWebCheckout — delivery', () => {
     const foreignStation = await pickupStationRepository.create(
       {
         businessId: 'some-other-business',
-        courier: 'jumia',
+        courier: 'fargo',
         name: 'Foreign Station',
         latitude: 0,
         longitude: 0,
         description: '',
         county: 'Nairobi',
         town: 'Nairobi',
-        zone: 'Zone 1',
+        zone: 'Upcountry',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 0,

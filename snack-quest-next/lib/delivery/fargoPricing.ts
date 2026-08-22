@@ -63,6 +63,37 @@ export function deliveryMethodForRegion(region: FargoRegion): 'door' | 'pickup' 
   return region === 'nairobi-metro' ? 'door' : 'pickup';
 }
 
+/**
+ * The towns Fargo treats as "Nairobi and surrounding" — the door-delivery
+ * area, confirmed with the business.
+ *
+ * A named list rather than a county check, because the boundary does not
+ * follow county lines: Nairobi county is entirely inside, while Kiambu
+ * and Kajiado are only partly (Thika and Limuru are in, Tala is not).
+ * A county test would either refuse Thika or promise door delivery to
+ * Loitokitok, 200km away.
+ */
+const METRO_TOWNS = new Set(['Nairobi', 'Ruiru', 'Kiambu', 'Kikuyu', 'Limuru', 'Kitengela', 'Thika']);
+
+/**
+ * Whether an address qualifies for door delivery.
+ *
+ * All of Nairobi county qualifies whatever town is given, since the
+ * whole county sits inside the radius and a customer typing an estate
+ * name rather than "Nairobi" should not be pushed to a pickup point.
+ * Outside it, the town has to be one Fargo actually serves.
+ */
+export function isMetroLocation(county: string | null | undefined, town?: string | null): boolean {
+  if ((county ?? '').trim().toLowerCase() === 'nairobi') {
+    return true;
+  }
+  return METRO_TOWNS.has((town ?? '').trim());
+}
+
+export function metroTowns(): string[] {
+  return [...METRO_TOWNS];
+}
+
 /** A pickup point is only ever offered outside the radius; inside it, the parcel comes to the door. */
 export function isCustomerFacingPickupPoint(region: FargoRegion): boolean {
   return deliveryMethodForRegion(region) === 'pickup';

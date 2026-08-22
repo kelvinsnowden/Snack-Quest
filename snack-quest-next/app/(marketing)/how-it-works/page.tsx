@@ -44,7 +44,7 @@ const STEPS = [
     icon: Truck,
     title: 'Tell us where to send it',
     description:
-      "Choose a Jumia pickup station anywhere in Kenya and the fee for that station is added to your total automatically, before you pay. In Nairobi you can pick door delivery instead: the box itself is paid for here, and we arrange the Bolt rider with you on WhatsApp afterwards.",
+      "In Nairobi and the surrounding towns your box comes to your door — next day, or same day if you order before 1pm. Anywhere else in Kenya, collect it from a Fargo Courier pickup point. Either way the delivery fee is added to your total automatically, before you pay.",
   },
   {
     icon: Smartphone,

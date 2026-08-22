@@ -11,7 +11,7 @@ import { BoltIcon } from '@/components/icons/BoltIcon';
  * `mpesa`/`jumia`/`bolt` render the actual brand: the Snack Quest mark
  * for step 1, and the real payment/delivery partners for the steps
  * that are genuinely about them — step 2 is the M-Pesa prompt, step 3
- * is fulfilled by either Jumia pickup or Bolt door delivery, hence two
+ * is fulfilled by either door delivery or a Fargo pickup point, hence two
  * badges there instead of one. `photo` is a real unboxing — an actual
  * table of Snack Quest contents, not a stock or generated image — for
  * step 4, which has no logo of its own to show but has the realest
@@ -45,7 +45,7 @@ const CHECKPOINTS: Checkpoint[] = [
   {
     badges: [{ kind: 'fargo' }, { kind: 'bolt' }],
     title: 'Fast Delivery Across Kenya',
-    body: 'Hand-packed within 24 hours. Jumia pickup stations countrywide, or Bolt Package to your door in Nairobi.',
+    body: 'Hand-packed within 24 hours. To your door in Nairobi, or a Fargo Courier pickup point countrywide.',
   },
   {
     badges: [{ kind: 'photo', src: '/route-unboxing.jpg', alt: 'A real Snack Quest box, unboxed' }],

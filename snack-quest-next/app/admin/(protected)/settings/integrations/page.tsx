@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: 'Integrations' };
 /**
  * Which env vars back each platform-wide (not per-tenant) integration
  * — shown status-only, never editable here: unlike Daraja/Whatchimp/
- * Jumia/Meta, these are one credential per deployment (see
+ * Meta, these are one credential per deployment (see
  * `.env.local.example`'s own note on why), so an edit here would do
  * nothing without a redeploy. Google Maps/AI/Analytics have no Gateway
  * implementation at all yet (§ production readiness audit) — shown so

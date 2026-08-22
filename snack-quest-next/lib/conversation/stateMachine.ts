@@ -19,7 +19,7 @@ import type {
  * the result and sends `botReply` through `WhatchimpGateway`.
  *
  * Two delivery methods diverge at `awaiting_delivery_selection`
- * (redesign: multi-delivery-method checkout). `pickup` (Jumia,
+ * (redesign: multi-delivery-method checkout). `pickup` (Fargo,
  * automated, nationwide) continues through station search/selection
  * straight to a priced order summary. `door` (Bolt, Nairobi-only,
  * dynamic pricing) collects address details and then hands off to a
@@ -43,7 +43,7 @@ export interface PackageOption {
 
 export interface ConversationTransitionContext {
   availablePackages: PackageOption[];
-  /** Nairobi customers get a door-delivery choice; everyone else is Jumia-pickup only. */
+  /** Nairobi customers get a door-delivery choice; everyone else is Fargo-pickup only. */
   isNairobi: boolean;
   /**
    * Search results for the customer's most recent pickup-station
@@ -165,9 +165,9 @@ function deliveryOptionsFor(
   return isNairobi
     ? [
         { index: 1, method: 'door', label: 'Door Delivery (Nairobi Only)' },
-        { index: 2, method: 'pickup', label: 'Jumia Pickup Station' },
+        { index: 2, method: 'pickup', label: 'Fargo Pickup Point' },
       ]
-    : [{ index: 1, method: 'pickup', label: 'Jumia Pickup Station' }];
+    : [{ index: 1, method: 'pickup', label: 'Fargo Pickup Point' }];
 }
 
 function formatDeliveryOptionsMessage(isNairobi: boolean): string {
@@ -175,7 +175,7 @@ function formatDeliveryOptionsMessage(isNairobi: boolean): string {
   const lines = options.map((opt) => `${opt.index}. ${opt.label}`);
   const intro = isNairobi
     ? 'How would you like to receive your box?'
-    : "We deliver outside Nairobi via Jumia's pickup network.";
+    : "Outside Nairobi we deliver to a Fargo Courier pickup point near you.";
   return `${intro}\n${lines.join('\n')}`;
 }
 
@@ -193,7 +193,7 @@ function matchDeliveryOption(
   if (trimmed.includes('door')) {
     return options.find((opt) => opt.method === 'door')?.method ?? null;
   }
-  if (trimmed.includes('pickup') || trimmed.includes('jumia')) {
+  if (trimmed.includes('pickup') || trimmed.includes('fargo')) {
     return options.find((opt) => opt.method === 'pickup')?.method ?? null;
   }
   return null;
@@ -284,7 +284,7 @@ export const PAYMENT_CONFIRMATION_REMINDER =
  * The final, itemized total — the last thing shown before the
  * customer is asked to explicitly opt into payment. Used both when
  * first entering `awaiting_customer_payment_confirmation` (from the
- * automated Jumia-pickup referral step, or from a human agent's Bolt
+ * automated Fargo-pickup referral step, or from a human agent's Bolt
  * quotation) and, unchanged, is exactly what a real order is priced
  * at — never re-derived or re-guessed later.
  */

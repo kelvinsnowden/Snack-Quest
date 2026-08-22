@@ -24,7 +24,7 @@ export type ShipmentStatus =
 /**
  * One entry per real courier tracking update this shipment received
  * (§ Logistics: wire tracking webhook consumption) — `status` is the
- * courier's own raw status string (e.g. Jumia's), kept verbatim even
+ * courier's own raw status string, kept verbatim even
  * when it doesn't map to a `ShipmentStatus` transition, so the full
  * history is auditable regardless of whether this codebase's status
  * mapping (`lib/delivery/jumiaStatusMapping.ts`) recognized it.

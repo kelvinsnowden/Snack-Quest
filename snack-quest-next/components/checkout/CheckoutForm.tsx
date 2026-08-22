@@ -434,7 +434,7 @@ export function CheckoutForm({
             selected={deliveryMethod === 'pickup'}
             onSelect={() => setDeliveryMethod('pickup')}
             icon={<Store className="size-5" aria-hidden="true" />}
-            title="Jumia pickup station"
+            title="Fargo pickup point"
             detail="Collect from any station countrywide. Delivery fee shown before you pay."
           />
           <DeliveryOption
@@ -666,9 +666,7 @@ function OrderSummary({
             reading of a rate the business has set to zero (or not yet
             set; see the delivery-zone rates in Admin).
           */}
-          {pricing.boltArrangedSeparately
-            ? 'Arranged after checkout'
-            : !stationChosen
+          {!stationChosen
               ? 'Choose a station'
               : pricing.deliveryFeeKes > 0
                 ? formatKes(pricing.deliveryFeeKes)

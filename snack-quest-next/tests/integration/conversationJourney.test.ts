@@ -15,7 +15,6 @@ import { walletService } from '@/services/walletService';
 import { featureFlagService } from '@/services/featureFlagService';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
-import { JUMIA_PACKAGE_TRACKER_URL } from '@/lib/integrations/jumia/constants';
 import { POST as priceDoorDeliveryRoute } from '@/app/api/internal/conversations/[conversationId]/price-door-delivery/route';
 import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
 
@@ -49,7 +48,6 @@ interface TenantConfig {
   whatsappPhoneNumberId: string;
   adminWhatsappPhone: string;
   shortcode: string;
-  jumiaMerchantId: string;
   metaPixelId: string;
   tiktokPixelCode: string;
 }
@@ -60,7 +58,6 @@ const SNACK_QUEST: TenantConfig = {
   whatsappPhoneNumberId: 'wa-snack-quest',
   adminWhatsappPhone: '254799999001',
   shortcode: '174379',
-  jumiaMerchantId: 'jumia-snack-quest',
   metaPixelId: 'pixel-snack-quest',
   tiktokPixelCode: 'ttpixel-snack-quest',
 };
@@ -71,7 +68,6 @@ const RIVAL_SNACKS: TenantConfig = {
   whatsappPhoneNumberId: 'wa-rival-snacks',
   adminWhatsappPhone: '254799999002',
   shortcode: '555555',
-  jumiaMerchantId: 'jumia-rival-snacks',
   metaPixelId: 'pixel-rival-snacks',
   tiktokPixelCode: 'ttpixel-rival-snacks',
 };
@@ -102,10 +98,6 @@ async function seedBusiness(tenant: TenantConfig) {
   await businessIntegrationSecretRepository.set(tenant.businessId, 'whatchimp', {
     apiKey: `wa-key-${tenant.businessId}`,
     phoneNumberId: tenant.whatsappPhoneNumberId,
-  });
-  await businessIntegrationSecretRepository.set(tenant.businessId, 'jumia', {
-    apiKey: `jumia-key-${tenant.businessId}`,
-    merchantId: tenant.jumiaMerchantId,
   });
   await businessIntegrationSecretRepository.set(tenant.businessId, 'meta', {
     pixelId: tenant.metaPixelId,
@@ -141,14 +133,14 @@ async function seedFreePickupStation(businessId: string) {
   await pickupStationRepository.create(
     {
       businessId,
-      courier: 'jumia',
+      courier: 'whatchimp',
       name: 'Naivas CBD Station',
       latitude: -1.2833,
       longitude: 36.8167,
       description: 'Nairobi CBD',
       county: 'Nairobi',
       town: 'CBD',
-      zone: 'Nairobi',
+      zone: 'Upcountry',
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
       deliveryFeeKes: 0,
@@ -292,14 +284,14 @@ async function walkToConfirmation(
   await service.start(businessId, PHONE, { text: 'PAY' }); // explicit customer opt-in — never automatic
 }
 
-describe('the full customer journey: Meta ad through Jumia shipment confirmation', () => {
+describe('the full customer journey: Meta ad through Fargo shipment confirmation', () => {
   beforeEach(async () => {
     await seedBusiness(SNACK_QUEST);
     await seedPackages(SNACK_QUEST.businessId);
     await seedFreePickupStation(SNACK_QUEST.businessId);
   });
 
-  it('closes the entire loop: order created, inventory reserved, Jumia shipment created, Meta CAPI dispatched, admin notified', async () => {
+  it('closes the entire loop: order created, inventory reserved, Fargo shipment created, Meta CAPI dispatched, admin notified', async () => {
     const fetchMock = mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
     const service = new ConversationService(gateway);
@@ -335,7 +327,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     expect(order.customer.customerId).toBeNull();
     expect(order.customer.phoneNumber).toBe(PHONE);
     expect(order.delivery.method).toBe('pickup');
-    expect(order.delivery.provider).toBe('jumia');
+    expect(order.delivery.provider).toBe('fargo');
     expect(order.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
     // A native WhatsApp-originated order has no browser to attribute to.
     expect(order.attribution).toBeNull();
@@ -350,8 +342,12 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
 
     const shipment = await shipmentRepository.findByOrderId(orderDoc.id);
     expect(shipment?.data.businessId).toBe(SNACK_QUEST.businessId);
-    expect(shipment?.data.status).toBe('created');
-    expect(shipment?.data.courierShipmentRef).toBe(`shipment-${SNACK_QUEST.jumiaMerchantId}`);
+    // Fargo is booked by hand, so a new shipment waits for a human
+    // rather than arriving with a courier reference already attached.
+    expect(shipment?.data.status).toBe('pending_manual_booking');
+    // Manual booking: Fargo issues a waybill at drop-off, so there is
+    // no courier reference until a human records one.
+    expect(shipment?.data.courierShipmentRef).toBeNull();
 
     const metaCall = fetchMock.mock.calls.find((call) =>
       String(call[0]).includes('graph.facebook.com'),
@@ -419,18 +415,18 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     // A dedicated Zone 1 station, not the shared `seedFreePickupStation`
     // one — that fixture's `zone: 'Nairobi'` only the native-bot
     // selection path tolerates; `startWebCheckout` validates against
-    // `isJumiaZone`, same reasoning as the ad-attribution test above.
+    // `isFargoZone`, same reasoning as the ad-attribution test above.
     const stationId = await pickupStationRepository.create(
       {
         businessId: SNACK_QUEST.businessId,
-        courier: 'jumia',
+        courier: 'whatchimp',
         name: 'Zone 1 Station',
         latitude: -1.2833,
         longitude: 36.8167,
         description: 'Nairobi CBD',
         county: 'Nairobi',
         town: 'CBD',
-        zone: 'Zone 1',
+        zone: 'Upcountry',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 0,
@@ -484,19 +480,19 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
     // A dedicated station, not the shared `seedFreePickupStation` one
     // — that fixture's `zone: 'Nairobi'` predates real Jumia zone
     // pricing and only the native-bot selection path tolerates it;
-    // `startWebCheckout` validates against `isJumiaZone`, same as
+    // `startWebCheckout` validates against `isFargoZone`, same as
     // `webCheckout.test.ts`'s own fixtures.
     const stationId = await pickupStationRepository.create(
       {
         businessId: SNACK_QUEST.businessId,
-        courier: 'jumia',
+        courier: 'whatchimp',
         name: 'Zone 1 Station',
         latitude: -1.2833,
         longitude: 36.8167,
         description: 'Nairobi CBD',
         county: 'Nairobi',
         town: 'CBD',
-        zone: 'Zone 1',
+        zone: 'Upcountry',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 0,
@@ -702,7 +698,7 @@ describe('the full customer journey: Meta ad through Jumia shipment confirmation
   });
 });
 
-describe('the full Jumia pickup station journey: search, select, auto-priced fee, order, tracking confirmation', () => {
+describe('the full Fargo pickup point journey: search, select, auto-priced fee, order, tracking confirmation', () => {
   beforeEach(async () => {
     await seedBusiness(SNACK_QUEST);
     await seedPackages(SNACK_QUEST.businessId);
@@ -714,14 +710,14 @@ describe('the full Jumia pickup station journey: search, select, auto-priced fee
     await pickupStationRepository.create(
       {
         businessId: SNACK_QUEST.businessId,
-        courier: 'jumia',
+        courier: 'whatchimp',
         name: 'G4S Kasarani Station',
         latitude: -1.2201,
         longitude: 36.8899,
         description: 'Kasarani, opposite Sportsview Hotel',
         county: 'Nairobi',
         town: 'Kasarani',
-        zone: 'Nairobi',
+        zone: 'Upcountry',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 250,
@@ -775,14 +771,15 @@ describe('the full Jumia pickup station journey: search, select, auto-priced fee
     expect(order.delivery.pickupStationName).toBe('G4S Kasarani Station');
     expect(order.delivery.feeKes).toBe(250);
     expect(order.delivery.shippingOrigin).toBe('Nairobi');
-    expect(order.delivery.provider).toBe('jumia');
-    expect(order.delivery.trackingUrl).toBe(JUMIA_PACKAGE_TRACKER_URL);
+    expect(order.delivery.provider).toBe('fargo');
+    // Fargo is booked by hand, so nothing to link to at order time.
+    expect(order.delivery.trackingUrl).toBeNull();
     expect(order.pricing.totalKes).toBe(2750);
     expect(order.pricing.deliveryFeeKes).toBe(250);
 
     const finalMessage = gateway.sent.at(-1)?.text ?? '';
     expect(finalMessage).toContain('curated within 24 hours');
-    expect(finalMessage).toContain(JUMIA_PACKAGE_TRACKER_URL);
+    expect(finalMessage).toContain('Fargo Courier');
   });
 });
 
@@ -907,7 +904,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     const snapshotId = pricedAndConfirmed!.conversationCheckoutSnapshotId!;
     const snapshot = await conversationCheckoutSnapshotRepository.findById(snapshotId);
     expect(snapshot?.delivery.method).toBe('door');
-    expect(snapshot?.delivery.provider).toBe('bolt');
+    expect(snapshot?.delivery.provider).toBe('fargo');
     expect(snapshot?.delivery.feeKes).toBe(400);
     expect(snapshot?.delivery.addressText).toBe('123 Ngong Road');
     expect(snapshot?.totalKes).toBe(2900); // 2500 box + 400 Bolt fee, no automated referral step for door delivery
@@ -926,7 +923,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     expect(ordersSnapshot.size).toBe(1);
     const order = ordersSnapshot.docs[0].data();
     expect(order.delivery.method).toBe('door');
-    expect(order.delivery.provider).toBe('bolt');
+    expect(order.delivery.provider).toBe('fargo');
     expect(order.delivery.feeKes).toBe(400);
     expect(order.delivery.addressText).toBe('123 Ngong Road');
     expect(order.delivery.estate).toBe('Kilimani');
@@ -939,7 +936,7 @@ describe('door delivery (human-assisted checkout via a human agent)', () => {
     // reflects that real state, not a fabricated "created" status.
     const shipment = await shipmentRepository.findByOrderId(ordersSnapshot.docs[0].id);
     expect(shipment?.data.status).toBe('pending_manual_booking');
-    expect(shipment?.data.provider).toBe('bolt');
+    expect(shipment?.data.provider).toBe('fargo');
     expect(shipment?.data.courierShipmentRef).toBeNull();
 
     const finalMessage = gateway.sent.at(-1)?.text ?? '';
@@ -1145,8 +1142,12 @@ describe('platform proof: a second, independent tenant', () => {
     // Each tenant's shipment used its OWN Jumia merchant account.
     const sqShipment = await shipmentRepository.findByOrderId(sqOrders.docs[0].id);
     const rivalShipment = await shipmentRepository.findByOrderId(rivalOrders.docs[0].id);
-    expect(sqShipment?.data.courierShipmentRef).toBe(`shipment-${SNACK_QUEST.jumiaMerchantId}`);
-    expect(rivalShipment?.data.courierShipmentRef).toBe(`shipment-${RIVAL_SNACKS.jumiaMerchantId}`);
+    // Tenant isolation, asserted on the shipment's own business rather
+    // than on a courier reference — manual booking produces none until
+    // a human records the waybill.
+    expect(sqShipment?.data.businessId).toBe(SNACK_QUEST.businessId);
+    expect(rivalShipment?.data.businessId).toBe(RIVAL_SNACKS.businessId);
+    expect(sqShipment?.id).not.toBe(rivalShipment?.id);
 
     // Each tenant's admin was notified — never the other tenant's admin.
     expect(sqGateway.sent.some((m) => m.phone === SNACK_QUEST.adminWhatsappPhone)).toBe(true);
@@ -1372,14 +1373,14 @@ describe('recording an order that is already paid (§ manual payment)', () => {
     await pickupStationRepository.create(
       {
         businessId: SNACK_QUEST.businessId,
-        courier: 'jumia',
+        courier: 'whatchimp',
         name: 'Zoned CBD Station',
         latitude: -1.2833,
         longitude: 36.8167,
         description: 'Nairobi CBD',
         county: 'Nairobi',
         town: 'CBD',
-        zone: 'Zone 1',
+        zone: 'Upcountry',
         shippingOrigin: 'Nairobi',
         packageCategory: 'small',
         deliveryFeeKes: 0,

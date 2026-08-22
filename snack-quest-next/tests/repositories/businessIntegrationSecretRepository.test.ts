@@ -36,7 +36,7 @@ describe('businessIntegrationSecretRepository', () => {
   });
 
   it('throws IntegrationSecretNotFoundError for an unconfigured provider', async () => {
-    await expect(businessIntegrationSecretRepository.get(BUSINESS_ID, 'jumia')).rejects.toThrow(
+    await expect(businessIntegrationSecretRepository.get(BUSINESS_ID, 'whatchimp')).rejects.toThrow(
       IntegrationSecretNotFoundError,
     );
   });
@@ -62,23 +62,23 @@ describe('businessIntegrationSecretRepository', () => {
   it('encrypts secret fields at rest when SECRET_ENCRYPTION_KEY is set, transparently decrypting on read', async () => {
     process.env.SECRET_ENCRYPTION_KEY = TEST_KEY;
 
-    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
       apiKey: 'super-secret-jumia-key',
-      merchantId: 'merchant-1',
+      phoneNumberId: 'merchant-1',
     });
 
     const raw = await adminFirestore
       .collection('businesses')
       .doc(BUSINESS_ID)
       .collection('integrationSecrets')
-      .doc('jumia')
+      .doc('whatchimp')
       .get();
     expect(raw.data()?.apiKey).not.toBe('super-secret-jumia-key');
     expect(String(raw.data()?.apiKey)).toMatch(/^enc:v1:/);
     // Non-secret fields stay in the clear.
-    expect(raw.data()?.merchantId).toBe('merchant-1');
+    expect(raw.data()?.phoneNumberId).toBe('merchant-1');
 
-    const decrypted = await businessIntegrationSecretRepository.get(BUSINESS_ID, 'jumia');
+    const decrypted = await businessIntegrationSecretRepository.get(BUSINESS_ID, 'whatchimp');
     expect(decrypted.apiKey).toBe('super-secret-jumia-key');
   });
 
@@ -95,24 +95,24 @@ describe('businessIntegrationSecretRepository', () => {
 
   describe('isEncryptedAtRest', () => {
     it('returns null when nothing is configured for that provider yet', async () => {
-      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'jumia')).toBeNull();
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'whatchimp')).toBeNull();
     });
 
     it('returns false when a secret is stored without an encryption key configured', async () => {
-      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
         apiKey: 'plain-key',
-        merchantId: 'merchant-1',
+        phoneNumberId: 'merchant-1',
       });
-      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'jumia')).toBe(false);
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'whatchimp')).toBe(false);
     });
 
     it('returns true once the secret is saved with an encryption key configured', async () => {
       process.env.SECRET_ENCRYPTION_KEY = TEST_KEY;
-      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'jumia', {
+      await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
         apiKey: 'encrypted-key',
-        merchantId: 'merchant-1',
+        phoneNumberId: 'merchant-1',
       });
-      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'jumia')).toBe(true);
+      expect(await businessIntegrationSecretRepository.isEncryptedAtRest(BUSINESS_ID, 'whatchimp')).toBe(true);
     });
 
     it('flips back to false for a provider whose secret predates the key, until it is re-saved', async () => {
