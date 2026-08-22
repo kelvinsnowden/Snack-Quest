@@ -21,7 +21,7 @@ export type ConversationStatus =
  * a partial order" reasoning — a decision tree, not free-form chat.
  * The two delivery methods diverge after `awaiting_delivery_selection`:
  * `pickup` (Fargo) continues through automated pickup-point search/pricing;
- * `door` (Bolt) collects address details, then escalates to a human
+ * `door` (Fargo) collects address details, prices them, then escalates to a human only when no rate is configured
  * agent — `awaiting_agent_pricing` is a "parked" step the state
  * machine itself never advances past (see
  * ConversationService.escalateToAgent / priceDoorDelivery). Both

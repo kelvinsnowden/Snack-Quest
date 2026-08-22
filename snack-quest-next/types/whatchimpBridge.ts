@@ -55,9 +55,9 @@ export interface PickupStationOption {
 export interface QuoteDeliveryResponse {
   checkoutSessionId: string;
   nextStep: string;
-  /** Whether this county qualifies for Bolt door delivery — pickup is the only option outside Nairobi. */
+  /** Whether this county qualifies for Fargo door delivery — a pickup point is the only option outside the Nairobi area. */
   doorDeliveryEligible: boolean;
-  /** True once a door-delivery order has been handed to a human agent for Bolt pricing — the bot should tell the customer someone will follow up. */
+  /** True once a door-delivery order has been handed to a human agent for pricing, which only happens when no Fargo rate is configured — the bot should tell the customer someone will follow up. */
   escalatedToAgent: boolean;
   /** Populated when searching by town/area/county; empty once a station is selected. */
   pickupStations: PickupStationOption[];
