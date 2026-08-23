@@ -1,12 +1,14 @@
 import 'server-only';
 
+import { Timestamp } from 'firebase-admin/firestore';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { conversationRepository } from '@/repositories/conversationRepository';
+import { orderRepository } from '@/repositories/orderRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { StkPushResult } from '@/lib/integrations/types';
-import type { ManualPaymentRecord, PaymentIntent } from '@/types';
+import type { ManualPaymentMethod, ManualPaymentRecord, PaymentIntent } from '@/types';
 
 /**
  * Owns the payment lifecycle (PLATFORM_ARCHITECTURE_V2.md §7):
@@ -495,6 +497,88 @@ class PaymentService {
       // a receipt; `CheckoutRequestID` is what traces this payment.
       mpesaReceiptNumber: '',
     };
+  }
+
+  /**
+   * Corrects the details of a payment recorded by hand
+   * (§ correcting a manually recorded payment).
+   *
+   * A mistyped M-Pesa code or the wrong method picked used to be
+   * permanent: `manualPayment` was written once, at order creation,
+   * and nothing could touch it afterwards. The only remedies were
+   * leaving wrong data in the books or deleting a real order.
+   *
+   * What it will not do is as important as what it will. The amount is
+   * untouchable — changing what an order cost after the money arrived
+   * is not a correction, it is a different order, and that is the
+   * refund path's job. `recordedBy` is untouchable — the person who
+   * vouched for the payment is still that person, and overwriting them
+   * with whoever fixed the typo would erase the only accountability
+   * record this kind of payment has. The correction is attributed
+   * separately, and the caller writes an audit entry carrying the
+   * before and after.
+   */
+  async correctManualPayment(input: {
+    businessId: string;
+    orderId: string;
+    method: ManualPaymentMethod;
+    reference: string | null;
+    note: string | null;
+    correctedByUid: string;
+    correctedByName: string;
+  }): Promise<{ corrected: boolean; reason?: string; before?: ManualPaymentRecord; after?: ManualPaymentRecord }> {
+    const order = await orderRepository.findById(input.orderId);
+    if (!order || order.businessId !== input.businessId) {
+      return { corrected: false, reason: 'Order not found' };
+    }
+    const before = order.payment.manualPayment;
+    if (!before) {
+      return {
+        corrected: false,
+        // A Daraja-settled order's receipt came from Safaricom, not
+        // from anybody's typing, so there is no human error to correct
+        // and editing it would only make the record less true.
+        reason: 'This order was settled by M-Pesa directly — there is nothing recorded by hand to correct.',
+      };
+    }
+
+    const reference = input.reference?.trim() || null;
+    // Same rule the original recording enforces: cash is the only
+    // method with genuinely nothing to reference.
+    if (input.method !== 'cash' && !reference) {
+      return { corrected: false, reason: 'A payment reference is required for an M-Pesa or bank transfer.' };
+    }
+
+    const after: ManualPaymentRecord = {
+      ...before,
+      method: input.method,
+      reference,
+      note: input.note?.trim() || null,
+      correctedByUid: input.correctedByUid,
+      correctedByName: input.correctedByName,
+      // Admin-SDK Timestamp into a type declared with the client
+      // SDK's — the same cast every other write in this codebase uses
+      // at that boundary.
+      correctedAt: Timestamp.now() as unknown as ManualPaymentRecord['recordedAt'],
+    };
+
+    // Only a real M-Pesa code belongs in the receipt field. Cash and
+    // bank transfers leave it null rather than parking a bank
+    // reference somewhere every report reads as a Safaricom receipt.
+    const mpesaReceiptNumber = input.method === 'mpesa_manual' ? reference : null;
+
+    await orderRepository.updateManualPayment(input.orderId, after, mpesaReceiptNumber, input.correctedByUid);
+    await paymentIntentRepository.updateManualPayment(order.payment.paymentIntentId, after);
+
+    await publishEvent(input.businessId, 'ManualPaymentCorrected', 'order', input.orderId, {
+      method: after.method,
+      reference: after.reference,
+      previousMethod: before.method,
+      previousReference: before.reference,
+      correctedByUid: input.correctedByUid,
+    });
+
+    return { corrected: true, before, after };
   }
 
   async initiateAttempt(

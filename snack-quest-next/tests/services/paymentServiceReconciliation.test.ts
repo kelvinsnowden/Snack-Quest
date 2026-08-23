@@ -59,6 +59,7 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('paymentIntents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('webhookEvents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('conversations'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('orders'));
   // The default: one conversation whose current checkout is the one
   // `seedStuckIntent` creates. Tests about stale attempts re-point it.
   await seedConversation('snapshot-1');
@@ -504,6 +505,178 @@ describe('PaymentService.recoverProcessingPayment', () => {
 
     expect(result).toBeNull();
     expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Fixing a payment somebody typed in wrong (§ correcting a manually
+ * recorded payment). It used to be permanent: the only remedies for a
+ * mistyped M-Pesa code were leaving it wrong or deleting a real order.
+ */
+describe('PaymentService.correctManualPayment', () => {
+  const ORDER_ID = 'order-manual-1';
+  const INTENT_ID = 'intent-manual-1';
+
+  async function seedManualOrder(manualPayment: Record<string, unknown>) {
+    await adminFirestore.collection('paymentIntents').doc(INTENT_ID).set({
+      businessId: BUSINESS_ID,
+      conversationId: 'conv-1',
+      conversationCheckoutSnapshotId: 'snapshot-1',
+      customerId: null,
+      phoneNumber: '254700000000',
+      amountKes: 2500,
+      status: 'succeeded',
+      manualPayment,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+    await adminFirestore.collection('orders').doc(ORDER_ID).set({
+      businessId: BUSINESS_ID,
+      orderNumber: 1,
+      status: 'confirmed',
+      payment: {
+        paymentIntentId: INTENT_ID,
+        mpesaReceiptNumber: 'WRONGCODE',
+        manualPayment,
+      },
+      pricing: { totalKes: 2500 },
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  }
+
+  const original = {
+    method: 'mpesa_manual',
+    reference: 'WRONGCODE',
+    recordedByUid: 'admin-1',
+    recordedByName: 'Kelvin',
+    note: null,
+    recordedAt: Timestamp.now(),
+  };
+
+  it('corrects the reference on both the order and its payment intent', async () => {
+    await seedManualOrder(original);
+
+    const outcome = await paymentService.correctManualPayment({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      method: 'mpesa_manual',
+      reference: 'QGH7RIGHT01',
+      note: 'Typo in the original code',
+      correctedByUid: 'admin-2',
+      correctedByName: 'Wanjiru',
+    });
+
+    expect(outcome.corrected).toBe(true);
+
+    const order = (await adminFirestore.collection('orders').doc(ORDER_ID).get()).data();
+    expect(order?.payment.manualPayment.reference).toBe('QGH7RIGHT01');
+    // The receipt is the same fact in a second place; leaving it
+    // behind is how the books stop reconciling.
+    expect(order?.payment.mpesaReceiptNumber).toBe('QGH7RIGHT01');
+
+    const intent = (await adminFirestore.collection('paymentIntents').doc(INTENT_ID).get()).data();
+    expect(intent?.manualPayment.reference).toBe('QGH7RIGHT01');
+  });
+
+  it('keeps the person who first vouched for the payment, and names the corrector separately', async () => {
+    await seedManualOrder(original);
+
+    await paymentService.correctManualPayment({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      method: 'mpesa_manual',
+      reference: 'QGH7RIGHT01',
+      note: null,
+      correctedByUid: 'admin-2',
+      correctedByName: 'Wanjiru',
+    });
+
+    const order = (await adminFirestore.collection('orders').doc(ORDER_ID).get()).data();
+    expect(order?.payment.manualPayment.recordedByName).toBe('Kelvin');
+    expect(order?.payment.manualPayment.correctedByName).toBe('Wanjiru');
+  });
+
+  it('clears the receipt when the method changes to one that has none', async () => {
+    await seedManualOrder(original);
+
+    await paymentService.correctManualPayment({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      method: 'cash',
+      reference: null,
+      note: null,
+      correctedByUid: 'admin-2',
+      correctedByName: 'Wanjiru',
+    });
+
+    const order = (await adminFirestore.collection('orders').doc(ORDER_ID).get()).data();
+    expect(order?.payment.mpesaReceiptNumber).toBeNull();
+    expect(order?.payment.manualPayment.method).toBe('cash');
+  });
+
+  it('refuses to drop the reference on a method that must have one', async () => {
+    await seedManualOrder(original);
+
+    const outcome = await paymentService.correctManualPayment({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      method: 'bank_transfer',
+      reference: '   ',
+      note: null,
+      correctedByUid: 'admin-2',
+      correctedByName: 'Wanjiru',
+    });
+
+    expect(outcome.corrected).toBe(false);
+    expect(outcome.reason).toMatch(/reference is required/);
+  });
+
+  /**
+   * A Daraja receipt came from Safaricom, not from anybody's typing —
+   * there is no human error to correct, and editing it would only make
+   * the record less true.
+   */
+  it('refuses to edit an order M-Pesa settled directly', async () => {
+    await adminFirestore.collection('orders').doc(ORDER_ID).set({
+      businessId: BUSINESS_ID,
+      orderNumber: 2,
+      status: 'confirmed',
+      payment: { paymentIntentId: INTENT_ID, mpesaReceiptNumber: 'NLJ7RT61SV' },
+      pricing: { totalKes: 2500 },
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+
+    const outcome = await paymentService.correctManualPayment({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      method: 'cash',
+      reference: null,
+      note: null,
+      correctedByUid: 'admin-2',
+      correctedByName: 'Wanjiru',
+    });
+
+    expect(outcome.corrected).toBe(false);
+    expect(outcome.reason).toMatch(/settled by M-Pesa directly/);
+  });
+
+  it('refuses an order belonging to another business', async () => {
+    await seedManualOrder(original);
+
+    const outcome = await paymentService.correctManualPayment({
+      businessId: 'some-other-business',
+      orderId: ORDER_ID,
+      method: 'cash',
+      reference: null,
+      note: null,
+      correctedByUid: 'admin-2',
+      correctedByName: 'Wanjiru',
+    });
+
+    expect(outcome.corrected).toBe(false);
+    expect(outcome.reason).toBe('Order not found');
   });
 });
 

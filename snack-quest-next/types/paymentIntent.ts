@@ -38,11 +38,30 @@ export interface ManualPaymentRecord {
    * accountable artifact there is `recordedByUid`, not a receipt.
    */
   reference: string | null;
-  /** Who asserted the money arrived. Never derived from the request body — always the authenticated super admin's own uid. */
+  /**
+   * Who asserted the money arrived. Never derived from the request
+   * body — always the authenticated super admin's own uid.
+   *
+   * Never overwritten by a later correction either. If someone typed
+   * the wrong M-Pesa code, the person who vouched for the payment is
+   * still the person who vouched for it; replacing them with whoever
+   * fixed the typo would erase the only accountability record this
+   * kind of payment has.
+   */
   recordedByUid: string;
   recordedByName: string;
   note: string | null;
   recordedAt: Timestamp;
+  /**
+   * Set when a super admin corrected the details afterwards
+   * (§ correcting a manually recorded payment) — a mistyped M-Pesa
+   * code, the wrong method picked. Absent means the record still says
+   * exactly what was first entered, which is the common case and the
+   * one the books should be able to assume.
+   */
+  correctedByUid?: string;
+  correctedByName?: string;
+  correctedAt?: Timestamp;
 }
 
 export interface PaymentIntent {

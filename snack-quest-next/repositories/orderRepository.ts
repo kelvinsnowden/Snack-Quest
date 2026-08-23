@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { Order, OrderFulfillment, OrderItem, OrderStatus } from '@/types';
+import type { ManualPaymentRecord, Order, OrderFulfillment, OrderItem, OrderStatus } from '@/types';
 
 /**
  * `orders` + `items` subcollection reads/writes (TDD §8, expanded per
@@ -118,6 +118,37 @@ class OrderRepository {
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: actor,
         ...(reason !== undefined ? { statusReason: reason } : {}),
+      });
+  }
+
+  /**
+   * Corrects the recorded details of a payment that arrived outside
+   * Daraja (§ correcting a manually recorded payment).
+   *
+   * Only the details a human typed and can get wrong. The amount is
+   * deliberately not among them: changing what an order cost after the
+   * money arrived is not a correction, it is a different order, and it
+   * belongs to the refund path.
+   *
+   * `mpesaReceiptNumber` moves with the reference because for a
+   * customer-initiated M-Pesa transfer they are the same fact recorded
+   * in two places — leaving the receipt behind is precisely how the
+   * books stop reconciling.
+   */
+  async updateManualPayment(
+    orderId: string,
+    manualPayment: ManualPaymentRecord,
+    mpesaReceiptNumber: string | null,
+    actor: string,
+  ): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(orderId)
+      .update({
+        'payment.manualPayment': manualPayment,
+        'payment.mpesaReceiptNumber': mpesaReceiptNumber,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor,
       });
   }
 

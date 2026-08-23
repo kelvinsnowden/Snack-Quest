@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { CorrectManualPaymentDialog } from '@/components/admin/CorrectManualPaymentDialog';
 import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { refundRepository } from '@/repositories/refundRepository';
@@ -139,9 +141,42 @@ export default async function AdminOrderDetailPage({
                 {payment.manualPayment.note ? (
                   <DetailRow label="Note" value={payment.manualPayment.note} />
                 ) : null}
+                {/*
+                  Shown whenever it exists. A corrected record that
+                  looks identical to one entered right the first time
+                  is the thing that makes books untrustworthy — anyone
+                  checking these figures should be able to see that a
+                  human changed them, and who.
+                */}
+                {payment.manualPayment.correctedByName ? (
+                  <DetailRow
+                    label="Corrected by"
+                    value={
+                      <span className="text-muted-foreground">
+                        {payment.manualPayment.correctedByName}
+                        {payment.manualPayment.correctedAt
+                          ? ` · ${formatDateTime(payment.manualPayment.correctedAt)}`
+                          : ''}
+                      </span>
+                    }
+                  />
+                ) : null}
               </>
             ) : null}
             <DetailRow label="Payment intent" value={<span className="text-xs tabular-nums">{payment.paymentIntentId}</span>} />
+            {/*
+              Super admin only, the same gate recording one has: this
+              is the one payment whose evidence is a person's word, so
+              asserting it and amending it are the same privilege.
+            */}
+            {payment.manualPayment && isSuperAdmin(session) ? (
+              <CorrectManualPaymentDialog
+                orderId={orderId}
+                currentMethod={payment.manualPayment.method}
+                currentReference={payment.manualPayment.reference}
+                currentNote={payment.manualPayment.note}
+              />
+            ) : null}
           </CardContent>
         </Card>
 

@@ -143,6 +143,19 @@ class PaymentIntentRepository {
     });
   }
 
+  /**
+   * The intent's own copy of a corrected manual payment
+   * (§ correcting a manually recorded payment). Written alongside the
+   * order's copy — the two must never disagree about how money
+   * arrived, since reconciliation reads both.
+   */
+  async updateManualPayment(intentId: string, manualPayment: ManualPaymentRecord): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(intentId).update({
+      manualPayment,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   async addAttempt(
     intentId: string,
     attempt: Omit<PaymentAttempt, 'initiatedAt' | 'resolvedAt' | 'queryAttemptCount'>,
