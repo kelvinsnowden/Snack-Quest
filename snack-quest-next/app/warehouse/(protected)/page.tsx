@@ -117,7 +117,7 @@ export default async function WarehouseQueuePage({
         </div>
 
         {readyForCourier.shipments.length === 0 ? (
-          <EmptyState icon={Truck} title="Nothing waiting on a courier booking" description="Paid door-delivery orders needing a manual Bolt booking will show here." />
+          <EmptyState icon={Truck} title="Nothing waiting on a courier booking" description="Paid door-delivery orders needing a manual Tushop booking will show here." />
         ) : (
           <Card className="overflow-hidden p-0">
             <div className="overflow-x-auto">

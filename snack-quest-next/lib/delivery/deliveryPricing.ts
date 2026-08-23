@@ -116,6 +116,35 @@ export function metroTowns(): string[] {
   return [...METRO_TOWNS];
 }
 
+/**
+ * The door-delivery area written out for a customer to read.
+ *
+ * Exists because "Nairobi door delivery" cost a real sale: someone in
+ * Thika read it, concluded they were not covered, went looking for a
+ * Fargo station — and there is none, because Thika is inside the
+ * radius and gets door delivery. Naming the towns is the difference
+ * between a customer who orders and one who asks support whether they
+ * can. Nairobi leads because it is the anchor everyone recognises.
+ */
+export function metroAreaLabel(): string {
+  const rest = [...METRO_TOWNS].filter((town) => town !== 'Nairobi');
+  return `Nairobi, ${rest.slice(0, -1).join(', ')} & ${rest.at(-1)}`;
+}
+
+/**
+ * Whether a search term a customer typed into the pickup-point picker
+ * is actually a door-delivery town — the exact dead end that sent one
+ * to support: searching "Thika", finding nothing, and being told to
+ * "try a town name instead".
+ */
+export function matchesMetroTown(query: string): string | null {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return null;
+  }
+  return [...METRO_TOWNS].find((town) => town.toLowerCase() === needle) ?? null;
+}
+
 /** A pickup point is only ever offered outside the radius; inside it, the parcel comes to the door. */
 export function isCustomerFacingPickupPoint(region: FargoRegion): boolean {
   return deliveryMethodForRegion(region) === 'pickup';

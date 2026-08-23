@@ -20,7 +20,7 @@ import { safeJsonLd } from '@/lib/seo/safeJsonLd';
 export const metadata: Metadata = buildPageMetadata({
   title: 'How it works',
   description:
-    'Four steps from box to doorstep: pick a box, choose pickup or Nairobi door delivery, pay with M-Pesa, and we pack and ship. No app to install.',
+    'Four steps from box to doorstep: pick a box, choose door delivery or a pickup point, pay with M-Pesa, and we pack and ship. No app to install.',
   path: '/how-it-works',
 });
 
@@ -44,7 +44,7 @@ const STEPS = [
     icon: Truck,
     title: 'Tell us where to send it',
     description:
-      "In Nairobi and the surrounding towns your box comes to your door — next day, or same day if you order before 1pm. Anywhere else in Kenya, collect it from a Fargo Courier pickup point. Either way the delivery fee is added to your total automatically, before you pay.",
+      "In Nairobi, Ruiru, Kiambu, Kikuyu, Limuru, Kitengela and Thika your box comes to your door — next day, or same day if you order before 1pm. Anywhere else in Kenya, collect it from a Fargo Courier pickup point. Either way the delivery fee is added to your total automatically, before you pay.",
   },
   {
     icon: Smartphone,
@@ -66,7 +66,7 @@ export default async function HowItWorksPage() {
     '@type': 'HowTo',
     name: 'How to order from Snack Quest',
     description:
-      'Four steps from box to doorstep: pick a box, choose pickup or Nairobi door delivery, pay with M-Pesa, and we pack and ship.',
+      'Four steps from box to doorstep: pick a box, choose door delivery or a pickup point, pay with M-Pesa, and we pack and ship.',
     step: STEPS.map((step, index) => ({
       '@type': 'HowToStep',
       position: index + 1,
@@ -125,7 +125,7 @@ export default async function HowItWorksPage() {
               </h2>
               <p className="text-body text-muted-foreground mt-2">
                 That&apos;s what our WhatsApp is for. Ask about a box before you
-                buy, chase an order, change an address, arrange your Bolt rider,
+                buy, chase an order, change an address,
                 or tell us something arrived wrong. Same number, same people, and
                 you never need it just to place an order.
               </p>

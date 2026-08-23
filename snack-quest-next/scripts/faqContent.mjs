@@ -46,7 +46,15 @@ export const FAQS = [
   {
     question: 'Where do you deliver?',
     answer:
-      'Anywhere in Kenya. In Nairobi and the surrounding towns, it comes straight to your door — next day, or same day if you order before 1pm. Anywhere else, collect it from a Fargo Courier pickup point near you.',
+      'Anywhere in Kenya. In Nairobi, Ruiru, Kiambu, Kikuyu, Limuru, Kitengela and Thika it comes straight to your door — next day, or same day if you order before 1pm. Anywhere else, collect it from a Fargo Courier pickup point near you.',
+  },
+  {
+    // A real customer in Thika could not find a Fargo station and had
+    // to ask. There is none, because Thika is inside the door-delivery
+    // radius — which the site had never said out loud.
+    question: 'I am in Thika (or Ruiru, Kiambu, Kitengela…) — which option do I choose?',
+    answer:
+      'Choose door delivery, not a pickup point. Nairobi, Ruiru, Kiambu, Kikuyu, Limuru, Kitengela and Thika are all close enough that we bring the box to your address instead, so there is no Fargo station listed for those towns. Just type your address at checkout.',
   },
   {
     question: 'Is delivery included in the price?',

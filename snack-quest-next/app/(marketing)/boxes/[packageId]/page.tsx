@@ -244,7 +244,7 @@ export default async function BoxDetailPage({
             <p className="text-muted-foreground flex items-start gap-2 text-sm">
               <Truck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>
-                In Nairobi and the surrounding towns, it comes straight to your door — next day, or
+                In Nairobi, Ruiru, Kiambu, Kikuyu, Limuru, Kitengela and Thika, it comes straight to your door — next day, or
                 same day if you order before 1pm.
               </span>
             </p>

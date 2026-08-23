@@ -37,7 +37,7 @@ export default async function ContactPage() {
               Message us on WhatsApp
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
-              Where your order is, changing an address, arranging a Bolt rider,
+              Where your order is, changing an address,
               or anything that went wrong. Real replies, no ticket system.
             </p>
           </div>
