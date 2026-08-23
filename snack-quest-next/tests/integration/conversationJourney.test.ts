@@ -779,7 +779,9 @@ describe('the full Fargo pickup point journey: search, select, auto-priced fee, 
 
     const finalMessage = gateway.sent.at(-1)?.text ?? '';
     expect(finalMessage).toContain('curated within 24 hours');
-    expect(finalMessage).toContain('Fargo Courier');
+    // Tushop, not Fargo: every parcel is handed to Tushop, who use
+    // their own Fargo partnership to reach a pickup point.
+    expect(finalMessage).toContain('Tushop');
   });
 });
 
