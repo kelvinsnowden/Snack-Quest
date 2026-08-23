@@ -7,6 +7,8 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { CorrectManualPaymentDialog } from '@/components/admin/CorrectManualPaymentDialog';
 import { orderRepository } from '@/repositories/orderRepository';
+import { packageRepository } from '@/repositories/packageRepository';
+import { ChangeOrderBoxDialog } from '@/components/admin/ChangeOrderBoxDialog';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { refundRepository } from '@/repositories/refundRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,10 +51,13 @@ export default async function AdminOrderDetailPage({
     notFound();
   }
 
-  const [items, shipment, refunds] = await Promise.all([
+  const [items, shipment, refunds, boxes] = await Promise.all([
     orderRepository.listItems(orderId),
     shipmentRepository.findByOrderId(orderId),
     refundRepository.listByOrderId(session.businessId, orderId),
+    // Only needed for the super-admin box-correction control; an empty
+    // list just hides it rather than failing the page.
+    packageRepository.listActive(session.businessId).catch(() => []),
   ]);
 
   const { customer, delivery, payment, pricing, product } = order;
@@ -224,6 +229,36 @@ export default async function AdminOrderDetailPage({
             <DetailRow label="Delivery fee" value={formatKes(pricing.deliveryFeeKes)} />
             <DetailRow label="Credits used" value={`-${formatKes(pricing.creditsUsedKes)}`} />
             <DetailRow label="Total" value={<span className="text-base">{formatKes(pricing.totalKes)}</span>} />
+            {/*
+              Only when the two disagree, which only happens after the
+              box on a paid order was changed. Its absence is the
+              normal case and means "paid exactly the total".
+            */}
+            {typeof pricing.amountPaidKes === 'number' && pricing.amountPaidKes !== pricing.totalKes ? (
+              <>
+                <DetailRow label="Actually paid" value={formatKes(pricing.amountPaidKes)} />
+                <DetailRow
+                  label={pricing.amountPaidKes < pricing.totalKes ? 'Customer owes' : 'Refund due'}
+                  value={
+                    <span className="text-warning font-medium">
+                      {formatKes(Math.abs(pricing.amountPaidKes - pricing.totalKes))}
+                    </span>
+                  }
+                />
+              </>
+            ) : null}
+            {isSuperAdmin(session) && boxes.length > 0 ? (
+              <ChangeOrderBoxDialog
+                orderId={orderId}
+                boxes={boxes.map(({ id, data }) => ({ id, name: data.name, priceKes: data.priceKes }))}
+                currentPackageId={product.packageId}
+                currentQuantity={items.reduce((sum, item) => sum + item.quantity, 0) || 1}
+                amountPaidKes={pricing.amountPaidKes ?? pricing.totalKes}
+                deliveryFeeKes={pricing.deliveryFeeKes}
+                discountKes={pricing.discountKes}
+                creditsUsedKes={pricing.creditsUsedKes}
+              />
+            ) : null}
           </CardContent>
         </Card>
       </div>

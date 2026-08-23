@@ -286,3 +286,148 @@ describe('OrderService.updateStatus — shipment SMS', () => {
     expect((await adminFirestore.collection('orders').doc(orderId).get()).data()?.status).toBe('dispatched');
   });
 });
+
+/**
+ * Fixing the wrong box picked while recording a sale by hand
+ * (§ correcting the box on an order). Stock has to follow the change,
+ * and the money that already arrived must not be quietly rewritten to
+ * make the new total look settled.
+ */
+describe('OrderService.changeBox', () => {
+  const ORDER_ID = 'order-change-box';
+
+  async function seedBox(id: string, name: string, priceKes: number, stockCount: number) {
+    await adminFirestore.collection('packages').doc(id).set({
+      businessId: BUSINESS_ID,
+      name,
+      description: '',
+      priceKes,
+      stockCount,
+      isActive: true,
+    });
+  }
+
+  async function seedPaidOrder(packageId: string, packageLabel: string, totalKes: number, quantity = 1) {
+    const orderRef = adminFirestore.collection('orders').doc(ORDER_ID);
+    await orderRef.set({
+      businessId: BUSINESS_ID,
+      orderNumber: 1,
+      status: 'confirmed',
+      product: { packageId, packageLabel },
+      customer: { customerId: null, phoneNumber: '254700000000', customerName: 'Test', county: 'Nairobi' },
+      payment: { paymentIntentId: 'intent-1', mpesaReceiptNumber: null, manualPayment: null },
+      pricing: { subtotalKes: totalKes - 250, discountKes: 0, deliveryFeeKes: 250, creditsUsedKes: 0, totalKes },
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+    await orderRef.collection('items').doc().set({ packageId, packageLabel, quantity, unitCostKes: totalKes - 250 });
+  }
+
+  beforeEach(async () => {
+    await adminFirestore.recursiveDelete(adminFirestore.collection('packages'));
+    await adminFirestore.recursiveDelete(adminFirestore.collection('orders'));
+    await seedBox('starter', 'Starter Box', 2500, 10);
+    await seedBox('deluxe', 'Deluxe Box', 3500, 4);
+  });
+
+  it('moves stock off the old box and onto the new one', async () => {
+    await seedPaidOrder('starter', 'Starter Box', 2750);
+
+    const result = await orderService.changeBox({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      packageId: 'deluxe',
+      quantity: 1,
+      changedByUid: 'admin-1',
+    });
+
+    expect(result.changed).toBe(true);
+    const starter = (await adminFirestore.collection('packages').doc('starter').get()).data();
+    const deluxe = (await adminFirestore.collection('packages').doc('deluxe').get()).data();
+    expect(starter?.stockCount).toBe(11); // released
+    expect(deluxe?.stockCount).toBe(3); // reserved
+  });
+
+  it('surfaces the shortfall instead of writing it off as a discount', async () => {
+    await seedPaidOrder('starter', 'Starter Box', 2750);
+
+    const result = await orderService.changeBox({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      packageId: 'deluxe',
+      quantity: 1,
+      changedByUid: 'admin-1',
+    });
+
+    // 3500 + 250 delivery = 3750 owed, 2750 paid.
+    expect(result).toMatchObject({ changed: true, amountPaidKes: 2750, balanceKes: -1000 });
+    const order = await orderRepository.findById(ORDER_ID);
+    expect(order?.pricing.totalKes).toBe(3750);
+    expect(order?.pricing.amountPaidKes).toBe(2750);
+  });
+
+  it('rewrites the line item so revenue per unit stays honest', async () => {
+    await seedPaidOrder('starter', 'Starter Box', 2750);
+
+    await orderService.changeBox({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      packageId: 'deluxe',
+      quantity: 2,
+      changedByUid: 'admin-1',
+    });
+
+    const items = await orderRepository.listItems(ORDER_ID);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ packageId: 'deluxe', quantity: 2, unitCostKes: 3500 });
+  });
+
+  it('refuses a box there is not enough stock for, and changes nothing', async () => {
+    await seedPaidOrder('starter', 'Starter Box', 2750);
+
+    const result = await orderService.changeBox({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      packageId: 'deluxe',
+      quantity: 99,
+      changedByUid: 'admin-1',
+    });
+
+    expect(result).toMatchObject({ changed: false });
+    const order = await orderRepository.findById(ORDER_ID);
+    expect(order?.product.packageId).toBe('starter');
+    const starter = (await adminFirestore.collection('packages').doc('starter').get()).data();
+    expect(starter?.stockCount).toBe(10); // untouched
+  });
+
+  /** Same box, new quantity — the two movements have to net, not clobber each other. */
+  it('nets the stock movement when only the quantity changes', async () => {
+    await seedPaidOrder('starter', 'Starter Box', 2750, 1);
+
+    await orderService.changeBox({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      packageId: 'starter',
+      quantity: 3,
+      changedByUid: 'admin-1',
+    });
+
+    const starter = (await adminFirestore.collection('packages').doc('starter').get()).data();
+    expect(starter?.stockCount).toBe(8); // 10 + 1 released - 3 reserved
+  });
+
+  it('refuses to change the box on a refunded order', async () => {
+    await seedPaidOrder('starter', 'Starter Box', 2750);
+    await adminFirestore.collection('orders').doc(ORDER_ID).update({ status: 'refunded' });
+
+    const result = await orderService.changeBox({
+      businessId: BUSINESS_ID,
+      orderId: ORDER_ID,
+      packageId: 'deluxe',
+      quantity: 1,
+      changedByUid: 'admin-1',
+    });
+
+    expect(result).toMatchObject({ changed: false });
+  });
+});
