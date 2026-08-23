@@ -16,17 +16,17 @@ export const FAQS = [
   {
     question: "Where do Snack Quest's snacks come from?",
     answer:
-      'Snack Quest is about snacks from around the world, and our first stop is Asia: Japan, Korea, China, and Thailand. Every box is a curated mix across all four — not a single country. More regions will join over time; the Asia boxes are staying either way.',
+      'Snack Quest is about snacks from around the world, and our first stop is Asia: Japan, Korea, China, and Thailand. Most boxes are a curated mix across all four — the one exception is Starter Box, which is noodles only. More regions will join over time; the Asia boxes are staying either way.',
   },
   {
     question: 'Can I choose only Japanese or only Korean snacks?',
     answer:
-      "Not today. Every Snack Quest box is a mystery mix across Japan, Korea, China, and Thailand — what's inside is part of the surprise, and there is no single-country box yet.",
+      "Not today. Every box except Starter Box (which is noodles only) is a mystery mix across Japan, Korea, China, and Thailand — what's inside is part of the surprise, and there is no single-country box yet.",
   },
   {
     question: 'How do I order?',
     answer:
-      'On this website. Pick a box, tap Buy now, tell us where to send it, and pay with M-Pesa. It takes about a minute and there is nothing to install and no account to create.',
+      'On this website. Pick a box, tap Buy now, tell us where to send it, and pay with M-Pesa. It takes about a minute and there is nothing to install.',
   },
   {
     question: 'Do I need an app or an account?',
@@ -46,12 +46,12 @@ export const FAQS = [
   {
     question: 'Where do you deliver?',
     answer:
-      'Anywhere in Kenya. Outside Nairobi, choose a Jumia pickup station near you and collect from there. In Nairobi you can choose door delivery instead, which we arrange by Bolt.',
+      'Anywhere in Kenya. In Nairobi and the surrounding towns, it comes straight to your door — next day, or same day if you order before 1pm. Anywhere else, collect it from a Fargo Courier pickup point near you.',
   },
   {
     question: 'Is delivery included in the price?',
     answer:
-      'For pickup stations, yes — the fee for the station you choose is added to your total at checkout, so you see the full amount before you pay anything. Nairobi door delivery is the exception: the box is paid for on the site, and the Bolt fare is quoted for your trip and paid directly to the rider, so we never charge you for it up front.',
+      "Yes, always — whether it's door delivery or a pickup point, the fee is calculated and added to your total automatically at checkout, so you see the full amount before you pay anything.",
   },
   {
     question: 'How long does delivery take?',
@@ -61,7 +61,7 @@ export const FAQS = [
   {
     question: 'Can I still order on WhatsApp?',
     answer:
-      'Ordering now happens on the website, so it is faster and you can see your exact total before paying. Our WhatsApp is still very much open — it is where we answer questions, chase deliveries, fix problems, and arrange Bolt riders.',
+      'Ordering now happens on the website, so it is faster and you can see your exact total before paying. Our WhatsApp is still very much open — it is where we answer questions, chase deliveries, and fix problems.',
   },
   {
     question: 'How do I use a referral or discount code?',
