@@ -1,12 +1,13 @@
 import 'server-only';
 
+import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import {
   createInTransaction as createOrderInTransaction,
   orderNumberCounterRef,
   orderRepository,
 } from '@/repositories/orderRepository';
-import { reserveStockInTransaction } from '@/repositories/packageRepository';
+import { OutOfStockError, reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
 import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
@@ -235,6 +236,151 @@ class OrderService {
     }
 
     return { ...order, status: next };
+  }
+
+  /**
+   * Changes which box a paid order is for (§ correcting the box on an
+   * order) — the wrong one picked while recording a sale by hand.
+   *
+   * Everything that has to move, moves together in one transaction:
+   * the old box's stock goes back, the new box's comes out, the line
+   * item is rewritten and the total is recomputed. Doing any of those
+   * outside the transaction is how an order ends up promising a box
+   * the warehouse does not have.
+   *
+   * What it will not do is silently balance the books. The money that
+   * arrived is a fact and does not change because somebody picked the
+   * wrong box, so when the new total differs, the difference is
+   * recorded as `amountPaidKes` and surfaced as a balance to collect
+   * or refund. Rewriting the total to match what was paid would be the
+   * easy version and would quietly turn a 1,000-shilling shortfall
+   * into a discount nobody approved.
+   *
+   * Delivery fee, discount and any wallet credit are left alone: they
+   * were priced against this customer and this address, and none of
+   * them is what was picked wrong.
+   */
+  async changeBox(input: {
+    businessId: string;
+    orderId: string;
+    packageId: string;
+    quantity: number;
+    changedByUid: string;
+  }): Promise<
+    | { changed: true; before: { packageLabel: string; totalKes: number }; after: { packageLabel: string; totalKes: number }; amountPaidKes: number; balanceKes: number }
+    | { changed: false; reason: string }
+  > {
+    const quantity = Math.trunc(input.quantity);
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      return { changed: false, reason: 'Quantity must be at least 1.' };
+    }
+
+    try {
+      const result = await adminFirestore.runTransaction(async (tx) => {
+        const orderRef = adminFirestore.collection('orders').doc(input.orderId);
+        const newPackageRef = adminFirestore.collection('packages').doc(input.packageId);
+
+        // Every read first — Firestore forbids a read after a write in
+        // the same transaction, and there are three of them here.
+        const [orderSnap, newPackageSnap] = await Promise.all([tx.get(orderRef), tx.get(newPackageRef)]);
+        const order = orderSnap.data() as Order | undefined;
+        if (!order || order.businessId !== input.businessId) {
+          return { changed: false as const, reason: 'Order not found' };
+        }
+        if (order.status === 'refunded' || order.status === 'cancelled') {
+          // A box that is not going anywhere is not a box to correct.
+          return { changed: false as const, reason: `This order is ${order.status} — the box cannot be changed.` };
+        }
+        const newPackage = newPackageSnap.data() as { name?: string; priceKes?: number; stockCount?: number } | undefined;
+        if (!newPackageSnap.exists || typeof newPackage?.priceKes !== 'number') {
+          return { changed: false as const, reason: 'That box does not exist.' };
+        }
+
+        const itemsSnap = await tx.get(orderRef.collection('items'));
+        const previousItems = itemsSnap.docs.map((doc) => doc.data() as { packageId: string; quantity: number });
+
+        const oldPackageId = order.product.packageId;
+        const oldPackageRef = adminFirestore.collection('packages').doc(oldPackageId);
+        const oldPackageSnap = oldPackageId === input.packageId ? newPackageSnap : await tx.get(oldPackageRef);
+        const oldPackage = oldPackageSnap.data() as { stockCount?: number } | undefined;
+
+        // Net the two movements when it is the same box — reading it
+        // once and writing twice would lose the first write.
+        const previousQuantity = previousItems.reduce((sum, item) => sum + (item.quantity ?? 0), 0) || 1;
+        if (oldPackageId === input.packageId) {
+          if (newPackage.stockCount !== undefined) {
+            const available = newPackage.stockCount + previousQuantity;
+            if (available < quantity) {
+              throw new OutOfStockError(input.packageId);
+            }
+            tx.update(newPackageRef, { stockCount: available - quantity });
+          }
+        } else {
+          if (newPackage.stockCount !== undefined) {
+            if (newPackage.stockCount < quantity) {
+              throw new OutOfStockError(input.packageId);
+            }
+            tx.update(newPackageRef, { stockCount: newPackage.stockCount - quantity });
+          }
+          if (oldPackage?.stockCount !== undefined) {
+            tx.update(oldPackageRef, { stockCount: oldPackage.stockCount + previousQuantity });
+          }
+        }
+
+        const packageLabel = newPackage.name ?? 'Box';
+        const subtotalKes = newPackage.priceKes * quantity;
+        const totalKes =
+          subtotalKes - order.pricing.discountKes - order.pricing.creditsUsedKes + order.pricing.deliveryFeeKes;
+        // What was actually received. Already-corrected orders keep
+        // their original figure rather than compounding.
+        const amountPaidKes = order.pricing.amountPaidKes ?? order.pricing.totalKes;
+
+        itemsSnap.docs.forEach((doc) => tx.delete(doc.ref));
+        tx.set(orderRef.collection('items').doc(), {
+          packageId: input.packageId,
+          packageLabel,
+          quantity,
+          unitCostKes: newPackage.priceKes,
+        });
+
+        tx.update(orderRef, {
+          'product.packageId': input.packageId,
+          'product.packageLabel': packageLabel,
+          'pricing.subtotalKes': subtotalKes,
+          'pricing.totalKes': totalKes,
+          // Recorded even when it equals the total, so a corrected
+          // order always states what arrived rather than leaving it to
+          // be inferred.
+          'pricing.amountPaidKes': amountPaidKes,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: input.changedByUid,
+        });
+
+        return {
+          changed: true as const,
+          before: { packageLabel: order.product.packageLabel, totalKes: order.pricing.totalKes },
+          after: { packageLabel, totalKes },
+          amountPaidKes,
+          balanceKes: amountPaidKes - totalKes,
+        };
+      });
+
+      if (result.changed) {
+        await publishEvent(input.businessId, 'OrderBoxChanged', 'order', input.orderId, {
+          packageId: input.packageId,
+          quantity,
+          totalKes: result.after.totalKes,
+          balanceKes: result.balanceKes,
+          changedByUid: input.changedByUid,
+        });
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof OutOfStockError) {
+        return { changed: false, reason: 'That box is out of stock — the order was left as it was.' };
+      }
+      throw error;
+    }
   }
 }
 

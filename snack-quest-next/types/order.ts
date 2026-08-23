@@ -72,6 +72,19 @@ export interface OrderPricing {
   deliveryFeeKes: number;
   creditsUsedKes: number;
   totalKes: number;
+  /**
+   * What actually reached the business, when that is no longer
+   * `totalKes` (§ correcting the box on an order).
+   *
+   * Absent on every order where the two agree, which is every order
+   * that was never corrected — so its presence is exactly the signal
+   * "this needs settling". It appears when the box on a paid order is
+   * changed to one at a different price: the money that arrived is a
+   * fact and does not move, so the difference is surfaced as a balance
+   * to collect or refund rather than quietly written off by rewriting
+   * one number to match the other.
+   */
+  amountPaidKes?: number;
 }
 
 /**
