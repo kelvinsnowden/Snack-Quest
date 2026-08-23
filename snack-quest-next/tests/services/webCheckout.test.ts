@@ -3,10 +3,13 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { STK_ATTEMPT_ABANDON_AFTER_MS } from '@/lib/checkout/stkTiming';
 
-const { initiateStkPushMock } = vi.hoisted(() => ({ initiateStkPushMock: vi.fn() }));
+const { initiateStkPushMock, queryStkStatusMock } = vi.hoisted(() => ({
+  initiateStkPushMock: vi.fn(),
+  queryStkStatusMock: vi.fn(),
+}));
 
 vi.mock('@/lib/integrations/daraja/darajaGateway', () => ({
-  darajaGateway: { initiateStkPush: initiateStkPushMock },
+  darajaGateway: { initiateStkPush: initiateStkPushMock, queryStkStatus: queryStkStatusMock },
 }));
 
 import {
@@ -20,6 +23,7 @@ import { conversationCheckoutSnapshotRepository } from '@/repositories/conversat
 import { packageRepository } from '@/repositories/packageRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
+import { paymentService } from '@/services/paymentService';
 import { orderRepository } from '@/repositories/orderRepository';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
@@ -128,6 +132,10 @@ beforeEach(async () => {
     'deliveryZoneRules',
     'domainEvents',
     'customerWallets',
+    // Every test in this file pushes under the same stubbed
+    // `ws_CO_test` id, so a leftover idempotency record would make the
+    // next test's payment look like one already settled.
+    'webhookEvents',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
@@ -810,6 +818,83 @@ describe('startWebCheckout — optional email', () => {
 
     const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
     expect(order?.data.customer.email).toBe('wanjiru@example.com');
+  });
+});
+
+/**
+ * The exact production failure this recovery exists for: Safaricom
+ * accepted the push, charged the customer, confirmed success on their
+ * own query API — and never delivered a callback. Before this, that
+ * customer paid and no order was ever created.
+ */
+describe('a paid customer whose callback never arrives', () => {
+  it('still gets an order, from Safaricom\'s own confirmation', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant_test',
+      checkoutRequestId: 'ws_CO_test',
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+    });
+
+    // No callback is ever delivered. This is the payment screen's poll.
+    const recovered = await paymentService.recoverProcessingPayment(
+      BUSINESS_ID,
+      result.checkoutSessionId,
+      { stuckAfterMs: 0 },
+    );
+    expect(recovered?.status).toBe('succeeded');
+    await service().handlePaymentResult(recovered!);
+
+    const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
+    expect(order).not.toBeNull();
+    expect(order?.data.pricing.totalKes).toBe(result.pricing.totalKes);
+    // Null rather than invented — the query API carries no receipt, and
+    // an absent one is already how a cash order records the same thing.
+    expect(order?.data.payment.mpesaReceiptNumber).toBeNull();
+
+    const status = await service().getWebCheckoutStatus(BUSINESS_ID, result.checkoutSessionId);
+    expect(status.paymentStatus).toBe('succeeded');
+    expect(status.orderNumber).not.toBeNull();
+  });
+
+  it('does not create a second order when the real callback turns up late', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant_test',
+      checkoutRequestId: 'ws_CO_test',
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'ok',
+    });
+
+    const recovered = await paymentService.recoverProcessingPayment(
+      BUSINESS_ID,
+      result.checkoutSessionId,
+      { stuckAfterMs: 0 },
+    );
+    await service().handlePaymentResult(recovered!);
+
+    // Safaricom finally delivers the callback, hours later.
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    await service().handlePaymentResult({
+      status: 'succeeded',
+      intentId: recovered!.status === 'succeeded' ? recovered.intentId : '',
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      amountKes: result.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+
+    const orders = await adminFirestore
+      .collection('orders')
+      .where('businessId', '==', BUSINESS_ID)
+      .where('conversationId', '==', result.checkoutSessionId)
+      .get();
+    expect(orders.size).toBe(1);
   });
 });
 

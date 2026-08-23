@@ -56,6 +56,30 @@ class PaymentIntentRepository {
     return matches.slice(0, limit);
   }
 
+  /**
+   * The still-unsettled intent for one checkout session, if there is
+   * one (§ payment auto-recovery). Scoped to `'processing'` because
+   * that is the only state worth recovering: `'pending'` never reached
+   * Safaricom, and anything terminal is already decided.
+   */
+  async findProcessingByConversationId(
+    businessId: string,
+    conversationId: string,
+  ): Promise<{ id: string; data: PaymentIntent } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('conversationId', '==', conversationId)
+      .where('status', '==', 'processing')
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() as PaymentIntent };
+  }
+
   async findById(intentId: string): Promise<PaymentIntent | null> {
     const snapshot = await adminFirestore.collection(COLLECTION).doc(intentId).get();
     if (!snapshot.exists) {

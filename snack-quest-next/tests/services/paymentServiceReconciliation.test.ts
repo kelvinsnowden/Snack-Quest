@@ -291,6 +291,124 @@ describe('PaymentService.reconcileStuckIntents', () => {
 });
 
 /**
+ * The path that stops a paid customer from being left with nothing
+ * when Safaricom never calls back (§ payment auto-recovery) — the
+ * failure actually observed in production.
+ */
+describe('PaymentService.recoverProcessingPayment', () => {
+  const CONVERSATION_ID = 'conv-1';
+
+  it('settles a payment Safaricom confirms, without inventing a receipt', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'The service request is processed successfully.',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toMatchObject({
+      status: 'succeeded',
+      intentId,
+      conversationId: CONVERSATION_ID,
+      snapshotId: 'snapshot-1',
+      amountKes: 2500,
+      // Never fabricated — the query API returns no receipt.
+      mpesaReceiptNumber: '',
+    });
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('succeeded');
+  });
+
+  it('leaves a payment alone while the customer could still be typing their PIN', async () => {
+    await seedStuckIntent();
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID);
+
+    expect(result).toBeNull();
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a definitive failure rather than settling it as paid', async () => {
+    const { checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 1032,
+      resultDesc: 'Request cancelled by user',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toMatchObject({ status: 'failed', reason: 'Request cancelled by user' });
+  });
+
+  /**
+   * The risk this whole path introduces: two independent things now
+   * believe they can settle one payment. A real callback that arrives
+   * late must not produce a second order.
+   */
+  it('refuses to settle a payment the real callback already claimed', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    await webhookEventRepository.recordIfNew({
+      businessId: BUSINESS_ID,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: checkoutRequestId,
+      payload: { source: 'the real callback' },
+      relatedEntityId: intentId,
+    });
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'ok',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('does nothing for a checkout session with no payment in flight', async () => {
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, 'conv-does-not-exist', {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toBeNull();
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('stops querying once the retry budget for the attempt is spent', async () => {
+    const { intentId } = await seedStuckIntent();
+    const pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    for (let i = 0; i < 5; i += 1) {
+      await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending!.attemptId);
+    }
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toBeNull();
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * The action `needsManualReview`'s own review reason names but never
  * had a way to actually do: Daraja confirms success, no callback ever
  * arrived, and a human reads the real receipt off the M-Pesa statement.
