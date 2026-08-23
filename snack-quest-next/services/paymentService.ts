@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
+import { conversationRepository } from '@/repositories/conversationRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
@@ -64,6 +65,16 @@ const DEFAULT_MAX_QUERY_ATTEMPTS = 5;
  * whole reason this path exists.
  */
 const DEFAULT_RECOVERY_AFTER_MS = 40 * 1000;
+/**
+ * The ceiling on what recovery will settle by itself (§ payment
+ * auto-recovery). Deliberately not open-ended: recovery once picked up
+ * a day-old abandoned attempt that had genuinely succeeded at
+ * Safaricom, and turned it into a second, surprise order on a
+ * conversation that had already moved on. Anything older is a
+ * bookkeeping question for a human, not something to auto-create an
+ * order from.
+ */
+const RECOVERY_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 /**
  * A time-based backstop *in addition to* the attempt cap above — covers
  * the case where the cron itself runs less often than expected (a
@@ -344,7 +355,19 @@ class PaymentService {
     const stuckAfterMs = options.stuckAfterMs ?? DEFAULT_RECOVERY_AFTER_MS;
     const maxQueryAttempts = options.maxQueryAttempts ?? DEFAULT_MAX_QUERY_ATTEMPTS;
 
-    const match = await paymentIntentRepository.findProcessingByConversationId(businessId, conversationId);
+    // Only the payment this checkout is actually waiting on. A
+    // conversation is reused per phone number and every abandoned
+    // attempt leaves its intent `processing` on purpose, so asking the
+    // conversation for "the" payment returns an arbitrary one of many —
+    // and completing one of those creates an order for a checkout the
+    // customer walked away from days ago.
+    const conversation = await conversationRepository.findById(conversationId);
+    const snapshotId = conversation?.conversationCheckoutSnapshotId;
+    if (!conversation || conversation.businessId !== businessId || !snapshotId) {
+      return null;
+    }
+
+    const match = await paymentIntentRepository.findProcessingBySnapshotId(businessId, snapshotId);
     if (!match) {
       return null;
     }
@@ -392,6 +415,16 @@ class PaymentService {
     stuckAfterMs: number,
     maxQueryAttempts: number,
   ): Promise<ProcessCallbackResult | null> {
+    // Too old to settle on its own. Creating an order for a payment
+    // this stale is not a recovery, it is a surprise: the customer has
+    // long since given up, may have paid again, and staff may already
+    // have resolved it by hand. Past this point it stays with
+    // `reconcileStuckIntents` and a human, which is what the sweep did
+    // before recovery existed.
+    if (Date.now() - intent.updatedAt.toMillis() > RECOVERY_MAX_AGE_MS) {
+      return null;
+    }
+
     // Still inside a normal PIN-entry window. Asking Safaricom about a
     // push the customer is actively responding to invites a "not
     // found" that means nothing.

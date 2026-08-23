@@ -57,19 +57,31 @@ class PaymentIntentRepository {
   }
 
   /**
-   * The still-unsettled intent for one checkout session, if there is
-   * one (§ payment auto-recovery). Scoped to `'processing'` because
-   * that is the only state worth recovering: `'pending'` never reached
+   * The still-unsettled intent for one frozen checkout, if there is one
+   * (§ payment auto-recovery). Scoped to `'processing'` because that is
+   * the only state worth recovering: `'pending'` never reached
    * Safaricom, and anything terminal is already decided.
+   *
+   * Keyed on the SNAPSHOT, not the conversation, and that distinction
+   * is the whole point. A conversation is reused for a phone number and
+   * every abandoned attempt deliberately leaves its intent `processing`
+   * for the sweep to resolve later (see `startWebCheckout`), so one
+   * conversation accumulates many. Looking one up by conversation
+   * returns an arbitrary one of those — which is how recovering "the
+   * customer's payment" once resurrected a day-old attempt and turned
+   * it into a second order, each carrying its own snapshot so the
+   * duplicate guard in `completeOrder` never saw them as the same sale.
+   * A snapshot is exactly one checkout, so this can only ever find the
+   * payment that checkout is waiting on.
    */
-  async findProcessingByConversationId(
+  async findProcessingBySnapshotId(
     businessId: string,
-    conversationId: string,
+    snapshotId: string,
   ): Promise<{ id: string; data: PaymentIntent } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
-      .where('conversationId', '==', conversationId)
+      .where('conversationCheckoutSnapshotId', '==', snapshotId)
       .where('status', '==', 'processing')
       .limit(1)
       .get();
