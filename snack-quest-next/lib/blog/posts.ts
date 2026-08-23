@@ -149,7 +149,7 @@ const POSTS: BlogPost[] = [
       { type: 'h2', text: 'What it is not' },
       {
         type: 'p',
-        text: "It's not a single-country box. There's no way today to order \"only Japanese snacks\" or \"only Korean snacks\" — every box mixes across all four countries. If that changes, this page will say so; until then, treat any claim otherwise as wrong.",
+        text: "It's not a single-country box — with one exception: Starter Box is a dedicated noodles-only box, not a country mix. Every other box mixes across all four countries, so there's no way to order \"only Japanese snacks\" or \"only Korean snacks\" from those. If that changes, this page will say so.",
       },
       { type: 'h2', text: 'How ordering, paying, and delivery work' },
       {

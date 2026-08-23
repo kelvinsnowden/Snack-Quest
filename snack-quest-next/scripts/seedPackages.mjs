@@ -31,7 +31,7 @@ function createApp() {
 const PACKAGES = [
   {
     name: 'Starter Box',
-    description: 'A curated starter selection of Kenyan snacks.',
+    description: 'A noodles-only box — instant, ramen and specialty styles, all imported.',
     priceKes: 2500,
     isActive: true,
     imageUrl: null,

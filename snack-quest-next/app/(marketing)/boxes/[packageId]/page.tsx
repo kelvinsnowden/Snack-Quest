@@ -38,17 +38,32 @@ export async function generateMetadata({
 }
 
 /**
- * True of every box, so it belongs here rather than in the per-box
- * comparison (§ Mission 2 — product pages). The comparison shows only
- * what genuinely differs between boxes — which, in the real product
- * data, is the price and how many snacks you get.
+ * The one exception to "every box is a multi-country mystery mix"
+ * (§ fix Starter Box copy). Starter Box is noodles only. Matched by
+ * name because today it's a single, known exception, not a general
+ * per-box category system — if a second single-category box is ever
+ * added, this should become a real field on the package record
+ * instead of a second name to match here.
  */
-const EVERY_BOX_INCLUDES = [
-  `A mix from ${SNACK_ORIGIN_COUNTRIES.slice(0, -1).join(', ')} and ${SNACK_ORIGIN_COUNTRIES.at(-1)}`,
-  'Hand-picked and personally tasted before it ships',
-  'Packed and dispatched within 24 hours',
-  'Pay by M-Pesa — no app to install',
-];
+const NOODLES_ONLY_BOX_NAME = 'Starter Box';
+
+/**
+ * True of every box except the one named above, so it belongs here
+ * rather than in the per-box comparison (§ Mission 2 — product pages).
+ * The comparison shows only what genuinely differs between boxes —
+ * which, in the real product data, is the price and how many snacks
+ * you get.
+ */
+function everyBoxIncludes(isNoodlesOnly: boolean): string[] {
+  return [
+    isNoodlesOnly
+      ? '100% noodles — no other snack types mixed in'
+      : `A mix from ${SNACK_ORIGIN_COUNTRIES.slice(0, -1).join(', ')} and ${SNACK_ORIGIN_COUNTRIES.at(-1)}`,
+    'Hand-picked and personally tasted before it ships',
+    'Packed and dispatched within 24 hours',
+    'Pay by M-Pesa — no app to install',
+  ];
+}
 
 export default async function BoxDetailPage({
   params,
@@ -62,6 +77,7 @@ export default async function BoxDetailPage({
   if (!box || !box.isActive) {
     notFound();
   }
+  const isNoodlesOnly = box.name === NOODLES_ONLY_BOX_NAME;
 
   // Everything else this page needs, fetched alongside rather than in
   // series. Each falls back to empty on failure: a box page must still
@@ -162,7 +178,11 @@ export default async function BoxDetailPage({
           {box.imageUrl ? (
             <Image
               src={box.imageUrl}
-              alt={`The ${box.name} — a mystery mix of imported snacks from ${SNACK_ORIGIN_COUNTRIES.join(', ')}.`}
+              alt={
+                isNoodlesOnly
+                  ? `The ${box.name} — a mystery box of noodle snacks.`
+                  : `The ${box.name} — a mystery mix of imported snacks from ${SNACK_ORIGIN_COUNTRIES.join(', ')}.`
+              }
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
               className="object-cover"
@@ -193,7 +213,7 @@ export default async function BoxDetailPage({
           </p>
 
           <ul className="mt-6 flex flex-col gap-2.5">
-            {EVERY_BOX_INCLUDES.map((line) => (
+            {everyBoxIncludes(isNoodlesOnly).map((line) => (
               <li key={line} className="text-foreground/80 flex items-start gap-2.5 text-sm">
                 <span className="bg-primary/10 text-primary mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full">
                   <Check className="size-3" strokeWidth={3} aria-hidden="true" />
@@ -222,18 +242,17 @@ export default async function BoxDetailPage({
               Paying and getting it to you
             </p>
             <p className="text-muted-foreground flex items-start gap-2 text-sm">
-              <Store className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <Truck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>
-                Collect from a Fargo Courier pickup point anywhere in Kenya — the fee for your point is
-                added to your total before you pay, so nothing is a surprise.
+                In Nairobi and the surrounding towns, it comes straight to your door — next day, or
+                same day if you order before 1pm.
               </span>
             </p>
             <p className="text-muted-foreground flex items-start gap-2 text-sm">
-              <Truck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <Store className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>
-                In Nairobi, we can send it to your door by Bolt instead. That ride is arranged with you
-                on WhatsApp after checkout and paid to the rider directly, so it is not part of the
-                amount charged here.
+                Anywhere else in Kenya, collect it from a Fargo Courier pickup point. Either way, the
+                delivery fee is added to your total automatically, before you pay.
               </span>
             </p>
           </div>
@@ -244,27 +263,43 @@ export default async function BoxDetailPage({
         <h2 id="whats-inside-heading" className="text-card-title text-foreground font-semibold">
           What&apos;s inside
         </h2>
-        <p className="text-muted-foreground mt-2 text-sm">
-          Every box is a mix across these kinds of snacks. Which exact items you get is the part
-          we don&apos;t tell you — that is the quest.
-        </p>
-        <ul className="mt-4 flex flex-wrap gap-2">
-          {SNACK_CATEGORIES.map((category) => (
-            <li
-              key={category.label}
-              className="border-border bg-surface text-foreground inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium"
-            >
-              <span aria-hidden="true">{category.emoji}</span>
-              {category.label}
-            </li>
-          ))}
-        </ul>
+        {isNoodlesOnly ? (
+          <p className="text-muted-foreground mt-2 text-sm">
+            This box is 100% noodles — instant, ramen and specialty styles, all imported. Which
+            exact ones you get is the part we don&apos;t tell you — that is the quest.
+          </p>
+        ) : (
+          <>
+            <p className="text-muted-foreground mt-2 text-sm">
+              Every box is a mix across these kinds of snacks. Which exact items you get is the
+              part we don&apos;t tell you — that is the quest.
+            </p>
+            <ul className="mt-4 flex flex-wrap gap-2">
+              {SNACK_CATEGORIES.map((category) => (
+                <li
+                  key={category.label}
+                  className="border-border bg-surface text-foreground inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium"
+                >
+                  <span aria-hidden="true">{category.emoji}</span>
+                  {category.label}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <p className="text-muted-foreground mt-4 text-sm">
-          Curious what the snacks are actually like?{' '}
-          <Link href="/blog/japan-korea-china-thailand-snack-differences" className="text-primary hover:underline">
-            How Japanese, Korean, Chinese and Thai snacks differ
-          </Link>{' '}
-          ·{' '}
+          {isNoodlesOnly ? null : (
+            <>
+              Curious what the snacks are actually like?{' '}
+              <Link
+                href="/blog/japan-korea-china-thailand-snack-differences"
+                className="text-primary hover:underline"
+              >
+                How Japanese, Korean, Chinese and Thai snacks differ
+              </Link>{' '}
+              ·{' '}
+            </>
+          )}
           <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
             What a mystery snack box actually is
           </Link>
@@ -277,8 +312,8 @@ export default async function BoxDetailPage({
             How the boxes compare
           </h2>
           <p className="text-muted-foreground mt-2 text-sm">
-            The difference is how much you get. Everything else — the countries, the hand-picking,
-            the taste test, the delivery choices — is the same whichever you pick.
+            The difference is what&apos;s inside and how much you get. The hand-picking, the taste
+            test and the delivery choices are the same whichever you pick.
           </p>
 
           {/*
