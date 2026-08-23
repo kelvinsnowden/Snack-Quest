@@ -57,6 +57,14 @@ const DEFAULT_STUCK_AFTER_MS = 60 * 1000;
  */
 const DEFAULT_MAX_QUERY_ATTEMPTS = 5;
 /**
+ * How long the payment screen waits before asking Safaricom directly
+ * (§ payment auto-recovery), rather than waiting on a callback that
+ * may never arrive. Longer than a fast PIN entry, far shorter than the
+ * nightly sweep — a customer sitting on the waiting screen is the
+ * whole reason this path exists.
+ */
+const DEFAULT_RECOVERY_AFTER_MS = 40 * 1000;
+/**
  * A time-based backstop *in addition to* the attempt cap above — covers
  * the case where the cron itself runs less often than expected (a
  * deploy issue, a paused schedule) rather than Daraja being slow.
@@ -298,6 +306,119 @@ class PaymentService {
         mpesaReceiptNumber,
         manualPayment: updated?.manualPayment ?? null,
       },
+    };
+  }
+
+  /**
+   * Asks Safaricom what happened to the payment a customer is watching
+   * right now, and settles it from their answer (§ payment
+   * auto-recovery).
+   *
+   * Built because the callback is not reliable and the whole checkout
+   * was staked on it: production STK pushes were confirmed succeeded by
+   * Safaricom's own query API while not one callback was ever
+   * delivered, so the customer paid, sat on the waiting screen, and no
+   * order was ever created. The nightly sweep found these, but a
+   * customer will not wait until 02:00.
+   *
+   * The receipt is the reason this is not simply `reconcileStuckIntents`
+   * with a shorter timer. That sweep refuses to settle a confirmed
+   * success because the query response carries no M-Pesa receipt, and
+   * it is right that it never invents one — but "no receipt" is a
+   * bookkeeping problem, and refusing to create the order turns it into
+   * the customer's problem instead, which is worse. Safaricom's
+   * `ResultCode 0` is a definitive statement that the money moved. So
+   * the order is created with an empty receipt, exactly as a cash order
+   * already is, and the `CheckoutRequestID` — which Safaricom can trace
+   * on their own side — is what reconciles it.
+   *
+   * Idempotency deliberately uses the same `providerEventId` a real
+   * callback would (`checkoutRequestId`), so a late callback for this
+   * payment is recognised as a duplicate and cannot settle it twice.
+   */
+  async recoverProcessingPayment(
+    businessId: string,
+    conversationId: string,
+    options: { stuckAfterMs?: number; maxQueryAttempts?: number } = {},
+  ): Promise<ProcessCallbackResult | null> {
+    const stuckAfterMs = options.stuckAfterMs ?? DEFAULT_RECOVERY_AFTER_MS;
+    const maxQueryAttempts = options.maxQueryAttempts ?? DEFAULT_MAX_QUERY_ATTEMPTS;
+
+    const match = await paymentIntentRepository.findProcessingByConversationId(businessId, conversationId);
+    if (!match) {
+      return null;
+    }
+    const { id: intentId, data: intent } = match;
+
+    // Still inside a normal PIN-entry window. Asking Safaricom about a
+    // push the customer is actively responding to invites a "not
+    // found" that means nothing.
+    if (Date.now() - intent.updatedAt.toMillis() < stuckAfterMs) {
+      return null;
+    }
+
+    const pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    if (!pending || pending.queryAttemptCount >= maxQueryAttempts) {
+      return null;
+    }
+
+    const query = await darajaGateway.queryStkStatus({ businessId, checkoutRequestId: pending.checkoutRequestId });
+    await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending.attemptId);
+
+    // Safaricom has no verdict yet — not an error, just "ask again".
+    if (query.responseCode !== '0') {
+      return null;
+    }
+
+    const idempotency = await webhookEventRepository.recordIfNew({
+      businessId,
+      provider: 'daraja',
+      eventKind: 'stk_callback',
+      providerEventId: pending.checkoutRequestId,
+      payload: { source: 'stk_push_query_recovery', ...query },
+      relatedEntityId: intentId,
+    });
+    if (!idempotency.isNew) {
+      // The real callback landed in the gap between the query and this
+      // write. It already owns this payment.
+      return null;
+    }
+
+    const succeeded = query.resultCode === 0;
+    await paymentIntentRepository.resolveAttempt(intentId, pending.attemptId, {
+      status: succeeded ? 'succeeded' : 'failed',
+      resultCode: query.resultCode,
+      resultDesc: query.resultDesc,
+      mpesaReceiptNumber: null,
+    });
+    await paymentIntentRepository.updateStatus(intentId, succeeded ? 'succeeded' : 'failed');
+    await webhookEventRepository.markProcessed(businessId, 'daraja', pending.checkoutRequestId);
+
+    if (!succeeded) {
+      return {
+        status: 'failed',
+        intentId,
+        conversationId: intent.conversationId,
+        snapshotId: intent.conversationCheckoutSnapshotId,
+        reason: query.resultDesc,
+      };
+    }
+
+    await publishEvent(businessId, 'PaymentRecoveredWithoutCallback', 'paymentIntent', intentId, {
+      checkoutRequestId: pending.checkoutRequestId,
+      amountKes: intent.amountKes,
+      phoneNumber: intent.phoneNumber,
+    });
+
+    return {
+      status: 'succeeded',
+      intentId,
+      conversationId: intent.conversationId,
+      snapshotId: intent.conversationCheckoutSnapshotId,
+      amountKes: intent.amountKes,
+      // Empty, never fabricated. Safaricom's query API does not return
+      // a receipt; `CheckoutRequestID` is what traces this payment.
+      mpesaReceiptNumber: '',
     };
   }
 
