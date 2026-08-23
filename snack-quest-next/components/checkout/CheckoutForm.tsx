@@ -13,6 +13,7 @@ import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import {
   isSameDayAvailableAt,
+  metroAreaLabel,
   SAME_DAY_ARRIVAL_HOUR,
   SAME_DAY_CUTOFF_HOUR,
 } from '@/lib/delivery/deliveryPricing';
@@ -444,24 +445,39 @@ export function CheckoutForm({
       <section className="flex flex-col gap-4">
         <SectionHeading step={3} title="Delivery" />
         <div className="grid gap-3 sm:grid-cols-2">
+          {/*
+            Both titles name their area, and that is the fix for a real
+            lost sale: "Nairobi door delivery" told a customer in Thika
+            they were not covered, so they went hunting for a Fargo
+            station — of which Thika has none, precisely because it is
+            inside the radius and gets door delivery. The pickup option
+            said "countrywide", which made that hunt sound reasonable.
+          */}
+          <DeliveryOption
+            selected={deliveryMethod === 'door'}
+            onSelect={() => setDeliveryMethod('door')}
+            icon={<Truck className="size-5" aria-hidden="true" />}
+            title="Door delivery"
+            detail={`${metroAreaLabel()}. Tushop brings it to your address — next day, or same day if you order before 1pm.`}
+          />
           <DeliveryOption
             selected={deliveryMethod === 'pickup'}
             onSelect={() => setDeliveryMethod('pickup')}
             icon={<Store className="size-5" aria-hidden="true" />}
             title="Fargo pickup point"
-            detail="Collect from any station countrywide. Delivery fee shown before you pay."
-          />
-          <DeliveryOption
-            selected={deliveryMethod === 'door'}
-            onSelect={() => setDeliveryMethod('door')}
-            icon={<Truck className="size-5" aria-hidden="true" />}
-            title="Nairobi door delivery"
-            detail="Tushop brings it to your address. Next day, or same day if you order before 1pm."
+            detail="Everywhere else in Kenya. Collect from a station near you; the fee is shown before you pay."
           />
         </div>
 
         {deliveryMethod === 'pickup' ? (
-          <PickupStationPicker selected={station} onSelect={setStation} />
+          <PickupStationPicker
+            selected={station}
+            onSelect={setStation}
+            onSwitchToDoor={() => {
+              setStation(null);
+              setDeliveryMethod('door');
+            }}
+          />
         ) : (
           <div className="flex flex-col gap-4">
             <fieldset className="flex flex-col gap-2">

@@ -157,7 +157,7 @@ const POSTS: BlogPost[] = [
         items: [
           'Pick a box on the website — no app to install.',
           'Pay with M-Pesa, approved on your own phone.',
-          'Door delivery in Nairobi and the surrounding towns, or a Fargo Courier pickup point anywhere else in Kenya.',
+          'Door delivery in Nairobi, Ruiru, Kiambu, Kikuyu, Limuru, Kitengela and Thika, or a Fargo Courier pickup point anywhere else in Kenya.',
           'Boxes are hand-packed and usually arrive within 24–48 hours.',
         ],
       },

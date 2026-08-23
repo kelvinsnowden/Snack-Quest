@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  matchesMetroTown,
+  metroAreaLabel,
+  metroTowns,
   allFargoZones,
   availableServiceLevels,
   FARGO_SEED_FEES_KES,
@@ -127,5 +130,35 @@ describe('the region decides the delivery model, not just the price', () => {
   it('only ever offers a pickup point outside the radius', () => {
     expect(isCustomerFacingPickupPoint('nairobi-metro')).toBe(false);
     expect(isCustomerFacingPickupPoint('upcountry')).toBe(true);
+  });
+});
+
+/**
+ * A real customer in Thika could not find a Fargo station and had to
+ * ask support how to order. There is none: Thika is inside the radius,
+ * so it gets door delivery. The site had only ever said "Nairobi",
+ * which told them they were not covered.
+ */
+describe('telling a customer which towns get door delivery', () => {
+  it('names every town rather than saying "and surrounding areas"', () => {
+    const label = metroAreaLabel();
+
+    for (const town of metroTowns()) {
+      expect(label).toContain(town);
+    }
+    // Nairobi anchors it — the name everyone recognises.
+    expect(label.startsWith('Nairobi')).toBe(true);
+  });
+
+  it('recognises a door-delivery town typed into the pickup search', () => {
+    expect(matchesMetroTown('Thika')).toBe('Thika');
+    expect(matchesMetroTown('  kitengela ')).toBe('Kitengela');
+    expect(matchesMetroTown('LIMURU')).toBe('Limuru');
+  });
+
+  it('stays quiet for a town that really does need a pickup point', () => {
+    expect(matchesMetroTown('Mombasa')).toBeNull();
+    expect(matchesMetroTown('Kisumu')).toBeNull();
+    expect(matchesMetroTown('')).toBeNull();
   });
 });

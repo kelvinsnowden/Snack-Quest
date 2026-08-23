@@ -173,7 +173,7 @@ export default async function AgentConversationDetailPage({
                   </p>
                 ) : shipment.data.status === 'pending_manual_booking' ? (
                   <p className="text-sm text-muted-foreground">
-                    This order is paid. Book the delivery with Bolt yourself, then record the booking reference here.
+                    This order is paid. Book the delivery with Tushop yourself, then record the booking reference here.
                   </p>
                 ) : null}
               </CardContent>

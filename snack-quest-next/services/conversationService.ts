@@ -23,6 +23,7 @@ import {
   isFargoZone,
   isMetroLocation,
   isSameDayAvailableAt,
+  metroAreaLabel,
   SAME_DAY_CUTOFF_HOUR,
   WHATSAPP_DOOR_SERVICE_LEVEL,
   type FargoServiceLevel,
@@ -928,7 +929,10 @@ class ConversationService {
     // does not follow county lines — see `isMetroLocation`.
     if (!isMetroLocation(county, input.town)) {
       throw new WebCheckoutValidationError(
-        'Door delivery covers Nairobi and the surrounding towns — choose a Fargo pickup point for anywhere else',
+        // Names the towns rather than saying "and the surrounding
+        // towns": a customer cannot tell whether they are in that set,
+        // and the vague version already sent one to support asking.
+        `Door delivery covers ${metroAreaLabel()} — choose a Fargo pickup point for anywhere else`,
       );
     }
     const addressText = (input.addressText ?? '').trim();

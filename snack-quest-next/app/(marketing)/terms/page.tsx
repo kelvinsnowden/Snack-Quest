@@ -41,7 +41,7 @@ export default async function TermsPage() {
         <Section title="Delivery">
           <ul className="ml-4 list-disc space-y-1">
             <li>Delivery timelines depend on your location and chosen delivery method, and are estimates, not guarantees.</li>
-            <li>Pickup-station delivery is charged at checkout as part of your total. Nairobi door delivery is by Bolt: it is arranged with you on WhatsApp after checkout and paid directly to the rider, so it is never included in the amount we charge.</li>
+            <li>Delivery is charged at checkout as part of your total, whether you choose door delivery or a pickup point. You see the full amount before you pay, and there is nothing further to pay on arrival.</li>
             <li>You&apos;re responsible for providing an accurate delivery address or pickup station, and for being reachable on the phone number you order with.</li>
             <li>If a delivery attempt fails because we can&apos;t reach you or the address is wrong, additional delivery fees may apply to redeliver.</li>
           </ul>

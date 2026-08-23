@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, Loader2, MapPin, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { formatKes } from '@/lib/orders/format';
+import { matchesMetroTown } from '@/lib/delivery/deliveryPricing';
 import type { CountyGroup, DirectoryStation } from '@/lib/pickupStations/directory';
 
 /**
@@ -64,9 +66,12 @@ function urlFor(view: View): string {
 export function PickupStationPicker({
   selected,
   onSelect,
+  onSwitchToDoor,
 }: {
   selected: SelectedStation | null;
   onSelect: (station: SelectedStation | null) => void;
+  /** Offered when someone searches for a town that gets door delivery instead of a station. */
+  onSwitchToDoor?: () => void;
 }) {
   const [view, setView] = useState<View>({ kind: 'counties' });
   const [counties, setCounties] = useState<CountyGroup[]>([]);
@@ -155,6 +160,10 @@ export function PickupStationPicker({
         ? view.county
         : 'Choose your county';
 
+  // A search that will never return a station because the town is
+  // inside the door-delivery radius.
+  const metroMatch = view.kind === 'search' ? matchesMetroTown(view.query) : null;
+
   return (
     <div className="border-border bg-surface overflow-hidden rounded-lg border">
       <div className="border-border border-b p-4">
@@ -238,9 +247,34 @@ export function PickupStationPicker({
                 </li>
               ))}
 
-          {!loading && view.kind === 'search' && stations.length === 0 ? (
+          {/*
+            The dead end that cost a real sale. Someone in Thika
+            searched for it, found nothing, and was told to "try a town
+            name instead" — Thika IS a town name, and it IS covered:
+            it sits inside the radius, so it gets door delivery and has
+            no station on purpose. Answering the actual question here,
+            where they hit it, beats any amount of explaining earlier
+            on the page.
+          */}
+          {!loading && view.kind === 'search' && stations.length === 0 && metroMatch ? (
+            <li className="px-3 py-5">
+              <p className="text-foreground text-sm font-medium">
+                Good news — we deliver to {metroMatch}.
+              </p>
+              <p className="text-muted-foreground mt-1 text-sm">
+                {metroMatch} is close enough to Nairobi that we bring the box to your door instead,
+                so there is no station to collect from.
+              </p>
+              {onSwitchToDoor ? (
+                <Button type="button" size="sm" className="mt-3" onClick={onSwitchToDoor}>
+                  Switch to door delivery
+                </Button>
+              ) : null}
+            </li>
+          ) : null}
+          {!loading && view.kind === 'search' && stations.length === 0 && !metroMatch ? (
             <li className="text-muted-foreground px-3 py-6 text-sm">
-              No stations matched “{view.query}”. Try a town name instead.
+              No stations matched “{view.query}”. Try a nearby town, or your county.
             </li>
           ) : null}
           {!loading && view.kind === 'county' && stations.length === 0 ? (

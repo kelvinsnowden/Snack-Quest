@@ -10,7 +10,7 @@ import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
  *
  * This is support and engagement, not commerce (§ Website Becomes the
  * Primary Commerce Channel): questions before buying, order updates,
- * address changes, arranging a Bolt rider, something arrived wrong.
+ * address changes, chasing a delivery, something arrived wrong.
  * Anything that is actually "buy this" uses `BuyNowButton` instead —
  * the default label here says so, so a caller that forgets to pass
  * `children` can't accidentally re-open a WhatsApp ordering path we no
