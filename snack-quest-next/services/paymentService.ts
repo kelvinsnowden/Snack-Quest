@@ -5,7 +5,7 @@ import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { StkPushResult } from '@/lib/integrations/types';
-import type { ManualPaymentRecord } from '@/types';
+import type { ManualPaymentRecord, PaymentIntent } from '@/types';
 
 /**
  * Owns the payment lifecycle (PLATFORM_ARCHITECTURE_V2.md §7):
@@ -348,8 +348,50 @@ class PaymentService {
     if (!match) {
       return null;
     }
-    const { id: intentId, data: intent } = match;
+    return this.recoverIntent(businessId, match.id, match.data, stuckAfterMs, maxQueryAttempts);
+  }
 
+  /**
+   * The same recovery, for every payment left in flight rather than
+   * the one a customer is watching (§ payment auto-recovery).
+   *
+   * `recoverProcessingPayment` only runs while the payment screen is
+   * open, which quietly assumes the customer stays on it. Someone who
+   * approves the M-Pesa prompt and closes the tab is exactly the
+   * person this exists for: their money moved and nothing was ever
+   * polling on their behalf.
+   */
+  async recoverAllProcessingPayments(
+    businessId: string,
+    options: { stuckAfterMs?: number; maxQueryAttempts?: number } = {},
+  ): Promise<ProcessCallbackResult[]> {
+    const stuckAfterMs = options.stuckAfterMs ?? DEFAULT_RECOVERY_AFTER_MS;
+    const maxQueryAttempts = options.maxQueryAttempts ?? DEFAULT_MAX_QUERY_ATTEMPTS;
+
+    const processing = await paymentIntentRepository.listByStatus(businessId, ['processing']);
+    const results: ProcessCallbackResult[] = [];
+    for (const { id, data } of processing) {
+      // One bad intent must not stop the sweep reaching the rest —
+      // every one of these is somebody's money.
+      try {
+        const result = await this.recoverIntent(businessId, id, data, stuckAfterMs, maxQueryAttempts);
+        if (result) {
+          results.push(result);
+        }
+      } catch {
+        // Left for the next run, and for `reconcileStuckIntents`.
+      }
+    }
+    return results;
+  }
+
+  private async recoverIntent(
+    businessId: string,
+    intentId: string,
+    intent: PaymentIntent,
+    stuckAfterMs: number,
+    maxQueryAttempts: number,
+  ): Promise<ProcessCallbackResult | null> {
     // Still inside a normal PIN-entry window. Asking Safaricom about a
     // push the customer is actively responding to invites a "not
     // found" that means nothing.

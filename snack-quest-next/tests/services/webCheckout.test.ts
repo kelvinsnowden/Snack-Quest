@@ -876,13 +876,15 @@ describe('a paid customer whose callback never arrives', () => {
       result.checkoutSessionId,
       { stuckAfterMs: 0 },
     );
+    expect(recovered?.status).toBe('succeeded');
+    const intentId = recovered && 'intentId' in recovered ? recovered.intentId : '';
     await service().handlePaymentResult(recovered!);
 
     // Safaricom finally delivers the callback, hours later.
     const conversation = await conversationRepository.findById(result.checkoutSessionId);
     await service().handlePaymentResult({
       status: 'succeeded',
-      intentId: recovered!.status === 'succeeded' ? recovered.intentId : '',
+      intentId,
       conversationId: result.checkoutSessionId,
       snapshotId: conversation!.conversationCheckoutSnapshotId!,
       amountKes: result.pricing.totalKes,

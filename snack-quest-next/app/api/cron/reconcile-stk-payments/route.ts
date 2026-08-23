@@ -35,6 +35,17 @@ export async function GET(request: Request): Promise<Response> {
   const startedAtMs = Date.now();
 
   try {
+    // First, settle anything Safaricom already has a verdict on
+    // (§ payment auto-recovery). The payment screen does this too, but
+    // only while it is open — a customer who approved the prompt and
+    // closed the tab has nothing polling for them, and before this
+    // their paid order waited on a human noticing the manual-review
+    // page. Runs ahead of the sweep below so those never reach it.
+    const recovered = await paymentService.recoverAllProcessingPayments(businessId);
+    for (const result of recovered) {
+      await conversationService.handlePaymentResult(result);
+    }
+
     const outcomes = await paymentService.reconcileStuckIntents(businessId);
 
     for (const outcome of outcomes) {
@@ -46,6 +57,8 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     const result = {
+      recovered: recovered.length,
+      recoveredSucceeded: recovered.filter((r) => r.status === 'succeeded').length,
       checked: outcomes.length,
       confirmedFailed: outcomes.filter((o) => o.outcome === 'confirmedFailed').length,
       needsManualReview: outcomes.filter((o) => o.outcome === 'needsManualReview').length,

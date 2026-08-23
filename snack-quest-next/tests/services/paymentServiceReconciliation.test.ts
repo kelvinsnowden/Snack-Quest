@@ -383,6 +383,31 @@ describe('PaymentService.recoverProcessingPayment', () => {
     expect(result).toBeNull();
   });
 
+  /**
+   * The customer who approved the M-Pesa prompt and closed the tab.
+   * Nothing is polling for them, so the sweep is the only thing that
+   * will ever turn their payment into an order.
+   */
+  it('recovers a payment nobody is watching, via the sweep', async () => {
+    const { intentId, checkoutRequestId } = await seedStuckIntent();
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'ok',
+    });
+
+    const results = await paymentService.recoverAllProcessingPayments(BUSINESS_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ status: 'succeeded', intentId, mpesaReceiptNumber: '' });
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('succeeded');
+  });
+
   it('does nothing for a checkout session with no payment in flight', async () => {
     const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, 'conv-does-not-exist', {
       stuckAfterMs: 0,
