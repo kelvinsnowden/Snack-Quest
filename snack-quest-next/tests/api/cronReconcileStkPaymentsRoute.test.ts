@@ -1,14 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { reconcileStuckIntentsMock, handlePaymentResultMock, notifyAdminMock, recordMock } = vi.hoisted(() => ({
+const {
+  reconcileStuckIntentsMock,
+  recoverAllProcessingPaymentsMock,
+  handlePaymentResultMock,
+  notifyAdminMock,
+  recordMock,
+} = vi.hoisted(() => ({
   reconcileStuckIntentsMock: vi.fn(),
+  recoverAllProcessingPaymentsMock: vi.fn(),
   handlePaymentResultMock: vi.fn(),
   notifyAdminMock: vi.fn(),
   recordMock: vi.fn(),
 }));
 
 vi.mock('@/services/paymentService', () => ({
-  paymentService: { reconcileStuckIntents: reconcileStuckIntentsMock },
+  paymentService: {
+    reconcileStuckIntents: reconcileStuckIntentsMock,
+    recoverAllProcessingPayments: recoverAllProcessingPaymentsMock,
+  },
 }));
 
 vi.mock('@/services/conversationService', () => ({
@@ -30,6 +40,9 @@ const ORIGINAL_BUSINESS_ID = process.env.SNACK_QUEST_BUSINESS_ID;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Most cases here are about the sweep, not the recovery that now
+  // runs ahead of it — default it to "nothing was recoverable".
+  recoverAllProcessingPaymentsMock.mockResolvedValue([]);
   process.env.CRON_SECRET = 'test-cron-secret';
   process.env.SNACK_QUEST_BUSINESS_ID = 'snack-quest';
 });
@@ -82,6 +95,8 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
     expect(notifyAdminMock).not.toHaveBeenCalled();
     expect(await response.json()).toEqual({
       ok: true,
+      recovered: 0,
+      recoveredSucceeded: 0,
       checked: 1,
       confirmedFailed: 1,
       needsManualReview: 0,
@@ -128,6 +143,33 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
     expect(notifyAdminMock).not.toHaveBeenCalled();
   });
 
+  /**
+   * The customer who paid and closed the tab: nothing was polling for
+   * them, so this sweep is the only thing that turns their payment
+   * into an order.
+   */
+  it('completes a payment recovered for a customer who is no longer watching', async () => {
+    const recoveredResult = {
+      status: 'succeeded',
+      intentId: 'i9',
+      conversationId: 'conv-9',
+      snapshotId: 'snap-9',
+      amountKes: 2750,
+      mpesaReceiptNumber: '',
+    };
+    recoverAllProcessingPaymentsMock.mockResolvedValue([recoveredResult]);
+    reconcileStuckIntentsMock.mockResolvedValue([]);
+
+    const response = await GET(
+      new Request('http://localhost/api/cron/reconcile-stk-payments', {
+        headers: { authorization: 'Bearer test-cron-secret' },
+      }),
+    );
+
+    expect(handlePaymentResultMock).toHaveBeenCalledWith(recoveredResult);
+    expect(await response.json()).toMatchObject({ recovered: 1, recoveredSucceeded: 1 });
+  });
+
   it('records a succeeded scheduled job run with a summary', async () => {
     reconcileStuckIntentsMock.mockResolvedValue([
       { intentId: 'i1', checkoutRequestId: 'c1', outcome: 'confirmedFailed', callbackResult: { status: 'failed', intentId: 'i1', conversationId: 'c', snapshotId: 's', reason: 'r' } },
@@ -146,7 +188,15 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
         businessId: 'snack-quest',
         jobName: 'reconcile-stk-payments',
         status: 'succeeded',
-        resultSummary: { checked: 3, confirmedFailed: 1, needsManualReview: 1, stillPending: 1, skipped: 0 },
+        resultSummary: {
+          recovered: 0,
+          recoveredSucceeded: 0,
+          checked: 3,
+          confirmedFailed: 1,
+          needsManualReview: 1,
+          stillPending: 1,
+          skipped: 0,
+        },
         error: null,
       }),
     );
