@@ -2377,7 +2377,7 @@ class ConversationService {
     const receiptClause = result.mpesaReceiptNumber ? ` Receipt: ${result.mpesaReceiptNumber}.` : '';
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
-        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Fargo Courier. We'll text you the Fargo waybill number as soon as it is dispatched, and you'll get a message from Fargo when it reaches your selected pickup point.`
+        ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Tushop. We'll text you the waybill number as soon as it is dispatched, and you'll hear from the courier when it reaches your selected pickup point.`
         : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
 
     const milestoneMessage =

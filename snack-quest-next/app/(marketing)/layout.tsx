@@ -2,6 +2,7 @@ import Script from 'next/script';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { MarketingHeader } from '@/components/marketing/MarketingHeader';
 import { MarketingFooter } from '@/components/marketing/MarketingFooter';
+import { PaymentScreenChrome } from '@/components/marketing/PaymentScreenChrome';
 import { PageViewTracker } from '@/components/marketing/analytics/PageViewTracker';
 import { ActiveBoxNameProvider } from '@/components/marketing/design/ActiveBoxContext';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
@@ -144,7 +145,9 @@ export default async function MarketingLayout({
         <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
           {children}
         </main>
-        <MarketingFooter businessName={businessName} />
+        <PaymentScreenChrome>
+          <MarketingFooter businessName={businessName} />
+        </PaymentScreenChrome>
       </div>
     </ActiveBoxNameProvider>
   );

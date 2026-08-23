@@ -56,7 +56,7 @@ const STEPS = [
     icon: CheckCircle2,
     title: 'We pack and deliver',
     description:
-      'Payment confirms on the page by itself, and your order reference appears straight away. Our team hand-packs your box within 24 hours and books your courier, and we send the details to your WhatsApp too.',
+      'Payment confirms on the page by itself, and your order reference appears straight away. Our team hand-packs your box within 24 hours and books your courier, and we text you the details as it moves.',
   },
 ];
 

@@ -436,7 +436,7 @@ export function CheckoutForm({
               aria-invalid={!isAcceptableEmailInput(email)}
             />
             <p className="text-muted-foreground text-sm">
-              For your receipt and order updates. We&apos;ll still message you on WhatsApp either way.
+              For your receipt. We&apos;ll text your order updates to the number above either way.
             </p>
           </div>
         </div>
