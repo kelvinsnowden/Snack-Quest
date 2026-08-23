@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
@@ -13,11 +14,29 @@ import { paymentService } from '@/services/paymentService';
 
 const BUSINESS_ID = 'biz-stk-reconciliation-test';
 
-async function seedStuckIntent(): Promise<{ intentId: string; checkoutRequestId: string }> {
+/**
+ * The conversation the recovery reads to find which checkout is the
+ * current one. Written at a known id so a test can point it at a
+ * specific snapshot.
+ */
+async function seedConversation(snapshotId: string): Promise<void> {
+  await adminFirestore.collection('conversations').doc('conv-1').set({
+    businessId: BUSINESS_ID,
+    phoneNumber: '254700000000',
+    status: 'awaiting_payment',
+    currentStep: 'awaiting_payment',
+    conversationCheckoutSnapshotId: snapshotId,
+    stateBlob: {},
+  });
+}
+
+async function seedStuckIntent(
+  overrides: { snapshotId?: string } = {},
+): Promise<{ intentId: string; checkoutRequestId: string }> {
   const intentId = await paymentIntentRepository.create({
     businessId: BUSINESS_ID,
     conversationId: 'conv-1',
-    conversationCheckoutSnapshotId: 'snapshot-1',
+    conversationCheckoutSnapshotId: overrides.snapshotId ?? 'snapshot-1',
     customerId: null,
     phoneNumber: '254700000000',
     amountKes: 2500,
@@ -39,6 +58,10 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await adminFirestore.recursiveDelete(adminFirestore.collection('paymentIntents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('webhookEvents'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('conversations'));
+  // The default: one conversation whose current checkout is the one
+  // `seedStuckIntent` creates. Tests about stale attempts re-point it.
+  await seedConversation('snapshot-1');
 });
 
 describe('PaymentService.reconcileStuckIntents', () => {
@@ -406,6 +429,57 @@ describe('PaymentService.recoverProcessingPayment', () => {
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ status: 'succeeded', intentId, mpesaReceiptNumber: '' });
     expect((await paymentIntentRepository.findById(intentId))?.status).toBe('succeeded');
+  });
+
+  /**
+   * The duplicate-order bug this recovery caused in production.
+   *
+   * A conversation is reused per phone number, and every abandoned
+   * checkout deliberately leaves its intent `processing`, so one
+   * conversation carries several. Recovery looked one up by
+   * conversation, got an arbitrary stale one that had genuinely
+   * succeeded at Safaricom without a callback, and completed it — a
+   * second order, on its own snapshot, so `completeOrder`'s duplicate
+   * guard never recognised the two as the same sale.
+   */
+  it('recovers only the checkout the customer is on, not an older abandoned one', async () => {
+    const stale = await seedStuckIntent({ snapshotId: 'snapshot-abandoned' });
+    const current = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId: current.checkoutRequestId,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'ok',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toMatchObject({ intentId: current.intentId, snapshotId: 'snapshot-current' });
+    // The abandoned attempt is left for a human, exactly as before.
+    expect((await paymentIntentRepository.findById(stale.intentId))?.status).toBe('processing');
+  });
+
+  it('refuses to auto-create an order from a payment that went stale hours ago', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    // Backdate it well past the recovery ceiling.
+    await adminFirestore
+      .collection('paymentIntents')
+      .doc(intentId)
+      .update({ updatedAt: Timestamp.fromMillis(Date.now() - 6 * 60 * 60 * 1000) });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toBeNull();
+    expect(queryStkStatusMock).not.toHaveBeenCalled();
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('processing');
   });
 
   it('does nothing for a checkout session with no payment in flight', async () => {
