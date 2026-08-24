@@ -13,6 +13,17 @@ import type { AuditFields, SnackItem } from '@/types';
 
 const COLLECTION = 'snackItems';
 
+/**
+ * Milliseconds for ordering, tolerating a row that has none. Every
+ * snack written by this codebase has `createdAt`, but a hand-seeded or
+ * imported one may not, and a missing timestamp should sort oldest
+ * rather than throw.
+ */
+function createdAtMillis(item: Pick<SnackItem, 'createdAt'>): number {
+  const value = item.createdAt as { toMillis?: () => number } | null | undefined;
+  return typeof value?.toMillis === 'function' ? value.toMillis() : 0;
+}
+
 export type SnackItemInput = Omit<SnackItem, keyof AuditFields>;
 /**
  * `FieldValue` is allowed for `stockCount` so an admin clearing the
@@ -122,7 +133,13 @@ class SnackItemRepository {
     return snapshot.docs
       .map((doc) => ({ id: doc.id, data: doc.data() as SnackItem }))
       .filter(({ data }) => typeof data.imageUrl === 'string' && data.imageUrl.length > 0)
-      .sort((a, b) => a.data.name.localeCompare(b.data.name));
+      // Newest first: the slideshow opens on whatever was added last,
+      // so photographing a new snack is what changes the homepage.
+      // Alphabetical would have frozen it on whichever name sorts
+      // first, however much the catalogue grew. Sorted here rather
+      // than in the query because the photo filter above already
+      // rules out an `orderBy` doing the whole job.
+      .sort((a, b) => createdAtMillis(b.data) - createdAtMillis(a.data));
   }
 
   /**
