@@ -113,6 +113,19 @@ describe('IntegrationSettingsService.encryptionConfigured', () => {
 });
 
 describe('IntegrationSettingsService.updateSecret', () => {
+  /** Every required Daraja field present, so a patch can only fail for the reason under test. */
+  async function seedCompleteDaraja() {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', {
+      consumerKey: 'ck-1',
+      consumerSecret: 'cs-1',
+      shortcode: '111111',
+      accountType: 'till',
+      passkey: 'pk-1',
+      callbackUrl: 'https://example.com/cb',
+      env: 'sandbox',
+    });
+  }
+
   it('creates a new secret and returns masked before/after', async () => {
     const { before, after } = await integrationSettingsService.updateSecret(
       BUSINESS_ID,
@@ -148,6 +161,45 @@ describe('IntegrationSettingsService.updateSecret', () => {
     await expect(
       integrationSettingsService.updateSecret(BUSINESS_ID, 'whatchimp', { apiKey: 'only-this' }, 'staff-1'),
     ).rejects.toBeInstanceOf(IntegrationValidationError);
+  });
+
+  /**
+   * The callback URL field holds the base address only — this app
+   * appends `~<webhookSecret>` on every request. A pasted URL that
+   * already carries one gets doubled into `…~~<secret>`, which
+   * verification reads as the key `~<secret>` and answers 403, so
+   * every payment is taken and every callback refused.
+   *
+   * Refused rather than quietly repaired: normalising it would leave a
+   * stale secret sitting in configuration looking authoritative, and
+   * would let whoever pasted it keep believing it is the one in use.
+   */
+  it.each([
+    { label: 'a bare separator left by a redacted paste', url: 'https://www.snackquests.shop/api/webhooks/daraja/snack-quest~' },
+    { label: 'a whole secret', url: 'https://www.snackquests.shop/api/webhooks/daraja/snack-quest~deadbeef' },
+  ])('refuses a Daraja callback URL carrying $label', async ({ url }) => {
+    // Seeded complete on purpose. Without it the patch would throw for
+    // missing required fields instead, and this would pass whether the
+    // callback URL was checked or not.
+    await seedCompleteDaraja();
+
+    await expect(
+      integrationSettingsService.updateSecret(BUSINESS_ID, 'daraja', { callbackUrl: url }, 'staff-1'),
+    ).rejects.toThrow(/webhook secret itself/);
+  });
+
+  it('accepts the base callback URL the field is meant to hold', async () => {
+    await seedCompleteDaraja();
+
+    await integrationSettingsService.updateSecret(
+      BUSINESS_ID,
+      'daraja',
+      { callbackUrl: 'https://www.snackquests.shop/api/webhooks/daraja/snack-quest' },
+      'staff-1',
+    );
+
+    const raw = await businessIntegrationSecretRepository.get(BUSINESS_ID, 'daraja');
+    expect(raw.callbackUrl).toBe('https://www.snackquests.shop/api/webhooks/daraja/snack-quest');
   });
 
   it('can enable/disable an integration via the enabled flag', async () => {

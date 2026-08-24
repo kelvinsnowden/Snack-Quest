@@ -104,8 +104,52 @@ export function withBusinessIdSecret(url: string, secret: string | undefined): s
   const parsed = new URL(url);
   parsed.search = '';
   parsed.hash = '';
-  parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${WEBHOOK_SECRET_SEPARATOR}${secret}`;
+  parsed.pathname = `${stripBusinessIdSecret(parsed.pathname)}${WEBHOOK_SECRET_SEPARATOR}${secret}`;
   return parsed.toString();
+}
+
+/**
+ * Strips trailing slashes and any `~…` already on the final path
+ * segment, so appending the secret cannot double the separator.
+ *
+ * The separator is invisible in the failure it causes. An operator
+ * copying the callback URL out of a log or a support thread very
+ * easily keeps the trailing `~` — the secret after it having been
+ * redacted — and stores `…/snack-quest~`. Appending to that produces
+ * `…/snack-quest~~<secret>`, which splits into the key `~<secret>`,
+ * fails verification, and answers every single callback with 403. That
+ * is a worse outage than the one it would be pasted to fix, because
+ * this time the requests arrive and are refused.
+ *
+ * `~` cannot appear in a business slug or in a hex secret — that is
+ * why it was chosen as the separator — so anything from the first one
+ * onwards is leftover, never part of the id.
+ */
+function stripBusinessIdSecret(pathname: string): string {
+  return pathname.replace(/\/+$/, '').replace(/~[^/]*$/, '');
+}
+
+/**
+ * True when a URL an operator typed already carries a `~…` on its
+ * final segment — i.e. a secret (or the bare separator left behind
+ * after one was redacted) was pasted into a field that must hold only
+ * the base address.
+ *
+ * `withBusinessIdSecret` normalises this away so a stored value like
+ * this still works. This exists so it can also be *rejected* at the
+ * point it is typed: silently repairing it would leave a stale secret
+ * sitting in configuration, looking authoritative, and would hide the
+ * fact that whoever pasted it believes the secret belongs there.
+ */
+export function carriesBusinessIdSecret(url: string): boolean {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    // Not a URL at all — a different check's problem to report.
+    return false;
+  }
+  return /~[^/]*$/.test(pathname.replace(/\/+$/, ''));
 }
 
 /** Splits `snack-quest~abc123` back into its parts. A bare id yields a null key, which `checkWebhookSecret` then treats as "no key supplied". */

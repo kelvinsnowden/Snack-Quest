@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  carriesBusinessIdSecret,
   checkWebhookSecret,
   splitBusinessIdSecret,
   timingSafeEqualStrings,
@@ -110,6 +111,39 @@ describe('withBusinessIdSecret / splitBusinessIdSecret', () => {
     expect(new URL(url).search).toBe('');
   });
 
+  /**
+   * A real paste, from a real operator, mid-outage. The callback URL
+   * had been quoted back to them with the secret redacted
+   * (`…/snack-quest~<redacted>`), and what got stored was everything
+   * up to the redaction — separator included.
+   *
+   * Left alone, that appends to produce `…~~<secret>`, which
+   * `splitBusinessIdSecret` reads as the key `~<secret>`, which fails
+   * verification, which answers every callback 403. Worse than the
+   * outage being fixed, because the requests now arrive and get
+   * refused.
+   */
+  it('survives a trailing separator left behind by a redacted paste', () => {
+    const url = withBusinessIdSecret('https://www.snackquests.shop/api/webhooks/daraja/snack-quest~', 'abc123');
+
+    expect(url).toBe('https://www.snackquests.shop/api/webhooks/daraja/snack-quest~abc123');
+    expect(splitBusinessIdSecret(new URL(url).pathname.split('/').pop()!)).toEqual({
+      businessId: 'snack-quest',
+      key: 'abc123',
+    });
+  });
+
+  /** The same paste with the secret intact — the stored one is replaced, never stacked on top of. */
+  it('replaces a whole secret already on the stored URL rather than doubling it', () => {
+    const url = withBusinessIdSecret(
+      'https://www.snackquests.shop/api/webhooks/daraja/snack-quest~OLDSECRET',
+      'NEWSECRET',
+    );
+
+    expect(url).toBe('https://www.snackquests.shop/api/webhooks/daraja/snack-quest~NEWSECRET');
+    expect(url).not.toContain('OLDSECRET');
+  });
+
   it('round-trips back to the real business id', () => {
     expect(splitBusinessIdSecret('snack-quest~abc123')).toEqual({ businessId: 'snack-quest', key: 'abc123' });
   });
@@ -130,5 +164,30 @@ describe('withBusinessIdSecret / splitBusinessIdSecret', () => {
     const url = withBusinessIdSecret('https://snackquests.shop/api/webhooks/daraja/snack-quest', 'abc123');
     expect(new URL(url).toString()).toBe(url);
     expect(url).not.toContain('%');
+  });
+});
+
+/**
+ * The same mistake, refused at the point it is typed rather than
+ * repaired behind the operator's back — see `carriesBusinessIdSecret`
+ * for why silently normalising it is not enough on its own.
+ */
+describe('carriesBusinessIdSecret', () => {
+  it('accepts the base address the field is meant to hold', () => {
+    expect(carriesBusinessIdSecret('https://www.snackquests.shop/api/webhooks/daraja/snack-quest')).toBe(false);
+    expect(carriesBusinessIdSecret('https://www.snackquests.shop/api/webhooks/daraja/snack-quest/')).toBe(false);
+  });
+
+  it('spots a bare separator left behind by a redacted paste', () => {
+    expect(carriesBusinessIdSecret('https://www.snackquests.shop/api/webhooks/daraja/snack-quest~')).toBe(true);
+  });
+
+  it('spots a whole secret pasted into the field', () => {
+    expect(carriesBusinessIdSecret('https://www.snackquests.shop/api/webhooks/daraja/snack-quest~deadbeef')).toBe(true);
+  });
+
+  /** Not this check's job to report — `inspectCallbackUrl` already blocks an unparseable URL with a better message. */
+  it('says nothing about a value that is not a URL at all', () => {
+    expect(carriesBusinessIdSecret('not a url~at all')).toBe(false);
   });
 });
