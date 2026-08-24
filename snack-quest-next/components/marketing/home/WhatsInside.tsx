@@ -43,7 +43,20 @@ export function WhatsInside({
   // leaves the existing flat-lay doing the job it already did.
   const hasSlideshow = snacks.length > 1;
   return (
-    <section className="overflow-hidden bg-background px-5 py-14 md:px-10 md:py-32">
+    <section
+      /*
+        Asymmetric on purpose — the same trick `HomeHero` documents for
+        the marquee. This section always follows the hero, which
+        already ends in `pb-16 md:pb-40`, and both sit on the same
+        background. A symmetric `py` stacked on top of that produced
+        120px of empty band on mobile and 288px on desktop, reading as
+        a page that had failed to load something. The top padding is
+        now small enough that the hero's own is the spacing; the bottom
+        keeps its full value, because what follows it is a different
+        section on a different ground.
+      */
+      className="overflow-hidden bg-background px-5 pt-2 pb-14 md:px-10 md:pt-4 md:pb-32"
+    >
       <Reveal>
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-caption font-bold tracking-[0.3em] text-secondary uppercase">The loot</p>
