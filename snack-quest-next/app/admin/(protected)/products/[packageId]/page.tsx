@@ -36,6 +36,8 @@ export default async function EditAdminProductPage({
           stockCount: product.stockCount,
           imageUrl: product.imageUrl,
           snackCountLabel: product.snackCountLabel ?? '',
+          guaranteedPickCount: product.guaranteedPickCount,
+          highlightLabel: product.highlightLabel ?? '',
           isRescueOffer: product.isRescueOffer ?? false,
           offerExpiresAt: product.offerExpiresAt ? product.offerExpiresAt.toDate().toISOString().slice(0, 10) : '',
         }}

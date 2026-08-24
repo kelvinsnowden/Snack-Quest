@@ -17,6 +17,8 @@ interface CreateProductBody {
   lowStockThreshold?: unknown;
   imageUrl?: unknown;
   snackCountLabel?: unknown;
+  guaranteedPickCount?: unknown;
+  highlightLabel?: unknown;
   isRescueOffer?: unknown;
   offerExpiresAt?: unknown;
 }
@@ -76,6 +78,21 @@ function validate(body: CreateProductBody): { error: string } | null {
     typeof body.snackCountLabel !== 'string'
   ) {
     return { error: '"snackCountLabel" must be a string when provided.' };
+  }
+  if (
+    body.guaranteedPickCount !== undefined &&
+    (typeof body.guaranteedPickCount !== 'number' ||
+      !Number.isFinite(body.guaranteedPickCount) ||
+      body.guaranteedPickCount < 0)
+  ) {
+    return { error: '"guaranteedPickCount" must be a number of 0 or more when provided.' };
+  }
+  if (
+    body.highlightLabel !== undefined &&
+    body.highlightLabel !== null &&
+    typeof body.highlightLabel !== 'string'
+  ) {
+    return { error: '"highlightLabel" must be a string or null when provided.' };
   }
   if (
     body.isRescueOffer !== undefined &&
@@ -140,6 +157,14 @@ export async function POST(request: Request): Promise<Response> {
     ...(typeof body.snackCountLabel === 'string' &&
     body.snackCountLabel.trim().length > 0
       ? { snackCountLabel: body.snackCountLabel.trim() }
+      : {}),
+    // Absent rather than 0/null — Firestore rejects `undefined`, and a
+    // box that never offers picks should carry no field at all.
+    ...(typeof body.guaranteedPickCount === 'number' && body.guaranteedPickCount > 0
+      ? { guaranteedPickCount: Math.trunc(body.guaranteedPickCount) }
+      : {}),
+    ...(typeof body.highlightLabel === 'string' && body.highlightLabel.trim().length > 0
+      ? { highlightLabel: body.highlightLabel.trim() }
       : {}),
     isRescueOffer: (body.isRescueOffer as boolean | undefined) ?? false,
     offerExpiresAt:

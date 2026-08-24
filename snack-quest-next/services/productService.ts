@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { packageRepository, type PackageInput } from '@/repositories/packageRepository';
+import { packageRepository, type PackageInput, type PackageUpdate } from '@/repositories/packageRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import {
   CatalogNotConfiguredError,
@@ -57,7 +57,7 @@ class ProductService {
   async updateProduct(
     businessId: string,
     packageId: string,
-    patch: Partial<PackageInput>,
+    patch: PackageUpdate,
     actor: string,
   ): Promise<void> {
     await packageRepository.update(packageId, patch, actor);

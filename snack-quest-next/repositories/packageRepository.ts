@@ -102,6 +102,17 @@ export async function adjustStockInTransaction(
 const COLLECTION = 'packages';
 
 export type PackageInput = Omit<Package, keyof AuditFields>;
+/**
+ * What an update may carry. `FieldValue` is allowed for the two
+ * optional merchandising fields so clearing one in Admin removes it
+ * rather than writing an empty value — an absent field is already how
+ * "this box is fully curated" and "no badge" are expressed, and a 0 or
+ * an empty string would be a second way to say the same thing.
+ */
+export type PackageUpdate = Partial<Omit<PackageInput, 'guaranteedPickCount' | 'highlightLabel'>> & {
+  guaranteedPickCount?: number | FieldValue;
+  highlightLabel?: string | FieldValue;
+};
 
 class PackageRepository {
   /**
@@ -199,7 +210,7 @@ class PackageRepository {
     return data.businessId === businessId ? data : null;
   }
 
-  async update(packageId: string, patch: Partial<PackageInput>, actor: string): Promise<void> {
+  async update(packageId: string, patch: PackageUpdate, actor: string): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(packageId).update({
       ...patch,
       updatedAt: FieldValue.serverTimestamp(),

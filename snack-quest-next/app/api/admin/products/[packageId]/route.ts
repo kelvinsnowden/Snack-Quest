@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import {
   hasStaffRole,
   ADMIN_ONLY,
@@ -7,7 +8,7 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
 import {
   packageRepository,
-  type PackageInput,
+  type PackageUpdate,
 } from '@/repositories/packageRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { Package } from '@/types';
@@ -21,14 +22,17 @@ interface UpdateProductBody {
   lowStockThreshold?: unknown;
   imageUrl?: unknown;
   snackCountLabel?: unknown;
+  guaranteedPickCount?: unknown;
+  highlightLabel?: unknown;
   isRescueOffer?: unknown;
   offerExpiresAt?: unknown;
 }
 
+
 function buildPatch(
   body: UpdateProductBody,
-): { patch: Partial<PackageInput> } | { error: string } {
-  const patch: Partial<PackageInput> = {};
+): { patch: PackageUpdate } | { error: string } {
+  const patch: PackageUpdate = {};
 
   if (body.name !== undefined) {
     if (typeof body.name !== 'string' || body.name.trim().length === 0) {
@@ -104,6 +108,28 @@ function buildPatch(
       };
     }
     patch.snackCountLabel = body.snackCountLabel.trim();
+  }
+  if (body.guaranteedPickCount !== undefined) {
+    if (
+      typeof body.guaranteedPickCount !== 'number' ||
+      !Number.isFinite(body.guaranteedPickCount) ||
+      body.guaranteedPickCount < 0
+    ) {
+      return { error: '"guaranteedPickCount" must be a number of 0 or more when provided.' };
+    }
+    // Deleted rather than stored as 0: an absent field is what "this
+    // box is fully curated" looks like everywhere else that reads it,
+    // and leaving a 0 behind would be a second way to say the same
+    // thing.
+    patch.guaranteedPickCount =
+      body.guaranteedPickCount > 0 ? Math.trunc(body.guaranteedPickCount) : FieldValue.delete();
+  }
+  if (body.highlightLabel !== undefined) {
+    if (body.highlightLabel !== null && typeof body.highlightLabel !== 'string') {
+      return { error: '"highlightLabel" must be a string or null when provided.' };
+    }
+    const label = typeof body.highlightLabel === 'string' ? body.highlightLabel.trim() : '';
+    patch.highlightLabel = label.length > 0 ? label : FieldValue.delete();
   }
   if (body.isRescueOffer !== undefined) {
     if (typeof body.isRescueOffer !== 'boolean') {
