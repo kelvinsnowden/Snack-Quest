@@ -37,4 +37,22 @@ export interface SnackItem extends AuditFields {
   sourcingNote: string | null;
   /** Kept out of new recipes and shopping runs without deleting history — a discontinued snack still has to render on the runs that already contain it. */
   isActive: boolean;
+  /**
+   * Whether a customer may choose this snack as one of their
+   * guaranteed picks (§ Premium: choose 5, discover the rest).
+   *
+   * Off by default, and that default is deliberate: this catalogue
+   * exists for buying and packing, so it holds things no customer
+   * should be picking from — bulk staples, packaging fillers, a snack
+   * being trialled. An admin opts a snack in.
+   */
+  availableForPremiumSelection?: boolean;
+  /**
+   * Units on hand, when the business actually counts this snack.
+   * Undefined means untracked rather than zero — the same convention
+   * `Package.stockCount` uses, and the honest one for a catalogue
+   * where most rows have never been counted. A tracked snack at 0 is
+   * hidden from the picker and refused server-side.
+   */
+  stockCount?: number;
 }

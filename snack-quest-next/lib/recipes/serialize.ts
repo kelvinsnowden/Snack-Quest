@@ -50,6 +50,10 @@ export interface SerializedSnackItem {
   origin: string | null;
   sourcingNote: string | null;
   isActive: boolean;
+  /** Undefined on every snack predating the field — the catalogue treats that as "not opted in". */
+  availableForPremiumSelection?: boolean;
+  /** Undefined means untracked, never zero (see `SnackItem.stockCount`). */
+  stockCount?: number;
 }
 
 export function serializeSnackItem(id: string, data: SnackItem): SerializedSnackItem {
@@ -62,5 +66,9 @@ export function serializeSnackItem(id: string, data: SnackItem): SerializedSnack
     origin: data.origin,
     sourcingNote: data.sourcingNote,
     isActive: data.isActive,
+    availableForPremiumSelection: data.availableForPremiumSelection ?? false,
+    // Preserved as absent rather than coerced to 0 — the two mean
+    // different things and the form has to tell them apart.
+    ...(data.stockCount === undefined ? {} : { stockCount: data.stockCount }),
   };
 }

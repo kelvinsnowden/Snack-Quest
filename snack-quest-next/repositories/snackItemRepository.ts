@@ -2,6 +2,7 @@ import 'server-only';
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
+import { isSelectableSnack } from '@/lib/packages/guaranteedPicks';
 import type { AuditFields, SnackItem } from '@/types';
 
 /**
@@ -13,7 +14,16 @@ import type { AuditFields, SnackItem } from '@/types';
 const COLLECTION = 'snackItems';
 
 export type SnackItemInput = Omit<SnackItem, keyof AuditFields>;
-export type SnackItemUpdate = Partial<SnackItemInput> & { updatedBy: string };
+/**
+ * `FieldValue` is allowed for `stockCount` so an admin clearing the
+ * box actually clears it. Omitting the key on an update leaves the old
+ * number in place, which would quietly keep a snack "tracked" at a
+ * level nobody set — see `SnackItem.stockCount`.
+ */
+export type SnackItemUpdate = Partial<Omit<SnackItemInput, 'stockCount'>> & {
+  updatedBy: string;
+  stockCount?: number | FieldValue;
+};
 
 class SnackItemRepository {
   async findById(itemId: string): Promise<SnackItem | null> {
@@ -85,6 +95,30 @@ class SnackItemRepository {
 
     const snapshot = await query.orderBy('name', 'asc').get();
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as SnackItem }));
+  }
+
+  /**
+   * The snacks a customer may choose from on a box that lets them
+   * pick (§ Premium: choose 5, discover the rest).
+   *
+   * Filtered on `availableForPremiumSelection` in the query, but the
+   * remaining conditions are applied in memory on purpose: `isActive`
+   * would need a composite index for no benefit at this catalogue's
+   * size, and `stockCount` cannot be filtered at all, since undefined
+   * means untracked rather than zero and Firestore cannot express
+   * "absent OR greater than zero" in one query.
+   */
+  async listSelectableForPremium(businessId: string): Promise<{ id: string; data: SnackItem }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('availableForPremiumSelection', '==', true)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, data: doc.data() as SnackItem }))
+      .filter(({ data }) => isSelectableSnack(data))
+      .sort((a, b) => a.data.name.localeCompare(b.data.name));
   }
 }
 

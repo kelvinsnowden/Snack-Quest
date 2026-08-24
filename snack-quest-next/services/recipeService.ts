@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { FieldValue } from 'firebase-admin/firestore';
+
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { boxRecipeRepository } from '@/repositories/boxRecipeRepository';
 import { packageRepository } from '@/repositories/packageRepository';
@@ -26,6 +28,9 @@ export interface SnackItemDraft {
   unitLabel: string;
   origin: string | null;
   sourcingNote: string | null;
+  availableForPremiumSelection?: boolean;
+  /** null = untracked, never zero. */
+  stockCount?: number | null;
   isActive: boolean;
 }
 
@@ -80,7 +85,14 @@ class RecipeService {
   async updateSnackItem(businessId: string, itemId: string, draft: SnackItemDraft, actor: string): Promise<void> {
     await this.getSnackItem(businessId, itemId);
     const validated = this.validateSnackItem(draft);
-    await snackItemRepository.update(itemId, { ...validated, updatedBy: actor });
+    await snackItemRepository.update(itemId, {
+      ...validated,
+      // Explicitly removed rather than omitted: an absent key on an
+      // update means "leave it alone", so clearing the stock box in
+      // Admin would otherwise keep the old count forever.
+      ...(typeof draft.stockCount === 'number' ? {} : { stockCount: FieldValue.delete() }),
+      updatedBy: actor,
+    });
   }
 
   /**
@@ -239,7 +251,13 @@ class RecipeService {
     };
   }
 
-  private validateSnackItem(draft: SnackItemDraft): SnackItemDraft {
+  /**
+   * Returns what actually gets stored, which is not the same shape as
+   * what a form submits: the draft carries `stockCount: null` for
+   * "untracked", and untracked is stored as an absent field rather
+   * than a null.
+   */
+  private validateSnackItem(draft: SnackItemDraft): Omit<SnackItemDraft, 'stockCount'> & { stockCount?: number } {
     const name = (draft.name ?? '').trim();
     const unitLabel = (draft.unitLabel ?? '').trim() || 'unit';
 
@@ -259,6 +277,10 @@ class RecipeService {
       origin: draft.origin?.trim() || null,
       sourcingNote: draft.sourcingNote?.trim() || null,
       isActive: draft.isActive !== false,
+      availableForPremiumSelection: draft.availableForPremiumSelection === true,
+      // Absent key rather than `undefined`, which Firestore rejects —
+      // and absent is exactly what "untracked" is stored as.
+      ...(typeof draft.stockCount === 'number' ? { stockCount: draft.stockCount } : {}),
     };
   }
 }

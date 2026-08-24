@@ -21,6 +21,8 @@ interface DraftState {
   origin: string;
   sourcingNote: string;
   isActive: boolean;
+  availableForPremiumSelection: boolean;
+  stockCount: string;
 }
 
 const EMPTY: DraftState = {
@@ -32,6 +34,8 @@ const EMPTY: DraftState = {
   origin: '',
   sourcingNote: '',
   isActive: true,
+  availableForPremiumSelection: false,
+  stockCount: '',
 };
 
 /**
@@ -60,6 +64,8 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
       origin: item.origin ?? '',
       sourcingNote: item.sourcingNote ?? '',
       isActive: item.isActive,
+      availableForPremiumSelection: item.availableForPremiumSelection ?? false,
+      stockCount: item.stockCount === undefined ? '' : String(item.stockCount),
     });
     setError(null);
   }
@@ -97,6 +103,10 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
         origin: draft.origin,
         sourcingNote: draft.sourcingNote,
         isActive: draft.isActive,
+        availableForPremiumSelection: draft.availableForPremiumSelection,
+        // Blank means untracked, which is not the same as zero — see
+        // `SnackItem.stockCount`. Null clears it back to untracked.
+        stockCount: draft.stockCount.trim() === '' ? null : Number(draft.stockCount),
       };
       const response = await fetch(draft.id ? `/api/admin/snack-items/${draft.id}` : '/api/admin/snack-items', {
         method: draft.id ? 'PATCH' : 'POST',
@@ -242,6 +252,39 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
                 />
                 Available for new recipes
               </label>
+
+              {/*
+                Off by default and opted into per snack: this catalogue
+                holds bulk staples and things being trialled, and a
+                customer should be picking from neither.
+              */}
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.availableForPremiumSelection}
+                  onChange={(event) =>
+                    setDraft({ ...draft, availableForPremiumSelection: event.target.checked })
+                  }
+                  className="size-4"
+                />
+                Customers can pick this in a Premium box
+              </label>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="snack-stock">
+                  Units in stock{' '}
+                  <span className="text-muted-foreground font-normal">(blank = not counted)</span>
+                </Label>
+                <Input
+                  id="snack-stock"
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={draft.stockCount}
+                  onChange={(event) => setDraft({ ...draft, stockCount: event.target.value })}
+                  className="max-w-32"
+                />
+              </div>
             </div>
           </div>
 

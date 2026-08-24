@@ -136,6 +136,7 @@ beforeEach(async () => {
     // `ws_CO_test` id, so a leftover idempotency record would make the
     // next test's payment look like one already settled.
     'webhookEvents',
+    'snackItems',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
@@ -1126,5 +1127,113 @@ describe('getWebCheckoutStatus', () => {
       customerName: 'Wanjiru Kamau',
       packageLabel: 'Premium Box',
     });
+  });
+});
+
+
+/**
+ * "Choose 5, discover the rest" (§ Premium), end to end: the picks the
+ * customer made have to reach the packing list, and a request that
+ * bypassed the picker must not.
+ */
+describe('guaranteed picks on a Premium box', () => {
+  const PREMIUM_ID = 'premium-box';
+
+  async function seedPremium() {
+    await adminFirestore.collection('packages').doc(PREMIUM_ID).set({
+      businessId: BUSINESS_ID,
+      name: 'Premium Box',
+      description: 'Pick 5, we surprise you with the rest.',
+      priceKes: 5000,
+      isActive: true,
+      imageUrl: null,
+      guaranteedPickCount: 5,
+      highlightLabel: 'BEST VALUE',
+    });
+    const ids: string[] = [];
+    for (const name of ['A', 'B', 'C', 'D', 'E', 'F']) {
+      const ref = adminFirestore.collection('snackItems').doc(`snack-${name}`);
+      await ref.set({
+        businessId: BUSINESS_ID,
+        name: `Snack ${name}`,
+        imageUrl: null,
+        expectedUnitCostKes: 100,
+        unitLabel: 'bag',
+        origin: 'Japan',
+        sourcingNote: null,
+        isActive: true,
+        availableForPremiumSelection: true,
+      });
+      ids.push(ref.id);
+    }
+    return ids;
+  }
+
+  it('carries the five picks from checkout onto the order', async () => {
+    const ids = await seedPremium();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ packageId: PREMIUM_ID, guaranteedSnackIds: ids.slice(0, 5) }),
+    );
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot?.guaranteedPicks).toHaveLength(5);
+    expect(snapshot?.guaranteedPicks?.[0]).toMatchObject({ snackItemId: ids[0], name: 'Snack A' });
+
+    await service().handlePaymentResult({
+      status: 'succeeded',
+      intentId: (await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']))[0].id,
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      amountKes: result.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+
+    const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
+    expect(order?.data.product.guaranteedPicks).toHaveLength(5);
+    expect(order?.data.product.guaranteedPicks?.map((pick) => pick.name)).toContain('Snack A');
+  });
+
+  it('refuses a checkout that sent the wrong number of picks', async () => {
+    const ids = await seedPremium();
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({ packageId: PREMIUM_ID, guaranteedSnackIds: ids.slice(0, 3) }),
+      ),
+    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+    expect(initiateStkPushMock).not.toHaveBeenCalled();
+  });
+
+  /** The picker never offers it, so only a tampered request could ask for it. */
+  it('refuses a snack that is not open for picking', async () => {
+    const ids = await seedPremium();
+    await adminFirestore
+      .collection('snackItems')
+      .doc(ids[4])
+      .update({ availableForPremiumSelection: false });
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({ packageId: PREMIUM_ID, guaranteedSnackIds: ids.slice(0, 5) }),
+      ),
+    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+  });
+
+  it('leaves a fully-curated box with no picks at all', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    // Absent, not empty: this box has nothing to pick.
+    expect(snapshot?.guaranteedPicks).toBeUndefined();
   });
 });

@@ -107,6 +107,10 @@ class OrderService {
           product: {
             packageId: snapshot.packageId,
             packageLabel: snapshot.packageLabel,
+            // Absent rather than `[]` for a curated box — Firestore
+            // rejects `undefined`, and an empty array would read as
+            // "picked nothing" rather than "nothing to pick".
+            ...(snapshot.guaranteedPicks?.length ? { guaranteedPicks: snapshot.guaranteedPicks } : {}),
           },
           customer: {
             customerId: snapshot.customerId,

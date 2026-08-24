@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { REFERRAL_COOKIE_NAME, resolveReferralCode } from '@/lib/creators/referralCookie';
 import { packageRepository } from '@/repositories/packageRepository';
+import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { CheckoutForm, type CheckoutBox } from '@/components/checkout/CheckoutForm';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
@@ -67,6 +68,8 @@ export default async function CheckoutPage({
     stockCount: data.stockCount ?? null,
     snackCountLabel: data.snackCountLabel ?? null,
     isRescueOffer: data.isRescueOffer ?? false,
+    guaranteedPickCount: guaranteedPickCountFor(data),
+    highlightLabel: data.highlightLabel ?? null,
   }));
 
   // Tighter on a phone than a marketing page would be: a hero-sized

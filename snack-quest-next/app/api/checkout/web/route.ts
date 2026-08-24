@@ -49,6 +49,7 @@ export async function POST(request: Request): Promise<Response> {
     landmark,
     contactPhone,
     referralCode,
+    guaranteedSnackIds,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
 
   if (
@@ -123,6 +124,11 @@ export async function POST(request: Request): Promise<Response> {
       landmark: typeof landmark === 'string' ? landmark : undefined,
       contactPhone: typeof contactPhone === 'string' ? contactPhone : undefined,
       referralCode: typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
+      // Ids only, and only strings — the service re-reads every one of
+      // them from the catalogue before anything reaches an order.
+      guaranteedSnackIds: Array.isArray(guaranteedSnackIds)
+        ? guaranteedSnackIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : undefined,
       isCreatorCheckout: Boolean(creatorSession),
       creatorUid: creatorSession?.uid ?? null,
       attribution,

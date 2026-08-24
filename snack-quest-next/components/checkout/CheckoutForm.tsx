@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Check, Minus, Plus, Store, Truck } from 'lucide-react';
+import { Check, Minus, Plus, Star, Store, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PickupStationPicker, type SelectedStation } from './PickupStationPicker';
+import { GuaranteedPicker } from './GuaranteedPicker';
 import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
@@ -54,6 +55,10 @@ export interface CheckoutBox {
   stockCount: number | null;
   snackCountLabel: string | null;
   isRescueOffer: boolean;
+  /** 0 for a fully-curated box; >0 means the customer picks that many. */
+  guaranteedPickCount: number;
+  /** "BEST VALUE" and the like — set per box by an admin. */
+  highlightLabel: string | null;
 }
 
 const MAX_QUANTITY = MAX_CHECKOUT_QUANTITY;
@@ -84,6 +89,7 @@ export function CheckoutForm({
   // next page load. The server refuses it independently — this only
   // decides whether to offer it.
   const sameDayOpen = isSameDayAvailableAt();
+  const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
   const [estate, setEstate] = useState('');
@@ -93,6 +99,10 @@ export function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
 
   const box = useMemo(() => boxes.find((candidate) => candidate.id === boxId) ?? null, [boxes, boxId]);
+  const requiredPicks = box?.guaranteedPickCount ?? 0;
+  // The picker takes step 2 when it is shown, so everything below it
+  // shifts by one rather than leaving a hole in the numbering.
+  const stepAfterPicks = requiredPicks > 0 ? 3 : 2;
 
   // Fires once, only when checkout actually loaded with the rescue
   // offer as the box in play — i.e. the visitor arrived via its own
@@ -151,6 +161,9 @@ export function CheckoutForm({
   // cannot be an address is worth stopping for, and only because the
   // customer can still fix it while they are looking at it.
   if (!isAcceptableEmailInput(email)) problems.push('Check your email address');
+  if (requiredPicks > 0 && guaranteedSnackIds.length !== requiredPicks) {
+    problems.push(`Choose ${requiredPicks} snacks to continue`);
+  }
   if (deliveryMethod === 'pickup' && !station) problems.push('Choose a pickup station');
   if (deliveryMethod === 'door' && addressText.trim().length < 5) problems.push('Enter your delivery address');
   const ready = problems.length === 0 && !outOfStock;
@@ -199,6 +212,7 @@ export function CheckoutForm({
               }),
           ...(deliveryMethod === 'door' ? { serviceLevel } : {}),
           referralCode: referralCode.trim() || undefined,
+          ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
         }),
       });
 
@@ -272,6 +286,12 @@ export function CheckoutForm({
                   onClick={() => {
                     setBoxId(candidate.id);
                     setQuantity(1);
+                    // Picks belong to the box that offered them.
+                    // Carrying them across would submit snacks against
+                    // a box that never asked for any — which the
+                    // server rejects, leaving the customer with an
+                    // error they cannot act on.
+                    setGuaranteedSnackIds([]);
                     // Changing the box here is the same intent as
                     // clicking "buy this box" elsewhere, so it reports
                     // as the same event with its own source.
@@ -301,7 +321,24 @@ export function CheckoutForm({
                   </div>
 
                   <div className="min-w-0 flex-1 sm:w-full sm:flex-none">
+                    {/*
+                      The badge and the pick line are what make this box
+                      read as a better product rather than a bigger one,
+                      so they sit above the name where the eye lands
+                      first (§ Premium: choose 5, discover the rest).
+                    */}
+                    {candidate.highlightLabel ? (
+                      <p className="bg-primary/10 text-primary mb-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption font-bold tracking-wide uppercase">
+                        <Star className="size-3 fill-current" aria-hidden="true" />
+                        {candidate.highlightLabel}
+                      </p>
+                    ) : null}
                     <p className="text-foreground text-sm font-semibold">{candidate.name}</p>
+                    {candidate.guaranteedPickCount > 0 ? (
+                      <p className="text-primary mt-0.5 text-sm font-medium">
+                        Pick {candidate.guaranteedPickCount}. We&apos;ll surprise you with the rest.
+                      </p>
+                    ) : null}
                     {candidate.snackCountLabel ? (
                       <p className="text-muted-foreground mt-0.5 text-sm">{candidate.snackCountLabel}</p>
                     ) : null}
@@ -377,8 +414,31 @@ export function CheckoutForm({
         </div>
       </section>
 
+      {/*
+        Only for a box that offers picks. Placed immediately after the
+        box because it is part of choosing the product, not part of
+        checking out — and the steps below renumber around it so a
+        Standard checkout never shows a gap where step 2 used to be.
+      */}
+      {requiredPicks > 0 ? (
+        <section className="flex flex-col gap-4">
+          <SectionHeading step={2} title={`Choose your ${requiredPicks} guaranteed picks`} />
+          <p className="text-muted-foreground -mt-2 text-sm">
+            {`Pick any ${requiredPicks} snacks from the current selection. These are guaranteed to be in your box — we'll fill the rest with surprises.`}
+          </p>
+          <GuaranteedPicker
+            required={requiredPicks}
+            selectedIds={guaranteedSnackIds}
+            onChange={(ids) => {
+              markFormStarted();
+              setGuaranteedSnackIds(ids);
+            }}
+          />
+        </section>
+      ) : null}
+
       <section className="flex flex-col gap-4">
-        <SectionHeading step={2} title="Your details" />
+        <SectionHeading step={stepAfterPicks} title="Your details" />
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="checkout-name">Full name</Label>
@@ -443,7 +503,7 @@ export function CheckoutForm({
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeading step={3} title="Delivery" />
+        <SectionHeading step={stepAfterPicks + 1} title="Delivery" />
         <div className="grid gap-3 sm:grid-cols-2">
           {/*
             Both titles name their area, and that is the fix for a real
@@ -553,7 +613,7 @@ export function CheckoutForm({
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeading step={4} title="Referral code" optional />
+        <SectionHeading step={stepAfterPicks + 2} title="Referral code" optional />
         <div className="flex flex-col gap-2">
           <Label htmlFor="checkout-referral">Have a creator&apos;s code?</Label>
           <Input
