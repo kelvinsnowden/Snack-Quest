@@ -85,6 +85,7 @@ export default async function TryLandingPage() {
           // actually have one.
           imageUrl: data.imageUrl as string,
         }))}
+        fromPriceKes={featured.length > 0 ? Math.min(...featured.map((p) => p.data.priceKes)) : null}
       />
       <FounderStory founderImageUrl={homepageContent?.founderImageUrl ?? null} />
       <PickYourBox packages={featured} />

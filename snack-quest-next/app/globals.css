@@ -67,6 +67,17 @@
   --sq-info: #2f78c4;
   --sq-info-foreground: #ffffff;
 
+  /*
+   * The full-screen snack gallery's own ground. Deliberately NOT
+   * redefined for dark mode: a lightbox exists to put photographs on a
+   * neutral dark field, and a viewer that turned cream in light mode
+   * would wash out the very thing it is built to show. One surface,
+   * one appearance, in both themes — declared here as a token rather
+   * than a literal so components still consume nothing but tokens.
+   */
+  --sq-immersive: #0d0b09;
+  --sq-immersive-foreground: #ffffff;
+
   --sq-shadow-sm: 0 1px 2px 0 rgb(31 31 31 / 0.06);
   --sq-shadow-md: 0 12px 32px -12px rgb(31 31 31 / 0.18);
   --sq-shadow-lg: 0 24px 64px -20px rgb(31 31 31 / 0.24);
@@ -158,6 +169,8 @@
   --color-danger-foreground: var(--sq-danger-foreground);
   --color-info: var(--sq-info);
   --color-info-foreground: var(--sq-info-foreground);
+  --color-immersive: var(--sq-immersive);
+  --color-immersive-foreground: var(--sq-immersive-foreground);
 
   --shadow-sm: var(--sq-shadow-sm);
   --shadow-md: var(--sq-shadow-md);

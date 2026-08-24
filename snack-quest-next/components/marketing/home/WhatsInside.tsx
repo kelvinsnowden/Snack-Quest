@@ -33,10 +33,16 @@ const CATEGORY_PILLS = SNACK_CATEGORIES.map((category) => ({
 export function WhatsInside({
   photoUrl,
   snacks = [],
+  ctaHref = '#boxes',
+  fromPriceKes = null,
 }: {
   photoUrl: string | null;
   /** Real snacks from the catalogue. Empty falls back to the single flat-lay. */
   snacks?: SlideshowSnack[];
+  /** Where the full-screen gallery's own call to action goes. Both pages that render this section have a `#boxes` picker on them. */
+  ctaHref?: string;
+  /** Cheapest box on offer, so the gallery can name a price instead of asking someone to go and find one. Null hides the figure rather than inventing it. */
+  fromPriceKes?: number | null;
 }) {
   // The slideshow only earns its place when there is something real to
   // put in it. One snack is a photo, not a slideshow, and none at all
@@ -85,14 +91,22 @@ export function WhatsInside({
           />
           {hasSlideshow ? (
             /*
-              Narrower than the flat-lay's 1000px, because the slides
-              are portrait: at the full width a 4:5 frame would stand
-              1250px tall and push everything below it off the screen.
-              Capped and centred instead, so the shape reads as a snack
-              photo rather than a banner.
+              Deliberately unclipped, and running to both screen edges
+              on mobile by cancelling the section's own `px-5`.
+
+              It used to be a 420px box with `overflow-hidden`, which
+              suited a strip showing one photo at a time and is exactly
+              wrong for one whose whole point is that the next snack is
+              arriving at the edge: a clipping wrapper cuts off the
+              very sliver that asks to be swiped, and a 20px gutter
+              leaves that sliver floating in space rather than coming
+              in from off-screen. Each slide keeps its own rounding
+              instead, so the shape still reads as a photograph rather
+              than a banner. The section already clips horizontally, so
+              the negative margin cannot leak into page scroll.
             */
-            <div className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-[40px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
-              <SnackSlideshow snacks={snacks} />
+            <div className="relative -mx-5 w-auto md:mx-0 md:w-full">
+              <SnackSlideshow snacks={snacks} ctaHref={ctaHref} fromPriceKes={fromPriceKes} />
             </div>
           ) : (
           <div className="animate-float-slow relative aspect-[3/2] w-full overflow-hidden rounded-[40px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
