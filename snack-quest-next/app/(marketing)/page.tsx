@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { faqRepository } from '@/repositories/faqRepository';
 import { reviewService } from '@/services/reviewService';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
@@ -26,7 +27,7 @@ export const metadata: Metadata = buildPageMetadata({
 
 export default async function MarketingHomePage() {
   const businessId = getCurrentBusinessId();
-  const [business, packages, faqs, reviews] = await Promise.all([
+  const [business, packages, faqs, reviews, snacks] = await Promise.all([
     getCurrentBusiness(),
     packageRepository.listActive(businessId),
     // The whole homepage must never 500 because the FAQ section's own
@@ -41,6 +42,10 @@ export default async function MarketingHomePage() {
     reviewService
       .listPublished(businessId, 9)
       .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
+    // Same reasoning again: a failed snack query degrades the
+    // "What's inside" section back to the single flat-lay rather than
+    // breaking the homepage.
+    snackItemRepository.listWithImages(businessId).catch(() => []),
   ]);
   const featured = packages.slice(0, 3);
   const homepageContent = business?.homepageContent;
@@ -48,7 +53,17 @@ export default async function MarketingHomePage() {
   return (
     <div className="flex flex-col overflow-x-hidden">
       <HomeHero />
-      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
+      <WhatsInside
+        photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null}
+        snacks={snacks.map(({ id, data }) => ({
+          id,
+          name: data.name,
+          origin: data.origin,
+          // Narrowed by `listWithImages`, which only returns rows that
+          // actually have one.
+          imageUrl: data.imageUrl as string,
+        }))}
+      />
       <PickYourBox packages={featured} />
       {/*
         Social proof now runs right after the box picker, not the hero

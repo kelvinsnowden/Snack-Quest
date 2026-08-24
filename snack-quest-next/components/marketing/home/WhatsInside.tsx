@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { Reveal } from '../design/Reveal';
 import { SNACK_CATEGORIES } from '@/lib/packages/snackCategories';
+import { SnackSlideshow, type SlideshowSnack } from './SnackSlideshow';
 
 /**
  * Where each category floats around the photo. Only the positioning
@@ -29,7 +30,18 @@ const CATEGORY_PILLS = SNACK_CATEGORIES.map((category) => ({
  * jungle-toned illustrated frame instead of a fabricated product
  * photo; swaps to the real flat-lay the instant a URL is provided.
  */
-export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
+export function WhatsInside({
+  photoUrl,
+  snacks = [],
+}: {
+  photoUrl: string | null;
+  /** Real snacks from the catalogue. Empty falls back to the single flat-lay. */
+  snacks?: SlideshowSnack[];
+}) {
+  // The slideshow only earns its place when there is something real to
+  // put in it. One snack is a photo, not a slideshow, and none at all
+  // leaves the existing flat-lay doing the job it already did.
+  const hasSlideshow = snacks.length > 1;
   return (
     <section className="overflow-hidden bg-background px-5 py-14 md:px-10 md:py-32">
       <Reveal>
@@ -58,6 +70,11 @@ export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
             aria-hidden="true"
             className="absolute -inset-8 rounded-[48px] bg-gradient-to-br from-primary/20 via-home-lime/20 to-secondary/20 blur-3xl"
           />
+          {hasSlideshow ? (
+            <div className="relative w-full overflow-hidden rounded-[40px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
+              <SnackSlideshow snacks={snacks} />
+            </div>
+          ) : (
           <div className="animate-float-slow relative aspect-[3/2] w-full overflow-hidden rounded-[40px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
             {photoUrl ? (
               <Image
@@ -75,8 +92,15 @@ export function WhatsInside({ photoUrl }: { photoUrl: string | null }) {
               </div>
             )}
           </div>
+          )}
 
-          {CATEGORY_PILLS.map((pill) => (
+          {/*
+            Only over the static flat-lay. On the slideshow they would
+            sit across real snack photos and their own captions — the
+            categories are a stand-in for showing the snacks, and once
+            the snacks are actually shown they are in the way.
+          */}
+          {hasSlideshow ? null : CATEGORY_PILLS.map((pill) => (
             <div
               key={pill.label}
               className={`absolute z-20 ${pill.position} ${pill.float} flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-small font-semibold text-foreground shadow-sm`}

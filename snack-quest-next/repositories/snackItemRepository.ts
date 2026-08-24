@@ -98,6 +98,34 @@ class SnackItemRepository {
   }
 
   /**
+   * Every active snack that actually has a photo (§ What's inside —
+   * slideshow).
+   *
+   * Deliberately not gated on `availableForPremiumSelection`: that
+   * flag says "a customer may choose this one", which is a narrower
+   * question than "this is the kind of thing we put in a box". The
+   * homepage is showing what a box contains, so it draws on the whole
+   * live catalogue.
+   *
+   * Filtered on `isActive` in the query and on the photo in memory —
+   * Firestore cannot express "imageUrl is not null" without an
+   * inequality that would force its own index and exclude documents
+   * missing the field entirely.
+   */
+  async listWithImages(businessId: string): Promise<{ id: string; data: SnackItem }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('isActive', '==', true)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, data: doc.data() as SnackItem }))
+      .filter(({ data }) => typeof data.imageUrl === 'string' && data.imageUrl.length > 0)
+      .sort((a, b) => a.data.name.localeCompare(b.data.name));
+  }
+
+  /**
    * The snacks a customer may choose from on a box that lets them
    * pick (§ Premium: choose 5, discover the rest).
    *
