@@ -2167,6 +2167,16 @@ class ConversationService {
       status: 'active',
       currentStep: 'awaiting_customer_payment_confirmation',
     });
+
+    // Released above regardless, so the customer can order again. The
+    // message is what gets held back on a stale failure: recovery may
+    // be settling an attempt abandoned yesterday, and the nightly
+    // sweep would deliver "reply PAY to try again" at 2am about
+    // something the customer has long since moved on from.
+    if (result.status === 'failed' && result.stale) {
+      return;
+    }
+
     await this.reply(
       businessId,
       result.conversationId,

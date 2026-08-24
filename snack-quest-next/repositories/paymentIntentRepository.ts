@@ -212,7 +212,12 @@ class PaymentIntentRepository {
    */
   async getPendingAttempt(
     intentId: string,
-  ): Promise<{ attemptId: string; checkoutRequestId: string; queryAttemptCount: number } | null> {
+  ): Promise<{
+    attemptId: string;
+    checkoutRequestId: string;
+    queryAttemptCount: number;
+    lastQueriedAtMs: number | null;
+  } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .doc(intentId)
@@ -232,17 +237,27 @@ class PaymentIntentRepository {
       attemptId: latest.id,
       checkoutRequestId: data.checkoutRequestId,
       queryAttemptCount: data.queryAttemptCount ?? 0,
+      // Absent on an attempt written before this was recorded, which
+      // reads as "never queried" — correct, and lets it be queried now.
+      lastQueriedAtMs: data.lastQueriedAt?.toMillis() ?? null,
     };
   }
 
-  /** Bumps `queryAttemptCount` after each STK Push Query call the reconciliation sweep makes against this attempt — the sweep's own retry-limit counter (§ Daraja Production Integration Verification Audit §2.4/§7), separate from Daraja's own request/response cycle. */
-  async incrementQueryAttemptCount(intentId: string, attemptId: string): Promise<void> {
+  /**
+   * Records one STK Push Query against this attempt — the count (the
+   * per-attempt retry limit, § Daraja Production Integration
+   * Verification Audit §2.4/§7) and when it happened, which is what
+   * spaces the next one out. Both are written together because a count
+   * without a time is what let the 3-second payment-screen poll spend
+   * the whole budget in seconds.
+   */
+  async recordQueryAttempt(intentId: string, attemptId: string): Promise<void> {
     await adminFirestore
       .collection(COLLECTION)
       .doc(intentId)
       .collection('attempts')
       .doc(attemptId)
-      .update({ queryAttemptCount: FieldValue.increment(1) });
+      .update({ queryAttemptCount: FieldValue.increment(1), lastQueriedAt: FieldValue.serverTimestamp() });
   }
 
   async resolveAttempt(

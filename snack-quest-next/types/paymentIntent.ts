@@ -103,4 +103,14 @@ export interface PaymentAttempt {
   resolvedAt: Timestamp | null;
   /** How many times the STK Push Query reconciliation sweep has asked Daraja about this attempt (§ Daraja Production Integration Verification Audit §2.4/§7) — bounds the sweep's own retries per attempt, independent of how many sweep runs have happened. 0 until the first query. */
   queryAttemptCount: number;
+  /**
+   * When Daraja was last asked about this attempt — what spaces the
+   * queries out (§ payment auto-recovery). The count alone could not:
+   * the payment screen polls every 3 seconds, so it spent the entire
+   * per-attempt budget within seconds of the first query and left
+   * nothing for the sweep that runs after the customer has closed the
+   * tab. Absent on an attempt written before this existed, which reads
+   * as "never queried" and is correct.
+   */
+  lastQueriedAt?: Timestamp | null;
 }
