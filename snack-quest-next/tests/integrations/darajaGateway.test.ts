@@ -863,19 +863,35 @@ describe('testDarajaConnection', () => {
   });
 
   /**
-   * Test Connection makes two calls now, not one: the OAuth token, then
-   * a credentials probe against the STK query endpoint. A token alone
-   * proves the consumer key and secret are a valid pair and nothing
-   * else — it was reporting success on an account where every checkout
-   * was silently failing.
+   * Test Connection makes three calls now: the OAuth token, a GET
+   * against the configured callback URL, and a credentials probe
+   * against the STK query endpoint. A token alone proves the consumer
+   * key and secret are a valid pair and nothing else — it was reporting
+   * success on an account where every checkout was silently failing.
+   *
+   * `callback` defaults to the 405 a healthy POST-only callback route
+   * answers a GET with, so a test about credentials is not accidentally
+   * also a test about reachability.
    *
    * A fresh Response per call, because a body can only be read once.
    */
-  function stubDaraja(probeBody: string, probeStatus = 500) {
+  function stubDaraja(
+    probeBody: string,
+    probeStatus = 500,
+    callback: { status: number; location?: string } = { status: 405 },
+  ) {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes('/oauth/v1/generate')) {
         return Promise.resolve(
           new Response(JSON.stringify({ access_token: 'tok-1', expires_in: '3599' }), { status: 200 }),
+        );
+      }
+      if (url.includes('/api/webhooks/daraja/')) {
+        return Promise.resolve(
+          new Response(null, {
+            status: callback.status,
+            headers: callback.location ? { location: callback.location } : undefined,
+          }),
         );
       }
       return Promise.resolve(new Response(probeBody, { status: probeStatus }));
@@ -919,6 +935,75 @@ describe('testDarajaConnection', () => {
     stubDaraja(JSON.stringify({ ResultCode: 4999, ResultDesc: 'Wrong credentials' }));
 
     await expect(testDarajaConnection(BUSINESS_ID)).rejects.toThrow(/passkey does not belong to this shortcode/);
+  });
+
+  /**
+   * The other silent killer, and a real one: every credential correct,
+   * every push accepted, money arriving — and the callback URL on a
+   * host that 308s to another. Safaricom does not follow redirects, so
+   * the edge answered every callback and the app was never invoked.
+   * Nothing else in this test would have noticed: the credentials pass,
+   * because the credentials were never the problem.
+   */
+  it('fails when the callback URL redirects instead of answering', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    stubDaraja(PROBE_CREDENTIALS_OK, 500, {
+      status: 308,
+      location: `https://www.example.com/api/webhooks/daraja/${BUSINESS_ID}`,
+    });
+
+    await expect(testDarajaConnection(BUSINESS_ID)).rejects.toThrow(/redirects instead of answering/);
+  });
+
+  it('names the host to move the callback URL to, without leaking the webhook secret', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', {
+      ...SECRET,
+      webhookSecret: 'super-secret-value',
+    });
+    stubDaraja(PROBE_CREDENTIALS_OK, 500, {
+      status: 308,
+      // A real redirect carries the whole path through, secret included.
+      location: `https://www.example.com/api/webhooks/daraja/${BUSINESS_ID}~super-secret-value`,
+    });
+
+    const error = await testDarajaConnection(BUSINESS_ID).catch((e: Error) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('www.example.com');
+    expect((error as Error).message).not.toContain('super-secret-value');
+  });
+
+  /** Follows redirects by default, which would land on the healthy host and pass the very configuration this catches. */
+  it('asks the callback URL not to follow redirects', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const fetchMock = stubDaraja(PROBE_CREDENTIALS_OK);
+
+    await testDarajaConnection(BUSINESS_ID);
+
+    const call = fetchMock.mock.calls.find(([url]) => (url as string).includes('/api/webhooks/daraja/'));
+    expect(call).toBeDefined();
+    expect(call?.[1]).toMatchObject({ method: 'GET', redirect: 'manual' });
+  });
+
+  /** An unreachable callback URL is money taken and never confirmed, so it fails the test rather than warning. */
+  it('fails when the callback URL cannot be reached at all', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/oauth/v1/generate')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ access_token: 'tok-1', expires_in: '3599' }), { status: 200 }),
+          );
+        }
+        if (url.includes('/api/webhooks/daraja/')) {
+          return Promise.reject(new Error('getaddrinfo ENOTFOUND example.com'));
+        }
+        return Promise.resolve(new Response(PROBE_CREDENTIALS_OK, { status: 500 }));
+      }),
+    );
+
+    await expect(testDarajaConnection(BUSINESS_ID)).rejects.toThrow(/could not be reached/);
   });
 
   it('fails on a sandbox passkey in production without needing to ask Safaricom', async () => {

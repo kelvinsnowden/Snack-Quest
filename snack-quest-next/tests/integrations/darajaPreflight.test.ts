@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatPreflightFailure,
   inspectDarajaConfig,
+  interpretCallbackProbe,
   interpretStkCredentialProbe,
 } from '@/lib/integrations/daraja/preflight';
 import type { DarajaConfig } from '@/lib/integrations/daraja/config';
@@ -204,6 +205,75 @@ describe('interpretStkCredentialProbe', () => {
     const issue = interpretStkCredentialProbe({ ok: false, body: 'x'.repeat(5000) });
 
     expect(issue?.detail.length).toBeLessThan(400);
+  });
+});
+
+/**
+ * The check that would have caught a real, days-long production
+ * outage: STK pushes accepted, `CheckoutRequestID`s returned, money
+ * landing in the till, and not one callback ever delivered.
+ *
+ * The stored callback URL was on the apex domain, which the project
+ * 308-redirects to its `www` host. Safaricom does not follow redirects
+ * when delivering a callback, so the CDN edge answered every one and
+ * the app was never invoked — which is also why there was nothing in
+ * the logs to find. Every static check passed it: the URL was valid,
+ * HTTPS and publicly routable.
+ */
+describe('interpretCallbackProbe', () => {
+  it('blocks a callback URL that redirects, and names the host to use instead', () => {
+    const issue = interpretCallbackProbe({
+      status: 308,
+      redirectedToHost: 'www.snackquests.shop',
+      error: null,
+    });
+
+    expect(issue?.severity).toBe('blocker');
+    expect(issue?.field).toBe('callbackUrl');
+    expect(issue?.detail).toContain('www.snackquests.shop');
+    expect(issue?.detail).toMatch(/does not follow redirects/);
+  });
+
+  it.each([301, 302, 307, 308])('blocks a %i as readily as any other redirect', (status) => {
+    expect(interpretCallbackProbe({ status, redirectedToHost: null, error: null })?.severity).toBe('blocker');
+  });
+
+  /**
+   * The pass. The callback route exports only `POST`, so a GET that
+   * gets 405 has been routed all the way to the handler — which is
+   * exactly the question being asked, answered without touching any
+   * payment state.
+   */
+  it('passes the 405 a POST-only callback route answers a GET with', () => {
+    expect(interpretCallbackProbe({ status: 405, redirectedToHost: null, error: null })).toBeNull();
+  });
+
+  it.each([200, 204])('passes a %i, since something answered', (status) => {
+    expect(interpretCallbackProbe({ status, redirectedToHost: null, error: null })).toBeNull();
+  });
+
+  it('blocks a 404, because the path leads nowhere', () => {
+    expect(interpretCallbackProbe({ status: 404, redirectedToHost: null, error: null })?.severity).toBe('blocker');
+  });
+
+  /** Deployment protection or a bot filter in front of the app refuses Safaricom exactly as it refuses this probe. */
+  it.each([401, 403])('blocks a %i, since something in front of the app is refusing requests', (status) => {
+    const issue = interpretCallbackProbe({ status, redirectedToHost: null, error: null });
+
+    expect(issue?.severity).toBe('blocker');
+    expect(issue?.detail).toMatch(/deployment protection|firewall/i);
+  });
+
+  it('blocks a request that never completed, quoting the failure', () => {
+    const issue = interpretCallbackProbe({ status: null, redirectedToHost: null, error: 'getaddrinfo ENOTFOUND' });
+
+    expect(issue?.severity).toBe('blocker');
+    expect(issue?.detail).toContain('getaddrinfo ENOTFOUND');
+  });
+
+  /** Conservative in the same way as the credentials probe: an unfamiliar answer is reported, not diagnosed. */
+  it('only warns about a status it does not recognise', () => {
+    expect(interpretCallbackProbe({ status: 503, redirectedToHost: null, error: null })?.severity).toBe('warning');
   });
 });
 

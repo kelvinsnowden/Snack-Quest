@@ -12,6 +12,7 @@ import { withCircuitBreaker } from '../shared/withCircuitBreaker';
 import {
   formatPreflightFailure,
   inspectDarajaConfig,
+  interpretCallbackProbe,
   interpretStkCredentialProbe,
   type DarajaPreflightIssue,
 } from './preflight';
@@ -123,6 +124,51 @@ async function probeStkCredentials(
   return interpretStkCredentialProbe({ ok: response.ok, body: await response.text() });
 }
 
+/** Long enough for a cold serverless start, short enough that Test Connection still feels like a button. */
+const CALLBACK_PROBE_TIMEOUT_MS = 8000;
+
+/**
+ * Asks the configured callback URL whether Safaricom could actually
+ * reach it — see `interpretCallbackProbe` for why this is worth a
+ * network call, and why it is a GET.
+ *
+ * `redirect: 'manual'` is the entire point. `fetch` follows redirects
+ * by default, so a URL that 308s to another host would come back as a
+ * healthy 405 from wherever it landed and this check would pass the
+ * exact configuration it exists to catch.
+ */
+async function probeCallbackReachability(config: DarajaConfig): Promise<DarajaPreflightIssue | null> {
+  try {
+    const response = await fetch(config.callbackUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(CALLBACK_PROBE_TIMEOUT_MS),
+    });
+
+    // Host only, never the URL: `config.callbackUrl` carries the
+    // webhook secret in its path, and a redirect's `Location` carries
+    // it straight through — this string ends up in `lastTestError`, on
+    // screen, and in logs.
+    let redirectedToHost: string | null = null;
+    const location = response.headers.get('location');
+    if (location) {
+      try {
+        redirectedToHost = new URL(location, config.callbackUrl).host;
+      } catch {
+        redirectedToHost = null;
+      }
+    }
+
+    return interpretCallbackProbe({ status: response.status, redirectedToHost, error: null });
+  } catch (error) {
+    return interpretCallbackProbe({
+      status: null,
+      redirectedToHost: null,
+      error: error instanceof Error ? error.message : 'unknown error',
+    });
+  }
+}
+
 /**
  * "Test Connection" (§ Integration Portal) — real, side-effect-free,
  * and no longer misleadingly narrow.
@@ -135,9 +181,16 @@ async function probeStkCredentials(
  * it moved the search away from what was actually broken.
  *
  * Now it checks, in order: the token; the stored configuration
- * (`inspectDarajaConfig`); and the shortcode/passkey pairing, live,
- * against Safaricom. Still never initiates an STK push, B2C payout or
- * reversal — those all move real money.
+ * (`inspectDarajaConfig`); whether Safaricom could actually reach the
+ * callback URL; and the shortcode/passkey pairing, live, against
+ * Safaricom. Still never initiates an STK push, B2C payout or reversal
+ * — those all move real money.
+ *
+ * The callback probe is the half that answers "did the money arrive
+ * but the order never appear?", which the credential checks cannot:
+ * credentials being perfect is exactly the state a business is in when
+ * pushes succeed and callbacks are being swallowed before they reach
+ * the app.
  *
  * Warnings are reported without failing the test. Only a blocker
  * throws, because a Test Connection that fails a working configuration
@@ -148,6 +201,16 @@ export async function testDarajaConnection(businessId: string): Promise<void> {
   const accessToken = await fetchAccessToken(businessId, config, { forceRefresh: true });
 
   const issues = inspectDarajaConfig(config);
+
+  // Skipped when the URL is already known to be malformed, unreachable
+  // or plain HTTP — probing it would only restate what
+  // `inspectCallbackUrl` just said, in vaguer terms.
+  if (!issues.some((issue) => issue.field === 'callbackUrl')) {
+    const callbackIssue = await probeCallbackReachability(config);
+    if (callbackIssue) {
+      issues.push(callbackIssue);
+    }
+  }
 
   // Only worth asking Safaricom if the credentials are at least
   // well-formed — probing with a shortcode that cannot be one produces

@@ -23,6 +23,14 @@ export interface DarajaPreflightIssue {
   severity: 'blocker' | 'warning';
   title: string;
   detail: string;
+  /**
+   * Which stored field the issue is about, where that is unambiguous.
+   * Only `callbackUrl` is tagged today, so the live reachability probe
+   * can be skipped when the static checks have already condemned the
+   * URL — a caller matching on `title` instead would silently start
+   * probing again the day a title is reworded.
+   */
+  field?: 'callbackUrl';
 }
 
 /**
@@ -133,6 +141,7 @@ function inspectCallbackUrl(rawUrl: string): DarajaPreflightIssue[] {
     return [
       {
         severity: 'blocker',
+        field: 'callbackUrl',
         title: 'The callback URL is not a valid URL',
         detail: `M-Pesa delivers the result of every payment to this address. “${rawUrl}” cannot be parsed, so no payment can ever be confirmed.`,
       },
@@ -144,6 +153,7 @@ function inspectCallbackUrl(rawUrl: string): DarajaPreflightIssue[] {
   if (url.protocol !== 'https:') {
     issues.push({
       severity: 'blocker',
+      field: 'callbackUrl',
       title: 'The callback URL is not HTTPS',
       detail: 'Safaricom refuses to deliver callbacks to a plain HTTP address, so payments would be taken and never confirmed.',
     });
@@ -166,12 +176,114 @@ function inspectCallbackUrl(rawUrl: string): DarajaPreflightIssue[] {
   if (isLocal) {
     issues.push({
       severity: 'blocker',
+      field: 'callbackUrl',
       title: 'The callback URL points somewhere only this network can reach',
       detail: `Safaricom has to reach “${url.hostname}” from the public internet to confirm a payment. Use your live domain.`,
     });
   }
 
   return issues;
+}
+
+/**
+ * What a live GET against the configured callback URL came back with.
+ *
+ * A GET deliberately, not a POST: the callback route only exports
+ * `POST`, so Next answers a GET with 405 *after* routing has matched —
+ * which makes 405 positive proof that Safaricom's request would reach
+ * our function, while touching no payment state at all. Posting a
+ * fabricated `stkCallback` would prove the same thing by writing a
+ * junk webhook event into a real business's ledger.
+ */
+export interface CallbackProbeReply {
+  /** `null` when the request never got an answer at all. */
+  status: number | null;
+  /** Host named by a redirect's `Location`, or `null`. Host only — the full URL carries the webhook secret. */
+  redirectedToHost: string | null;
+  /** Network/DNS/TLS failure, if the request never completed. */
+  error: string | null;
+}
+
+/**
+ * The check that would have found the outage this codebase spent days
+ * on: STK pushes accepted, real `CheckoutRequestID`s returned, money
+ * arriving in the till, and not one callback ever delivered.
+ *
+ * The cause was not the payload, the secret, or Safaricom. The stored
+ * callback URL was on the apex domain, which this project 308-redirects
+ * to its `www` host. Safaricom does not follow redirects when
+ * delivering a callback, so every one was answered by the CDN edge and
+ * the function was never invoked — which is also why nothing was ever
+ * in the logs to find. `inspectCallbackUrl` could not catch it: a
+ * redirecting URL is valid, HTTPS, and publicly routable. Only asking
+ * the host reveals it.
+ *
+ * Conservative in the same way as `interpretStkCredentialProbe`: an
+ * answer this does not recognise is reported verbatim as a warning
+ * rather than translated into a confident diagnosis.
+ */
+export function interpretCallbackProbe(reply: CallbackProbeReply): DarajaPreflightIssue | null {
+  if (reply.error) {
+    return {
+      severity: 'blocker',
+      field: 'callbackUrl',
+      title: 'The callback URL could not be reached',
+      detail: `Safaricom has to reach this address to confirm a payment, and a request to it failed: ${reply.error}. Until it answers, payments will be taken and never confirmed.`,
+    };
+  }
+
+  const status = reply.status;
+  if (status === null) {
+    return {
+      severity: 'blocker',
+      field: 'callbackUrl',
+      title: 'The callback URL could not be reached',
+      detail: 'A request to the callback URL got no answer at all. Safaricom has to reach it to confirm a payment.',
+    };
+  }
+
+  if (status >= 300 && status < 400) {
+    return {
+      severity: 'blocker',
+      field: 'callbackUrl',
+      title: 'The callback URL redirects instead of answering',
+      detail: `The address answers ${status}${reply.redirectedToHost ? `, sending callers to ${reply.redirectedToHost}` : ''}. Safaricom does not follow redirects when delivering a callback — it records the redirect as the reply and never retries, so every payment is taken and never confirmed, with nothing in this app's logs because the request never reaches it.${reply.redirectedToHost ? ` Change the callback URL to use ${reply.redirectedToHost} directly.` : ''}`,
+    };
+  }
+
+  // 405 is the pass: the route matched and rejected the method, which
+  // is exactly what a POST-only handler does with a GET. A 2xx means
+  // something answered too, so it is accepted rather than argued with.
+  if (status === 405 || (status >= 200 && status < 300)) {
+    return null;
+  }
+
+  if (status === 404) {
+    return {
+      severity: 'blocker',
+      field: 'callbackUrl',
+      title: 'Nothing is listening at the callback URL',
+      detail:
+        'The host answered 404, so the path is wrong. Safaricom would deliver every payment result to an address that does not exist. Check the path against this app’s Daraja callback route.',
+    };
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      severity: 'blocker',
+      field: 'callbackUrl',
+      title: `The callback URL refuses requests (${status})`,
+      detail:
+        'Something in front of the app — deployment protection, a firewall, or a bot filter — is rejecting requests before they reach it. Safaricom’s callback would be rejected the same way. Allow this path through unauthenticated: it is how M-Pesa reports every payment.',
+    };
+  }
+
+  return {
+    severity: 'warning',
+    title: `The callback URL answered ${status}`,
+    detail:
+      'That is not the 405 a POST-only callback route answers a GET with, so this app cannot confirm Safaricom would reach it. Worth checking the address by hand.',
+  };
 }
 
 /**
