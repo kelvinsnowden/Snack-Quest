@@ -280,6 +280,36 @@ export default async function AdminOrderDetailPage({
         </Card>
       </div>
 
+      {/*
+        The packing list's whole point (§ Premium: choose 5, discover
+        the rest). Stated as a floor rather than the contents — the
+        rest of the box is still curated, and a packer reading this as
+        "the box contains these five" would ship a worse box.
+      */}
+      {product.guaranteedPicks?.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Guaranteed picks — must be in this box</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="divide-border divide-y">
+              {product.guaranteedPicks.map((pick, index) => (
+                <li key={pick.snackItemId} className="flex items-baseline gap-3 py-2 text-sm">
+                  <span className="text-muted-foreground w-4 shrink-0 tabular-nums">{index + 1}.</span>
+                  <span className="text-foreground font-medium">{pick.name}</span>
+                  {pick.origin ? (
+                    <span className="text-muted-foreground ml-auto">{pick.origin}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+            <p className="text-muted-foreground mt-3 text-sm">
+              The rest of the box is curated by Snack Quest as usual.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {items.length > 0 ? (
         <Card>
           <CardHeader>

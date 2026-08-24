@@ -103,6 +103,37 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
         Ask about {orderRef}
       </a>
 
+      {/*
+        Listed back on the confirmation because the picks are the whole
+        reason this box costs more (§ Premium: choose 5, discover the
+        rest). Seeing them named is the proof they actually stuck —
+        and the surprise line beside them keeps the promise honest
+        about what the rest of the box is.
+      */}
+      {status.guaranteedPicks.length > 0 ? (
+        <div className="mt-8 w-full rounded-2xl border border-white/10 bg-white/5 p-5 text-left">
+          <p className="text-home-lime text-sm font-bold tracking-wide uppercase">
+            Your {status.guaranteedPicks.length} guaranteed picks
+          </p>
+          <ul className="mt-3 flex flex-col gap-1.5">
+            {status.guaranteedPicks.map((pick) => (
+              <li key={pick.name} className="flex items-baseline gap-2 text-sm text-white/85">
+                <span aria-hidden="true" className="text-home-lime">
+                  •
+                </span>
+                <span>
+                  {pick.name}
+                  {pick.origin ? <span className="text-white/50"> · {pick.origin}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-sm text-white/60">
+            Plus more snacks we&rsquo;ve picked for you — those stay a surprise. 👀
+          </p>
+        </div>
+      ) : null}
+
       {isDoorDelivery ? (
         <p className="mt-10 text-sm text-pretty text-white/60">
           Your box is packed and sent within 24 hours, and Tushop brings it to the address you

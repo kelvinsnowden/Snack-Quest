@@ -8,7 +8,7 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
-import type { ConversionAttribution, ManualPaymentRecord } from '@/types';
+import type { ConversionAttribution, GuaranteedPick, ManualPaymentRecord, SnackItem } from '@/types';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { normalizeEmail } from '@/lib/checkout/email';
@@ -29,6 +29,8 @@ import {
   type FargoServiceLevel,
 } from '@/lib/delivery/deliveryPricing';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
+import { offersGuaranteedPicks, validateGuaranteedPicks } from '@/lib/packages/guaranteedPicks';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
@@ -235,6 +237,13 @@ export class WebCheckoutConflictError extends Error {
 
 /** Exactly `WebCheckoutRequest`, but with the fields the route has already narrowed to real types. */
 export interface WebCheckoutInput {
+  /**
+   * Snack ids the customer chose as guaranteed picks (§ Premium:
+   * choose 5, discover the rest). Ids only — every name, photo and
+   * eligibility decision is re-read from the catalogue server-side.
+   * Ignored for a box that does not offer picks.
+   */
+  guaranteedSnackIds?: string[];
   /**
    * Set only by the staff-initiated order route, only for a
    * super admin, and only when the customer has *already* paid
@@ -676,6 +685,23 @@ class ConversationService {
       ...(input.referralCode ? { referralCode: input.referralCode } : {}),
     });
 
+    /*
+     * Guaranteed picks, re-derived from the real catalogue rather than
+     * trusted (§ Premium: choose 5, discover the rest). The client
+     * sends snack ids; everything that ends up on the packing list —
+     * the count, the names, whether each snack is even eligible or
+     * still in stock — is read here. A tampered request can order the
+     * wrong box, never an unavailable snack.
+     */
+    const catalogue =
+      offersGuaranteedPicks(box) && input.guaranteedSnackIds?.length
+        ? await snackItemRepository.findManyById(input.guaranteedSnackIds)
+        : new Map<string, SnackItem>();
+    const pickResult = validateGuaranteedPicks(businessId, box, input.guaranteedSnackIds, catalogue);
+    if (!pickResult.ok) {
+      throw new WebCheckoutValidationError(pickResult.reason);
+    }
+
     const { snapshotId, totalKes, walletCreditAppliedKes, subtotalKes, discountKes } =
       await this.freezeSnapshot(
         businessId,
@@ -694,6 +720,7 @@ class ConversationService {
           isRescueOffer: box.isRescueOffer,
           isCreatorCheckout: input.isCreatorCheckout,
           creatorUid: input.creatorUid,
+          guaranteedPicks: pickResult.picks,
         },
         delivery,
       );
@@ -1174,6 +1201,7 @@ class ConversationService {
     // for in the meantime, and it's the same figure the eventual order
     // gets charged, so it's a safe, accurate stand-in while waiting.
     let totalKes = base.totalKes;
+    let guaranteedPicks: { name: string; origin: string | null }[] = [];
 
     const conversation = await conversationRepository.findById(conversationId);
     if (conversation?.conversationCheckoutSnapshotId) {
@@ -1185,6 +1213,7 @@ class ConversationService {
         customerName = snapshot.customerName;
         packageLabel = snapshot.packageLabel;
         totalKes ??= snapshot.totalKes;
+        guaranteedPicks = (snapshot.guaranteedPicks ?? []).map(({ name, origin }) => ({ name, origin }));
       }
     }
 
@@ -1209,6 +1238,7 @@ class ConversationService {
       deliveryMethod,
       customerName,
       packageLabel,
+      guaranteedPicks,
       paidAt,
     };
   }
@@ -1301,6 +1331,13 @@ class ConversationService {
       customerName: string;
       /** Website checkout only; every WhatsApp path omits it. */
       customerEmail?: string | null;
+      /**
+       * Already validated against the real catalogue by the caller
+       * (§ Premium: choose 5, discover the rest) — this only freezes
+       * them. Omitted for a fully-curated box and by every WhatsApp
+       * path, which cannot offer picks.
+       */
+      guaranteedPicks?: GuaranteedPick[];
       county: string;
       referralCode?: string;
       /**
@@ -1375,6 +1412,10 @@ class ConversationService {
       // containing an undefined value outright, and this field is
       // omitted for every WhatsApp order.
       ...(common.customerEmail ? { customerEmail: common.customerEmail } : {}),
+      // Absent rather than `[]` for a curated box: Firestore rejects
+      // `undefined` outright, and an empty array would read as "picked
+      // nothing" instead of "this box has nothing to pick".
+      ...(common.guaranteedPicks?.length ? { guaranteedPicks: common.guaranteedPicks } : {}),
       county: common.county,
       delivery,
       referralCode: common.referralCode ?? null,

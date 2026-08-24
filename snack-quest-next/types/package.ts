@@ -31,6 +31,28 @@ export interface Package extends AuditFields {
   /** Vercel Blob URL — null until an image is uploaded. Synced to the WhatsApp product catalog (§ product catalog sync) alongside name/description/price. */
   imageUrl: string | null;
   /**
+   * How many snacks the customer picks themselves before the rest of
+   * the box is curated (§ Premium: choose 5, discover the rest).
+   * Undefined or 0 means fully curated — the Standard experience,
+   * where the whole box is a surprise.
+   *
+   * A count rather than an `isPremium` flag, so the box that offers
+   * this and the number it offers are one piece of data an admin can
+   * change, not a tier name hardcoded in the checkout. It is also what
+   * the server validates against, so a request claiming four picks or
+   * six is rejected by the same field the UI renders from.
+   *
+   * Deliberately never the whole box. The remainder is what keeps this
+   * a Snack Quest box rather than a snack cart.
+   */
+  guaranteedPickCount?: number;
+  /**
+   * Short banner across the box card — "BEST VALUE". Optional and free
+   * text, set by an admin, because which box deserves it is a
+   * merchandising decision that changes, not a property of the box.
+   */
+  highlightLabel?: string;
+  /**
    * Free text rather than a plain count (e.g. "10+ snacks", "20+
    * snacks and drinks") since what a box actually contains varies by
    * tier. Undefined = not set — the Pick Your Box bullet is omitted

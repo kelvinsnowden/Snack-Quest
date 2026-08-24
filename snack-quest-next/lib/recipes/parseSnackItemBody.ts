@@ -8,7 +8,7 @@ import type { SnackItemDraft } from '@/services/recipeService';
  * valid snack is.
  */
 export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | { error: string } {
-  const { name, imageUrl, expectedUnitCostKes, unitLabel, origin, sourcingNote, isActive } = (body ?? {}) as Record<
+  const { name, imageUrl, expectedUnitCostKes, unitLabel, origin, sourcingNote, isActive, availableForPremiumSelection, stockCount } = (body ?? {}) as Record<
     string,
     unknown
   >;
@@ -29,6 +29,17 @@ export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | {
       origin: typeof origin === 'string' ? origin : null,
       sourcingNote: typeof sourcingNote === 'string' ? sourcingNote : null,
       isActive: isActive !== false,
+      // Opt-in: anything but an explicit `true` leaves a snack out of
+      // the customer-facing picker.
+      availableForPremiumSelection: availableForPremiumSelection === true,
+      // `null`/absent means untracked, which is different from 0 — a
+      // tracked snack at 0 is hidden from the picker, an untracked one
+      // is not. Anything unparseable is treated as untracked rather
+      // than silently becoming a stock level nobody set.
+      stockCount:
+        typeof stockCount === 'number' && Number.isFinite(stockCount) && stockCount >= 0
+          ? Math.trunc(stockCount)
+          : null,
     },
   };
 }

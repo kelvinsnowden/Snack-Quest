@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { DeliveryDetails } from './delivery';
+import type { GuaranteedPick } from './guaranteedPick';
 
 /**
  * `conversationCheckoutSnapshots/{snapshotId}` — a frozen, priced
@@ -41,6 +42,18 @@ export interface ConversationCheckoutSnapshot {
    * the stock reservation know how many units to move.
    */
   quantity?: number;
+  /**
+   * The snacks the customer chose to be certain of (§ Premium: choose
+   * 5, discover the rest). Frozen here alongside the price, and for
+   * the same reason: this is what was promised at the moment of
+   * purchase, and it must survive the snack being renamed or
+   * deactivated afterwards.
+   *
+   * Absent on every fully-curated box and on every snapshot predating
+   * the field, which is what "the whole box is a surprise" looks like
+   * in the data.
+   */
+  guaranteedPicks?: GuaranteedPick[];
   customerName: string;
   /** Optional, website checkout only (§ optional email capture). Absent on every WhatsApp order and on every snapshot predating the field. */
   customerEmail?: string | null;

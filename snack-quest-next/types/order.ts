@@ -2,6 +2,7 @@ import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DeliveryDetails } from './delivery';
 import type { ManualPaymentRecord } from './paymentIntent';
+import type { GuaranteedPick } from './guaranteedPick';
 
 /**
  * `pending` only ever exists transiently inside `OrderService`'s own
@@ -28,6 +29,20 @@ export type OrderStatus =
 export interface OrderProduct {
   packageId: string;
   packageLabel: string;
+  /**
+   * The snacks the customer chose to be certain of (§ Premium: choose
+   * 5, discover the rest), copied off the frozen snapshot at order
+   * creation — the same denormalisation `delivery` and `manualPayment`
+   * use, and for the same reason: the packing list must be readable
+   * without a join, and it records what was promised rather than what
+   * the catalogue says today.
+   *
+   * Absent on every fully-curated box, which is what "the whole box is
+   * a surprise" looks like in the data. The rest of a Premium box is
+   * still curated by Snack Quest — these are a floor, never the whole
+   * contents.
+   */
+  guaranteedPicks?: GuaranteedPick[];
 }
 
 export interface OrderCustomer {

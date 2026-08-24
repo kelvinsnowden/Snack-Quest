@@ -42,6 +42,15 @@ export interface WebCheckoutRequest {
   /** Optional alternate number for the rider to call, when it differs from the paying number. */
   contactPhone?: string;
   referralCode?: string;
+  /**
+   * The snacks chosen as guaranteed picks, on a box that offers them
+   * (§ Premium: choose 5, discover the rest). Ids only — like every
+   * other field here it says *what the customer chose*, and the server
+   * re-reads the catalogue for the rest. A request naming the wrong
+   * number of snacks, a duplicate, or one that is out of stock is
+   * refused rather than trimmed to fit.
+   */
+  guaranteedSnackIds?: string[];
 }
 
 /**
@@ -107,6 +116,13 @@ export interface WebCheckoutStatusResponse {
   deliveryMethod: DeliveryMethod | null;
   customerName: string | null;
   packageLabel: string | null;
+  /**
+   * The snacks the customer chose, echoed back on the confirmation
+   * screen (§ Premium: choose 5, discover the rest) — seeing them
+   * listed is the reassurance that the picks actually stuck. Empty for
+   * a fully-curated box.
+   */
+  guaranteedPicks: { name: string; origin: string | null }[];
   /**
    * When the order was created, ISO-8601, for the confirmation
    * screen's receipt line. Null until an order exists. A string rather

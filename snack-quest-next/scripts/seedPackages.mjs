@@ -46,6 +46,12 @@ const PACKAGES = [
   {
     name: 'Premium Box',
     description: 'Our top-tier snack box with premium and imported treats.',
+    // What makes this the best offer rather than just the biggest box
+    // (§ Premium: choose 5, discover the rest). The count drives the
+    // checkout step, the validation and the packing list — changing it
+    // here changes all three.
+    guaranteedPickCount: 5,
+    highlightLabel: 'BEST VALUE',
     priceKes: 5000,
     isActive: true,
     imageUrl: null,
