@@ -431,3 +431,97 @@ describe('OrderService.changeBox', () => {
     expect(result).toMatchObject({ changed: false });
   });
 });
+
+/**
+ * An order recorded by hand does not text automatically (§ manual
+ * confirmation SMS) — staff place those while still with the customer,
+ * so the confirmation goes out when they say so. This is that send.
+ */
+describe('OrderService.sendConfirmationSms', () => {
+  const ORDER_ID = 'order-manual-sms';
+  const DEDUPE_ID = `sms:order-confirmed:${ORDER_ID}`;
+
+  beforeEach(async () => {
+    await adminFirestore.recursiveDelete(adminFirestore.collection('orders'));
+    await adminFirestore.recursiveDelete(adminFirestore.collection('outboundMessages'));
+    await notificationTemplateRepository.upsert({
+      templateCode: 'order_confirmed_sms',
+      channel: 'sms',
+      subject: null,
+      bodyTemplate: 'Snack Quest: order {{orderRef}} confirmed. Total KES {{totalKes}}, paid by {{paymentRef}}.',
+      heading: null,
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: ['orderRef', 'totalKes', 'paymentRef'],
+      version: 1,
+      isActive: true,
+    });
+    await adminFirestore.collection('orders').doc(ORDER_ID).set({
+      businessId: BUSINESS_ID,
+      orderNumber: 7,
+      status: 'confirmed',
+      product: { packageId: 'starter', packageLabel: 'Starter Box' },
+      customer: { customerId: null, phoneNumber: '254700000000', customerName: 'Test', county: 'Nairobi' },
+      payment: {
+        paymentIntentId: 'intent-1',
+        mpesaReceiptNumber: null,
+        manualPayment: {
+          method: 'cash',
+          reference: null,
+          recordedByUid: 'admin-1',
+          recordedByName: 'Kelvin',
+          note: null,
+          recordedAt: Timestamp.now(),
+        },
+      },
+      pricing: { subtotalKes: 2500, discountKes: 0, deliveryFeeKes: 250, creditsUsedKes: 0, totalKes: 2750 },
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  });
+
+  it('sends the confirmation and records it against the order', async () => {
+    const result = await orderService.sendConfirmationSms(BUSINESS_ID, ORDER_ID);
+
+    expect(result.sent).toBe(true);
+    const message = await outboundMessageRepository.findById(DEDUPE_ID);
+    expect(message).not.toBeNull();
+    expect(message?.channel).toBe('sms');
+    expect(message?.recipientRef).toBe('254700000000');
+    // The order's real figures, not the snapshot's — a corrected box
+    // changes what the customer should be told.
+    expect(message?.renderedBody).toContain('2750');
+  });
+
+  /** The send is deduped on the order, so a second press must not reach the customer. */
+  it('refuses to text the same order twice', async () => {
+    await orderService.sendConfirmationSms(BUSINESS_ID, ORDER_ID);
+    await outboundMessageRepository.markSent(DEDUPE_ID, 'provider-1');
+
+    const second = await orderService.sendConfirmationSms(BUSINESS_ID, ORDER_ID);
+
+    expect(second.sent).toBe(false);
+    expect(second.reason).toMatch(/already been sent/);
+  });
+
+  /**
+   * A send that failed says so rather than claiming the customer was
+   * told — there is no SMS gateway configured here, which is exactly
+   * the shape of a real credentials outage.
+   */
+  it('reports a failed send honestly instead of as delivered', async () => {
+    await orderService.sendConfirmationSms(BUSINESS_ID, ORDER_ID);
+
+    const second = await orderService.sendConfirmationSms(BUSINESS_ID, ORDER_ID);
+
+    expect(second.sent).toBe(false);
+    expect(second.reason).toMatch(/failed/);
+  });
+
+  it('refuses an order belonging to another business', async () => {
+    const result = await orderService.sendConfirmationSms('some-other-business', ORDER_ID);
+
+    expect(result).toMatchObject({ sent: false, reason: 'Order not found' });
+  });
+});

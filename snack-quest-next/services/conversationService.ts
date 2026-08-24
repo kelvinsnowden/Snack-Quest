@@ -135,7 +135,7 @@ async function getAvailablePackages(businessId: string): Promise<PackageOption[]
  * instead, which is both true and the thing the customer would
  * recognise.
  */
-function formatPaymentReference(
+export function formatPaymentReference(
   mpesaReceiptNumber: string | null,
   manualPayment: ManualPaymentRecord | null | undefined,
 ): string {
@@ -2328,20 +2328,34 @@ class ConversationService {
      * `dedupeKey` is the order id, so a redelivered Daraja callback
      * that re-enters this path cannot text the customer twice.
      */
+    /*
+     * Not for an order recorded by hand (§ manual confirmation SMS).
+     * Those are placed by a staff member who is usually still with the
+     * customer — on the phone, or across a stand — so a text firing the
+     * instant they hit save is at best redundant and at worst arrives
+     * mid-conversation, before the details have been agreed. Staff send
+     * it themselves from the order page when the order is actually
+     * settled, the same way they created the order itself.
+     *
+     * The `order-confirmed:{orderId}` key is shared with that button,
+     * so whichever path sends first, the customer is texted once.
+     */
     try {
-      await this.notifications.send(businessId, {
-        channel: 'sms',
-        templateCode: 'order_confirmed_sms',
-        recipientType: 'customer',
-        recipientId: orderId,
-        recipientRef: phoneNumber,
-        params: {
-          orderRef,
-          totalKes: String(snapshot.totalKes),
-          paymentRef: formatPaymentReference(result.mpesaReceiptNumber, result.manualPayment),
-        },
-        dedupeKey: `order-confirmed:${orderId}`,
-      });
+      if (!result.manualPayment) {
+        await this.notifications.send(businessId, {
+          channel: 'sms',
+          templateCode: 'order_confirmed_sms',
+          recipientType: 'customer',
+          recipientId: orderId,
+          recipientRef: phoneNumber,
+          params: {
+            orderRef,
+            totalKes: String(snapshot.totalKes),
+            paymentRef: formatPaymentReference(result.mpesaReceiptNumber, result.manualPayment),
+          },
+          dedupeKey: `order-confirmed:${orderId}`,
+        });
+      }
     } catch (error) {
       await publishEvent(businessId, 'OrderConfirmationSmsFailed', 'order', orderId, {
         reason: error instanceof Error ? error.message : 'unknown error',
@@ -2378,7 +2392,7 @@ class ConversationService {
     const confirmationMessage =
       snapshot.delivery.method === 'pickup'
         ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Tushop. We'll text you the waybill number as soon as it is dispatched, and you'll hear from the courier when it reaches your selected pickup point.`
-        : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and will arrange your Bolt delivery shortly.`;
+        : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and Tushop will bring it to your door.`;
 
     const milestoneMessage =
       milestoneAwardKes > 0 ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.` : '';

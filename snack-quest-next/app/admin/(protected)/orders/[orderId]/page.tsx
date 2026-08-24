@@ -9,6 +9,8 @@ import { CorrectManualPaymentDialog } from '@/components/admin/CorrectManualPaym
 import { orderRepository } from '@/repositories/orderRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { ChangeOrderBoxDialog } from '@/components/admin/ChangeOrderBoxDialog';
+import { SendConfirmationSmsButton } from '@/components/admin/SendConfirmationSmsButton';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { refundRepository } from '@/repositories/refundRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,13 +53,16 @@ export default async function AdminOrderDetailPage({
     notFound();
   }
 
-  const [items, shipment, refunds, boxes] = await Promise.all([
+  const [items, shipment, refunds, boxes, confirmationSms] = await Promise.all([
     orderRepository.listItems(orderId),
     shipmentRepository.findByOrderId(orderId),
     refundRepository.listByOrderId(session.businessId, orderId),
     // Only needed for the super-admin box-correction control; an empty
     // list just hides it rather than failing the page.
     packageRepository.listActive(session.businessId).catch(() => []),
+    // Whether the confirmation text has already gone out — the send is
+    // deduped on this exact id, so its presence is the whole answer.
+    outboundMessageRepository.findById(`sms:order-confirmed:${orderId}`).catch(() => null),
   ]);
 
   const { customer, delivery, payment, pricing, product } = order;
@@ -174,6 +179,18 @@ export default async function AdminOrderDetailPage({
               is the one payment whose evidence is a person's word, so
               asserting it and amending it are the same privilege.
             */}
+            {/*
+              Only for an order recorded by hand. Those do not text
+              automatically, so this is the send — and the one control
+              that would otherwise be missing entirely.
+            */}
+            {payment.manualPayment ? (
+              <SendConfirmationSmsButton
+                orderId={orderId}
+                alreadySent={confirmationSms !== null}
+                phoneNumber={customer.phoneNumber}
+              />
+            ) : null}
             {payment.manualPayment && isSuperAdmin(session) ? (
               <CorrectManualPaymentDialog
                 orderId={orderId}
