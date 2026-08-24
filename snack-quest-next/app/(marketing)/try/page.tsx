@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { productService } from '@/services/productService';
 import { faqRepository } from '@/repositories/faqRepository';
 import { reviewService } from '@/services/reviewService';
@@ -49,7 +50,7 @@ export const metadata: Metadata = {
  */
 export default async function TryLandingPage() {
   const businessId = getCurrentBusinessId();
-  const [business, packages, rescueOffer, faqs, reviews] = await Promise.all([
+  const [business, packages, rescueOffer, faqs, reviews, snacks] = await Promise.all([
     getCurrentBusiness(),
     packageRepository.listActive(businessId),
     productService.getRescueOffer(businessId),
@@ -57,6 +58,10 @@ export default async function TryLandingPage() {
     reviewService
       .listPublished(businessId, 9)
       .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
+    // Same reasoning again: a failed snack query degrades the
+    // "What's inside" section back to the single flat-lay rather than
+    // breaking the homepage.
+    snackItemRepository.listWithImages(businessId).catch(() => []),
   ]);
 
   const higherTiers = [...packages].sort((a, b) => a.data.priceKes - b.data.priceKes).slice(1, 3);
@@ -70,7 +75,17 @@ export default async function TryLandingPage() {
         <SetActiveBoxName packageId={featured[0].id} name={featured[0].data.name} />
       ) : null}
       <HomeHero primaryPackageId={primaryPackageId} />
-      <WhatsInside photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null} />
+      <WhatsInside
+        photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null}
+        snacks={snacks.map(({ id, data }) => ({
+          id,
+          name: data.name,
+          origin: data.origin,
+          // Narrowed by `listWithImages`, which only returns rows that
+          // actually have one.
+          imageUrl: data.imageUrl as string,
+        }))}
+      />
       <FounderStory founderImageUrl={homepageContent?.founderImageUrl ?? null} />
       <PickYourBox packages={featured} />
       <ReviewsSection
