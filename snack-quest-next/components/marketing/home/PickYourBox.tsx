@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { Boxes, Check } from 'lucide-react';
+import { Boxes, Check, Star } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { formatKes } from '@/lib/orders/format';
 import { Reveal } from '../design/Reveal';
@@ -68,6 +68,8 @@ export function PickYourBox({
     return null;
   }
 
+  const anyHighlighted = packages.some((pkg) => Boolean(pkg.data.highlightLabel));
+
   return (
     <section
       id="boxes"
@@ -99,9 +101,19 @@ export function PickYourBox({
       </Reveal>
 
       <div className="mx-auto mt-10 grid max-w-6xl gap-6 md:mt-20 md:grid-cols-3">
+        {/*
+          Emphasis follows the data once any box carries a badge. It
+          used to be positional — the middle of three — which quietly
+          decided merchandising by array order, so the box an admin
+          actually marked BEST VALUE could end up the plain one beside
+          two louder neighbours.
+        */}
         {packages.map((pkg, index) => {
           const accent = ACCENTS[index % ACCENTS.length];
-          const isEmphasized = packages.length === 3 && index === 1;
+          const isEmphasized = anyHighlighted
+            ? Boolean(pkg.data.highlightLabel)
+            : packages.length === 3 && index === 1;
+          const pickCount = pkg.data.guaranteedPickCount ?? 0;
           // Only the exit-intent rescue offer carries a real
           // expiration — never a fabricated deadline on an ordinary
           // box (§ exit-intent rescue offer).
@@ -120,6 +132,19 @@ export function PickYourBox({
                   aria-hidden="true"
                   className={`absolute -top-16 -right-16 size-56 rounded-full blur-3xl ${accent.dot}`}
                 />
+
+                {/*
+                  Sits on the image rather than in the text column: it
+                  is the first thing that should register, and in the
+                  text it would queue up behind the eyebrow, the name
+                  and the price.
+                */}
+                {pkg.data.highlightLabel ? (
+                  <p className="bg-secondary text-caption absolute top-4 left-4 z-20 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-bold tracking-wide text-white uppercase shadow-md">
+                    <Star className="size-3.5 fill-current" aria-hidden="true" />
+                    {pkg.data.highlightLabel}
+                  </p>
+                ) : null}
 
                 <div className="relative aspect-[16/10] w-full overflow-hidden bg-border/40">
                   {pkg.data.imageUrl ? (
@@ -171,6 +196,17 @@ export function PickYourBox({
                       <OfferCountdown expiresAtMs={expiresAtMs} />
                     </div>
                   ) : null}
+                  {/*
+                    The one line that makes this box a different
+                    product rather than a bigger one, so it sits above
+                    the description instead of becoming the last of
+                    several identical trust bullets.
+                  */}
+                  {pickCount > 0 ? (
+                    <p className="text-secondary mt-2 text-base font-bold">
+                      Pick {pickCount}. We&apos;ll surprise you with the rest.
+                    </p>
+                  ) : null}
                   {pkg.data.description ? (
                     <p className="text-small text-foreground/70 mt-1">
                       {pkg.data.description}
@@ -182,6 +218,9 @@ export function PickYourBox({
 
                   <ul className="mt-4 flex flex-1 flex-col gap-2 md:mt-7 md:gap-3">
                     {[
+                      ...(pickCount > 0
+                        ? [`Choose ${pickCount} snacks you know you'll love — we curate the rest`]
+                        : []),
                       ...(pkg.data.snackCountLabel ? [pkg.data.snackCountLabel] : []),
                       ...TRUST_LINES,
                     ].map((line) => (

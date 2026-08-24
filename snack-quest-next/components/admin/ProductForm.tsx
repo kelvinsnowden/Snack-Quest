@@ -21,6 +21,10 @@ export interface ProductFormValues {
   lowStockThreshold?: number;
   imageUrl: string | null;
   snackCountLabel?: string;
+  /** 0/undefined = fully curated. >0 turns on the checkout's snack picker. */
+  guaranteedPickCount?: number;
+  /** "BEST VALUE" and the like, shown on the box card. */
+  highlightLabel?: string;
   isRescueOffer: boolean;
   /** yyyy-mm-dd, same convention `CampaignForm`'s `deadline` field uses — empty string means unset. */
   offerExpiresAt: string;
@@ -41,6 +45,8 @@ const DEFAULTS: ProductFormValues = {
   lowStockThreshold: undefined,
   imageUrl: null,
   snackCountLabel: '',
+  guaranteedPickCount: undefined,
+  highlightLabel: '',
   isRescueOffer: false,
   offerExpiresAt: '',
 };
@@ -112,6 +118,14 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
         isActive: values.isActive,
         imageUrl,
         ...(values.snackCountLabel?.trim() ? { snackCountLabel: values.snackCountLabel.trim() } : {}),
+        // Always sent, including as 0/null, so clearing either field
+        // actually turns the feature back off rather than leaving the
+        // old value in place.
+        guaranteedPickCount:
+          typeof values.guaranteedPickCount === 'number' && values.guaranteedPickCount > 0
+            ? Math.trunc(values.guaranteedPickCount)
+            : 0,
+        highlightLabel: values.highlightLabel?.trim() || null,
         // Only sent on create — an initial stock count, not an adjustment.
         // Editing an existing product's stock happens on the audited
         // Inventory page instead (§ Admin: Inventory), never here.
@@ -216,6 +230,51 @@ export function ProductForm({ mode, packageId, initialValues }: ProductFormProps
             />
             <p className="text-caption text-muted-foreground">
               Shown as an extra bullet point on the homepage&apos;s Pick Your Box cards. Leave blank to omit it.
+            </p>
+          </div>
+
+          {/*
+            What makes a box "pick 5, discover the rest". Without these
+            two fields the feature has no way to be turned on at all —
+            the checkout reads the count off the box, so a box with no
+            count is simply a fully curated one.
+          */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="guaranteedPickCount">Snacks the customer picks (optional)</Label>
+            <Input
+              id="guaranteedPickCount"
+              type="number"
+              min={0}
+              max={20}
+              inputMode="numeric"
+              className="max-w-32"
+              value={values.guaranteedPickCount ?? ''}
+              onChange={(event) =>
+                setValues((v) => ({
+                  ...v,
+                  guaranteedPickCount: event.target.value === '' ? undefined : Number(event.target.value),
+                }))
+              }
+              placeholder="0"
+            />
+            <p className="text-caption text-muted-foreground">
+              Set to 5 and checkout asks the customer to choose 5 snacks guaranteed to be in their box; Snack
+              Quest still curates the rest. Blank or 0 keeps the whole box a surprise. Only snacks ticked as
+              &ldquo;Customers can pick this&rdquo; in the Snack Catalogue are offered.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="highlightLabel">Badge (optional)</Label>
+            <Input
+              id="highlightLabel"
+              value={values.highlightLabel ?? ''}
+              onChange={(event) => setValues((v) => ({ ...v, highlightLabel: event.target.value }))}
+              placeholder="e.g. BEST VALUE"
+              maxLength={20}
+            />
+            <p className="text-caption text-muted-foreground">
+              A short banner across this box&apos;s card, on the homepage and at checkout. Leave blank for none.
             </p>
           </div>
 
