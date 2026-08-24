@@ -1427,6 +1427,43 @@ describe('recording an order that is already paid (§ manual payment)', () => {
     return { result, gateway, packageId };
   }
 
+  /**
+   * Staff place these while still with the customer, so the
+   * confirmation goes out when they press send on the order page — not
+   * the instant they hit save (§ manual confirmation SMS).
+   */
+  it('does not text the customer automatically', async () => {
+    // Seeded deliberately: without a template `send()` throws before
+    // it records anything, and the assertion below would pass whether
+    // or not the suppression actually works.
+    await notificationTemplateRepository.upsert({
+      templateCode: 'order_confirmed_sms',
+      channel: 'sms',
+      subject: null,
+      bodyTemplate: 'Order {{orderRef}} confirmed. KES {{totalKes}}, paid by {{paymentRef}}.',
+      heading: null,
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: ['orderRef', 'totalKes', 'paymentRef'],
+      version: 1,
+      isActive: true,
+    });
+
+    const { result } = await takePaidOrder({ method: 'cash', reference: null });
+
+    const order = await orderRepository.findByConversationId(
+      SNACK_QUEST.businessId,
+      result.checkoutSessionId,
+    );
+    expect(order).not.toBeNull();
+    const message = await adminFirestore
+      .collection('outboundMessages')
+      .doc(`sms:order-confirmed:${order!.id}`)
+      .get();
+    expect(message.exists).toBe(false);
+  });
+
   it('creates a confirmed order without ever calling Daraja', async () => {
     const fetchMock = mockAllProviders();
 

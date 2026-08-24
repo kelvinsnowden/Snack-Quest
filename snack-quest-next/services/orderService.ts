@@ -10,6 +10,8 @@ import {
 import { OutOfStockError, reserveStockInTransaction } from '@/repositories/packageRepository';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
+import { formatPaymentReference } from '@/services/conversationService';
+import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { VALID_ORDER_TRANSITIONS } from '@/lib/orders/transitions';
 import { formatOrderNumber } from '@/lib/orders/format';
 import type {
@@ -236,6 +238,65 @@ class OrderService {
     }
 
     return { ...order, status: next };
+  }
+
+  /**
+   * Sends the order confirmation text on demand (§ manual confirmation
+   * SMS) — the other half of not sending it automatically for an order
+   * recorded by hand.
+   *
+   * Staff place those orders while they are still with the customer, so
+   * the text goes out when they say so rather than the instant they hit
+   * save. This is that moment.
+   *
+   * Shares `order-confirmed:{orderId}` with the automatic path, so an
+   * order can only ever produce one confirmation text however it was
+   * paid, and a double-tap on the button cannot send a second. Already
+   * sent is reported back rather than silently swallowed — a staff
+   * member pressing send deserves to know whether anything left.
+   */
+  async sendConfirmationSms(
+    businessId: string,
+    orderId: string,
+  ): Promise<{ sent: boolean; reason?: string }> {
+    const order = await orderRepository.findById(orderId);
+    if (!order || order.businessId !== businessId) {
+      return { sent: false, reason: 'Order not found' };
+    }
+
+    const dedupeId = `sms:order-confirmed:${orderId}`;
+    const existing = await outboundMessageRepository.findById(dedupeId);
+    if (existing) {
+      return {
+        sent: false,
+        reason:
+          existing.status === 'failed'
+            ? 'A confirmation text was already attempted and failed — the retry sweep will pick it up.'
+            : 'The customer has already been sent a confirmation text for this order.',
+      };
+    }
+
+    await notificationService.send(businessId, {
+      channel: 'sms',
+      templateCode: 'order_confirmed_sms',
+      recipientType: 'customer',
+      recipientId: orderId,
+      recipientRef: order.customer.phoneNumber,
+      params: {
+        orderRef: order.orderNumber ? formatOrderNumber(order.orderNumber) : orderId,
+        // What the order is worth now, which is what the customer
+        // should be told — a corrected box changes this.
+        totalKes: String(order.pricing.totalKes),
+        paymentRef: formatPaymentReference(order.payment.mpesaReceiptNumber, order.payment.manualPayment),
+      },
+      dedupeKey: `order-confirmed:${orderId}`,
+    });
+
+    await publishEvent(businessId, 'OrderConfirmationSmsSentManually', 'order', orderId, {
+      phoneNumber: order.customer.phoneNumber,
+    });
+
+    return { sent: true };
   }
 
   /**
