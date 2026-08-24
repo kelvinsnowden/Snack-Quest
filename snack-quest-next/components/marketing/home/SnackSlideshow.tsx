@@ -114,12 +114,19 @@ export function SnackSlideshow({ snacks }: { snacks: SlideshowSnack[] }) {
               // are off-screen until someone moves the track.
               priority={position === 0}
             />
-            {/* Named, because "what's inside" is a question a picture
-                alone only half answers. */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-5 pt-16">
-              <p className="text-base font-semibold text-white">{snack.name}</p>
-              {snack.origin ? <p className="text-sm text-white/70">{snack.origin}</p> : null}
-            </div>
+            {/*
+              Origin only. The snack's own name is on the packet in the
+              photo, so printing it again says nothing the picture does
+              not — where it travelled from is the part a picture
+              cannot tell you, and the part this section is about.
+              Omitted entirely rather than shown blank when a snack has
+              no origin recorded.
+            */}
+            {snack.origin ? (
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-5 pt-16">
+                <p className="text-base font-semibold text-white">{snack.origin}</p>
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>
