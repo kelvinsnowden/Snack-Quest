@@ -103,12 +103,12 @@ export function SnackSlideshow({ snacks }: { snacks: SlideshowSnack[] }) {
         style={{ scrollbarWidth: 'none' }}
       >
         {snacks.map((snack, position) => (
-          <li key={snack.id} className="relative aspect-[3/2] w-full flex-none snap-center">
+          <li key={snack.id} className="relative aspect-[4/5] w-full flex-none snap-center">
             <Image
               src={snack.imageUrl}
               alt={snack.name}
               fill
-              sizes="(min-width: 1024px) 1000px, 100vw"
+              sizes="(min-width: 640px) 420px, 100vw"
               className="object-cover"
               // Only the first is worth blocking render on; the rest
               // are off-screen until someone moves the track.

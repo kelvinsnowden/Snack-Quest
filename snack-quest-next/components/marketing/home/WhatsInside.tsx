@@ -84,7 +84,14 @@ export function WhatsInside({
             className="absolute -inset-8 rounded-[48px] bg-gradient-to-br from-primary/20 via-home-lime/20 to-secondary/20 blur-3xl"
           />
           {hasSlideshow ? (
-            <div className="relative w-full overflow-hidden rounded-[40px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
+            /*
+              Narrower than the flat-lay's 1000px, because the slides
+              are portrait: at the full width a 4:5 frame would stand
+              1250px tall and push everything below it off the screen.
+              Capped and centred instead, so the shape reads as a snack
+              photo rather than a banner.
+            */
+            <div className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-[40px] shadow-[0_30px_80px_-30px_rgb(31_31_31/0.3)]">
               <SnackSlideshow snacks={snacks} />
             </div>
           ) : (
