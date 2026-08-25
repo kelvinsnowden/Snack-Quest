@@ -23,6 +23,7 @@ import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
 import { trackEvent } from '@/lib/analytics/trackEvent';
 import { WhatsAppCheckoutButton } from '@/components/marketing/WhatsAppCheckoutButton';
+import { trackPixelInitiateCheckout } from '@/lib/analytics/pixels';
 import { buildBoxOrderMessage, GENERIC_ORDER_MESSAGE } from '@/lib/whatsapp/orderLink';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
@@ -120,6 +121,33 @@ export function CheckoutForm({
       trackEvent(RESCUE_OFFER_EVENTS.checkoutStarted, { packageId: boxId });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once for the box checkout loaded with, not on every boxId change.
+  }, []);
+
+  /*
+   * `InitiateCheckout` to the ad pixels, once per visit to this page
+   * (§ report chat orders as InitiateCheckout).
+   *
+   * Here as well as on the WhatsApp button, and that pairing is the
+   * point: reporting only the chat hand-off would teach Meta and
+   * TikTok that chat clickers are the only people who ever start a
+   * checkout, and they would optimise the ad spend towards them
+   * accordingly. Both routes are the same step to a platform, so both
+   * report it.
+   *
+   * Once, keyed off the box the page loaded with — the same reasoning
+   * as the rescue-offer effect above. Swapping boxes mid-session is
+   * not a second checkout.
+   */
+  const pixelCheckoutRef = useRef(false);
+  useEffect(() => {
+    if (pixelCheckoutRef.current) return;
+    pixelCheckoutRef.current = true;
+    const initial = boxes.find((candidate) => candidate.id === boxId);
+    trackPixelInitiateCheckout({
+      ...(boxId ? { packageId: boxId } : {}),
+      ...(initial ? { valueKes: initial.priceKes } : {}),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above; one report per page visit.
   }, []);
 
   /**
@@ -698,6 +726,7 @@ export function CheckoutForm({
           <WhatsAppCheckoutButton
             source="checkout_form"
             packageId={box?.id}
+            valueKes={box ? box.priceKes * quantity : undefined}
             message={
               box ? buildBoxOrderMessage({ name: box.name, priceKes: box.priceKes, quantity }) : GENERIC_ORDER_MESSAGE
             }

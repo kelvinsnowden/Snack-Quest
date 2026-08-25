@@ -3,6 +3,7 @@
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 import { trackEvent } from '@/lib/analytics/trackEvent';
 import { FUNNEL_EVENTS, type WhatsAppOrderSource } from '@/lib/analytics/funnelEvents';
+import { trackPixelInitiateCheckout } from '@/lib/analytics/pixels';
 import { cn } from '@/lib/utils';
 import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 
@@ -37,6 +38,7 @@ export function WhatsAppCheckoutButton({
   message,
   source,
   packageId,
+  valueKes,
   className,
   children = 'Order on WhatsApp',
 }: {
@@ -44,6 +46,8 @@ export function WhatsAppCheckoutButton({
   source: WhatsAppOrderSource;
   /** Recorded with the event when a specific box is being bought. */
   packageId?: string;
+  /** The box's catalogue price, so the ad platforms learn what a chat order is worth. Omitted where no single box is selected — never guessed. */
+  valueKes?: number;
   className?: string;
   children?: React.ReactNode;
 }) {
@@ -60,6 +64,16 @@ export function WhatsAppCheckoutButton({
           source,
           ...(packageId ? { packageId } : {}),
         });
+        /*
+         * The ad platforms count this as a started checkout, because
+         * that is what it is (§ report chat orders as
+         * InitiateCheckout). Someone who taps here has picked a box
+         * and is opening a conversation to buy it — the only
+         * difference from the form is where they finish. Left
+         * unreported, Meta and TikTok would keep optimising away from
+         * exactly the customers who convert best here.
+         */
+        trackPixelInitiateCheckout({ packageId, valueKes });
       }}
       className={cn(
         'border-secondary/35 bg-secondary/10 text-secondary hover:bg-secondary/20 focus-visible:ring-secondary inline-flex items-center justify-center gap-2 rounded-full border px-5 py-3 text-base font-semibold transition duration-150 ease-out focus-visible:ring-2 focus-visible:outline-none',
