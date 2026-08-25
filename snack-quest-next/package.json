@@ -22,6 +22,7 @@
     "seed:notification-templates": "node scripts/seedNotificationTemplates.mjs",
     "secure:daraja-webhook": "node scripts/setDarajaWebhookSecret.mjs",
     "secure:jumia-webhook": "node scripts/setJumiaWebhookSecret.mjs",
+    "whatsapp:deregister": "node scripts/deregisterWhatsAppNumber.mjs",
     "backup:export": "node scripts/exportBusinessData.mjs",
     "migrate:referral-links": "node scripts/migrateReferralLinks.mjs",
     "migrate:creator-memberships": "node scripts/migrateCreatorProfilesToBusinessNested.mjs",
