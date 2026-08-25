@@ -9,11 +9,18 @@ export function formatOrderNumber(orderNumber: number): string {
   return `SQ-${orderNumber}`;
 }
 
-export function formatDate(value: unknown): string {
+export function formatDate(value: unknown, locale = 'en-KE'): string {
   const timestamp = value as { toDate?: () => Date } | undefined;
   const date = timestamp?.toDate ? timestamp.toDate() : null;
   if (!date) return '—';
-  return date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
+  /*
+   * `locale` so a translated portal does not print "27 Jul" beside
+   * Chinese labels (§ Admin in Simplified Chinese). A date is text as
+   * much as a heading is, and a month abbreviated in English is one of
+   * the things that makes a translated screen still feel foreign.
+   * Defaults to `en-KE`, so every existing caller is unaffected.
+   */
+  return date.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** ISO string for a Firestore Timestamp — the shape a Client Component date needs, since a Timestamp itself can't cross that boundary as a prop. Empty string when unset, never a guessed date. */
@@ -23,11 +30,11 @@ export function toIsoString(value: unknown): string {
   return date ? date.toISOString() : '';
 }
 
-export function formatDateTime(value: unknown): string {
+export function formatDateTime(value: unknown, locale = 'en-KE'): string {
   const timestamp = value as { toDate?: () => Date } | undefined;
   const date = timestamp?.toDate ? timestamp.toDate() : null;
   if (!date) return '—';
-  return date.toLocaleString('en-KE', {
+  return date.toLocaleString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
