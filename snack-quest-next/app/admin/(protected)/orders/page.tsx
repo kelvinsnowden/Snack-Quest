@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { EmptyOrdersState } from '@/components/admin/EmptyOrdersState';
 import { OrdersTable } from '@/components/admin/OrdersTable';
 import { StaffInitiatedOrderDialog } from '@/components/admin/StaffInitiatedOrderDialog';
+import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
 import { ORDER_STATUS_LABELS } from '@/lib/orders/transitions';
 import { formatDate } from '@/lib/orders/format';
 import type { Order, OrderStatus } from '@/types';
@@ -66,6 +67,10 @@ export default async function AdminOrdersPage({
     id,
     name: data.name,
     priceKes: data.priceKes,
+    // Read through the same helper the checkout and the server-side
+    // validation use, so "does this box offer picks" cannot mean one
+    // thing here and another where it is enforced.
+    guaranteedPickCount: guaranteedPickCountFor(data),
   }));
 
   const orders: { id: string; data: Order }[] = orderResult.orders;

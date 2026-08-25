@@ -78,6 +78,7 @@ export async function POST(request: Request): Promise<Response> {
     estate,
     landmark,
     referralCode,
+    guaranteedSnackIds,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
 
   const rawManualPayment = (body as { manualPayment?: unknown } | null)?.manualPayment;
@@ -168,6 +169,24 @@ export async function POST(request: Request): Promise<Response> {
           typeof referralCode === 'string' && referralCode.trim()
             ? referralCode.trim()
             : undefined,
+        /*
+         * The snacks a staff member picked for a box that offers them
+         * (§ staff pick the snacks too). Passed straight through, and
+         * only when it is genuinely a list of strings — everything
+         * that decides whether these are *acceptable* lives in
+         * `validateGuaranteedPicks`, which re-reads the live catalogue
+         * and refuses the wrong count, a duplicate, a snack no admin
+         * opted in, one out of stock, or one belonging to another
+         * business.
+         *
+         * Staff go through that same check rather than around it. They
+         * are trusted to take an order, not to put a snack in a box
+         * that does not exist or has run out — and a picker showing a
+         * stale list is exactly how that would otherwise happen.
+         */
+        guaranteedSnackIds: Array.isArray(guaranteedSnackIds)
+          ? guaranteedSnackIds.filter((id): id is string => typeof id === 'string')
+          : undefined,
         initiatedBy: {
           staffUid: session.uid,
           staffName: session.displayName || session.email,
