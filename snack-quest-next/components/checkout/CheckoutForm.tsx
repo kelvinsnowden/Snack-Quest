@@ -70,10 +70,13 @@ export function CheckoutForm({
   boxes,
   initialBoxId,
   initialReferralCode,
+  deliveryFromKes = null,
 }: {
   boxes: CheckoutBox[];
   initialBoxId: string | null;
   initialReferralCode: string | null;
+  /** Cheapest real delivery fee on offer, for the box step's "+ delivery from" line. Null hides it rather than guessing. */
+  deliveryFromKes?: number | null;
 }) {
   const router = useRouter();
 
@@ -84,7 +87,22 @@ export function CheckoutForm({
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
+  /*
+   * Door delivery, not pickup (§ default to the shorter path).
+   *
+   * Pickup was the default and it is the longer road: choose a county,
+   * then choose a station, before any total can be computed. Door
+   * needs an address and nothing else. The logs showed 214 checkout
+   * visits producing almost no completed delivery selections, and the
+   * step everybody landed on first was the one demanding two more
+   * decisions.
+   *
+   * It is also the majority case — Nairobi and its metro towns are
+   * where most of this traffic is — so the default now matches both
+   * the commonest customer and the shorter path. Anyone outside the
+   * radius still switches to pickup in one tap.
+   */
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('door');
   const [serviceLevel, setServiceLevel] = useState<'next-day' | 'same-day'>('next-day');
   // Whether Tushop will still accept a same-day parcel. Computed on the
   // client, from the customer's own clock read in Nairobi time, so the
@@ -98,6 +116,8 @@ export function CheckoutForm({
   const [estate, setEstate] = useState('');
   const [landmark, setLandmark] = useState('');
   const [referralCode, setReferralCode] = useState(initialReferralCode ?? '');
+  // Open only for someone who arrived holding a code — see the section's own comment.
+  const [referralOpen, setReferralOpen] = useState(Boolean(initialReferralCode));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -295,6 +315,28 @@ export function CheckoutForm({
     <form onSubmit={onSubmit} className="flex flex-col gap-9 sm:gap-12">
       <section className="flex flex-col gap-4">
         <SectionHeading step={1} title="Your box" />
+        {/*
+          The delivery floor, stated before the box is even chosen
+          (§ show delivery before the last step).
+
+          Prices on this site exclude delivery, so the total moved from
+          2,500 to 2,750 at the last step — after the customer had
+          picked a box, typed their name and their number. That is the
+          worst possible moment to raise a price, and it is exactly
+          where the logs show people stopping. Said here, the increase
+          is something they were told before they invested anything.
+
+          Hidden entirely when no rule could be read, rather than
+          falling back to a constant: a delivery price that is wrong is
+          worse than one that is absent.
+        */}
+        {deliveryFromKes !== null ? (
+          <p className="text-muted-foreground -mt-1 text-sm">
+            Prices below exclude delivery, which starts at{' '}
+            <span className="text-foreground font-semibold">{formatKes(deliveryFromKes)}</span>
+            {' and depends on where it’s going. You’ll see the exact total before you pay.'}
+          </p>
+        ) : null}
         {/*
           Every box visible at once, no interaction required to see the
           options. This was a swipeable rail, which saved vertical space
@@ -642,10 +684,36 @@ export function CheckoutForm({
         )}
       </section>
 
-      <section className="flex flex-col gap-4">
-        <SectionHeading step={stepAfterPicks + 2} title="Referral code" optional />
+      {/*
+        Collapsed behind a link (§ stop prompting for a code nobody
+        has).
+
+        As a numbered step with an open field, this asked every single
+        customer "do you have a discount code?" immediately above the
+        total. Most do not — and the reliable response to being asked
+        is to leave and go looking for one, which is a departure the
+        checkout never gets back. The people who genuinely hold a
+        creator's code know they hold it and will open this; nobody
+        else is reminded that a cheaper price might exist.
+
+        Not a numbered step any more, for the same reason: numbering it
+        made an optional field look like something owed before paying.
+        It opens by itself when a code arrived in the URL, since that
+        customer already has one and hiding it would look like it was
+        ignored.
+      */}
+      <section className="flex flex-col gap-3">
+        {!referralOpen ? (
+          <button
+            type="button"
+            onClick={() => setReferralOpen(true)}
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-primary self-start rounded-md text-sm underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
+          >
+            Have a creator&apos;s code?
+          </button>
+        ) : (
         <div className="flex flex-col gap-2">
-          <Label htmlFor="checkout-referral">Have a creator&apos;s code?</Label>
+          <Label htmlFor="checkout-referral">Creator&apos;s code</Label>
           <Input
             id="checkout-referral"
             value={referralCode}
@@ -671,6 +739,7 @@ export function CheckoutForm({
             </p>
           )}
         </div>
+        )}
       </section>
 
       <div className="border-border flex flex-col gap-4 border-t pt-8">
