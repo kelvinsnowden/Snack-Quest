@@ -31,7 +31,23 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('pageViews'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('refunds'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('paymentIntents'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('analyticsEvents'));
 });
+
+function seedEvent(overrides: {
+  businessId?: string;
+  event: string;
+  visitorId?: string | null;
+  createdAtMillis?: number;
+}) {
+  return adminFirestore.collection('analyticsEvents').add({
+    businessId: overrides.businessId ?? BUSINESS_ID,
+    event: overrides.event,
+    visitorId: overrides.visitorId ?? null,
+    metadata: null,
+    createdAt: Timestamp.fromMillis(overrides.createdAtMillis ?? Date.now()),
+  });
+}
 
 function seedRefund(overrides: {
   businessId?: string;
@@ -718,5 +734,73 @@ describe('BusinessAnalyticsService.getLtv', () => {
     const result = await businessAnalyticsService.getLtv(BUSINESS_ID);
     expect(result.customerCount).toBe(0);
     expect(result.averageRevenueKes).toBe(0);
+  });
+});
+
+/**
+ * The website's own drop-off (§ web funnel in Admin analytics).
+ *
+ * These events were already being written and read by nothing, so the
+ * question "where do people stop" could only be answered out of server
+ * logs. The cases below are the ones that make the answer wrong if
+ * they are got wrong: mixing visitors with events, and letting another
+ * business's traffic in.
+ */
+describe('BusinessAnalyticsService.getWebFunnel', () => {
+  it('counts visitors browsing but events at the quote step', async () => {
+    await seedPageView({ path: '/', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+    await seedPageView({ path: '/', visitorId: 'v2', createdAtMillis: daysAgo(1).toMillis() });
+    // Same person, two pages — one visitor.
+    await seedPageView({ path: '/checkout', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+    await seedPageView({ path: '/checkout', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+
+    // One customer re-pricing their delivery: three quotes, one person.
+    for (let i = 0; i < 3; i += 1) {
+      await seedEvent({ event: 'delivery_quote_served', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+    }
+    await seedEvent({ event: 'pay_submitted', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'confirmed',
+      createdAt: daysAgo(1),
+      pricing: { subtotalKes: 2500, discountKes: 0, deliveryFeeKes: 250, creditsUsedKes: 0, totalKes: 2750 },
+    });
+
+    const funnel = await businessAnalyticsService.getWebFunnel(BUSINESS_ID, 30);
+
+    expect(funnel.stages.map((stage) => stage.count)).toEqual([2, 1, 3, 1, 1]);
+    // The distinction the caption on the card rests on.
+    expect(funnel.quotedVisitors).toBe(1);
+  });
+
+  it('matches a checkout URL that carries a box parameter', async () => {
+    await seedPageView({ path: '/checkout?box=pkg-1', visitorId: 'v1', createdAtMillis: daysAgo(1).toMillis() });
+
+    const funnel = await businessAnalyticsService.getWebFunnel(BUSINESS_ID, 30);
+
+    expect(funnel.stages[1].count).toBe(1);
+  });
+
+  it('counts WhatsApp orders separately from the funnel', async () => {
+    await seedEvent({ event: 'whatsapp_order_started', visitorId: 'v9', createdAtMillis: daysAgo(2).toMillis() });
+    await seedEvent({ event: 'whatsapp_order_started', visitorId: 'v9', createdAtMillis: daysAgo(2).toMillis() });
+
+    const funnel = await businessAnalyticsService.getWebFunnel(BUSINESS_ID, 30);
+
+    expect(funnel.whatsappOrdersStarted).toBe(2);
+    // It leaves the site, so it must not inflate any stage.
+    expect(funnel.stages.every((stage) => stage.count === 0)).toBe(true);
+  });
+
+  it('excludes another business and anything older than the window', async () => {
+    await seedPageView({ businessId: OTHER_BUSINESS_ID, path: '/', visitorId: 'other', createdAtMillis: daysAgo(1).toMillis() });
+    await seedEvent({ businessId: OTHER_BUSINESS_ID, event: 'delivery_quote_served', visitorId: 'other' });
+    await seedPageView({ path: '/', visitorId: 'stale', createdAtMillis: daysAgo(45).toMillis() });
+    await seedEvent({ event: 'delivery_quote_served', visitorId: 'stale', createdAtMillis: daysAgo(45).toMillis() });
+
+    const funnel = await businessAnalyticsService.getWebFunnel(BUSINESS_ID, 30);
+
+    expect(funnel.stages[0].count).toBe(0);
+    expect(funnel.stages[2].count).toBe(0);
   });
 });

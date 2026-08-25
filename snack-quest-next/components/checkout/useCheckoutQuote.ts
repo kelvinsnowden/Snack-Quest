@@ -112,6 +112,26 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
           if (next === null && !alreadyReported) {
             reportQuoteError('empty_response');
           }
+          if (next) {
+            /*
+             * The customer has just been shown what they will really
+             * be charged (§ web funnel in Admin analytics). Recorded
+             * here rather than in the quote route so the event carries
+             * the same `visitorId` as every other funnel step and can
+             * be lined up with them; the route has no visitor identity
+             * of its own to attach.
+             *
+             * Every successful quote, not one per visit — this counts
+             * quotes served, matching what the server logs count.
+             */
+            trackEvent(FUNNEL_EVENTS.deliveryQuoteServed, {
+              // `current`, not `selection`: the effect closes over the
+              // selection it was scheduled with, and this fires after
+              // an await.
+              deliveryMethod: current.deliveryMethod,
+              totalKes: next.pricing.totalKes,
+            });
+          }
           setQuote(next);
         })
         .catch(() => {

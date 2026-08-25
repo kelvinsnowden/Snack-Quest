@@ -42,6 +42,7 @@ export default async function AdminAnalyticsPage({
   const [
     revenue,
     funnel,
+    webFunnel,
     creatorRoi,
     cac,
     cacByChannel,
@@ -56,6 +57,7 @@ export default async function AdminAnalyticsPage({
   ] = await Promise.all([
     businessAnalyticsService.getRevenueOverview(session.businessId, 30),
     businessAnalyticsService.getFunnel(session.businessId),
+    businessAnalyticsService.getWebFunnel(session.businessId, 30),
     businessAnalyticsService.getCreatorRoi(session.businessId, 30),
     businessAnalyticsService.getCac(session.businessId, month),
     businessAnalyticsService.getCacByChannel(session.businessId, month),
@@ -322,10 +324,47 @@ export default async function AdminAnalyticsPage({
         </Card>
       )}
 
+      {/*
+        First, and full width, because it is the only funnel that
+        describes the journey almost every visitor takes. The
+        conversation funnel below it measures WhatsApp threads, which
+        is a different path and was the only one on this page — the
+        website's own drop-off had to be read out of server logs.
+      */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Website funnel (last {webFunnel.days} days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FunnelChart stages={webFunnel.stages} />
+          <div className="mt-5 flex flex-col gap-2 border-t border-border pt-4">
+            <p className="text-caption text-muted-foreground">
+              “Saw their delivery total” counts quotes served, so one customer changing their
+              delivery choice produces several. Those{' '}
+              <span className="font-semibold text-foreground tabular-nums">
+                {webFunnel.stages[2]?.count.toLocaleString('en-KE') ?? 0}
+              </span>{' '}
+              quotes came from{' '}
+              <span className="font-semibold text-foreground tabular-nums">
+                {webFunnel.quotedVisitors.toLocaleString('en-KE')}
+              </span>{' '}
+              {webFunnel.quotedVisitors === 1 ? 'person' : 'people'}.
+            </p>
+            <p className="text-caption text-muted-foreground">
+              <span className="font-semibold text-foreground tabular-nums">
+                {webFunnel.whatsappOrdersStarted.toLocaleString('en-KE')}
+              </span>{' '}
+              order{webFunnel.whatsappOrdersStarted === 1 ? '' : 's'} started on WhatsApp instead.
+              Those leave the site, so whether they closed is only known from the thread.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Checkout funnel</CardTitle>
+            <CardTitle>WhatsApp conversation funnel</CardTitle>
           </CardHeader>
           <CardContent>
             <FunnelChart stages={funnel} />

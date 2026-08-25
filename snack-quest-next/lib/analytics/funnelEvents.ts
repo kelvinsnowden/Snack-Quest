@@ -22,6 +22,24 @@ export const FUNNEL_EVENTS = {
   paySubmitted: 'pay_submitted',
   /** The server-side quote could not be computed, so the customer saw no live total. */
   quoteError: 'quote_error',
+  /**
+   * A live delivery total was computed and shown (§ web funnel in
+   * Admin analytics).
+   *
+   * The most informative step in the whole funnel, because it is the
+   * moment the price stops being the one advertised and becomes the
+   * one actually charged. Somebody who reaches here has chosen a box,
+   * typed their details and picked a delivery method — every drop
+   * after this point is a person who wanted it until they saw the
+   * total.
+   *
+   * Fired on every successful quote, not once per visit, so it
+   * genuinely counts quotes *served* — the same thing the server logs
+   * count. `visitorId` rides along on the event, so the number of
+   * people behind those quotes is a distinct-count away rather than a
+   * second event.
+   */
+  deliveryQuoteServed: 'delivery_quote_served',
   /** Someone began writing a review — the denominator for "we asked, did they actually do it". */
   reviewStarted: 'review_started',
   /** A review was successfully submitted (it still has to pass moderation to appear). */
