@@ -15,6 +15,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PickupStationPicker, type SelectedStation } from '@/components/checkout/PickupStationPicker';
+import { StaffSnackPicker } from '@/components/admin/StaffSnackPicker';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
@@ -60,6 +61,8 @@ export interface OrderableBox {
   id: string;
   name: string;
   priceKes: number;
+  /** 0 for a fully-curated box; >0 means this many snacks are chosen, and must be. */
+  guaranteedPickCount: number;
 }
 
 export function StaffInitiatedOrderDialog({
@@ -80,6 +83,7 @@ export function StaffInitiatedOrderDialog({
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
   const [referralCode, setReferralCode] = useState('');
+  const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('request');
   const [manualMethod, setManualMethod] = useState<ManualPaymentMethod>('cash');
   const [manualReference, setManualReference] = useState('');
@@ -96,12 +100,30 @@ export function StaffInitiatedOrderDialog({
     setStation(null);
     setAddressText('');
     setReferralCode('');
+    setGuaranteedSnackIds([]);
     setPaymentMode('request');
     setManualMethod('cash');
     setManualReference('');
     setManualNote('');
     setError(null);
     setSent(null);
+  }
+
+  const selectedBox = boxes.find((candidate) => candidate.id === boxId) ?? null;
+  const requiredPicks = selectedBox?.guaranteedPickCount ?? 0;
+
+  /*
+   * Picks belong to the box they were chosen for. Switching box has to
+   * drop them, or a Premium selection would silently ride along on a
+   * Starter Box and be refused by the server at submit — after the
+   * operator has already read the total back to the customer.
+   *
+   * Cleared in the change handler rather than an effect, so this never
+   * sets state during a render pass.
+   */
+  function chooseBox(nextBoxId: string) {
+    setBoxId(nextBoxId);
+    setGuaranteedSnackIds([]);
   }
 
   const parsedQuantity = Number.parseInt(quantity, 10);
@@ -117,6 +139,9 @@ export function StaffInitiatedOrderDialog({
     Number.isFinite(parsedQuantity) &&
     parsedQuantity >= 1 &&
     (deliveryMethod === 'pickup' ? Boolean(station) : addressText.trim().length >= 5) &&
+    // Exactly the required number, matching what the server enforces.
+    // Fewer or more is refused there, so the button must not offer it.
+    guaranteedSnackIds.length === requiredPicks &&
     (!alreadyPaid || manualReferenceReady);
 
   async function onSubmit() {
@@ -137,6 +162,7 @@ export function StaffInitiatedOrderDialog({
             ? { pickupStationId: station?.id }
             : { addressText: addressText.trim() }),
           referralCode: referralCode.trim() || undefined,
+          ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
           ...(alreadyPaid
             ? {
                 manualPayment: {
@@ -280,7 +306,7 @@ export function StaffInitiatedOrderDialog({
                     <select
                       id="staff-order-box"
                       value={boxId}
-                      onChange={(event) => setBoxId(event.target.value)}
+                      onChange={(event) => chooseBox(event.target.value)}
                       className="border-border bg-surface text-foreground focus-visible:ring-primary h-10 rounded-md border px-3 text-sm shadow-sm outline-none focus-visible:ring-2"
                     >
                       {boxes.map((box) => (
@@ -300,6 +326,27 @@ export function StaffInitiatedOrderDialog({
                     />
                   </div>
                 </div>
+
+                {/*
+                  Only for a box that actually offers picks (§ staff
+                  pick the snacks too). A Starter Box has nothing to
+                  choose, and rendering an empty picker on it would
+                  imply otherwise.
+                */}
+                {requiredPicks > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <Label>Snacks for this box</Label>
+                    <p className="text-muted-foreground text-caption">
+                      {selectedBox?.name} includes {requiredPicks} snacks the customer chooses. Pick
+                      what they asked for — we curate the rest.
+                    </p>
+                    <StaffSnackPicker
+                      required={requiredPicks}
+                      selectedIds={guaranteedSnackIds}
+                      onChange={setGuaranteedSnackIds}
+                    />
+                  </div>
+                ) : null}
 
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="staff-order-name">Customer name</Label>

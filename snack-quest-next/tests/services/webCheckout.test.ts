@@ -1285,4 +1285,70 @@ describe('guaranteed picks on a Premium box', () => {
     // Absent, not empty: this box has nothing to pick.
     expect(snapshot?.guaranteedPicks).toBeUndefined();
   });
+
+  /** Local to this block; the identically-named one above belongs to the staff-orders describe. */
+  const PICKING_STAFF = { staffUid: 'staff-7', staffName: 'Achieng' };
+
+  /**
+   * Staff taking an order by phone can choose the snacks too
+   * (§ staff pick the snacks too) — the admin dialog sends the same
+   * `guaranteedSnackIds` a customer's own checkout does.
+   */
+  it('carries picks chosen by a staff member onto a staff-initiated order', async () => {
+    const ids = await seedPremium();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        packageId: PREMIUM_ID,
+        guaranteedSnackIds: ids.slice(0, 5),
+        initiatedBy: PICKING_STAFF,
+      }),
+    );
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot?.guaranteedPicks).toHaveLength(5);
+    expect(snapshot?.guaranteedPicks?.map((pick) => pick.snackItemId)).toEqual(ids.slice(0, 5));
+  });
+
+  /**
+   * The property worth stating outright: staff go *through* the pick
+   * validation, not around it. Being trusted to take an order is not
+   * the same as being able to put a snack in a box that has run out,
+   * and a picker left open on a stale list is exactly how that would
+   * otherwise happen.
+   */
+  it('refuses a staff order with the wrong number of picks, exactly as a customer one', async () => {
+    const ids = await seedPremium();
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          packageId: PREMIUM_ID,
+          guaranteedSnackIds: ids.slice(0, 4),
+          initiatedBy: PICKING_STAFF,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+  });
+
+  it('refuses a staff order naming a snack that has run out', async () => {
+    const ids = await seedPremium();
+    await adminFirestore.collection('snackItems').doc(ids[2]).update({ stockCount: 0 });
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          packageId: PREMIUM_ID,
+          guaranteedSnackIds: ids.slice(0, 5),
+          initiatedBy: PICKING_STAFF,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+  });
 });
