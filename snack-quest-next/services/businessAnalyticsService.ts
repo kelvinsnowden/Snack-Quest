@@ -7,6 +7,8 @@ import { userRepository } from '@/repositories/userRepository';
 import { marketingSpendRepository } from '@/repositories/marketingSpendRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { pageViewRepository } from '@/repositories/pageViewRepository';
+import { analyticsEventRepository } from '@/repositories/analyticsEventRepository';
+import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 import { refundRepository } from '@/repositories/refundRepository';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { toMillis } from '@/lib/firestoreTimestamp';
@@ -155,6 +157,25 @@ export interface RevenueOverview {
 export interface FunnelStage {
   step: string;
   count: number;
+}
+
+/**
+ * The website's own purchase funnel (§ web funnel in Admin analytics).
+ *
+ * `getFunnel` measures WhatsApp conversations, which is a different
+ * journey entirely and says nothing about the path almost every
+ * visitor actually takes. The numbers below had to be read out of
+ * server logs to answer "where do people stop" — and the events they
+ * are built from were already being written and never read by
+ * anything.
+ */
+export interface WebFunnel {
+  stages: FunnelStage[];
+  /** People behind the quotes, as opposed to quotes served — a customer re-pricing their options produces several. */
+  quotedVisitors: number;
+  /** Orders started in a WhatsApp thread instead. Not a funnel stage: it leaves the site, and what follows is invisible from here. */
+  whatsappOrdersStarted: number;
+  days: number;
 }
 
 export interface CreatorPerformance {
@@ -449,6 +470,60 @@ class BusinessAnalyticsService {
       { step: 'Chose a delivery method', count: selectedDelivery },
       { step: 'Completed purchase', count: completed },
     ];
+  }
+
+  /**
+   * Where visitors actually stop, on the website (§ web funnel in
+   * Admin analytics).
+   *
+   * Page views carry the two browsing stages; the funnel events carry
+   * the two intent stages; orders close it. Deliberately counts
+   * *visitors* at the browsing steps and *events* at "quotes served",
+   * because those answer different questions — how many people got
+   * this far, versus how many times the price was recomputed — and
+   * quietly mixing them is how a funnel ends up with a stage that
+   * exceeds the one above it.
+   */
+  async getWebFunnel(businessId: string, days = 30): Promise<WebFunnel> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const [views, quotes, paySubmits, whatsapp, { orders }] = await Promise.all([
+      pageViewRepository.listSince(businessId, since),
+      analyticsEventRepository.listByEventSince(businessId, FUNNEL_EVENTS.deliveryQuoteServed, since),
+      analyticsEventRepository.listByEventSince(businessId, FUNNEL_EVENTS.paySubmitted, since),
+      analyticsEventRepository.listByEventSince(businessId, FUNNEL_EVENTS.whatsappOrderStarted, since),
+      orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT }),
+    ]);
+
+    // A path may carry a query string (`/checkout?box=...`), so match
+    // the path itself rather than the whole recorded string.
+    const visitorsOn = (predicate: (path: string) => boolean) =>
+      new Set(
+        views.filter((view) => predicate((view.path ?? '').split('?')[0])).map((view) => view.visitorId),
+      ).size;
+
+    // `REVENUE_STATUSES`, so the bottom of this funnel is the same
+    // definition of "a real sale" the revenue card uses. A funnel that
+    // counted orders some other way would disagree with the number
+    // beside it on the same screen, and there is no reading of that
+    // which is not confusing.
+    const sinceMs = since.getTime();
+    const paidInRange = orders.filter(
+      ({ data }) => REVENUE_STATUSES.includes(data.status) && toMillis(data.createdAt) >= sinceMs,
+    ).length;
+
+    return {
+      stages: [
+        { step: 'Visited the site', count: visitorsOn(() => true) },
+        { step: 'Reached the checkout', count: visitorsOn((path) => path === '/checkout') },
+        { step: 'Saw their delivery total', count: quotes.length },
+        { step: 'Pressed “Pay with M-Pesa”', count: paySubmits.length },
+        { step: 'Paid', count: paidInRange },
+      ],
+      quotedVisitors: new Set(quotes.map((event) => event.visitorId)).size,
+      whatsappOrdersStarted: whatsapp.length,
+      days,
+    };
   }
 
   /** Top creators by commissions earned, joined with their identity for display — real data from the awarded-commission ledger (§ Admin: Referrals). */
