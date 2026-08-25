@@ -6,6 +6,7 @@ import { Search, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { SEARCH_RESULT_TYPE_LABELS, type SearchResult, type SearchResultType } from '@/lib/search/types';
+import { useI18n } from './i18n/LocaleProvider';
 
 const DEBOUNCE_MS = 250;
 
@@ -22,6 +23,7 @@ function groupByType(results: SearchResult[]): [SearchResultType, SearchResult[]
 export function GlobalSearchTrigger() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { dict, t } = useI18n();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [disabled, setDisabled] = useState(false);
@@ -83,7 +85,7 @@ export function GlobalSearchTrigger() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Search"
+        aria-label={dict.search.label}
         className="text-muted-foreground hover:bg-border/40 hover:text-foreground focus-visible:ring-primary inline-flex size-10 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none md:hidden"
       >
         <Search className="size-5" aria-hidden="true" />
@@ -95,7 +97,7 @@ export function GlobalSearchTrigger() {
         className="hidden w-64 items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-border/20 md:flex"
       >
         <Search className="size-4" aria-hidden="true" />
-        <span className="flex-1 text-left">Search…</span>
+        <span className="flex-1 text-left">{dict.search.trigger}</span>
         <kbd className="rounded border border-border px-1.5 py-0.5 text-caption">⌘K</kbd>
       </button>
 
@@ -108,7 +110,7 @@ export function GlobalSearchTrigger() {
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search orders, customers, products, suppliers, conversations…"
+              placeholder={dict.search.placeholder}
               className="border-0 p-0 shadow-none focus-visible:ring-0"
             />
             {loading ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" /> : null}
@@ -118,9 +120,9 @@ export function GlobalSearchTrigger() {
             {disabled ? (
               <p className="px-2 py-6 text-center text-sm text-muted-foreground">Global search is disabled for this business.</p>
             ) : query.trim().length < 2 ? (
-              <p className="px-2 py-6 text-center text-sm text-muted-foreground">Type at least 2 characters to search.</p>
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">{dict.search.typeMore}</p>
             ) : !loading && results.length === 0 ? (
-              <p className="px-2 py-6 text-center text-sm text-muted-foreground">No results for &quot;{query}&quot;.</p>
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t(dict.search.noResults, { query })}</p>
             ) : (
               groupByType(results).map(([type, items]) => (
                 <div key={type} className="mb-2 last:mb-0">

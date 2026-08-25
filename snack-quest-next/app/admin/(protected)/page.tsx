@@ -13,6 +13,7 @@ import {
 import { requireStaffSession } from '@/lib/auth/session';
 import { getLocale } from '@/lib/i18n/getLocale';
 import { getDictionary, interpolate } from '@/lib/i18n/dictionary';
+import { LOCALE_HTML_LANG } from '@/lib/i18n/locales';
 import { ADMIN_SECTIONS, visibleAdminSections, type AdminSection } from '@/lib/auth/adminSections';
 import { orderRepository } from '@/repositories/orderRepository';
 import { conversationRepository } from '@/repositories/conversationRepository';
@@ -69,7 +70,12 @@ export default async function AdminDashboardPage({
   searchParams: Promise<{ accessDenied?: string }>;
 }) {
   const session = await requireStaffSession();
-  const dict = getDictionary(await getLocale());
+  const locale = await getLocale();
+  const dict = getDictionary(locale);
+  // Dates follow the portal's language too — "27 Jul" beside Chinese
+  // labels is one of the things that keeps a translated screen feeling
+  // foreign.
+  const dateLocale = LOCALE_HTML_LANG[locale];
   const { accessDenied } = await searchParams;
   const deniedSection = ADMIN_SECTIONS.find((s) => s.key === accessDenied);
 
@@ -118,7 +124,7 @@ export default async function AdminDashboardPage({
   };
   const methodSlices: DonutSlice[] = delivery.methodBreakdown.map((m) => ({
     key: m.method,
-    label: m.method === 'pickup' ? 'Pickup station' : 'Door delivery',
+    label: m.method === 'pickup' ? dict.dashboard.pickupStation : dict.dashboard.doorDelivery,
     count: m.count,
     color: METHOD_COLOR[m.method] ?? 'var(--color-muted)',
   }));
@@ -130,7 +136,7 @@ export default async function AdminDashboardPage({
           <CardContent className="flex items-center gap-3 pt-6">
             <ShieldAlert className="size-5 shrink-0 text-warning" aria-hidden="true" />
             <p className="text-sm text-foreground">
-              You don&apos;t have access to <strong>{deniedSection.label}</strong>. Ask a super admin if you need it.
+              {interpolate(dict.dashboard.noAccess, { section: deniedSection.label })}
             </p>
           </CardContent>
         </Card>
@@ -184,12 +190,20 @@ export default async function AdminDashboardPage({
           }
         >
           <span className="font-medium">
-            {revenueTrend.percent >= 0 ? 'Revenue is up' : 'Revenue is down'}{' '}
-            {Math.abs(revenueTrend.percent).toFixed(1)}% vs the previous 30 days
+            {interpolate(
+              revenueTrend.percent >= 0 ? dict.dashboard.revenueUp : dict.dashboard.revenueDown,
+              { percent: Math.abs(revenueTrend.percent).toFixed(1) },
+            )}
           </span>{' '}
           <span className="text-foreground/80">
-            ({revenueTrend.percent >= 0 ? '+' : '−'}
-            {formatKes(Math.abs(revenueDeltaKes))} {revenueTrend.percent >= 0 ? 'more' : 'less'} than last period)
+            {interpolate(
+              revenueTrend.percent >= 0
+                ? dict.dashboard.revenueDeltaMore
+                : dict.dashboard.revenueDeltaLess,
+              {
+                amount: `${revenueTrend.percent >= 0 ? '+' : '−'}${formatKes(Math.abs(revenueDeltaKes))}`,
+              },
+            )}
           </span>
         </div>
       ) : null}
@@ -217,7 +231,7 @@ export default async function AdminDashboardPage({
                 </div>
               </>
             ) : (
-              <p className="py-4 text-center text-sm text-muted-foreground">No shipments recorded yet.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">{dict.dashboard.noShipments}</p>
             )}
           </CardContent>
         </Card>
@@ -235,24 +249,29 @@ export default async function AdminDashboardPage({
                 <div className="mt-3 flex items-center gap-4 text-caption text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
                     <span aria-hidden="true" className="size-2 rounded-full bg-primary" />
-                    Page views
+                    {dict.dashboard.pageViews}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <span aria-hidden="true" className="size-2 rounded-full bg-secondary" />
-                    Visitors
+                    {dict.dashboard.uniqueVisitors}
                   </span>
                 </div>
                 {traffic.topPages.length > 0 ? (
                   <div className="mt-4 border-t border-border pt-4">
                     <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
-                      Top pages
+                      {dict.dashboard.topPages}
                     </p>
                     <ul className="mt-2 flex flex-col gap-1.5">
                       {traffic.topPages.slice(0, 5).map((page) => (
                         <li key={page.path} className="flex items-center justify-between gap-3 text-sm">
                           <span className="truncate text-foreground">{page.path}</span>
                           <span className="shrink-0 tabular-nums text-muted-foreground">
-                            {page.visits.toLocaleString()} visit{page.visits === 1 ? '' : 's'}
+                            {interpolate(
+                              page.visits === 1
+                                ? dict.dashboard.visitCountOne
+                                : dict.dashboard.visitCountMany,
+                              { count: page.visits.toLocaleString() },
+                            )}
                           </span>
                         </li>
                       ))}
@@ -262,7 +281,7 @@ export default async function AdminDashboardPage({
               </>
             ) : (
               <p className="py-16 text-center text-sm text-muted-foreground">
-                No visits recorded yet — this fills in as people browse the site.
+                {dict.dashboard.noVisits}
               </p>
             )}
           </CardContent>
@@ -283,8 +302,13 @@ export default async function AdminDashboardPage({
                   <link.icon className="size-4" aria-hidden="true" />
                 </span>
                 <span className="flex-1">
-                  <span className="block text-sm font-medium text-foreground">{link.label}</span>
-                  <span className="block text-caption text-muted-foreground">{link.description}</span>
+                  <span className="block text-sm font-medium text-foreground">
+                    {dict.nav.items[link.href as keyof typeof dict.nav.items] ?? link.label}
+                  </span>
+                  <span className="block text-caption text-muted-foreground">
+                    {dict.dashboard.quickLinks[link.href as keyof typeof dict.dashboard.quickLinks] ??
+                      link.description}
+                  </span>
                 </span>
                 <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </Link>
@@ -295,12 +319,12 @@ export default async function AdminDashboardPage({
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <CardTitle>Recent orders</CardTitle>
+          <CardTitle>{dict.dashboard.recentOrders}</CardTitle>
           <Link
             href="/admin/orders"
             className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
           >
-            View all
+            {dict.dashboard.viewAll}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         </CardHeader>
@@ -308,18 +332,18 @@ export default async function AdminDashboardPage({
           {recentOrders.orders.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
-              title="No orders yet"
-              description="Real orders placed through checkout will show up here as soon as the first one lands."
+              title={dict.dashboard.noOrdersTitle}
+              description={dict.dashboard.noOrdersBody}
             />
           ) : (
             <div className="border-border overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Total</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Placed</th>
+                    <th className="px-4 py-3">{dict.dashboard.table.customer}</th>
+                    <th className="px-4 py-3">{dict.dashboard.table.total}</th>
+                    <th className="px-4 py-3">{dict.dashboard.table.status}</th>
+                    <th className="px-4 py-3">{dict.dashboard.table.placed}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -345,10 +369,10 @@ export default async function AdminDashboardPage({
                           {formatKes(data.pricing.totalKes)}
                         </td>
                         <td className="px-4 py-3">
-                          <OrderStatusBadge status={data.status} />
+                          <OrderStatusBadge status={data.status} dict={dict} />
                         </td>
                         <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                          {formatDate(data.createdAt)}
+                          {formatDate(data.createdAt, dateLocale)}
                         </td>
                       </tr>
                     );
