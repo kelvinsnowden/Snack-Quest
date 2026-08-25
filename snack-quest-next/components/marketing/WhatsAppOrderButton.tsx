@@ -8,13 +8,18 @@ import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
  * The site-wide "talk to a human" CTA — a real `wa.me` deep link to the
  * platform's centralized WhatsApp number (`lib/config/whatsapp.ts`).
  *
- * This is support and engagement, not commerce (§ Website Becomes the
- * Primary Commerce Channel): questions before buying, order updates,
- * address changes, chasing a delivery, something arrived wrong.
- * Anything that is actually "buy this" uses `BuyNowButton` instead —
- * the default label here says so, so a caller that forgets to pass
- * `children` can't accidentally re-open a WhatsApp ordering path we no
- * longer run.
+ * This is the *support* CTA: questions before buying, order updates,
+ * address changes, chasing a delivery, something arrived wrong. It
+ * used to say WhatsApp was "not commerce" full stop, which is no
+ * longer true — ordering in a thread is a real path again (§ order on
+ * WhatsApp), it just belongs to `WhatsAppCheckoutButton`, which fires
+ * `whatsapp_order_started` and carries the box being bought.
+ *
+ * The split is worth keeping rather than merging the two. A support
+ * click and a purchase click are different events, and one component
+ * doing both would record them as the same one — which is how a
+ * channel ends up with numbers that cannot answer "does WhatsApp
+ * actually sell anything".
  *
  * There is deliberately no `variant` prop. Every instance carries the
  * one branded treatment (`WHATSAPP_CTA_CLASS`) — call sites used to

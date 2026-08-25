@@ -8,6 +8,8 @@ import { packageRepository } from '@/repositories/packageRepository';
 import { faqRepository } from '@/repositories/faqRepository';
 import { reviewService } from '@/services/reviewService';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
+import { WhatsAppCheckoutButton } from '@/components/marketing/WhatsAppCheckoutButton';
+import { buildBoxOrderMessage } from '@/lib/whatsapp/orderLink';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { SetActiveBoxName } from '@/components/marketing/design/ActiveBoxContext';
 import { ReviewCard } from '@/components/marketing/review/ReviewCard';
@@ -223,16 +225,32 @@ export default async function BoxDetailPage({
             ))}
           </ul>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <BuyNowButton
-              packageId={packageId}
-              analyticsSource="product_page"
-              analyticsPriceKes={box.priceKes}
-            >
-              Buy this box
-            </BuyNowButton>
-            <WhatsAppOrderButton message={message}>
-              Ask a question
+          <div className="mt-8 flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <BuyNowButton
+                packageId={packageId}
+                analyticsSource="product_page"
+                analyticsPriceKes={box.priceKes}
+              >
+                Buy this box
+              </BuyNowButton>
+              {/*
+                Ordering, not asking (§ order on WhatsApp) — this page
+                is where someone has finished deciding, so the second
+                button should be the second way to buy rather than a
+                detour back into questions. Asking is still one tap
+                away, below.
+              */}
+              <WhatsAppCheckoutButton
+                source="product_page"
+                packageId={packageId}
+                message={buildBoxOrderMessage({ name: box.name, priceKes: box.priceKes })}
+              >
+                Order on WhatsApp
+              </WhatsAppCheckoutButton>
+            </div>
+            <WhatsAppOrderButton message={message} size="sm" className="self-start">
+              Ask a question first
             </WhatsAppOrderButton>
           </div>
 

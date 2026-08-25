@@ -26,6 +26,22 @@ export const FUNNEL_EVENTS = {
   reviewStarted: 'review_started',
   /** A review was successfully submitted (it still has to pass moderation to appear). */
   reviewSubmitted: 'review_submitted',
+  /**
+   * A WhatsApp ordering CTA was opened — real purchase intent leaving
+   * for a thread (§ order on WhatsApp).
+   *
+   * Until this existed, every WhatsApp CTA on the site was a plain
+   * `<a>` that recorded nothing, so a visitor who chose to buy in chat
+   * looked identical in the data to one who simply left. With a real
+   * ordering path in place that blind spot would be the largest one
+   * in the funnel — the channel the owner believes converts best would
+   * be the only channel with no numbers at all.
+   *
+   * Marks the hand-off, never the sale: what happens in the thread is
+   * invisible from here, and an order taken there is recorded when
+   * staff enter it by hand.
+   */
+  whatsappOrderStarted: 'whatsapp_order_started',
 } as const;
 
 export type FunnelEventName = (typeof FUNNEL_EVENTS)[keyof typeof FUNNEL_EVENTS];
@@ -35,6 +51,19 @@ export type FunnelEventName = (typeof FUNNEL_EVENTS)[keyof typeof FUNNEL_EVENTS]
  * so the admin side can group by it without normalising strings, and
  * so a typo shows up as a missing source rather than a new one.
  */
+/**
+ * Where a `whatsapp_order_started` came from. Separate from
+ * `BoxSelectedSource` on purpose: the two paths do not sit on the same
+ * surfaces, and a shared union would quietly permit sources that
+ * cannot occur — the point of a closed set is that an impossible value
+ * fails to compile.
+ */
+export type WhatsAppOrderSource =
+  | 'checkout_form'
+  | 'mobile_sticky_bar'
+  | 'home_pick_your_box'
+  | 'product_page';
+
 export type BoxSelectedSource =
   | 'home_hero'
   | 'home_pick_your_box'
