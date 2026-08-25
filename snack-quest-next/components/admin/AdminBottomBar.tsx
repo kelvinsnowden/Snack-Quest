@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from './i18n/LocaleProvider';
 import { visibleNavItems, quickAccessNavItems, isNavItemActive } from './adminNav';
 import type { AdminSection } from '@/lib/auth/adminSections';
 
@@ -34,6 +35,7 @@ export function AdminBottomBar({
   visibleSections: AdminSection[] | null;
 }) {
   const pathname = usePathname();
+  const { dict } = useI18n();
   const quickItems = quickAccessNavItems(visibleNavItems(visibleSections));
 
   // A staff member restricted out of every quick-access page gets no
@@ -65,7 +67,10 @@ export function AdminBottomBar({
                 )}
               >
                 <Icon className="size-5 shrink-0" aria-hidden="true" />
-                <span className="max-w-full truncate">{item.shortLabel ?? item.label}</span>
+                <span className="max-w-full truncate">{dict.nav.shortItems[item.href as keyof typeof dict.nav.shortItems] ??
+                    dict.nav.items[item.href as keyof typeof dict.nav.items] ??
+                    item.shortLabel ??
+                    item.label}</span>
               </Link>
             </li>
           );

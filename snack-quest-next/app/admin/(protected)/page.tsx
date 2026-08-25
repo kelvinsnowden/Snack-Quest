@@ -11,6 +11,8 @@ import {
   Users,
 } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { getLocale } from '@/lib/i18n/getLocale';
+import { getDictionary, interpolate } from '@/lib/i18n/dictionary';
 import { ADMIN_SECTIONS, visibleAdminSections, type AdminSection } from '@/lib/auth/adminSections';
 import { orderRepository } from '@/repositories/orderRepository';
 import { conversationRepository } from '@/repositories/conversationRepository';
@@ -67,6 +69,7 @@ export default async function AdminDashboardPage({
   searchParams: Promise<{ accessDenied?: string }>;
 }) {
   const session = await requireStaffSession();
+  const dict = getDictionary(await getLocale());
   const { accessDenied } = await searchParams;
   const deniedSection = ADMIN_SECTIONS.find((s) => s.key === accessDenied);
 
@@ -135,37 +138,36 @@ export default async function AdminDashboardPage({
 
       <div>
         <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
-          Welcome back, {session.displayName.split(' ')[0]}
+          {interpolate(dict.dashboard.welcome, { name: session.displayName.split(' ')[0] })}
         </h1>
         <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
-          Here&apos;s what&apos;s happening at {business?.name ?? 'Snack Quest'}{' '}
-          right now.
+          {interpolate(dict.dashboard.subtitle, { business: business?.name ?? 'Snack Quest' })}
         </p>
       </div>
 
       {/* Two-up on a phone: four KPIs in two rows instead of four. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <TrendStatCard
-          label="Revenue (30 days)"
+          label={dict.dashboard.revenue30}
           value={formatKes(revenue.totalRevenueKes)}
           icon={<Banknote className="size-5" />}
           trend={revenueTrend}
           sparkline={revenue.days.map((d) => d.revenueKes)}
         />
         <TrendStatCard
-          label="Total orders"
+          label={dict.dashboard.totalOrders}
           value={totalOrders.toLocaleString()}
           icon={<ClipboardList className="size-5" />}
           tone="secondary"
         />
         <TrendStatCard
-          label="Awaiting a human agent"
+          label={dict.dashboard.awaitingAgent}
           value={agentQueueCount.toLocaleString()}
           icon={<MessageCircleWarning className="size-5" />}
           tone={agentQueueCount > 0 ? 'warning' : 'secondary'}
         />
         <TrendStatCard
-          label="Staff members"
+          label={dict.dashboard.staffMembers}
           value={staff.length.toLocaleString()}
           icon={<Users className="size-5" />}
           tone="secondary"
@@ -195,7 +197,7 @@ export default async function AdminDashboardPage({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Revenue, last 30 days</CardTitle>
+            <CardTitle>{dict.dashboard.revenueChart}</CardTitle>
           </CardHeader>
           <CardContent>
             <RevenueChart days={revenue.days} />
@@ -204,7 +206,7 @@ export default async function AdminDashboardPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Delivery snapshot</CardTitle>
+            <CardTitle>{dict.dashboard.deliverySnapshot}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
             {delivery.totalShipments > 0 ? (
@@ -224,7 +226,7 @@ export default async function AdminDashboardPage({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Website visitors, last 30 days</CardTitle>
+            <CardTitle>{dict.dashboard.visitors}</CardTitle>
           </CardHeader>
           <CardContent>
             {traffic.totalVisits > 0 ? (
@@ -268,7 +270,7 @@ export default async function AdminDashboardPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Jump to</CardTitle>
+            <CardTitle>{dict.dashboard.jumpTo}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-1 p-3 pt-0">
             {quickLinks.map((link) => (

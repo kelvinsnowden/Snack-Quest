@@ -13,6 +13,8 @@ import { EmptyOrdersState } from '@/components/admin/EmptyOrdersState';
 import { OrdersTable } from '@/components/admin/OrdersTable';
 import { StaffInitiatedOrderDialog } from '@/components/admin/StaffInitiatedOrderDialog';
 import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
+import { getLocale } from '@/lib/i18n/getLocale';
+import { getDictionary } from '@/lib/i18n/dictionary';
 import { ORDER_STATUS_LABELS } from '@/lib/orders/transitions';
 import { formatDate } from '@/lib/orders/format';
 import type { Order, OrderStatus } from '@/types';
@@ -37,6 +39,7 @@ export default async function AdminOrdersPage({
 }) {
   const session = await requireStaffSession();
   const { q, status, cursor } = await searchParams;
+  const dict = getDictionary(await getLocale());
 
   const trimmedQuery = q?.trim();
 
@@ -80,9 +83,9 @@ export default async function AdminOrdersPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Orders</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{dict.orders.title}</h1>
           <p className="hidden sm:block mt-1 text-sm text-muted-foreground">
-            Every paid order — placed on the website, over WhatsApp, or taken by staff.
+            {dict.orders.subtitle}
           </p>
         </div>
         <StaffInitiatedOrderDialog boxes={orderableBoxes} canRecordManualPayment={isSuperAdmin(session)} />
@@ -91,16 +94,16 @@ export default async function AdminOrdersPage({
       <Card className="p-4">
         <form action="/admin/orders" method="GET" className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="q">Search by customer name or phone number</Label>
+            <Label htmlFor="q">{dict.orders.searchLabel}</Label>
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input id="q" name="q" defaultValue={q} placeholder="Jane Wanjiru or 254712345678" className="pl-9" />
             </div>
           </div>
-          <Button type="submit">Search</Button>
+          <Button type="submit">{dict.orders.search}</Button>
           {trimmedQuery ? (
             <Button asChild variant="ghost">
-              <Link href="/admin/orders">Clear</Link>
+              <Link href="/admin/orders">{dict.orders.clear}</Link>
             </Button>
           ) : null}
         </form>
@@ -112,7 +115,7 @@ export default async function AdminOrdersPage({
               !status && !trimmedQuery ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
             }`}
           >
-            All
+            {dict.orders.all}
           </Link>
           {STATUS_FILTERS.map((value) => (
             <Link
@@ -122,7 +125,7 @@ export default async function AdminOrdersPage({
                 status === value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-border/40'
               }`}
             >
-              {ORDER_STATUS_LABELS[value]}
+              {dict.orderStatus[value] ?? ORDER_STATUS_LABELS[value]}
             </Link>
           ))}
         </div>
@@ -150,7 +153,7 @@ export default async function AdminOrdersPage({
         <div className="flex justify-center">
           <Button asChild variant="outline">
             <Link href={`/admin/orders?${status ? `status=${status}&` : ''}cursor=${nextCursor}`}>
-              Load more
+              {dict.orders.loadMore}
             </Link>
           </Button>
         </div>
