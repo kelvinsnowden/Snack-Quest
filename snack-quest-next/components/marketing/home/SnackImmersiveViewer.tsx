@@ -4,10 +4,20 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
-import { X } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
 import { formatKes } from '@/lib/orders/format';
 import { useInfiniteSnap } from './useInfiniteSnap';
 import type { SlideshowSnack } from './SnackSlideshow';
+
+function subscribeNever(): () => void {
+  return () => {};
+}
+function onClient(): boolean {
+  return true;
+}
+function onServer(): boolean {
+  return false;
+}
 
 /**
  * The snacks, full screen, one per swipe, forever (§ What's inside —
@@ -36,16 +46,6 @@ import type { SlideshowSnack } from './SnackSlideshow';
  * scaled copy of itself, so a tall packet and a wide one both fill the
  * screen without either losing its label to the edge.
  */
-function subscribeNever(): () => void {
-  return () => {};
-}
-function onClient(): boolean {
-  return true;
-}
-function onServer(): boolean {
-  return false;
-}
-
 export function SnackImmersiveViewer({
   snacks,
   startIndex,
@@ -61,6 +61,8 @@ export function SnackImmersiveViewer({
 }) {
   const { trackRef, index, loops, start } = useInfiniteSnap({ count: snacks.length, axis: 'y' });
   const closeRef = useRef<HTMLButtonElement>(null);
+  /** Set when the history entry is already gone (Back was pressed) or must be left alone (the CTA is navigating). */
+  const skipPop = useRef(false);
   /*
    * A portal needs a `document` to render into, and the server render
    * has not got one. Read the same way `Reveal` reads its own
@@ -98,6 +100,39 @@ export function SnackImmersiveViewer({
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  /*
+   * The gallery gets its own history entry, so the phone's Back
+   * gesture closes it.
+   *
+   * Without this the viewer was only React state, and Back — the
+   * thing a person reaches for first on Android, before looking for
+   * any control — left the site altogether. Somebody browsing snacks
+   * did the most natural possible action and was thrown out of the
+   * shop, which is the worst version of "no way back" there is.
+   *
+   * On the way out the entry is removed again, so closing by button
+   * does not leave a dead step in the history for Back to land on.
+   * Except when the call to action is what closed it: that navigates
+   * on its own, and popping underneath it would cancel the jump to
+   * the boxes. `skipPop` is set before that close, rather than
+   * inferred from the URL afterwards, because the navigation and this
+   * cleanup race otherwise.
+   */
+  useEffect(() => {
+    window.history.pushState({ snackGallery: true }, '');
+    function onPop() {
+      skipPop.current = true;
+      onClose();
+    }
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (!skipPop.current && window.history.state?.snackGallery) {
+        window.history.back();
+      }
+    };
   }, [onClose]);
 
   if (!mounted) return null;
@@ -158,26 +193,52 @@ export function SnackImmersiveViewer({
       </ul>
 
       {/*
-        Over the photographs, not between them: the way out and the way
-        to buy both have to be reachable from any slide, and there is
-        no last slide to put them after.
-      */}
-      <button
-        ref={closeRef}
-        type="button"
-        onClick={onClose}
-        aria-label="Close the snack gallery"
-        className="text-immersive-foreground focus-visible:ring-immersive-foreground absolute top-5 right-5 z-20 flex size-11 items-center justify-center rounded-full bg-black/40 backdrop-blur transition duration-150 ease-out hover:bg-black/60 focus-visible:ring-2 focus-visible:outline-none"
-      >
-        <X className="size-5" aria-hidden="true" />
-      </button>
+        A real toolbar, over the photographs rather than between them:
+        the way out has to be reachable from any slide, and there is no
+        last slide to put it after.
 
-      <p
-        className="text-immersive-foreground/70 absolute top-7 left-5 z-20 text-caption font-semibold tracking-[0.2em] tabular-nums uppercase"
-        aria-live="off"
-      >
-        {index + 1} / {snacks.length}
-      </p>
+        Two ways out, deliberately. The first build had only an
+        unlabelled ✕ in the corner and people got stuck — an icon alone
+        asks to be recognised, and over a bright photograph it barely
+        registers as a control at all. A word does not have that
+        problem, and "Back" says where it goes rather than merely that
+        something will stop. The ✕ stays because the top-right corner
+        is where a reader who *is* looking for a close button looks
+        first; between them there is no reading of this screen that
+        leaves someone hunting.
+
+        The scrim is part of the fix, not decoration: white controls on
+        an unknown photograph are legible only by luck.
+      */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-black/70 to-transparent"
+      />
+
+      <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 p-4">
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className="text-immersive-foreground focus-visible:ring-immersive-foreground inline-flex h-11 items-center gap-1.5 rounded-full bg-black/45 pr-4 pl-3 text-base font-semibold backdrop-blur transition duration-150 ease-out hover:bg-black/65 focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <ChevronLeft className="size-5" aria-hidden="true" />
+          Back
+        </button>
+
+        <p className="text-immersive-foreground/80 text-caption font-semibold tracking-[0.2em] tabular-nums uppercase">
+          {index + 1} / {snacks.length}
+        </p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close the snack gallery"
+          className="text-immersive-foreground focus-visible:ring-immersive-foreground flex size-11 items-center justify-center rounded-full bg-black/45 backdrop-blur transition duration-150 ease-out hover:bg-black/65 focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <X className="size-5" aria-hidden="true" />
+        </button>
+      </div>
 
       {/*
         Origin and call to action in one panel, fixed rather than
@@ -205,7 +266,11 @@ export function SnackImmersiveViewer({
         </p>
         <Link
           href={ctaHref}
-          onClick={onClose}
+          onClick={() => {
+            // Its own navigation owns the history from here.
+            skipPop.current = true;
+            onClose();
+          }}
           className="bg-primary text-primary-foreground focus-visible:ring-immersive-foreground flex w-full items-center justify-center rounded-full px-6 py-4 text-base font-bold shadow-lg transition duration-150 ease-out hover:brightness-105 focus-visible:ring-2 focus-visible:outline-none"
         >
           {fromPriceKes === null ? 'Pick your box' : `Pick your box — from ${formatKes(fromPriceKes)}`}
