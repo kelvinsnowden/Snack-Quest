@@ -6,6 +6,9 @@ import { businessRepository } from '@/repositories/businessRepository';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
 import { AdminBottomBar } from '@/components/admin/AdminBottomBar';
+import { LocaleProvider } from '@/components/admin/i18n/LocaleProvider';
+import { getLocale } from '@/lib/i18n/getLocale';
+import { LOCALE_HTML_LANG } from '@/lib/i18n/locales';
 
 export const metadata: Metadata = {
   title: {
@@ -42,11 +45,27 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect('/finance');
   }
 
-  const business = await businessRepository.findById(session.businessId);
+  const [business, locale] = await Promise.all([
+    businessRepository.findById(session.businessId),
+    // Read here, once, and handed to every Client Component below —
+    // see `LocaleProvider` for why this is a context and not a prop
+    // threaded through dozens of signatures.
+    getLocale(),
+  ]);
   const visibleSections = visibleAdminSections(session);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <LocaleProvider locale={locale}>
+    {/*
+      `lang` on this wrapper rather than on `<html>`. Only the root
+      layout renders the document element, and it is shared with the
+      public marketing site — declaring the whole document Chinese
+      because a staff member set their portal to Chinese would mislabel
+      every English page they then visit. `lang` is valid on any
+      element and assistive technology honours the nearest one, so
+      scoping it to the portal is both correct and narrower.
+    */}
+    <div lang={LOCALE_HTML_LANG[locale]} className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar
         businessName={business?.name ?? 'Snack Quest'}
         visibleSections={visibleSections}
@@ -69,5 +88,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
       <AdminBottomBar visibleSections={visibleSections} />
     </div>
+    </LocaleProvider>
   );
 }

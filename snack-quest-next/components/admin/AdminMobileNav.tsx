@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { useI18n } from './i18n/LocaleProvider';
+import { LanguageToggle } from './LanguageToggle';
 import { visibleNavItems, groupedNavItems, isNavItemActive } from './adminNav';
 import type { AdminSection } from '@/lib/auth/adminSections';
 
@@ -46,6 +48,7 @@ export function AdminMobileNav({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const pathname = usePathname();
+  const { dict } = useI18n();
 
   const items = useMemo(() => visibleNavItems(visibleSections), [visibleSections]);
 
@@ -61,9 +64,26 @@ export function AdminMobileNav({
   }, []);
 
   const trimmed = query.trim().toLowerCase();
+  /*
+   * Matches the translated label as well as the English one. Filtering
+   * on `item.label` alone meant that once the portal was in Chinese,
+   * searching it in Chinese found nothing — the drawer's search would
+   * have quietly stopped working for the only people the translation
+   * is for. Both are kept, so an English speaker who knows the
+   * original name still finds it in a Chinese portal.
+   */
   const matches = useMemo(
-    () => (trimmed ? items.filter((item) => item.label.toLowerCase().includes(trimmed)) : []),
-    [items, trimmed],
+    () =>
+      trimmed
+        ? items.filter((item) => {
+            const translated = dict.nav.items[item.href as keyof typeof dict.nav.items];
+            return (
+              item.label.toLowerCase().includes(trimmed) ||
+              (translated ?? '').toLowerCase().includes(trimmed)
+            );
+          })
+        : [],
+    [items, trimmed, dict],
   );
   const groups = useMemo(() => groupedNavItems(items), [items]);
 
@@ -93,7 +113,7 @@ export function AdminMobileNav({
       <SheetContent side="left" className="w-[19rem] gap-0">
         <SheetHeader>
           <SheetTitle>{businessName}</SheetTitle>
-          <SheetDescription>Admin navigation</SheetDescription>
+          <SheetDescription>{dict.nav.navigation}</SheetDescription>
         </SheetHeader>
 
         <div className="px-5 pt-3 pb-1">
@@ -110,10 +130,15 @@ export function AdminMobileNav({
               className="pl-9"
             />
           </div>
+
+          {/* The phone's home for the language switch — the top bar hides it below `sm`. */}
+          <div className="mt-3 sm:hidden">
+            <LanguageToggle />
+          </div>
         </div>
 
         <nav
-          aria-label="Admin navigation"
+          aria-label={dict.nav.navigation}
           className="flex-1 overflow-y-auto px-3 pt-2"
           style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
         >
@@ -135,7 +160,7 @@ export function AdminMobileNav({
             groups.map(({ group, items: groupItems }) => (
               <div key={group} data-nav-group={group} className="mb-4 last:mb-0">
                 <p className="text-caption text-muted-foreground px-3 pb-1.5 font-semibold tracking-wide uppercase">
-                  {group}
+                  {dict.nav.groups[group as keyof typeof dict.nav.groups] ?? group}
                 </p>
                 <ul className="flex flex-col gap-0.5">
                   {groupItems.map((item) => (
@@ -164,6 +189,9 @@ function NavLink({
 }) {
   const isActive = isNavItemActive(pathname, item.href);
   const Icon = item.icon;
+  // Its own read rather than one more prop from the drawer: this is
+  // rendered once per row and the context makes it free.
+  const { dict } = useI18n();
   return (
     <Link
       href={item.href}
@@ -179,7 +207,7 @@ function NavLink({
       )}
     >
       <Icon className="size-4 shrink-0" aria-hidden="true" />
-      {item.label}
+      {dict.nav.items[item.href as keyof typeof dict.nav.items] ?? item.label}
     </Link>
   );
 }

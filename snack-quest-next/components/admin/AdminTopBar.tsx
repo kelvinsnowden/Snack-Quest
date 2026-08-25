@@ -2,6 +2,7 @@ import { AdminMobileNav } from './AdminMobileNav';
 import { AdminUserMenu } from './AdminUserMenu';
 import { GlobalSearchTrigger } from './GlobalSearchDialog';
 import { ThemeToggle } from './ThemeToggle';
+import { LanguageToggle } from './LanguageToggle';
 import type { AdminSection } from '@/lib/auth/adminSections';
 
 export function AdminTopBar({
@@ -26,6 +27,13 @@ export function AdminTopBar({
         <GlobalSearchTrigger />
       </div>
       <div className="flex shrink-0 items-center gap-1 md:gap-2">
+        {/*
+          Beside the theme switch, because both are "how this portal
+          looks to me" rather than anything about the business. Hidden
+          on the narrowest phones, where the row is already full — the
+          drawer carries it there instead.
+        */}
+        <LanguageToggle className="hidden sm:inline-flex" />
         <ThemeToggle />
         <AdminUserMenu displayName={displayName} email={email} role={role} />
       </div>
