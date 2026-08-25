@@ -50,15 +50,34 @@ export interface CreateIntentInput {
  */
 const DEFAULT_STUCK_AFTER_MS = 60 * 1000;
 /**
- * How many times the sweep will query a single attempt before giving
- * up on it — the actual "sensible retry limit," independent of how
- * long the sweep itself has been running. At the default 5-minute cron
- * cadence, 5 attempts spans ~20 minutes past the initial 60s wait,
- * long enough for Daraja's own processing to settle in every
- * documented case, short enough that a payment isn't silently polled
- * forever.
+ * How many times a single attempt will be queried before it is left to
+ * a human — a safety valve against querying one payment forever, not
+ * the thing that paces the queries. `MIN_QUERY_INTERVAL_MS` does the
+ * pacing.
+ *
+ * It was 5, sized for "the default 5-minute cron cadence" in a comment
+ * that had stopped being true twice over: the sweep runs daily, and
+ * the payment screen polls this same recovery path every 3 seconds. So
+ * a customer watching the screen spent all five attempts within about
+ * fifteen seconds of the first query, and every later attempt to
+ * recover that payment — including the one after they closed the tab,
+ * which is the whole reason the sweep exists — found the budget
+ * already gone and returned nothing. The money stayed in the till and
+ * the order never appeared.
+ *
+ * Now generous enough to cover a spaced-out day: at one query per
+ * `MIN_QUERY_INTERVAL_MS`, the four-minute payment screen can use
+ * about a dozen, leaving the rest for the sweeps that follow.
  */
-const DEFAULT_MAX_QUERY_ATTEMPTS = 5;
+const DEFAULT_MAX_QUERY_ATTEMPTS = 40;
+/**
+ * The smallest gap between two STK Push Queries about the same
+ * attempt. This is what stops the payment screen's 3-second poll from
+ * hammering Safaricom and burning the attempt budget, and it means the
+ * budget above bounds how *long* a payment is chased rather than how
+ * many times a page happened to re-render.
+ */
+const MIN_QUERY_INTERVAL_MS = 20 * 1000;
 /**
  * How long the payment screen waits before asking Safaricom directly
  * (§ payment auto-recovery), rather than waiting on a callback that
@@ -69,14 +88,40 @@ const DEFAULT_MAX_QUERY_ATTEMPTS = 5;
 const DEFAULT_RECOVERY_AFTER_MS = 40 * 1000;
 /**
  * The ceiling on what recovery will settle by itself (§ payment
- * auto-recovery). Deliberately not open-ended: recovery once picked up
- * a day-old abandoned attempt that had genuinely succeeded at
- * Safaricom, and turned it into a second, surprise order on a
- * conversation that had already moved on. Anything older is a
- * bookkeeping question for a human, not something to auto-create an
- * order from.
+ * auto-recovery).
+ *
+ * It was two hours, to stop recovery picking up a day-old abandoned
+ * attempt and turning it into a second, surprise order on a
+ * conversation that had already moved on. That incident was real, but
+ * two things have changed since. The duplicate is now prevented where
+ * it actually happens — `findProcessingBySnapshotId` scopes recovery
+ * to the checkout being waited on, and `completeOrder` returns early
+ * on a snapshot already marked `completed` — so the ceiling is no
+ * longer the thing holding a second order back.
+ *
+ * And against a sweep that runs once a day, two hours meant recovery
+ * could only ever rescue a payment made in the two hours before it
+ * ran. Every other paid-but-unconfirmed order in the day fell straight
+ * through to manual review. A window shorter than the gap between
+ * sweeps is not a safety net.
+ *
+ * 26 hours covers a full day with margin for a sweep that runs late —
+ * Vercel schedules a daily cron within the hour, not on the minute.
+ * Past it the payment is a bookkeeping question for a human, which is
+ * what `reconcileStuckIntents` escalates it as.
  */
-const RECOVERY_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const RECOVERY_MAX_AGE_MS = 26 * 60 * 60 * 1000;
+/**
+ * Past this, a *failed* payment is still settled — the intent must not
+ * be left `processing` forever — but the customer is not written to
+ * about it. "Reply PAY to try again" makes sense seconds after a
+ * cancelled PIN prompt. Delivered the next morning, about an attempt
+ * the customer abandoned yesterday, it is a message from nowhere, and
+ * a daily sweep at 02:00 would send it in the middle of the night.
+ * Success has no equivalent cutoff: an order the customer paid for is
+ * always worth telling them about, however late.
+ */
+const STALE_FAILURE_AFTER_MS = 30 * 60 * 1000;
 /**
  * A time-based backstop *in addition to* the attempt cap above — covers
  * the case where the cron itself runs less often than expected (a
@@ -142,6 +187,17 @@ export type ProcessCallbackResult =
       conversationId: string;
       snapshotId: string;
       reason: string;
+      /**
+       * Settled long after the customer walked away, by recovery
+       * rather than by a callback arriving in real time. The
+       * conversation is still released either way — leaving someone
+       * stuck in `awaiting_payment` would block their next order — but
+       * "reply PAY to try again" is not sent, because it would arrive
+       * unprompted hours later, and from a daily sweep, at 2am. Absent
+       * on a real-time callback, which is the case it does not apply
+       * to.
+       */
+      stale?: boolean;
     };
 
 class PaymentService {
@@ -439,8 +495,19 @@ class PaymentService {
       return null;
     }
 
+    // Asked recently enough. The payment screen polls this path every
+    // three seconds; without this it would ask Safaricom about the
+    // same attempt on every one of those polls, and spend the whole
+    // attempt budget long before the customer even closed the tab.
+    if (
+      pending.lastQueriedAtMs !== null &&
+      Date.now() - pending.lastQueriedAtMs < MIN_QUERY_INTERVAL_MS
+    ) {
+      return null;
+    }
+
     const query = await darajaGateway.queryStkStatus({ businessId, checkoutRequestId: pending.checkoutRequestId });
-    await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending.attemptId);
+    await paymentIntentRepository.recordQueryAttempt(intentId, pending.attemptId);
 
     // Safaricom has no verdict yet — not an error, just "ask again".
     if (query.responseCode !== '0') {
@@ -478,6 +545,10 @@ class PaymentService {
         conversationId: intent.conversationId,
         snapshotId: intent.conversationCheckoutSnapshotId,
         reason: query.resultDesc,
+        // Settle it either way; just don't write to the customer about
+        // an attempt they walked away from hours ago. See
+        // STALE_FAILURE_AFTER_MS.
+        ...(Date.now() - intent.updatedAt.toMillis() > STALE_FAILURE_AFTER_MS ? { stale: true } : {}),
       };
     }
 
@@ -677,7 +748,7 @@ class PaymentService {
       }
 
       const query = await darajaGateway.queryStkStatus({ businessId, checkoutRequestId: pending.checkoutRequestId });
-      await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending.attemptId);
+      await paymentIntentRepository.recordQueryAttempt(intentId, pending.attemptId);
       const queryAttemptCount = pending.queryAttemptCount + 1;
 
       if (query.responseCode !== '0') {

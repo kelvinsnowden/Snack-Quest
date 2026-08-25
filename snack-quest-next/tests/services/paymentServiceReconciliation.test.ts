@@ -270,8 +270,8 @@ describe('PaymentService.reconcileStuckIntents', () => {
     // marking the intent expired (e.g. the process died between the count
     // increment and the status update) — the count is already at the ceiling
     // while the intent is still 'processing'.
-    await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending!.attemptId);
-    await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending!.attemptId);
+    await paymentIntentRepository.recordQueryAttempt(intentId, pending!.attemptId);
+    await paymentIntentRepository.recordQueryAttempt(intentId, pending!.attemptId);
 
     const outcomes = await paymentService.reconcileStuckIntents(BUSINESS_ID, {
       stuckAfterMs: 0,
@@ -465,14 +465,46 @@ describe('PaymentService.recoverProcessingPayment', () => {
     expect((await paymentIntentRepository.findById(stale.intentId))?.status).toBe('processing');
   });
 
-  it('refuses to auto-create an order from a payment that went stale hours ago', async () => {
-    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
-    await seedConversation('snapshot-current');
-    // Backdate it well past the recovery ceiling.
+  /** Backdates the intent so age-based rules can be exercised without waiting. */
+  async function ageIntent(intentId: string, ms: number): Promise<void> {
     await adminFirestore
       .collection('paymentIntents')
       .doc(intentId)
-      .update({ updatedAt: Timestamp.fromMillis(Date.now() - 6 * 60 * 60 * 1000) });
+      .update({ updatedAt: Timestamp.fromMillis(Date.now() - ms) });
+  }
+
+  /**
+   * The window used to be two hours against a sweep that runs once a
+   * day, so recovery could only ever rescue a payment made in the two
+   * hours before it ran. A customer who paid at 3pm and closed the tab
+   * was past the ceiling long before the 2am sweep reached them: money
+   * taken, no order, straight to manual review.
+   */
+  it('recovers a payment made earlier the same day', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    await ageIntent(intentId, 11 * 60 * 60 * 1000);
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId: `ws_CO_${intentId}`,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 0,
+      resultDesc: 'ok',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toMatchObject({ status: 'succeeded', intentId });
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('succeeded');
+  });
+
+  it('refuses to auto-create an order from a payment older than a day', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    await ageIntent(intentId, 30 * 60 * 60 * 1000);
 
     const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
       stuckAfterMs: 0,
@@ -481,6 +513,36 @@ describe('PaymentService.recoverProcessingPayment', () => {
     expect(result).toBeNull();
     expect(queryStkStatusMock).not.toHaveBeenCalled();
     expect((await paymentIntentRepository.findById(intentId))?.status).toBe('processing');
+  });
+
+  /**
+   * The defect that made the attempt budget useless: the payment
+   * screen polls this exact path every three seconds, so five attempts
+   * were spent within about fifteen seconds of the first query. Every
+   * later recovery — including the sweep that runs after the customer
+   * closed the tab, which is the entire reason the sweep exists —
+   * found the budget gone and did nothing.
+   */
+  it('does not re-ask Safaricom on every poll of the payment screen', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    // No verdict yet, so the intent stays in flight and can be polled again.
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId: `ws_CO_${intentId}`,
+      responseCode: '1',
+      responseDescription: 'still processing',
+      resultCode: null,
+      resultDesc: 'still processing',
+    });
+
+    for (let poll = 0; poll < 5; poll += 1) {
+      await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, { stuckAfterMs: 0 });
+    }
+
+    expect(queryStkStatusMock).toHaveBeenCalledTimes(1);
+    const pending = await paymentIntentRepository.getPendingAttempt(intentId);
+    expect(pending?.queryAttemptCount).toBe(1);
   });
 
   it('does nothing for a checkout session with no payment in flight', async () => {
@@ -495,9 +557,19 @@ describe('PaymentService.recoverProcessingPayment', () => {
   it('stops querying once the retry budget for the attempt is spent', async () => {
     const { intentId } = await seedStuckIntent();
     const pending = await paymentIntentRepository.getPendingAttempt(intentId);
-    for (let i = 0; i < 5; i += 1) {
-      await paymentIntentRepository.incrementQueryAttemptCount(intentId, pending!.attemptId);
-    }
+    await adminFirestore
+      .collection('paymentIntents')
+      .doc(intentId)
+      .collection('attempts')
+      .doc(pending!.attemptId)
+      .update({
+        queryAttemptCount: 40,
+        // Backdated on purpose. `recordQueryAttempt` stamps the time as
+        // well as the count, so a budget burned in a loop would leave a
+        // just-now timestamp and this would pass on the spacing rule
+        // whether the budget was checked or not.
+        lastQueriedAt: Timestamp.fromMillis(Date.now() - 60 * 60 * 1000),
+      });
 
     const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
       stuckAfterMs: 0,
@@ -505,6 +577,54 @@ describe('PaymentService.recoverProcessingPayment', () => {
 
     expect(result).toBeNull();
     expect(queryStkStatusMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Settled either way — an intent left `processing` forever is its
+   * own problem — but the customer is not written to about an attempt
+   * they walked away from. The nightly sweep would otherwise deliver
+   * "reply PAY to try again" at 2am about yesterday's abandoned PIN
+   * prompt.
+   */
+  it('marks a long-abandoned failure stale so the customer is not messaged about it', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    await ageIntent(intentId, 5 * 60 * 60 * 1000);
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId: `ws_CO_${intentId}`,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 1032,
+      resultDesc: 'Request cancelled by user',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toMatchObject({ status: 'failed', stale: true });
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('failed');
+  });
+
+  it('leaves a failure the customer is still watching un-stale, so they are told', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-current' });
+    await seedConversation('snapshot-current');
+    queryStkStatusMock.mockResolvedValue({
+      merchantRequestId: 'merchant-1',
+      checkoutRequestId: `ws_CO_${intentId}`,
+      responseCode: '0',
+      responseDescription: 'ok',
+      resultCode: 1032,
+      resultDesc: 'Request cancelled by user',
+    });
+
+    const result = await paymentService.recoverProcessingPayment(BUSINESS_ID, CONVERSATION_ID, {
+      stuckAfterMs: 0,
+    });
+
+    expect(result).toMatchObject({ status: 'failed' });
+    expect(result && 'stale' in result ? result.stale : undefined).toBeUndefined();
   });
 });
 

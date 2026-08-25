@@ -861,6 +861,55 @@ describe('a paid customer whose callback never arrives', () => {
     expect(status.orderNumber).not.toBeNull();
   });
 
+  /**
+   * The other half of recovering late: a failure settled by the
+   * nightly sweep must release the conversation without writing to the
+   * customer. "Reply PAY to try again" is right seconds after a
+   * cancelled PIN prompt; delivered at 2am about yesterday's abandoned
+   * attempt it is a message from nowhere.
+   */
+  it('releases a long-abandoned failed payment without messaging the customer', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+    const result = await svc.startWebCheckout(BUSINESS_ID, pickupInput());
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
+    gateway.sent.length = 0;
+
+    await svc.handlePaymentResult({
+      status: 'failed',
+      intentId: intents[0].id,
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      reason: 'Request cancelled by user',
+      stale: true,
+    });
+
+    expect(gateway.sent).toHaveLength(0);
+    // Still released, or their next order would be blocked.
+    const after = await conversationRepository.findById(result.checkoutSessionId);
+    expect(after?.status).toBe('active');
+  });
+
+  it('does tell a customer still waiting that their payment failed', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+    const result = await svc.startWebCheckout(BUSINESS_ID, pickupInput());
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
+    gateway.sent.length = 0;
+
+    await svc.handlePaymentResult({
+      status: 'failed',
+      intentId: intents[0].id,
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      reason: 'Request cancelled by user',
+    });
+
+    expect(gateway.sent.map((m) => m.text).join(' ')).toMatch(/Reply PAY to try again/);
+  });
+
   it('does not create a second order when the real callback turns up late', async () => {
     const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
     queryStkStatusMock.mockResolvedValue({

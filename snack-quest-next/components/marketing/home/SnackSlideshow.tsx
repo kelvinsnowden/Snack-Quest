@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Expand } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useInfiniteSnap } from './useInfiniteSnap';
+import { SnackImmersiveViewer } from './SnackImmersiveViewer';
 
 export interface SlideshowSnack {
   id: string;
@@ -16,145 +18,224 @@ export interface SlideshowSnack {
 const ADVANCE_MS = 3200;
 
 /**
- * The snacks themselves, as a slideshow (§ What's inside — slideshow).
+ * How long after a touch before the strip starts drifting again.
  *
- * Built on native scroll-snap rather than a JS-transformed track, and
- * that is the whole design decision: 98.6% of this site's traffic is
- * mobile, so swiping has to feel like the phone's own scrolling —
- * momentum, rubber-banding, interruptibility — none of which a
- * hand-rolled drag handler reproduces convincingly. Autoplay is then
- * just a scheduled `scrollTo` on the same track, so the automatic and
- * manual paths move the carousel exactly one way.
- *
- * Autoplay stops the moment a person touches it, and never starts for
- * someone who asked for reduced motion. Something advancing on its own
- * under a reader's finger is the failure mode carousels are disliked
- * for.
+ * It used to never start again: one touch and autoplay was off for
+ * good, on the reasoning that something moving under a reader's finger
+ * is what carousels are disliked for. True while they are looking —
+ * and wrong the moment they stop, because a strip that has gone
+ * permanently still says the same thing an empty shelf does. Long
+ * enough that it never moves under an active finger; short enough that
+ * attention drifting back finds it alive.
  */
-export function SnackSlideshow({ snacks }: { snacks: SlideshowSnack[] }) {
-  const trackRef = useRef<HTMLUListElement>(null);
-  const [index, setIndex] = useState(0);
-  // Set once a person scrolls, swipes or presses a control. Autoplay
-  // never resumes after that — resuming would fight whoever is looking.
-  const [taken, setTaken] = useState(false);
+const RESUME_AFTER_MS = 5000;
 
-  const scrollTo = useCallback((next: number) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const slide = track.children[next] as HTMLElement | undefined;
-    if (!slide) return;
-    track.scrollTo({ left: slide.offsetLeft - track.offsetLeft, behavior: 'smooth' });
+/**
+ * The snacks, as a strip you can fall into (§ What's inside —
+ * slideshow).
+ *
+ * Three things do the work, and none of them is the photographs:
+ *
+ * **It has no end.** `useInfiniteSnap` repeats the list and quietly
+ * re-centres, so swiping never lands on a dead slide and never rewinds
+ * the whole strip. Reaching the end of something is a decision point,
+ * and a decision point is where drifting stops.
+ *
+ * **Neighbours show.** Slides are narrower than the frame, so the next
+ * snack is always half-visible at the edge. A single centred photo
+ * looks finished; a photo with something arriving behind it asks to be
+ * pushed. That sliver is the whole invitation to swipe.
+ *
+ * **It says how far, not how many.** A row of dots is a count, and a
+ * count is a length to finish — twenty dots reads as a chore before a
+ * single one is looked at. A line that fills says only that there is
+ * more, at any catalogue size.
+ *
+ * Tapping any snack opens `SnackImmersiveViewer`, which is where the
+ * actual drifting is meant to happen: this strip's job is to be
+ * interesting enough to tap.
+ */
+export function SnackSlideshow({
+  snacks,
+  ctaHref = '#boxes',
+  fromPriceKes = null,
+}: {
+  snacks: SlideshowSnack[];
+  ctaHref?: string;
+  fromPriceKes?: number | null;
+}) {
+  const { trackRef, index, loops, step, start } = useInfiniteSnap({
+    count: snacks.length,
+    axis: 'x',
+  });
+  const [paused, setPaused] = useState(false);
+  const [opened, setOpened] = useState<number | null>(null);
+  const resumeTimer = useRef<number | undefined>(undefined);
+  const returnFocusTo = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    start(0);
+  }, [start]);
+
+  /** Hands the strip over to whoever touched it, and takes it back once they have stopped. */
+  const handOver = useCallback(() => {
+    setPaused(true);
+    window.clearTimeout(resumeTimer.current);
+    resumeTimer.current = window.setTimeout(() => setPaused(false), RESUME_AFTER_MS);
   }, []);
 
-  // Which slide is actually showing, read from the scroll position
-  // rather than tracked separately — a swipe moves the track without
-  // going through any of this component's own handlers.
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    let frame = 0;
-    function onScroll() {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const el = trackRef.current;
-        if (!el) return;
-        const width = el.clientWidth || 1;
-        setIndex(Math.round(el.scrollLeft / width));
-      });
-    }
-    track.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      cancelAnimationFrame(frame);
-      track.removeEventListener('scroll', onScroll);
-    };
-  }, []);
+  useEffect(() => () => window.clearTimeout(resumeTimer.current), []);
 
   useEffect(() => {
-    if (taken || snacks.length < 2) return;
+    if (paused || snacks.length < 2 || opened !== null) return;
+    // Never for someone who asked for less motion — for them the strip
+    // is theirs to move and nothing else touches it.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    const timer = window.setInterval(() => {
-      const track = trackRef.current;
-      if (!track) return;
-      const width = track.clientWidth || 1;
-      const next = (Math.round(track.scrollLeft / width) + 1) % snacks.length;
-      scrollTo(next);
-    }, ADVANCE_MS);
+    const timer = window.setInterval(() => step(1), ADVANCE_MS);
     return () => window.clearInterval(timer);
-  }, [taken, snacks.length, scrollTo]);
+  }, [paused, snacks.length, opened, step]);
 
-  function step(delta: number) {
-    setTaken(true);
-    scrollTo((index + delta + snacks.length) % snacks.length);
+  function open(sourceIndex: number, trigger: HTMLButtonElement | null) {
+    returnFocusTo.current = trigger;
+    setOpened(sourceIndex);
   }
+
+  function close() {
+    setOpened(null);
+    // Back to the snack they opened, not the top of the page.
+    returnFocusTo.current?.focus();
+  }
+
+  const slides = Array.from({ length: snacks.length * loops }, (_, i) => ({
+    snack: snacks[i % snacks.length],
+    source: i % snacks.length,
+    key: i,
+    // Only the one actually on screen at first paint is worth blocking
+    // render on; every other copy is off to the side.
+    eager: i === Math.floor(loops / 2) * snacks.length,
+  }));
 
   return (
     <div className="relative">
       <ul
         ref={trackRef}
-        // `onPointerDown` rather than `onScroll`: autoplay's own
-        // smooth scroll fires scroll events too, and stopping on those
-        // would mean it halted after a single slide.
-        onPointerDown={() => setTaken(true)}
-        onKeyDown={() => setTaken(true)}
+        // `onPointerDown` rather than `onScroll`: autoplay's own smooth
+        // scroll fires scroll events too, and pausing on those would
+        // mean it stopped itself after a single slide.
+        onPointerDown={handOver}
+        onKeyDown={handOver}
         tabIndex={0}
         aria-label="Snacks that go into a Snack Quest box"
-        className="scrollbar-none flex w-full snap-x snap-mandatory overflow-x-auto rounded-[40px] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+        className={cn(
+          'scrollbar-none focus-visible:ring-secondary flex w-full snap-x snap-mandatory overflow-x-auto focus-visible:ring-2 focus-visible:outline-none',
+          /*
+            The padding *is* the peek, and the slide is simply what is
+            left. Percentage widths on a flex child resolve against the
+            content box, which this padding has already narrowed — so
+            asking for "78% wide inside 11% padding" quietly compounded
+            the two and produced a slide barely half the screen. Making
+            the slide `w-full` sidesteps the compounding entirely: it
+            fills the content box exactly, which puts it dead centre
+            with 11.5% of the track showing either side, and the
+            neighbour occupying all of that but the gap.
+
+            Percentages rather than `vw` on purpose: the track is
+            full-bleed today, but it is one layout change away from not
+            being, and `vw` measures a screen this element may not own.
+          */
+          'gap-3 px-[11.5%] md:px-[calc(50%-210px)]',
+        )}
         style={{ scrollbarWidth: 'none' }}
       >
-        {snacks.map((snack, position) => (
-          <li key={snack.id} className="relative aspect-[4/5] w-full flex-none snap-center">
-            <Image
-              src={snack.imageUrl}
-              alt={snack.name}
-              fill
-              sizes="(min-width: 640px) 420px, 100vw"
-              className="object-cover"
-              // Only the first is worth blocking render on; the rest
-              // are off-screen until someone moves the track.
-              priority={position === 0}
-            />
-            {/*
-              Origin only. The snack's own name is on the packet in the
-              photo, so printing it again says nothing the picture does
-              not — where it travelled from is the part a picture
-              cannot tell you, and the part this section is about.
-              Omitted entirely rather than shown blank when a snack has
-              no origin recorded.
-            */}
-            {snack.origin ? (
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-5 pt-16">
-                <p className="text-base font-semibold text-white">{snack.origin}</p>
-              </div>
-            ) : null}
+        {slides.map(({ snack, source, key, eager }) => (
+          <li key={key} className="w-full flex-none snap-center md:w-[420px]">
+            <button
+              type="button"
+              onClick={(event) => open(source, event.currentTarget)}
+              // The name lives here rather than on screen: a
+              // screen-reader user has no packet in a photo to read it
+              // off, and "Japan" four times over would be four
+              // indistinguishable buttons.
+              aria-label={`View ${snack.name} full screen`}
+              className={cn(
+                'group focus-visible:ring-secondary relative block aspect-[4/5] w-full overflow-hidden rounded-[40px] transition-opacity duration-200 ease-out focus-visible:ring-2 focus-visible:outline-none',
+                /*
+                  Neighbours sit back. Three photographs at equal
+                  weight is a row of things to compare, which is work;
+                  one lit and the rest receding is a single thing to
+                  look at, with more of it waiting. Opacity rather than
+                  scale on purpose — scaling a snap child moves the
+                  point the track snaps to and makes the strip fight
+                  the finger.
+                */
+                source === index ? 'opacity-100' : 'opacity-45',
+              )}
+            >
+              <Image
+                src={snack.imageUrl}
+                alt=""
+                fill
+                sizes="(min-width: 768px) 420px, 82vw"
+                className="object-cover transition-transform duration-200 ease-out group-hover:scale-[1.03]"
+                priority={eager}
+              />
+
+              <span
+                aria-hidden="true"
+                className="text-immersive-foreground absolute top-4 right-4 flex size-9 items-center justify-center rounded-full bg-black/35 opacity-0 backdrop-blur transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                <Expand className="size-4" />
+              </span>
+
+              {/*
+                Origin only. The snack's own name is on the packet in
+                the photo, so printing it again says nothing the
+                picture does not — where it travelled from is the part
+                a picture cannot tell you.
+              */}
+              {snack.origin ? (
+                <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-5 pt-16">
+                  <span className="text-immersive-foreground block text-base font-semibold">
+                    {snack.origin}
+                  </span>
+                </span>
+              ) : null}
+            </button>
           </li>
         ))}
       </ul>
 
       {snacks.length > 1 ? (
         <>
-          <SlideButton side="left" onClick={() => step(-1)} />
-          <SlideButton side="right" onClick={() => step(1)} />
+          <SlideButton side="left" onClick={() => { handOver(); step(-1); }} />
+          <SlideButton side="right" onClick={() => { handOver(); step(1); }} />
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            {snacks.map((snack, position) => (
-              <button
-                key={snack.id}
-                type="button"
-                onClick={() => {
-                  setTaken(true);
-                  scrollTo(position);
-                }}
-                aria-label={`Show ${snack.name}`}
-                aria-current={position === index}
-                className={cn(
-                  'h-2 rounded-full transition-all',
-                  position === index ? 'w-6 bg-secondary' : 'w-2 bg-foreground/20 hover:bg-foreground/40',
-                )}
-              />
-            ))}
+          {/*
+            Distance travelled, not items remaining — see this
+            component's own comment on why a row of dots works against
+            the thing this section is for.
+          */}
+          <div className="mx-auto mt-6 h-1 w-full max-w-[220px] overflow-hidden rounded-full bg-foreground/10">
+            <div
+              className="bg-secondary h-full rounded-full transition-[width] duration-250 ease-out"
+              style={{ width: `${((index + 1) / snacks.length) * 100}%` }}
+            />
           </div>
+          <p className="text-muted-foreground mt-3 text-center text-caption">
+            Tap a snack to see it full screen
+          </p>
         </>
+      ) : null}
+
+      {opened !== null ? (
+        <SnackImmersiveViewer
+          snacks={snacks}
+          startIndex={opened}
+          onClose={close}
+          ctaHref={ctaHref}
+          fromPriceKes={fromPriceKes}
+        />
       ) : null}
     </div>
   );
@@ -170,7 +251,7 @@ function SlideButton({ side, onClick }: { side: 'left' | 'right'; onClick: () =>
       className={cn(
         // Hidden on touch: a swipe is the gesture there, and two
         // buttons sitting over the photo would only cover it.
-        'absolute top-1/2 z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-foreground shadow-md transition hover:bg-white md:flex',
+        'text-foreground absolute top-[40%] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 shadow-md transition duration-150 ease-out hover:bg-white md:flex',
         side === 'left' ? 'left-3' : 'right-3',
       )}
     >

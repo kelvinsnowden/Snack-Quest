@@ -5,6 +5,7 @@ import {
   IntegrationSecretNotFoundError,
 } from '@/repositories/businessIntegrationSecretRepository';
 import { isEncryptionConfigured } from '@/lib/secrets/secretCipher';
+import { carriesBusinessIdSecret } from '@/lib/webhooks/webhookSecret';
 import { getIntegrationFieldManifest, getRequiredFieldKeys, type IntegrationFieldSpec } from '@/lib/integrations/fieldManifest';
 import { testDarajaConnection } from '@/lib/integrations/daraja/darajaGateway';
 import { testWhatchimpConnection } from '@/lib/integrations/whatchimp/whatchimpGateway';
@@ -208,6 +209,26 @@ class IntegrationSettingsService {
         }
         cleanPatch[key] = value;
       }
+    }
+
+    /*
+     * The Daraja callback URL holds the base address only — this app
+     * appends `~<webhookSecret>` to it on every single API call, which
+     * is what lets the secret be rotated without re-registering
+     * anything with Safaricom.
+     *
+     * Pasting a URL that already carries one is an easy and expensive
+     * mistake: the value gets doubled into `…~~<secret>`, verification
+     * reads the key as `~<secret>`, and every callback is answered 403
+     * — money taken, no order, and this time the requests do arrive,
+     * so the logs show refusals rather than nothing at all. Refused
+     * here rather than quietly normalised, so nobody is left believing
+     * a secret they pasted is the one in use.
+     */
+    if (provider === 'daraja' && typeof cleanPatch.callbackUrl === 'string' && carriesBusinessIdSecret(cleanPatch.callbackUrl)) {
+      throw new IntegrationValidationError(
+        'The callback URL must end at the business id, with no “~” after it — this app adds the webhook secret itself on every request. Remove everything from the “~” onwards.',
+      );
     }
 
     const before = await this.getSummary(businessId, provider);
