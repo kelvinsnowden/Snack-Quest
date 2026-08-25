@@ -22,6 +22,8 @@ import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
 import { trackEvent } from '@/lib/analytics/trackEvent';
+import { WhatsAppCheckoutButton } from '@/components/marketing/WhatsAppCheckoutButton';
+import { buildBoxOrderMessage, GENERIC_ORDER_MESSAGE } from '@/lib/whatsapp/orderLink';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 import type { DeliveryMethod } from '@/types/delivery';
@@ -674,6 +676,37 @@ export function CheckoutForm({
           {!ready && problems.length > 0 ? (
             <p className="text-muted-foreground text-sm">Still needed: {problems.join(' · ')}</p>
           ) : null}
+        </div>
+
+        {/*
+          The way out for someone who was never going to finish this
+          form (§ order on WhatsApp).
+          
+          It sits *below* the pay button, not beside it: above, it
+          would be a fork in the road offered to every customer,
+          including the ones already typing. Down here it is only found
+          by someone whose eyes have left the form — which is exactly
+          the person about to leave without buying.
+
+          Deliberately available before the form is valid, unlike the
+          pay button. Somebody who cannot get past the address field is
+          the single likeliest person to want a human, and disabling
+          their only alternative at the same moment would be perverse.
+        */}
+        <div className="border-border flex flex-col items-center gap-2 border-t pt-5 text-center">
+          <p className="text-muted-foreground text-sm">Rather not fill in a form?</p>
+          <WhatsAppCheckoutButton
+            source="checkout_form"
+            packageId={box?.id}
+            message={
+              box ? buildBoxOrderMessage({ name: box.name, priceKes: box.priceKes, quantity }) : GENERIC_ORDER_MESSAGE
+            }
+          >
+            Order on WhatsApp
+          </WhatsAppCheckoutButton>
+          <p className="text-muted-foreground text-caption">
+            We&apos;ll confirm your order and delivery in the chat.
+          </p>
         </div>
       </div>
 

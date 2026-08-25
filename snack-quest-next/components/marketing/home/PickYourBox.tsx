@@ -2,6 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Boxes, Check, Star } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
+import { WhatsAppCheckoutButton } from '@/components/marketing/WhatsAppCheckoutButton';
+import { buildBoxOrderMessage } from '@/lib/whatsapp/orderLink';
 import { formatKes } from '@/lib/orders/format';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
@@ -242,7 +244,7 @@ export function PickYourBox({
                     ))}
                   </ul>
 
-                  <div className="mt-6 md:mt-9">
+                  <div className="mt-6 flex flex-col gap-2.5 md:mt-9">
                     <BuyNowButton
                       packageId={pkg.id}
                       size="lg"
@@ -252,6 +254,21 @@ export function PickYourBox({
                     >
                       Buy the {pkg.data.name}
                     </BuyNowButton>
+                    {/*
+                      Per box, so the message names the one the
+                      customer was actually looking at (§ order on
+                      WhatsApp). A generic "I want a box" costs a round
+                      trip establishing something they had already
+                      decided before they tapped.
+                    */}
+                    <WhatsAppCheckoutButton
+                      source="home_pick_your_box"
+                      packageId={pkg.id}
+                      message={buildBoxOrderMessage({ name: pkg.data.name, priceKes: pkg.data.priceKes })}
+                      className="text-small w-full py-2.5 md:w-auto"
+                    >
+                      Or order on WhatsApp
+                    </WhatsAppCheckoutButton>
                   </div>
                 </div>
               </div>

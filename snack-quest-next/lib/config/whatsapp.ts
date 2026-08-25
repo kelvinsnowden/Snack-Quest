@@ -7,4 +7,9 @@
  * whenever it was unset. Changing the number now means editing this
  * one constant, not a Firestore field plus every place that read it.
  */
-export const WHATSAPP_CTA_NUMBER = '254713157084';
+/*
+ * International format, no `+` and no leading zero: `wa.me` rejects
+ * both, and `app/(marketing)/layout.tsx` adds the `+` itself for the
+ * structured-data `telephone`. 0759209705 is therefore 254759209705.
+ */
+export const WHATSAPP_CTA_NUMBER = '254759209705';
