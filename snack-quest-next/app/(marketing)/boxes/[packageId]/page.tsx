@@ -244,6 +244,7 @@ export default async function BoxDetailPage({
               <WhatsAppCheckoutButton
                 source="product_page"
                 packageId={packageId}
+                valueKes={box.priceKes}
                 message={buildBoxOrderMessage({ name: box.name, priceKes: box.priceKes })}
               >
                 Order on WhatsApp

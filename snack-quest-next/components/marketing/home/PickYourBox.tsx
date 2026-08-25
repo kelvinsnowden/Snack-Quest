@@ -264,6 +264,7 @@ export function PickYourBox({
                     <WhatsAppCheckoutButton
                       source="home_pick_your_box"
                       packageId={pkg.id}
+                      valueKes={pkg.data.priceKes}
                       message={buildBoxOrderMessage({ name: pkg.data.name, priceKes: pkg.data.priceKes })}
                       className="text-small w-full py-2.5 md:w-auto"
                     >
