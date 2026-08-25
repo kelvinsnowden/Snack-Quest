@@ -199,5 +199,11 @@ async function main() {
 
 main().catch((error) => {
   console.error(`\n${error.message}`);
-  process.exit(1);
+  // `process.exitCode` rather than `process.exit(1)`: an abrupt exit
+  // while fetch's socket is still tearing down trips a libuv assertion
+  // on Windows (`!(handle->flags & UV_HANDLE_CLOSING)`, src/win/async.c)
+  // — the error message prints and is then buried under a crash dump.
+  // Setting the code lets the loop drain and exit on its own, which it
+  // does immediately once the response body has been read.
+  process.exitCode = 1;
 });
