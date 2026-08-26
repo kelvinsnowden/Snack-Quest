@@ -31,14 +31,42 @@ export function offersGuaranteedPicks(box: Pick<Package, 'guaranteedPickCount'>)
  * empty the picker.
  */
 export function isSelectableSnack(snack: Pick<SnackItem, 'isActive' | 'availableForPremiumSelection' | 'stockCount'>): boolean {
-  if (!snack.isActive) {
+  if (!snack.availableForPremiumSelection) {
     return false;
   }
-  if (!snack.availableForPremiumSelection) {
+  return isPackableSnack(snack);
+}
+
+/**
+ * Whether a snack can physically go in a box, for a staff member
+ * writing a packing list (§ staff are not picking, they are packing).
+ *
+ * The opt-in check is deliberately absent. "Customers can pick this in
+ * a Premium box" is a merchandising decision about what to *offer*
+ * strangers on a website; it says nothing about whether the shop can
+ * put the packet in a box for a customer who just asked for it by name
+ * on the phone.
+ *
+ * Retired and counted-to-zero still fail, because those are not
+ * policy. Nobody can pack a snack that does not exist, and an
+ * untracked `stockCount` stays permitted for the same reason it is
+ * everywhere else: most of this catalogue has never been counted.
+ */
+export function isPackableSnack(snack: Pick<SnackItem, 'isActive' | 'stockCount'>): boolean {
+  if (!snack.isActive) {
     return false;
   }
   return snack.stockCount === undefined || snack.stockCount > 0;
 }
+
+/**
+ * A ceiling on a staff packing list, not a target.
+ *
+ * There is no product reason for a specific number — this exists so a
+ * malformed or malicious request cannot write a thousand-entry array
+ * onto an order document. It sits far above any real box.
+ */
+export const MAX_STAFF_PICKS = 40;
 
 export type PickValidationFailure =
   | { ok: false; reason: string };
@@ -66,10 +94,29 @@ export function validateGuaranteedPicks(
   box: Pick<Package, 'guaranteedPickCount'>,
   snackItemIds: string[] | undefined,
   catalogue: Map<string, SnackItem>,
+  /**
+   * A staff member taking an order by phone, rather than a customer
+   * choosing on the website (§ staff are not picking, they are
+   * packing).
+   *
+   * Two of the rules below exist to make a *self-service* promise
+   * work: exactly five, and only from the snacks an admin opted in.
+   * A staff member is not being offered a choice — they are writing
+   * down what a customer just asked for and what will physically go
+   * in the box. Holding them to the website's shape means an order
+   * for eight snacks cannot be recorded at all.
+   *
+   * What stays is everything that is not a policy: the snack must
+   * exist, belong to this business, be active, and not be counted to
+   * zero. A tampered staff request still cannot put an imaginary
+   * snack on a packing list.
+   */
+  options?: { staffPacking?: boolean },
 ): PickValidationResult {
   const required = guaranteedPickCountFor(box);
+  const staffPacking = options?.staffPacking === true;
 
-  if (required === 0) {
+  if (required === 0 && !staffPacking) {
     // A fully-curated box. Picks sent for it are ignored rather than
     // rejected — the whole box is a surprise either way, and failing
     // the checkout over an ignorable field would lose a real sale.
@@ -77,7 +124,11 @@ export function validateGuaranteedPicks(
   }
 
   const ids = snackItemIds ?? [];
-  if (ids.length !== required) {
+  if (staffPacking) {
+    if (ids.length > MAX_STAFF_PICKS) {
+      return { ok: false, reason: `A box can hold at most ${MAX_STAFF_PICKS} named snacks.` };
+    }
+  } else if (ids.length !== required) {
     return { ok: false, reason: `Choose exactly ${required} snacks for this box.` };
   }
   if (new Set(ids).size !== ids.length) {
@@ -90,7 +141,7 @@ export function validateGuaranteedPicks(
     if (!snack || snack.businessId !== businessId) {
       return { ok: false, reason: 'One of your picks is no longer available — please choose again.' };
     }
-    if (!isSelectableSnack(snack)) {
+    if (staffPacking ? !isPackableSnack(snack) : !isSelectableSnack(snack)) {
       return { ok: false, reason: `${snack.name} has just gone out of stock — please choose another.` };
     }
     picks.push({

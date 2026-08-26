@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { isSelectableSnack } from '@/lib/packages/guaranteedPicks';
+import { isPackableSnack, isSelectableSnack } from '@/lib/packages/guaranteedPicks';
 import type { AuditFields, SnackItem } from '@/types';
 
 /**
@@ -163,6 +163,31 @@ class SnackItemRepository {
     return snapshot.docs
       .map((doc) => ({ id: doc.id, data: doc.data() as SnackItem }))
       .filter(({ data }) => isSelectableSnack(data))
+      .sort((a, b) => a.data.name.localeCompare(b.data.name));
+  }
+
+  /**
+   * Everything a staff member could physically put in a box
+   * (§ staff are not picking, they are packing).
+   *
+   * Deliberately not filtered by `availableForPremiumSelection`, which
+   * is a merchandising decision about what to offer strangers on a
+   * website. A customer on the phone asking for a specific packet is
+   * not browsing an offer, and the shop either has it or does not.
+   *
+   * That opt-in is also, in practice, unset across most of this
+   * catalogue — so filtering by it here is what made the staff picker
+   * come up empty.
+   */
+  async listForStaffPacking(businessId: string): Promise<{ id: string; data: SnackItem }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .get();
+
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, data: doc.data() as SnackItem }))
+      .filter(({ data }) => isPackableSnack(data))
       .sort((a, b) => a.data.name.localeCompare(b.data.name));
   }
 }

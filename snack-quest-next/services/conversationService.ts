@@ -855,10 +855,21 @@ class ConversationService {
       ? await snackItemRepository.findManyById([...new Set(wantedSnackIds)])
       : new Map<string, SnackItem>();
 
+    /*
+     * Staff taking the order are writing a packing list, not making a
+     * self-service choice (§ staff are not picking, they are packing)
+     * — so any number of snacks, from any box, out of the whole
+     * catalogue. See `validateGuaranteedPicks` for what still holds.
+     */
+    const staffPacking = Boolean(input.initiatedBy);
+
     let topLevelIdsUsed = false;
     for (const line of lines) {
       const lineBox = boxes.get(line.packageId)!;
-      if (!offersGuaranteedPicks(lineBox)) {
+      // A box that offers a customer nothing to choose can still be
+      // packed with named snacks by staff, so this only skips ahead
+      // for the website's own checkout.
+      if (!staffPacking && !offersGuaranteedPicks(lineBox)) {
         continue;
       }
       const requestedLine = requested.find((item) => item.packageId === line.packageId);
@@ -874,7 +885,9 @@ class ConversationService {
         topLevelIdsUsed = true;
       }
 
-      const lineResult = validateGuaranteedPicks(businessId, lineBox, ids, catalogue);
+      const lineResult = validateGuaranteedPicks(businessId, lineBox, ids, catalogue, {
+        staffPacking,
+      });
       if (!lineResult.ok) {
         // Named, because "choose exactly 5 snacks" on a two-box order
         // does not say which box is short.

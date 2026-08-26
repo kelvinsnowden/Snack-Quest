@@ -38,16 +38,27 @@ export interface StaffSelectableSnack {
  * loud and then pack it by hand, and "2 left" is the difference
  * between a promise they can keep and one they cannot.
  *
- * It still cannot pick anything the server would refuse — the list
- * comes from the same `listSelectableForPremium` the customer's does,
- * and every id is re-validated against the live catalogue at checkout.
+ * It also is not held to the customer's rules (§ staff are not
+ * picking, they are packing). A customer on the website chooses
+ * exactly five, from the snacks an admin opted in. A staff member is
+ * writing a packing list from a phone call: any number, from anything
+ * the shop actually has. The box's own number is still shown, as what
+ * the website promises rather than as a limit.
+ *
+ * It still cannot name anything the server would refuse — the list is
+ * the live catalogue filtered to what is active and in stock, and
+ * every id is re-validated at checkout.
  */
 export function StaffSnackPicker({
-  required,
+  suggested,
+  max,
   selectedIds,
   onChange,
 }: {
-  required: number;
+  /** What the box offers a customer on the website — a target here, never a cap. */
+  suggested: number;
+  /** The server's ceiling, so the picker cannot offer what it would refuse. */
+  max: number;
   selectedIds: string[];
   onChange: (ids: string[]) => void;
 }) {
@@ -71,7 +82,7 @@ export function StaffSnackPicker({
   }, []);
 
   const chosen = selectedIds.length;
-  const full = chosen >= required;
+  const full = chosen >= max;
 
   // Name *and* origin, because both are things a customer says out
   // loud — "the Korean one" is as common as naming the snack.
@@ -126,12 +137,17 @@ export function StaffSnackPicker({
    * can actually resolve it — unlike the customer, who gets told to
    * message us.
    */
-  if (snacks.length < required) {
+  /*
+   * Nothing to pack from at all. Not a count check any more — staff
+   * are not held to the box's number — so this only fires when the
+   * catalogue itself is empty, and it points at the real fix rather
+   * than at the customer-facing opt-in, which no longer gates this
+   * list.
+   */
+  if (snacks.length === 0) {
     return (
       <p className="border-warning/40 bg-warning/10 text-foreground rounded-lg border p-3 text-sm">
-        This box needs {required} picks but only {snacks.length}{' '}
-        {snacks.length === 1 ? 'snack is' : 'snacks are'} available. Tick “Customers can pick this in
-        a Premium box” on more snacks in the Snack Catalogue, then reopen this.
+        No snacks are in stock to pack. Add them in the Snack Catalogue, then reopen this.
       </p>
     );
   }
@@ -139,8 +155,16 @@ export function StaffSnackPicker({
   return (
     <div className="border-border bg-surface flex flex-col gap-3 rounded-lg border p-3">
       <div className="flex items-center justify-between gap-3">
+        {/*
+          The box's number is shown as what the website promises, not
+          as a limit — staff are recording what actually goes in the
+          box and may name more or fewer.
+        */}
         <p className="text-foreground text-sm font-semibold tabular-nums">
-          {chosen} of {required} snacks chosen
+          {chosen} {chosen === 1 ? 'snack' : 'snacks'} chosen
+          {suggested > 0 ? (
+            <span className="text-muted-foreground font-normal"> · box includes {suggested}</span>
+          ) : null}
         </p>
         {chosen > 0 ? (
           <button
