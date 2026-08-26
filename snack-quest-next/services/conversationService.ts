@@ -5,6 +5,7 @@ import { conversationCheckoutSnapshotRepository } from '@/repositories/conversat
 import { packageRepository, OutOfStockError } from '@/repositories/packageRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { orderRepository } from '@/repositories/orderRepository';
+import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
 import { textSmsGateway } from '@/lib/integrations/sms/textSmsGateway';
 import { toSmsSafeText } from '@/lib/sms/gsm7';
@@ -59,6 +60,7 @@ import {
 import type { WhatsAppGateway } from '@/lib/integrations/types';
 import type {
   Conversation,
+  ConversationCheckoutSnapshot,
   ConversationStateBlob,
   ConversationStatus,
   ConversationStep,
@@ -264,6 +266,16 @@ export interface WebCheckoutInput {
    */
   /** Staff-only; see `DeliveryDetails.feeCollection`. Ignored without `initiatedBy`. */
   deliveryFeeCollection?: 'prepaid' | 'on_delivery' | 'waived';
+  /**
+   * Take the order now, collect the money when the box arrives
+   * (§ pay on delivery). Staff-only, and ignored without
+   * `initiatedBy` — a customer cannot help themselves to goods on
+   * credit by posting a field.
+   *
+   * Mutually exclusive with `manualPayment`, which is the opposite
+   * claim: that the money has already arrived.
+   */
+  collectOnDelivery?: boolean;
   /**
    * Every box on the order, when the customer chose more than one
    * (§ more than one box per order). Absent for a single-box order,
@@ -1011,6 +1023,68 @@ class ConversationService {
      * Daraja order performs, because there is no second implementation
      * for it to skip them in.
      */
+    /*
+     * Pay on delivery (§ pay on delivery). No STK push now — the order
+     * is taken on the understanding that the customer pays when the
+     * box reaches them, and the prompt is sent from the order page at
+     * the door.
+     *
+     * Handed to the same `completeOrder` a paid order goes through, so
+     * the atomic stock decrement, the shipment, the admin notification
+     * and the conversation's own bookkeeping cannot silently differ
+     * from a normal order — there is no second implementation for them
+     * to differ in. What it does not do is anything that is only true
+     * because money arrived; see `applyMoneyReceivedEffects`.
+     *
+     * The intent stays `pending`, which is the honest record: it is
+     * the intent the door prompt will be pushed against, and no money
+     * has been collected against it yet.
+     */
+    if (input.collectOnDelivery && input.initiatedBy) {
+      await this.completeOrder(
+        businessId,
+        {
+          status: 'succeeded',
+          intentId,
+          conversationId,
+          snapshotId,
+          amountKes: totalKes,
+          mpesaReceiptNumber: '',
+        },
+        phoneNumber,
+        (input.attribution as ConversionAttribution | null | undefined) ?? null,
+        { dueOnDelivery: true },
+      );
+
+      await publishEvent(businessId, 'StaffTookOnDeliveryOrder', 'conversation', conversationId, {
+        staffUid: input.initiatedBy.staffUid,
+        staffName: input.initiatedBy.staffName,
+        phoneNumber,
+        packageId: input.packageId,
+        quantity,
+        totalKes,
+      });
+
+      return {
+        checkoutSessionId: conversationId,
+        payingPhone: phoneNumber,
+        // Nothing was pushed, and nothing should be until the box is
+        // in the customer's hands.
+        stkPushSent: false,
+        pricing: {
+          packageLabel: box.name,
+          quantity,
+          unitPriceKes: box.priceKes,
+          subtotalKes,
+          discountKes,
+          walletCreditAppliedKes,
+          deliveryFeeKes: delivery.feeKes,
+          totalKes,
+          serviceLevel: delivery.method === 'door' ? (stateBlob.serviceLevel ?? 'next-day') : null,
+        },
+      };
+    }
+
     if (input.manualPayment) {
       const settlement = await paymentService.recordManualPayment({
         businessId,
@@ -2439,6 +2513,28 @@ class ConversationService {
     const businessId = conversation.businessId;
 
     if (result.status === 'succeeded') {
+      /*
+       * Money for an order that already exists (§ pay on delivery) —
+       * the prompt sent at the door for a box the customer is holding.
+       *
+       * Checked before anything else reads the snapshot, and that
+       * ordering is the whole point: this snapshot became an order
+       * when the order was taken, so `completeOrder` would find it
+       * already `completed` and return quietly. The customer would
+       * have paid and nothing would have been recorded.
+       */
+      const intent = await paymentIntentRepository.findById(result.intentId);
+      if (intent?.orderId) {
+        await this.settleOnDelivery(
+          businessId,
+          intent.orderId,
+          result,
+          conversation.phoneNumber,
+          conversation.attributionSnapshot as ConversionAttribution | null,
+        );
+        return;
+      }
+
       await this.completeOrder(
         businessId,
         result,
@@ -2494,7 +2590,16 @@ class ConversationService {
     result: Extract<ProcessCallbackResult, { status: 'succeeded' }>,
     phoneNumber: string,
     attribution: ConversionAttribution | null,
+    /**
+     * The order is being created before the money arrives (§ pay on
+     * delivery). Everything about getting the box to the customer runs
+     * exactly as it does for a paid order — that is the point of
+     * reusing this path — and only the parts that are true because
+     * money arrived are held back until it does.
+     */
+    options?: { dueOnDelivery?: boolean },
   ): Promise<void> {
+    const dueOnDelivery = options?.dueOnDelivery === true;
     const snapshot = await conversationCheckoutSnapshotRepository.findById(
       result.snapshotId,
     );
@@ -2522,6 +2627,7 @@ class ConversationService {
         mpesaReceiptNumber: result.mpesaReceiptNumber,
         manualPayment: result.manualPayment ?? null,
         attribution,
+        ...(dueOnDelivery ? { dueOnDelivery: true } : {}),
       }));
     } catch (error) {
       if (error instanceof OutOfStockError) {
@@ -2550,49 +2656,22 @@ class ConversationService {
       currentStep: 'completed',
     });
 
-    if (snapshot.referralLinkId && snapshot.referralOwnerId) {
-      try {
-        await referralService.awardCommission({
+    /*
+     * Held back entirely for a pay-on-delivery order — see
+     * `applyMoneyReceivedEffects`. `settleOnDelivery` runs it when the
+     * customer actually pays at the door, so it happens exactly once
+     * either way.
+     */
+    const milestoneAwardKes = dueOnDelivery
+      ? 0
+      : await this.applyMoneyReceivedEffects({
           businessId,
-          referralLinkId: snapshot.referralLinkId,
-          ownerId: snapshot.referralOwnerId,
           orderId,
           conversationId: result.conversationId,
-          discountKes: snapshot.discountKes,
-          commissionKes: snapshot.referralCommissionKes,
+          phoneNumber,
+          snapshot,
+          attribution,
         });
-      } catch (error) {
-        await publishEvent(businessId, 'ReferralAwardFailed', 'order', orderId, {
-          reason: error instanceof Error ? error.message : 'unknown error',
-        });
-      }
-    }
-
-    // Wallet redemption + milestone bonus (§ Phase 4: Customer loyalty
-    // / Quest system) — both best-effort, same discipline as the
-    // referral commission above: a paid, confirmed order is never
-    // undone by a wallet-write failure.
-    if (snapshot.walletCreditAppliedKes > 0) {
-      try {
-        await walletService.redeemAtCheckout(businessId, phoneNumber, snapshot.walletCreditAppliedKes, orderId);
-      } catch (error) {
-        await publishEvent(businessId, 'WalletRedemptionFailed', 'order', orderId, {
-          reason: error instanceof Error ? error.message : 'unknown error',
-        });
-      }
-    }
-    let milestoneAwardKes = 0;
-    try {
-      const paidOrderCount = await walletService.countPaidOrders(businessId, phoneNumber);
-      const milestone = await walletService.awardMilestoneIfEligible(businessId, phoneNumber, orderId, paidOrderCount);
-      if (milestone.awarded) {
-        milestoneAwardKes = milestone.amountKes;
-      }
-    } catch (error) {
-      await publishEvent(businessId, 'WalletMilestoneAwardFailed', 'order', orderId, {
-        reason: error instanceof Error ? error.message : 'unknown error',
-      });
-    }
 
     try {
       await deliveryService.createShipmentForOrder(businessId, orderId, {
@@ -2602,35 +2681,6 @@ class ConversationService {
       });
     } catch (error) {
       await publishEvent(businessId, 'ShipmentCreationFailed', 'order', orderId, {
-        reason: error instanceof Error ? error.message : 'unknown error',
-      });
-    }
-
-    await adConversionService.dispatchPurchase({
-      businessId,
-      orderId,
-      phoneNumber,
-      amountKes: snapshot.totalKes,
-      attribution,
-    });
-
-    // Best-effort, same as everything else past order creation — an
-    // analytics miss must never risk a paid, confirmed order. No
-    // browser/cookie context exists here (an async Daraja webhook, not
-    // a page load — see this function's own doc comment), so
-    // `visitorId` is null; `metadata.orderId` is the real join key.
-    try {
-      const purchasedPackage = await packageRepository.findById(businessId, snapshot.packageId);
-      if (purchasedPackage?.isRescueOffer) {
-        await analyticsEventService.record(businessId, {
-          event: RESCUE_OFFER_EVENTS.purchaseCompleted,
-          visitorId: null,
-          metadata: { orderId, packageId: snapshot.packageId, amountKes: snapshot.totalKes },
-        });
-      }
-    } catch (error) {
-      await publishEvent(businessId, 'AnalyticsEventRecordFailed', 'order', orderId, {
-        event: RESCUE_OFFER_EVENTS.purchaseCompleted,
         reason: error instanceof Error ? error.message : 'unknown error',
       });
     }
@@ -2684,7 +2734,10 @@ class ConversationService {
      * so whichever path sends first, the customer is texted once.
      */
     try {
-      if (!result.manualPayment) {
+      // A pay-on-delivery order has not been paid, so the
+      // payment-received template would be a lie. Its customer is told
+      // what they owe in the plain message further down instead.
+      if (!result.manualPayment && !dueOnDelivery) {
         await this.notifications.send(businessId, {
           channel: 'sms',
           templateCode: 'order_confirmed_sms',
@@ -2732,8 +2785,17 @@ class ConversationService {
      * which is the true and useful thing to say.
      */
     const receiptClause = result.mpesaReceiptNumber ? ` Receipt: ${result.mpesaReceiptNumber}.` : '';
-    const confirmationMessage =
-      snapshot.delivery.method === 'pickup'
+    /*
+     * What the customer owes, and when — said plainly, because the
+     * whole arrangement rests on them expecting to pay at the door. A
+     * message that only said "your order is confirmed" would leave
+     * somebody surprised by a request for money on their doorstep.
+     */
+    const confirmationMessage = dueOnDelivery
+      ? snapshot.delivery.method === 'pickup'
+        ? `Your order ${orderRef} is confirmed — KES ${snapshot.totalKes} to pay when you collect it. We'll text you as soon as it reaches your pickup point.`
+        : `Your order ${orderRef} is confirmed — KES ${snapshot.totalKes} to pay when it reaches you. We're preparing your box now.`
+      : snapshot.delivery.method === 'pickup'
         ? `Payment received!${receiptClause} Your order ${orderRef} is confirmed — your Snack Quest box will be curated within 24 hours and handed over to Tushop. We'll text you the waybill number as soon as it is dispatched, and you'll hear from the courier when it reaches your selected pickup point.`
         : `Payment received!${receiptClause} Your order ${orderRef} is confirmed — we're preparing your box and Tushop will bring it to your door.`;
 
@@ -2851,6 +2913,179 @@ class ConversationService {
   async sendAgentReply(businessId: string, conversationId: string, text: string): Promise<void> {
     const conversation = await this.getConversation(businessId, conversationId);
     await this.reply(businessId, conversationId, conversation.phoneNumber, text);
+  }
+
+  /**
+   * The customer paid at the door (§ pay on delivery).
+   *
+   * The order already exists and has already been packed and
+   * delivered; what changes is that the money is now real. So this
+   * clears the outstanding flag and runs the effects that were held
+   * back at creation — the referral commission, the wallet, the ad
+   * platforms.
+   *
+   * `markPaidOnDelivery` is the guard against doing that twice. A real
+   * callback and a reconciliation sweep can each independently believe
+   * they are settling this order; only the one that actually clears
+   * the flag proceeds, so a creator is never paid two commissions for
+   * one box.
+   */
+  private async settleOnDelivery(
+    businessId: string,
+    orderId: string,
+    result: Extract<ProcessCallbackResult, { status: 'succeeded' }>,
+    phoneNumber: string,
+    attribution: ConversionAttribution | null,
+  ): Promise<void> {
+    const settled = await orderRepository.markPaidOnDelivery(orderId, {
+      paymentIntentId: result.intentId,
+      mpesaReceiptNumber: result.mpesaReceiptNumber || null,
+    });
+    if (!settled) {
+      return;
+    }
+
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(result.snapshotId);
+    if (!snapshot) {
+      return;
+    }
+
+    const milestoneAwardKes = await this.applyMoneyReceivedEffects({
+      businessId,
+      orderId,
+      conversationId: result.conversationId,
+      phoneNumber,
+      snapshot,
+      attribution,
+    });
+
+    const order = await orderRepository.findById(orderId);
+    const orderRef =
+      order?.orderNumber !== undefined ? formatOrderNumber(order.orderNumber) : orderId;
+    const receiptClause = result.mpesaReceiptNumber ? ` Receipt: ${result.mpesaReceiptNumber}.` : '';
+    const milestoneMessage =
+      milestoneAwardKes > 0
+        ? `\n\n🎁 You just earned KES ${milestoneAwardKes} wallet credit — reply BALANCE anytime to check it.`
+        : '';
+
+    try {
+      await this.reply(
+        businessId,
+        result.conversationId,
+        phoneNumber,
+        `Payment received!${receiptClause} Order ${orderRef} is settled in full. Thank you!${milestoneMessage}`,
+      );
+    } catch {
+      // Best-effort, like every other notification past settlement.
+    }
+
+    await publishEvent(businessId, 'OnDeliveryPaymentSettled', 'order', orderId, {
+      intentId: result.intentId,
+      amountKes: result.amountKes,
+      mpesaReceiptNumber: result.mpesaReceiptNumber || null,
+    });
+  }
+
+  /**
+   * Everything that is true only because the money actually arrived
+   * (§ pay on delivery).
+   *
+   * Split out because a pay-on-delivery order exists before any of it
+   * is true. That order is packed and delivered like any other, but a
+   * creator must not be credited a commission, a customer's own wallet
+   * balance must not be spent, and an ad platform must not be told a
+   * purchase happened, on the strength of a box that has left the
+   * building and may yet be refused at the door.
+   *
+   * So this runs at order creation for a normal order, and only at
+   * settlement for one paid at the door — in both cases exactly once.
+   *
+   * Every step is best-effort, which is the same discipline these
+   * calls always had: a confirmed order is never undone by a wallet or
+   * analytics write failing. Returns the milestone bonus awarded, if
+   * any, because the customer is told about it in the same breath as
+   * their confirmation.
+   */
+  private async applyMoneyReceivedEffects(input: {
+    businessId: string;
+    orderId: string;
+    conversationId: string;
+    phoneNumber: string;
+    snapshot: ConversationCheckoutSnapshot;
+    attribution: ConversionAttribution | null;
+  }): Promise<number> {
+    const { businessId, orderId, conversationId, phoneNumber, snapshot, attribution } = input;
+
+    if (snapshot.referralLinkId && snapshot.referralOwnerId) {
+      try {
+        await referralService.awardCommission({
+          businessId,
+          referralLinkId: snapshot.referralLinkId,
+          ownerId: snapshot.referralOwnerId,
+          orderId,
+          conversationId,
+          discountKes: snapshot.discountKes,
+          commissionKes: snapshot.referralCommissionKes,
+        });
+      } catch (error) {
+        await publishEvent(businessId, 'ReferralAwardFailed', 'order', orderId, {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
+    }
+
+    // Wallet redemption + milestone bonus (§ Phase 4: Customer loyalty
+    // / Quest system).
+    if (snapshot.walletCreditAppliedKes > 0) {
+      try {
+        await walletService.redeemAtCheckout(businessId, phoneNumber, snapshot.walletCreditAppliedKes, orderId);
+      } catch (error) {
+        await publishEvent(businessId, 'WalletRedemptionFailed', 'order', orderId, {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
+    }
+    let milestoneAwardKes = 0;
+    try {
+      const paidOrderCount = await walletService.countPaidOrders(businessId, phoneNumber);
+      const milestone = await walletService.awardMilestoneIfEligible(businessId, phoneNumber, orderId, paidOrderCount);
+      if (milestone.awarded) {
+        milestoneAwardKes = milestone.amountKes;
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'WalletMilestoneAwardFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
+    await adConversionService.dispatchPurchase({
+      businessId,
+      orderId,
+      phoneNumber,
+      amountKes: snapshot.totalKes,
+      attribution,
+    });
+
+    // No browser/cookie context exists here (an async Daraja webhook,
+    // not a page load), so `visitorId` is null; `metadata.orderId` is
+    // the real join key.
+    try {
+      const purchasedPackage = await packageRepository.findById(businessId, snapshot.packageId);
+      if (purchasedPackage?.isRescueOffer) {
+        await analyticsEventService.record(businessId, {
+          event: RESCUE_OFFER_EVENTS.purchaseCompleted,
+          visitorId: null,
+          metadata: { orderId, packageId: snapshot.packageId, amountKes: snapshot.totalKes },
+        });
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'AnalyticsEventRecordFailed', 'order', orderId, {
+        event: RESCUE_OFFER_EVENTS.purchaseCompleted,
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
+    return milestoneAwardKes;
   }
 
   private async reply(

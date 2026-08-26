@@ -85,6 +85,19 @@ export interface PaymentIntent {
    * sees these: there is no callback to be unmatched.
    */
   manualPayment?: ManualPaymentRecord | null;
+  /**
+   * Set only when this intent is collecting for an order that already
+   * exists (§ pay on delivery) — the prompt sent at the door for a box
+   * the customer is holding.
+   *
+   * Every other intent is settled by *creating* an order from its
+   * snapshot. This one must not: the snapshot became an order when the
+   * order was taken, and creating a second from it would either be
+   * refused as already-completed (money taken, nothing recorded) or
+   * duplicate the order outright. Its presence is what routes the
+   * callback to settlement instead of creation.
+   */
+  orderId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

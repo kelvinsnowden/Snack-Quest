@@ -91,6 +91,27 @@ export interface OrderPayment {
    * a live pointer.
    */
   manualPayment?: ManualPaymentRecord | null;
+  /**
+   * The money has not arrived yet — the customer pays when the box
+   * reaches them (§ pay on delivery).
+   *
+   * The order is real and gets packed and delivered like any other;
+   * the difference is only that nothing has been collected for it. It
+   * is deliberately a fact about the *payment* rather than an order
+   * status, because the order's own lifecycle — confirmed, packed,
+   * dispatched, delivered — is identical either way, and every
+   * fulfillment surface already keys off that.
+   *
+   * Absent means paid, which is what every order in this system was
+   * before this existed: an order used to be creatable only as the
+   * result of a succeeded payment.
+   *
+   * Nothing that depends on money having arrived may read the order
+   * alone and assume it has: revenue reporting, referral commission,
+   * wallet redemption and ad-conversion dispatch all wait for this to
+   * clear.
+   */
+  dueOnDelivery?: boolean;
 }
 
 export interface OrderPricing {

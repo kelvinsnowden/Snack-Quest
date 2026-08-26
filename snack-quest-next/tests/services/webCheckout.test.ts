@@ -28,6 +28,7 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
 import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
+import { seedCreator } from '../helpers/creatorFixtures';
 
 /**
  * `ConversationService.startWebCheckout` (§ Website Becomes the
@@ -2027,5 +2028,265 @@ describe('a staff packing list', () => {
         }),
       ),
     ).rejects.toThrow(/out of stock/i);
+  });
+});
+
+/**
+ * Taking an order now and collecting the money when the box arrives
+ * (§ pay on delivery).
+ *
+ * The order is real from the moment it is taken — it reserves stock
+ * and gets packed and delivered like any other. What must not happen
+ * is anything that is only true because money arrived, on the strength
+ * of a box that has left the building and may yet be refused at the
+ * door.
+ */
+/**
+ * This creator's own ledger, not a `collectionGroup` sweep. The group
+ * query spans every business in the emulator, so it picks up whatever
+ * other test files are writing in parallel.
+ */
+async function creatorLedgerEntries() {
+  const snapshot = await adminFirestore
+    .collection('businesses')
+    .doc(BUSINESS_ID)
+    .collection('creatorMemberships')
+    .doc('creator-1')
+    .collection('earningsLedger')
+    .get();
+  return snapshot.docs;
+}
+
+describe('an order paid for on delivery', () => {
+  const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
+
+  async function takeOnDeliveryOrder(overrides: Record<string, unknown> = {}) {
+    return service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, collectOnDelivery: true, ...overrides }),
+    );
+  }
+
+  it('creates the order without charging anything', async () => {
+    const result = await takeOnDeliveryOrder();
+
+    expect(result.stkPushSent).toBe(false);
+    expect(initiateStkPushMock).not.toHaveBeenCalled();
+
+    const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
+    // Real, and packable — the whole point of creating it now.
+    expect(order?.data.status).toBe('confirmed');
+    expect(order?.data.payment.dueOnDelivery).toBe(true);
+    expect(order?.data.payment.mpesaReceiptNumber).toBeNull();
+  });
+
+  it('leaves the intent unsettled, because no money has moved', async () => {
+    await takeOnDeliveryOrder();
+
+    // Not 'succeeded': nothing has been collected. `pending` is the
+    // honest record of an order awaiting payment at the door.
+    expect(await paymentIntentRepository.listByStatus(BUSINESS_ID, ['succeeded'])).toHaveLength(0);
+    expect((await paymentIntentRepository.listByStatus(BUSINESS_ID, ['pending'])).length).toBeGreaterThan(0);
+  });
+
+  it('tells the customer what they will owe, and does not claim payment', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway, gateway);
+
+    await svc.startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, collectOnDelivery: true }),
+    );
+
+    const messages = gateway.sent.filter((message) => message.phone === PHONE_NORMALIZED);
+    const confirmation = messages.map((message) => message.text).join('\n');
+    expect(confirmation).toMatch(/2800 to pay when you collect it/i);
+    // The one sentence that must never appear on an unpaid order.
+    expect(confirmation).not.toMatch(/payment received/i);
+  });
+
+  /*
+   * The reason the money-dependent effects were split out at all. A
+   * creator credited for a box that is later refused at the door is
+   * real money leaving the business for a sale that never happened.
+   */
+  it('credits no referral commission until the money arrives', async () => {
+    await seedReferralLink();
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    const result = await takeOnDeliveryOrder({ referralCode: 'SAVE500' });
+
+    // The referral really is on the order — otherwise this test would
+    // pass for the wrong reason, by there being no commission to award.
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot).toMatchObject({ referralOwnerId: 'creator-1', referralCommissionKes: 300 });
+
+    expect(await creatorLedgerEntries()).toHaveLength(0);
+  });
+
+  /** Still packed and still shipped — it is a real order. */
+  it('reserves stock like any other order', async () => {
+    // Counted explicitly: the default seed leaves stock untracked, and
+    // an untracked box would make this assertion vacuous.
+    await packageRepository.update(packageId, { stockCount: 7 }, 'admin');
+
+    await takeOnDeliveryOrder();
+
+    expect((await packageRepository.findById(BUSINESS_ID, packageId))!.stockCount).toBe(6);
+  });
+
+  /*
+   * A customer cannot help themselves to goods on credit by posting a
+   * field at the public checkout.
+   */
+  it('ignores a customer who asks to pay on delivery', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ collectOnDelivery: true }),
+    );
+
+    expect(result.stkPushSent).toBe(true);
+    expect(initiateStkPushMock).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The money arriving at the door (§ pay on delivery).
+ *
+ * This is the half where getting it wrong costs real money, in two
+ * directions: a callback that quietly does nothing means the customer
+ * paid and the shop has no record, and a callback processed twice
+ * means a creator is paid two commissions for one box.
+ */
+describe('settling an order paid for at the door', () => {
+  const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
+
+  async function takeAndCollect() {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, collectOnDelivery: true }),
+    );
+    const order = (await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId))!;
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+
+    // What the door route does: a fresh intent that names the order.
+    const intentId = await paymentService.createIntent({
+      businessId: BUSINESS_ID,
+      conversationId: result.checkoutSessionId,
+      conversationCheckoutSnapshotId: conversation!.conversationCheckoutSnapshotId!,
+      customerId: null,
+      phoneNumber: PHONE_NORMALIZED,
+      amountKes: order.data.pricing.totalKes,
+      orderId: order.id,
+    });
+
+    return { result, order, intentId, snapshotId: conversation!.conversationCheckoutSnapshotId! };
+  }
+
+  it('marks the order paid instead of trying to create a second one', async () => {
+    const { result, order, intentId, snapshotId } = await takeAndCollect();
+
+    await service().handlePaymentResult({
+      status: 'succeeded',
+      intentId,
+      conversationId: result.checkoutSessionId,
+      snapshotId,
+      amountKes: order.data.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+
+    const settled = await orderRepository.findById(order.id);
+    expect(settled?.payment.dueOnDelivery).toBeUndefined();
+    expect(settled?.payment.mpesaReceiptNumber).toBe('NLJ7RT61SV');
+
+    // One box, one order. The snapshot is already `completed`, so a
+    // path that went on to create from it would either duplicate the
+    // order or silently record nothing. Scoped to this conversation —
+    // the collection carries every other test's orders too.
+    const forThisOrder = await adminFirestore
+      .collection('orders')
+      .where('conversationId', '==', result.checkoutSessionId)
+      .get();
+    expect(forThisOrder.docs).toHaveLength(1);
+  });
+
+  it('runs the held-back referral commission exactly once', async () => {
+    await seedReferralLink();
+    await seedCreator('creator-1', { businessId: BUSINESS_ID });
+    const svc = service();
+    const started = await svc.startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, collectOnDelivery: true, referralCode: 'SAVE500' }),
+    );
+    const order = (await orderRepository.findByConversationId(BUSINESS_ID, started.checkoutSessionId))!;
+    const conversation = await conversationRepository.findById(started.checkoutSessionId);
+    const snapshotId = conversation!.conversationCheckoutSnapshotId!;
+
+    const settle = async () => {
+      const intentId = await paymentService.createIntent({
+        businessId: BUSINESS_ID,
+        conversationId: started.checkoutSessionId,
+        conversationCheckoutSnapshotId: snapshotId,
+        customerId: null,
+        phoneNumber: PHONE_NORMALIZED,
+        amountKes: order.data.pricing.totalKes,
+        orderId: order.id,
+      });
+      await svc.handlePaymentResult({
+        status: 'succeeded',
+        intentId,
+        conversationId: started.checkoutSessionId,
+        snapshotId,
+        amountKes: order.data.pricing.totalKes,
+        mpesaReceiptNumber: 'NLJ7RT61SV',
+      });
+    };
+
+    // Twice: a real callback and a reconciliation sweep can each
+    // independently believe they are the one settling this order.
+    await settle();
+    await settle();
+
+    expect(await creatorLedgerEntries()).toHaveLength(1);
+  });
+
+  it('confirms to the customer only once the money is real', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway, gateway);
+
+    const started = await svc.startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, collectOnDelivery: true }),
+    );
+    const order = (await orderRepository.findByConversationId(BUSINESS_ID, started.checkoutSessionId))!;
+    const conversation = await conversationRepository.findById(started.checkoutSessionId);
+    const snapshotId = conversation!.conversationCheckoutSnapshotId!;
+
+    const before = gateway.sent.map((message) => message.text).join('\n');
+    expect(before).not.toMatch(/payment received/i);
+
+    const intentId = await paymentService.createIntent({
+      businessId: BUSINESS_ID,
+      conversationId: started.checkoutSessionId,
+      conversationCheckoutSnapshotId: snapshotId,
+      customerId: null,
+      phoneNumber: PHONE_NORMALIZED,
+      amountKes: order.data.pricing.totalKes,
+      orderId: order.id,
+    });
+    await svc.handlePaymentResult({
+      status: 'succeeded',
+      intentId,
+      conversationId: started.checkoutSessionId,
+      snapshotId,
+      amountKes: order.data.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+
+    const after = gateway.sent.map((message) => message.text).join('\n');
+    expect(after).toMatch(/payment received/i);
+    expect(after).toMatch(/NLJ7RT61SV/);
   });
 });

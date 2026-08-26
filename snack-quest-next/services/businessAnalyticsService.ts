@@ -46,6 +46,24 @@ const TOP_CREATORS_ROI_LIMIT = 10;
 const REVENUE_STATUSES: Order['status'][] = ['confirmed', 'dispatched', 'delivered'];
 
 /**
+ * Money actually taken, which is not the same question as the order's
+ * status (§ pay on delivery).
+ *
+ * A pay-on-delivery order is `confirmed` from the moment it is taken —
+ * it is real, and it gets packed and delivered like any other — but
+ * nothing has been collected for it. Counting it as revenue would
+ * report money the shop does not have, and would keep reporting it if
+ * the customer refused the box at the door.
+ *
+ * `dueOnDelivery` is absent on every order that predates it and on
+ * every order paid up front, which is why the test is for the flag
+ * being set rather than for its absence.
+ */
+function isRealisedRevenue(order: Order): boolean {
+  return REVENUE_STATUSES.includes(order.status) && order.payment?.dueOnDelivery !== true;
+}
+
+/**
  * Which ad/acquisition channel an order came from (§ close the loop:
  * ad-conversion attribution), derived the same way
  * `AdConversionService.dispatchPurchase` decides where to report a
@@ -287,7 +305,7 @@ class BusinessAnalyticsService {
     const previousCutoff = cutoff - windowMs;
 
     const inWindow = orders.filter(
-      (o) => REVENUE_STATUSES.includes(o.data.status) && toMillis(o.data.createdAt) >= cutoff,
+      (o) => isRealisedRevenue(o.data) && toMillis(o.data.createdAt) >= cutoff,
     );
     // Bounded by the same REVENUE_ORDER_LIMIT scan as `inWindow` — this
     // reuses the list already fetched rather than a second query, same
@@ -295,7 +313,7 @@ class BusinessAnalyticsService {
     // already accepts for the current window.
     const inPreviousWindow = orders.filter(
       (o) =>
-        REVENUE_STATUSES.includes(o.data.status) &&
+        isRealisedRevenue(o.data) &&
         toMillis(o.data.createdAt) >= previousCutoff &&
         toMillis(o.data.createdAt) < cutoff,
     );
@@ -509,7 +527,7 @@ class BusinessAnalyticsService {
     // which is not confusing.
     const sinceMs = since.getTime();
     const paidInRange = orders.filter(
-      ({ data }) => REVENUE_STATUSES.includes(data.status) && toMillis(data.createdAt) >= sinceMs,
+      ({ data }) => isRealisedRevenue(data) && toMillis(data.createdAt) >= sinceMs,
     ).length;
 
     return {
@@ -696,7 +714,7 @@ class BusinessAnalyticsService {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
     const inWindow = orders.filter(
-      ({ data }) => REVENUE_STATUSES.includes(data.status) && toMillis(data.createdAt) >= cutoff,
+      ({ data }) => isRealisedRevenue(data) && toMillis(data.createdAt) >= cutoff,
     );
 
     const byChannel = new Map<OrderChannel, ChannelRevenue>();
@@ -778,8 +796,13 @@ class BusinessAnalyticsService {
       refundRepository.listByBusiness(businessId, { status: 'succeeded', limit: REFUND_SCAN_LIMIT }),
     ]);
 
+    // Its own name is the test: an order still awaiting payment at the
+    // door has taken none, so it belongs in neither half of this ratio.
     const paidInWindow = orders.filter(
-      ({ data }) => paidStatuses.includes(data.status) && toMillis(data.createdAt) >= cutoff,
+      ({ data }) =>
+        paidStatuses.includes(data.status) &&
+        data.payment?.dueOnDelivery !== true &&
+        toMillis(data.createdAt) >= cutoff,
     );
     const refundsInWindow = refunds.filter(({ data }) => toMillis(data.createdAt) >= cutoff);
 
@@ -808,8 +831,10 @@ class BusinessAnalyticsService {
     const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
+    // A box nobody has paid for is not yet a purchase, so it is not
+    // yet a repeat one either.
     const inWindow = orders.filter(
-      ({ data }) => REVENUE_STATUSES.includes(data.status) && toMillis(data.createdAt) >= cutoff,
+      ({ data }) => isRealisedRevenue(data) && toMillis(data.createdAt) >= cutoff,
     );
 
     const ordersByPhone = new Map<string, number>();
@@ -869,7 +894,7 @@ class BusinessAnalyticsService {
    */
   async getLtv(businessId: string): Promise<LtvResult> {
     const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
-    const revenueOrders = orders.filter(({ data }) => REVENUE_STATUSES.includes(data.status));
+    const revenueOrders = orders.filter(({ data }) => isRealisedRevenue(data));
 
     const revenueByPhone = new Map<string, number>();
     for (const { data } of revenueOrders) {

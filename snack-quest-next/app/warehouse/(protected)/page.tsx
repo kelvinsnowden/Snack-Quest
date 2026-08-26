@@ -12,6 +12,7 @@ import { CompleteManualBookingDialog } from '@/components/admin/CompleteManualBo
 import { MarkDispatchedButton } from '@/components/warehouse/MarkDispatchedButton';
 import { formatDate } from '@/lib/orders/format';
 import { OrderPackingList } from '@/components/warehouse/OrderPackingList';
+import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
 
 export const metadata: Metadata = { title: 'Queue' };
 
@@ -94,6 +95,17 @@ export default async function WarehouseQueuePage({
                         {data.delivery.method === 'pickup' && data.delivery.pickupStationName
                           ? ` — ${data.delivery.pickupStationName}`
                           : null}
+                        {/*
+                          Not paid for yet (§ pay on delivery). Said on
+                          the packing screen as well as the delivery
+                          one, because it changes what the person
+                          handing the box over has to do.
+                        */}
+                        {data.payment?.dueOnDelivery ? (
+                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
+                            Unpaid — collect KES {data.pricing.totalKes.toLocaleString()}
+                          </span>
+                        ) : null}
                         {/*
                           Where it is actually going. A door order
                           without its address is not something anyone
@@ -248,6 +260,11 @@ export default async function WarehouseQueuePage({
                           Still owed, and this is the doorstep. Last
                           chance to collect it.
                         */}
+                        {data.payment?.dueOnDelivery ? (
+                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
+                            Unpaid — collect KES {data.pricing.totalKes.toLocaleString()}
+                          </span>
+                        ) : null}
                         {data.delivery.feeCollection === 'on_delivery' ? (
                           <span className="mt-1 block text-caption font-semibold text-warning normal-case">
                             Collect KES {data.delivery.feeKes.toLocaleString()} on delivery
@@ -257,8 +274,23 @@ export default async function WarehouseQueuePage({
                       <td className="px-4 py-3 text-muted-foreground tabular-nums">
                         {formatDate(data.createdAt)}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <MarkDispatchedButton orderId={id} to="delivered" />
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col items-end gap-2">
+                          {/*
+                            The money, before the button that says the
+                            job is done. An order marked delivered with
+                            payment still outstanding is one nobody
+                            goes back for.
+                          */}
+                          {data.payment?.dueOnDelivery ? (
+                            <CollectPaymentButton
+                              orderId={id}
+                              amountKes={data.pricing.totalKes}
+                              phoneNumber={data.customer.phoneNumber}
+                            />
+                          ) : null}
+                          <MarkDispatchedButton orderId={id} to="delivered" />
+                        </div>
                       </td>
                     </tr>
                   ))}

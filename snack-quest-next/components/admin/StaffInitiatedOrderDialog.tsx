@@ -32,7 +32,16 @@ import type { ManualPaymentMethod } from '@/types';
  * M-Pesa transfer they sent themselves, a bank transfer — where a
  * second prompt would be asking them to pay twice.
  */
-type PaymentMode = 'request' | 'already_paid';
+/**
+ * When the money changes hands, which is a separate question from who
+ * pays the delivery fee (§ pay on delivery).
+ *
+ * `on_delivery` is the one that has no payment behind it at all: the
+ * order is taken on the understanding that the customer pays when the
+ * box reaches them, and the prompt is sent from the order page at the
+ * door.
+ */
+type PaymentMode = 'request' | 'already_paid' | 'on_delivery';
 
 const MANUAL_METHOD_LABELS: Record<ManualPaymentMethod, string> = {
   cash: 'Cash',
@@ -191,6 +200,7 @@ export function StaffInitiatedOrderDialog({
    * back brings the operator's picks with it.
    */
   const alreadyPaid = paymentMode === 'already_paid';
+  const payOnDelivery = paymentMode === 'on_delivery';
   // Cash is the only method with nothing to reference. The server
   // enforces this too — this is here so the button explains itself
   // rather than the request coming back 400.
@@ -239,6 +249,7 @@ export function StaffInitiatedOrderDialog({
             ? { guaranteedSnackIds: picksByBox[pickBoxes[0].id] }
             : {}),
           ...(feeCollection !== 'prepaid' ? { deliveryFeeCollection: feeCollection } : {}),
+          ...(payOnDelivery ? { collectOnDelivery: true } : {}),
           ...(alreadyPaid
             ? {
                 manualPayment: {
@@ -310,13 +321,17 @@ export function StaffInitiatedOrderDialog({
                   <CheckCircle2 className="text-success size-5" aria-hidden="true" />
                   {alreadyPaid
                     ? 'Order recorded as paid'
-                    : sent.stkPushSent
-                      ? 'Payment request sent'
-                      : 'Order created, prompt failed'}
+                    : payOnDelivery
+                      ? 'Order taken — payable on delivery'
+                      : sent.stkPushSent
+                        ? 'Payment request sent'
+                        : 'Order created, prompt failed'}
                 </DialogTitle>
                 <DialogDescription>
                   {alreadyPaid
                     ? `${customerName.trim()}'s order is confirmed and their box is queued for packing. No M-Pesa prompt was sent — you recorded ${formatKes(sent.pricing.totalKes)} as already received.`
+                    : payOnDelivery
+                      ? `${customerName.trim()}'s box is queued for packing and ${formatKes(sent.pricing.totalKes)} is owed on it. Nothing has been charged — whoever delivers it sends the prompt from the order page.`
                     : sent.stkPushSent
                       ? `${customerName.trim()} has an M-Pesa prompt for ${formatKes(sent.pricing.totalKes)} on ${sent.payingPhone}. The order confirms itself once they pay.`
                       : `The order is priced and saved, but the M-Pesa prompt did not reach Safaricom. Nothing has been charged — take the order again to retry.`}
@@ -340,7 +355,13 @@ export function StaffInitiatedOrderDialog({
                   }
                 />
                 <SummaryRow
-                  label={alreadyPaid ? 'Total recorded as paid' : 'Total requested'}
+                  label={
+                    alreadyPaid
+                      ? 'Total recorded as paid'
+                      : payOnDelivery
+                        ? 'Total due on delivery'
+                        : 'Total requested'
+                  }
                   value={formatKes(sent.pricing.totalKes)}
                   strong
                 />
@@ -371,7 +392,9 @@ export function StaffInitiatedOrderDialog({
                 <DialogDescription>
                   {alreadyPaid
                     ? 'Records an order the customer has already paid for. No M-Pesa prompt is sent. Priced exactly as the website would price it — you can\u2019t change the amount here.'
-                    : 'Places the order and sends the customer an M-Pesa prompt. Priced exactly as the website would price it — you can\u2019t change the amount here.'}
+                    : payOnDelivery
+                      ? 'Places the order without charging. The customer pays when the box reaches them. Priced exactly as the website would price it — you can\u2019t change the amount here.'
+                      : 'Places the order and sends the customer an M-Pesa prompt. Priced exactly as the website would price it — you can\u2019t change the amount here.'}
                 </DialogDescription>
               </DialogHeader>
 
@@ -600,14 +623,23 @@ export function StaffInitiatedOrderDialog({
                   </div>
                 </div>
 
-                {canRecordManualPayment ? (
-                  <div className="flex flex-col gap-2">
+                {/*
+                  When the money changes hands (§ pay on delivery).
+                  Always shown: "pay on delivery" is an ordinary way to
+                  take an order, unlike "already paid", which is an
+                  assertion that money arrived with nothing verifying
+                  it and stays a super-admin claim.
+                */}
+                <div className="flex flex-col gap-2">
                     <Label>Payment</Label>
                     <div className="flex gap-2">
                       {(
                         [
                           ['request', 'Send M-Pesa prompt'],
-                          ['already_paid', 'Already paid'],
+                          ...(canRecordManualPayment
+                            ? ([['already_paid', 'Already paid']] as const)
+                            : []),
+                          ['on_delivery', 'Pay on delivery'],
                         ] as const
                       ).map(([mode, label]) => (
                         <button
@@ -626,8 +658,13 @@ export function StaffInitiatedOrderDialog({
                         </button>
                       ))}
                     </div>
+                  {payOnDelivery ? (
+                    <p className="text-muted-foreground text-sm">
+                      No prompt is sent now. The box is packed and delivered first, and whoever
+                      hands it over sends the M-Pesa prompt from the order page.
+                    </p>
+                  ) : null}
                   </div>
-                ) : null}
 
                 {alreadyPaid ? (
                   <div className="border-warning/40 bg-warning/5 flex flex-col gap-4 rounded-lg border p-4">
@@ -702,7 +739,11 @@ export function StaffInitiatedOrderDialog({
                   Cancel
                 </Button>
                 <Button onClick={onSubmit} loading={submitting} disabled={!ready}>
-                  {alreadyPaid ? 'Record paid order' : 'Send payment request'}
+                  {alreadyPaid
+                    ? 'Record paid order'
+                    : payOnDelivery
+                      ? 'Take order, collect on delivery'
+                      : 'Send payment request'}
                 </Button>
               </DialogFooter>
             </>

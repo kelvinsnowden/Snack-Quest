@@ -122,6 +122,42 @@ class OrderRepository {
   }
 
   /**
+   * The money for a pay-on-delivery order has arrived (§ pay on
+   * delivery) — the customer paid the prompt at the door.
+   *
+   * Clears `dueOnDelivery` rather than setting it false, so a settled
+   * order is byte-identical to one that was paid up front and no
+   * reader has to know both spellings of "paid".
+   *
+   * Guarded on the flag still being set, in the same transaction as
+   * the write: two callbacks for one order — a real one and a
+   * reconciliation sweep — must not both believe they are the one
+   * settling it, or the deferred commission and wallet effects run
+   * twice. Returns whether this call was the one that settled it.
+   */
+  async markPaidOnDelivery(
+    orderId: string,
+    payment: { paymentIntentId: string; mpesaReceiptNumber: string | null },
+  ): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(orderId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.data() as Order | undefined;
+      if (!data || data.payment?.dueOnDelivery !== true) {
+        return false;
+      }
+      tx.update(ref, {
+        'payment.dueOnDelivery': FieldValue.delete(),
+        'payment.paymentIntentId': payment.paymentIntentId,
+        'payment.mpesaReceiptNumber': payment.mpesaReceiptNumber,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: 'system',
+      });
+      return true;
+    });
+  }
+
+  /**
    * Corrects the recorded details of a payment that arrived outside
    * Daraja (§ correcting a manually recorded payment).
    *
