@@ -23,12 +23,16 @@ import type { Role } from '@/types';
  *   lower-privilege workspace's own UI calls it.
  * - `ADMIN_OR_AGENT`: the conversation-action routes
  *   (`ConversationAgentActions`, `ConversationReplyBox`,
- *   `DoorDeliveryPricingForm`) and shipment manual-booking completion
- *   (`CompleteManualBookingDialog`) the Agent workspace's own
- *   conversation detail page renders.
+ *   `DoorDeliveryPricingForm`) the Agent workspace's own conversation
+ *   detail page renders.
  * - `ADMIN_OR_WAREHOUSE`: `orders/{id}/status`, which
- *   `components/warehouse/MarkDispatchedButton.tsx` — the Warehouse
- *   workspace's one mutation — calls directly.
+ *   `components/warehouse/MarkDispatchedButton.tsx` calls to move an
+ *   order to `dispatched` and then to `delivered`.
+ * - `ADMIN_AGENT_OR_WAREHOUSE`: shipment manual-booking completion.
+ *   Both workspaces render `CompleteManualBookingDialog` — the Agent's
+ *   conversation detail page and the Warehouse's own courier queue —
+ *   so a set naming only one of them made the Warehouse's copy of the
+ *   button a 403 on a control its own screen was showing.
  */
 export function hasStaffRole(
   session: Pick<StaffSession, 'roles'>,
@@ -46,6 +50,17 @@ export const ADMIN_OR_AGENT: readonly Role[] = [
 export const ADMIN_OR_WAREHOUSE: readonly Role[] = [
   'admin',
   'super_admin',
+  'warehouse',
+];
+
+/**
+ * Booking a courier is fulfillment, and both workspaces that do
+ * fulfillment work render the control for it.
+ */
+export const ADMIN_AGENT_OR_WAREHOUSE: readonly Role[] = [
+  'admin',
+  'super_admin',
+  'agent',
   'warehouse',
 ];
 

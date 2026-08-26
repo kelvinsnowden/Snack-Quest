@@ -1,6 +1,6 @@
 import {
   hasStaffRole,
-  ADMIN_OR_AGENT,
+  ADMIN_AGENT_OR_WAREHOUSE,
   forbiddenResponse,
 } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
@@ -10,7 +10,15 @@ import {
   InvalidShipmentTransitionError,
 } from '@/services/deliveryService';
 
-/** Records a manually-booked courier's reference (§ Admin: Delivery monitoring — the manual-booking queue's action) and moves the shipment to `created`. */
+/**
+ * Records a manually-booked courier's reference (§ Admin: Delivery
+ * monitoring — the manual-booking queue's action) and moves the
+ * shipment to `created`.
+ *
+ * Reachable by the Warehouse workspace as well as the Agent one: its
+ * own "Ready for courier" queue renders this same dialog, and until
+ * now clicking it returned 403.
+ */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ shipmentId: string }> },
@@ -19,7 +27,7 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
+  if (!hasStaffRole(session, ADMIN_AGENT_OR_WAREHOUSE)) {
     return forbiddenResponse();
   }
 
