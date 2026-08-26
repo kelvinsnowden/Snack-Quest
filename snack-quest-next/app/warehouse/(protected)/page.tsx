@@ -11,7 +11,7 @@ import { ShipmentStatusBadge } from '@/components/admin/ShipmentStatusBadge';
 import { CompleteManualBookingDialog } from '@/components/admin/CompleteManualBookingDialog';
 import { MarkDispatchedButton } from '@/components/warehouse/MarkDispatchedButton';
 import { formatDate } from '@/lib/orders/format';
-import { orderBoxSummary } from '@/types/checkoutLine';
+import { OrderPackingList } from '@/components/warehouse/OrderPackingList';
 
 export const metadata: Metadata = { title: 'Queue' };
 
@@ -25,29 +25,35 @@ export const metadata: Metadata = { title: 'Queue' };
  * marked dispatched (the one real transition this workspace exposes).
  * "Ready for courier" reuses the same `pending_manual_booking` shipment
  * queue as Admin: Delivery monitoring — no separate backend, just a
- * focused view of it.
+ * focused view of it. "Out for delivery" is the `dispatched` orders,
+ * so the job can be closed out here rather than needing the full Admin
+ * portal once the box has left the building.
  */
 export default async function WarehouseQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ packCursor?: string; courierCursor?: string }>;
+  searchParams: Promise<{ packCursor?: string; courierCursor?: string; outCursor?: string }>;
 }) {
   const session = await requireStaffSession();
-  const { packCursor, courierCursor } = await searchParams;
+  const { packCursor, courierCursor, outCursor } = await searchParams;
 
-  const [toPack, readyForCourier] = await Promise.all([
+  const [toPack, readyForCourier, outForDelivery] = await Promise.all([
     orderRepository.listByBusiness(session.businessId, { status: 'confirmed', cursor: packCursor }),
     shipmentRepository.listByBusiness(session.businessId, {
       status: 'pending_manual_booking',
       cursor: courierCursor,
     }),
+    // Dispatched but not yet in the customer's hands. Without this the
+    // order left this workspace the moment it left the building, and
+    // somebody with the full Admin portal had to close it out.
+    orderRepository.listByBusiness(session.businessId, { status: 'dispatched', cursor: outCursor }),
   ]);
 
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-page-title font-bold tracking-tight text-foreground">Queue</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Orders to pack, and deliveries waiting on a courier booking.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Orders to pack, deliveries waiting on a courier, and boxes still out with a customer.</p>
       </div>
 
       <section className="flex flex-col gap-3">
@@ -67,7 +73,7 @@ export default async function WarehouseQueuePage({
                 <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
                   <tr>
                     <th className="px-4 py-3 font-medium">Customer</th>
-                    <th className="px-4 py-3 font-medium">Box</th>
+                    <th className="px-4 py-3 font-medium">Boxes and contents</th>
                     <th className="px-4 py-3 font-medium">Delivery</th>
                     <th className="px-4 py-3 font-medium">Placed</th>
                     <th className="px-4 py-3 font-medium" />
@@ -80,12 +86,24 @@ export default async function WarehouseQueuePage({
                         <span className="font-medium text-foreground">{data.customer.customerName || 'Guest'}</span>
                         <span className="block text-caption text-muted-foreground tabular-nums">{data.customer.phoneNumber}</span>
                       </td>
-                      <td className="px-4 py-3 text-foreground">{orderBoxSummary(data.product)}</td>
+                      <td className="px-4 py-3 text-foreground">
+                        <OrderPackingList product={data.product} />
+                      </td>
                       <td className="px-4 py-3 text-foreground capitalize">
                         {data.delivery.method}
                         {data.delivery.method === 'pickup' && data.delivery.pickupStationName
                           ? ` — ${data.delivery.pickupStationName}`
                           : null}
+                        {/*
+                          Where it is actually going. A door order
+                          without its address is not something anyone
+                          can deliver.
+                        */}
+                        {data.delivery.method === 'door' && data.delivery.addressText ? (
+                          <span className="mt-0.5 block text-caption text-muted-foreground normal-case">
+                            {data.delivery.addressText}
+                          </span>
+                        ) : null}
                         {/*
                           This is the last screen before the box leaves,
                           so it is the last chance to notice that money
@@ -167,6 +185,94 @@ export default async function WarehouseQueuePage({
           <div className="flex justify-center">
             <Button asChild variant="outline">
               <Link href={`/warehouse?courierCursor=${readyForCourier.nextCursor}${packCursor ? `&packCursor=${packCursor}` : ''}`}>
+                Load more
+              </Link>
+            </Button>
+          </div>
+        ) : null}
+      </section>
+
+      {/*
+        The last step of the job. An order is not finished when it
+        leaves the building — it is finished when the customer has it,
+        and whoever delivered it is the one who knows.
+      */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-foreground">Out for delivery</h2>
+          <span className="rounded-full bg-border/40 px-2 py-0.5 text-caption text-muted-foreground">
+            {outForDelivery.orders.length}
+          </span>
+        </div>
+
+        {outForDelivery.orders.length === 0 ? (
+          <EmptyState
+            icon={Truck}
+            title="Nothing out for delivery"
+            description="Orders you have marked dispatched will wait here until the customer has them."
+          />
+        ) : (
+          <Card className="overflow-hidden p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Customer</th>
+                    <th className="px-4 py-3 font-medium">Going to</th>
+                    <th className="px-4 py-3 font-medium">Placed</th>
+                    <th className="px-4 py-3 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {outForDelivery.orders.map(({ id, data }) => (
+                    <tr key={id} className="border-b border-border last:border-0 hover:bg-border/20">
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-foreground">
+                          {data.customer.customerName || 'Guest'}
+                        </span>
+                        <span className="block text-caption text-muted-foreground tabular-nums">
+                          {data.customer.phoneNumber}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-foreground capitalize">
+                        {data.delivery.method}
+                        {data.delivery.method === 'pickup' && data.delivery.pickupStationName
+                          ? ` — ${data.delivery.pickupStationName}`
+                          : null}
+                        {data.delivery.method === 'door' && data.delivery.addressText ? (
+                          <span className="mt-0.5 block text-caption text-muted-foreground normal-case">
+                            {data.delivery.addressText}
+                          </span>
+                        ) : null}
+                        {/*
+                          Still owed, and this is the doorstep. Last
+                          chance to collect it.
+                        */}
+                        {data.delivery.feeCollection === 'on_delivery' ? (
+                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
+                            Collect KES {data.delivery.feeKes.toLocaleString()} on delivery
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                        {formatDate(data.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <MarkDispatchedButton orderId={id} to="delivered" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+        {outForDelivery.nextCursor ? (
+          <div className="flex justify-center">
+            <Button asChild variant="outline">
+              <Link
+                href={`/warehouse?outCursor=${outForDelivery.nextCursor}${packCursor ? `&packCursor=${packCursor}` : ''}${courierCursor ? `&courierCursor=${courierCursor}` : ''}`}
+              >
                 Load more
               </Link>
             </Button>

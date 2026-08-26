@@ -107,6 +107,33 @@ describe('POST /api/admin/shipments/[shipmentId]/complete-booking', () => {
     expect(response.status).toBe(400);
   });
 
+  /*
+   * The Warehouse workspace's "Ready for courier" queue renders this
+   * same dialog, and this route named only admin and agent — so the
+   * button its own screen was showing came back 403. Booking a courier
+   * is fulfillment, which is that workspace's whole job.
+   */
+  it('lets warehouse staff book the courier their own queue asks them to', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['warehouse'] });
+    completeManualBookingMock.mockResolvedValue(undefined);
+
+    const response = await call({ courierShipmentRef: 'BOLT-1' });
+
+    expect(response.status).toBe(200);
+    expect(completeManualBookingMock).toHaveBeenCalled();
+  });
+
+  /** Sales-only staff are still not doing fulfillment paperwork by accident. */
+  it('403s a role with no fulfillment job at all', async () => {
+    completeManualBookingMock.mockClear();
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['finance'] });
+
+    const response = await call({ courierShipmentRef: 'BOLT-1' });
+
+    expect(response.status).toBe(403);
+    expect(completeManualBookingMock).not.toHaveBeenCalled();
+  });
+
   it('200s and calls the service with a null trackingUrl when omitted', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     completeManualBookingMock.mockResolvedValue(undefined);
