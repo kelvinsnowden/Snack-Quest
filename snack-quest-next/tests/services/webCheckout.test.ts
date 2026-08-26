@@ -1585,7 +1585,7 @@ describe('a delivery fee collected at the door', () => {
   it('charges for the boxes only, while still recording what the courier collects', async () => {
     const result = await service().startWebCheckout(
       BUSINESS_ID,
-      pickupInput({ initiatedBy: STAFF, deliveryFeeOnDelivery: true }),
+      pickupInput({ initiatedBy: STAFF, deliveryFeeCollection: 'on_delivery' }),
     );
 
     // 2500 for the box; the 300 fee is real but not in the prompt.
@@ -1609,7 +1609,7 @@ describe('a delivery fee collected at the door', () => {
 
     await svc.startWebCheckout(
       BUSINESS_ID,
-      pickupInput({ initiatedBy: STAFF, deliveryFeeOnDelivery: true }),
+      pickupInput({ initiatedBy: STAFF, deliveryFeeCollection: 'on_delivery' }),
     );
 
     const toCustomer = gateway.sent.find((message) => message.phone === PHONE_NORMALIZED);
@@ -1640,7 +1640,7 @@ describe('a delivery fee collected at the door', () => {
   it('ignores a customer who asks to pay the fee on delivery', async () => {
     const result = await service().startWebCheckout(
       BUSINESS_ID,
-      pickupInput({ deliveryFeeOnDelivery: true }),
+      pickupInput({ deliveryFeeCollection: 'on_delivery' }),
     );
 
     expect(result.pricing.totalKes).toBe(2800);
@@ -1649,5 +1649,57 @@ describe('a delivery fee collected at the door', () => {
       conversation!.conversationCheckoutSnapshotId!,
     );
     expect(snapshot?.delivery).not.toHaveProperty('feeCollection');
+  });
+});
+
+/**
+ * Delivery arranged outside the shop entirely — a Bolt ride the
+ * customer or the shop settles directly (§ delivery paid on delivery).
+ *
+ * Different from `on_delivery` in what is owed, not just when: nobody
+ * collects anything, so the recorded fee really is zero. Leaving it at
+ * its real figure would put "collect KES 300" on a packing list for a
+ * door where no one is collecting.
+ */
+describe('a delivery fee that is not charged at all', () => {
+  const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
+
+  it('charges for the boxes only and records no fee owed', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, deliveryFeeCollection: 'waived' }),
+    );
+
+    expect(result.pricing.totalKes).toBe(2500);
+    expect(initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 2500 }));
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    // Zero, not 300 — this is the difference from collect-on-delivery.
+    expect(snapshot?.delivery).toMatchObject({ feeKes: 0, feeCollection: 'waived' });
+  });
+
+  it('promises the customer no courier payment', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+
+    await svc.startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, deliveryFeeCollection: 'waived' }),
+    );
+
+    const toCustomer = gateway.sent.find((message) => message.phone === PHONE_NORMALIZED);
+    expect(toCustomer!.text).not.toMatch(/to the courier on delivery/i);
+  });
+
+  it('ignores a customer who asks for free delivery', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ deliveryFeeCollection: 'waived' }),
+    );
+
+    expect(result.pricing.totalKes).toBe(2800);
   });
 });

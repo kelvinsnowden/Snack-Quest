@@ -68,13 +68,42 @@ function isRouteHandlerPath(pathname: string): boolean {
 }
 
 /**
+ * The other staff workspaces, which live *beside* `/admin` in `app/`
+ * rather than inside it.
+ *
+ * They have to be exempt from the rewrite below, and the reason is
+ * that `app/admin/(protected)/layout.tsx` sends people to them: an
+ * agent-only, warehouse-only or finance-only account that signs in
+ * lands on `/admin`, and the layout immediately redirects it to its
+ * own workspace. On the admin host that redirect produced
+ * `/admin/warehouse`, which does not exist — so a warehouse staff
+ * member who signed in at `admin.snackquests.shop` was bounced
+ * straight into a 404 and could not reach the portal at all.
+ *
+ * There is no separate host for them: `admin.snackquests.shop` is
+ * where staff are invited and where they sign in, so it has to serve
+ * every workspace a staff session can legitimately land on.
+ */
+const STAFF_WORKSPACE_ROOTS = ['/agent', '/warehouse', '/finance'];
+
+function isStaffWorkspacePath(pathname: string): boolean {
+  return STAFF_WORKSPACE_ROOTS.some(
+    (root) => pathname === root || pathname.startsWith(`${root}/`),
+  );
+}
+
+/**
  * Public URL → the path inside `app/` that should render it.
  * Idempotent: an already-prefixed path (`/admin/orders` typed
  * directly on the admin host) is returned unchanged rather than
  * becoming `/admin/admin/orders`.
  */
 export function toInternalPath(portal: Portal, pathname: string): string {
-  if (portal === 'marketing' || isRouteHandlerPath(pathname)) {
+  if (
+    portal === 'marketing' ||
+    isRouteHandlerPath(pathname) ||
+    isStaffWorkspacePath(pathname)
+  ) {
     return pathname;
   }
   const root = PORTAL_ROOT[portal];

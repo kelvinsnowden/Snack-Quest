@@ -55,15 +55,24 @@ export interface DeliveryDetails {
    * moves.
    *
    * `'on_delivery'` — the customer settles it with the courier at the
-   * door. `feeKes` still holds the real figure, because somebody has
-   * to know what to collect; it is simply excluded from what is
-   * charged up front. Recording it as 0 instead would lose that, and
-   * a courier cannot collect a number nobody kept.
+   * door, or is not charged at all.
+   *
+   * The three differ in what is owed, not just in when:
+   *
+   * - `prepaid` — in the M-Pesa prompt, as on the website.
+   * - `on_delivery` — excluded from the prompt, but `feeKes` still
+   *   holds the real figure, because somebody has to know what to
+   *   collect at the door. Recording it as 0 would lose that, and a
+   *   courier cannot collect a number nobody kept.
+   * - `waived` — nobody collects anything from the customer, so
+   *   `feeKes` really is 0. Used when delivery is arranged outside the
+   *   shop entirely (a Bolt ride the customer or the shop settles
+   *   directly), where charging a fee here would be double-charging.
    *
    * Absent on every order placed before this existed, which means
    * prepaid — the only thing those could have been.
    */
-  feeCollection?: 'prepaid' | 'on_delivery';
+  feeCollection?: 'prepaid' | 'on_delivery' | 'waived';
   county: string;
   /** Set only for method: 'pickup'. */
   pickupStationId: string | null;

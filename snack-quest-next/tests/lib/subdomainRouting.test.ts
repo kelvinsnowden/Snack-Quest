@@ -121,3 +121,50 @@ describe('toPublicPath', () => {
     }
   });
 });
+
+/**
+ * The bug a warehouse staff member hit on their first sign-in: they
+ * were invited, signed in at `admin.snackquests.shop`, and landed on
+ * a 404 with no way forward.
+ *
+ * The chain was `/admin` → the admin layout sees a warehouse-only
+ * session → `redirect('/warehouse')` → this function turned that into
+ * `/admin/warehouse`, which does not exist in `app/`.
+ */
+describe('the other staff workspaces on the admin host', () => {
+  it('serves /warehouse instead of rewriting it under /admin', () => {
+    expect(toInternalPath('admin', '/warehouse')).toBe('/warehouse');
+    expect(toInternalPath('admin', '/warehouse/inventory')).toBe('/warehouse/inventory');
+  });
+
+  it('does the same for the agent and finance workspaces', () => {
+    expect(toInternalPath('admin', '/agent')).toBe('/agent');
+    expect(toInternalPath('admin', '/finance')).toBe('/finance');
+    expect(toInternalPath('admin', '/agent/conversations')).toBe('/agent/conversations');
+  });
+
+  /*
+   * Only on a segment boundary. A marketing page whose path merely
+   * begins with those letters is not a staff workspace, and must keep
+   * being rewritten like anything else on this host.
+   */
+  it('matches on the segment boundary, not the prefix', () => {
+    expect(toInternalPath('admin', '/agents')).toBe('/admin/agents');
+    expect(toInternalPath('admin', '/financereport')).toBe('/admin/financereport');
+  });
+
+  it('leaves the real /admin pages alone', () => {
+    expect(toInternalPath('admin', '/orders')).toBe('/admin/orders');
+    expect(toInternalPath('admin', '/')).toBe('/admin');
+  });
+
+  /*
+   * The signed-out case. A warehouse page bounces to
+   * `/admin/login?next=…`, and that target has to survive this
+   * function unchanged on the admin host or the login page itself
+   * 404s.
+   */
+  it('keeps the login redirect target reachable', () => {
+    expect(toInternalPath('admin', '/admin/login')).toBe('/admin/login');
+  });
+});
