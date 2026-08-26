@@ -54,8 +54,8 @@ export function CollectPaymentButton({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button size="sm" onClick={onClick} loading={submitting}>
+    <div className="flex flex-col gap-1 sm:items-end">
+      <Button size="sm" onClick={onClick} loading={submitting} className="w-full sm:w-auto">
         {sent ? 'Send the prompt again' : `Collect KES ${amountKes.toLocaleString()}`}
       </Button>
       {sent && !error ? (
