@@ -211,7 +211,24 @@ export default async function AdminOrderDetailPage({
             <DetailRow label="Method" value={delivery.method === 'pickup' ? 'Pickup station' : 'Door delivery'} />
             <DetailRow label="Provider" value={<span className="capitalize">{delivery.provider}</span>} />
             <DetailRow label="Status" value={<span className="capitalize">{delivery.status.replace(/_/g, ' ')}</span>} />
-            <DetailRow label="Fee" value={formatKes(delivery.feeKes)} />
+            {/*
+              An on-delivery fee is money that has not been received
+              yet, and this row is where anyone chasing an order looks.
+              Showing it identically to a prepaid one would read as
+              "already collected".
+            */}
+            <DetailRow
+              label="Fee"
+              value={
+                delivery.feeCollection === 'on_delivery' ? (
+                  <span className="text-warning font-medium">
+                    {formatKes(delivery.feeKes)} — collect on delivery
+                  </span>
+                ) : (
+                  formatKes(delivery.feeKes)
+                )
+              }
+            />
             {delivery.method === 'pickup' ? (
               <DetailRow label="Pickup station" value={delivery.pickupStationName ?? '—'} />
             ) : (

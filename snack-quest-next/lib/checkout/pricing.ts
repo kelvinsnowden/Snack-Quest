@@ -44,6 +44,13 @@ export interface CheckoutPricingInputs {
   discountKes: number;
   walletCreditAppliedKes: number;
   deliveryFeeKes: number;
+  /**
+   * The customer settles the delivery fee with the courier instead of
+   * now (§ delivery paid on delivery). `deliveryFeeKes` stays the real
+   * figure so it can be displayed and collected; it just stops being
+   * part of what M-Pesa asks for.
+   */
+  deliveryFeeOnDelivery?: boolean;
 }
 
 export interface CheckoutTotals {
@@ -51,6 +58,7 @@ export interface CheckoutTotals {
   discountKes: number;
   walletCreditAppliedKes: number;
   deliveryFeeKes: number;
+  /** True when `deliveryFeeKes` is due to the courier rather than included in `totalKes`. */
   totalKes: number;
 }
 
@@ -74,6 +82,13 @@ export function computeCheckoutTotals(inputs: CheckoutPricingInputs): CheckoutTo
     discountKes,
     walletCreditAppliedKes,
     deliveryFeeKes: inputs.deliveryFeeKes,
-    totalKes: subtotalKes - discountKes - walletCreditAppliedKes + inputs.deliveryFeeKes,
+    // Returned unchanged either way — the caller needs the real figure
+    // to show it, whichever pocket it comes out of. Only the amount
+    // charged now changes.
+    totalKes:
+      subtotalKes -
+      discountKes -
+      walletCreditAppliedKes +
+      (inputs.deliveryFeeOnDelivery ? 0 : inputs.deliveryFeeKes),
   };
 }

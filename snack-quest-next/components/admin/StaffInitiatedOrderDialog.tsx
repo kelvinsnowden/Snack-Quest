@@ -91,6 +91,13 @@ export function StaffInitiatedOrderDialog({
   const [addressText, setAddressText] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
+  /*
+   * The customer pays delivery to the courier at the door
+   * (§ delivery paid on delivery). Off by default: the arrangement
+   * has to be made deliberately, and defaulting to it would quietly
+   * stop charging for delivery on every order taken by phone.
+   */
+  const [deliveryFeeOnDelivery, setDeliveryFeeOnDelivery] = useState(false);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('request');
   const [manualMethod, setManualMethod] = useState<ManualPaymentMethod>('cash');
   const [manualReference, setManualReference] = useState('');
@@ -108,6 +115,7 @@ export function StaffInitiatedOrderDialog({
     setAddressText('');
     setReferralCode('');
     setGuaranteedSnackIds([]);
+    setDeliveryFeeOnDelivery(false);
     setPaymentMode('request');
     setManualMethod('cash');
     setManualReference('');
@@ -213,6 +221,7 @@ export function StaffInitiatedOrderDialog({
             : { addressText: addressText.trim() }),
           referralCode: referralCode.trim() || undefined,
           ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
+          ...(deliveryFeeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
           ...(alreadyPaid
             ? {
                 manualPayment: {
@@ -512,6 +521,36 @@ export function StaffInitiatedOrderDialog({
                     </p>
                   </div>
                 )}
+
+                {/*
+                  Who collects the delivery fee (§ delivery paid on
+                  delivery). Sits with the delivery choice rather than
+                  with payment, because it is a fact about the delivery
+                  — the box is still paid for now either way.
+
+                  States the consequence in money rather than
+                  restating the setting: an operator is reading this
+                  back to a customer on the phone, and "KES 250 to the
+                  courier" is the sentence they need.
+                */}
+                <label className="border-border bg-surface flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+                  <input
+                    type="checkbox"
+                    checked={deliveryFeeOnDelivery}
+                    onChange={(event) => setDeliveryFeeOnDelivery(event.target.checked)}
+                    className="accent-primary mt-0.5 size-4 shrink-0"
+                  />
+                  <span className="min-w-0">
+                    <span className="text-foreground block text-sm font-medium">
+                      Customer pays delivery on delivery
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 block text-sm">
+                      {deliveryFeeOnDelivery
+                        ? 'The M-Pesa prompt covers the boxes only. The courier collects the delivery fee at the door.'
+                        : 'The delivery fee is included in the M-Pesa prompt, as it is on the website.'}
+                    </span>
+                  </span>
+                </label>
 
                 {canRecordManualPayment ? (
                   <div className="flex flex-col gap-2">

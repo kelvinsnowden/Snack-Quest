@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { Check, Loader2, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -27,7 +28,12 @@ export interface StaffSelectableSnack {
  * catalogue that only grows. Reusing the customer component here would
  * mean scrolling a wall of unlabelled photos during a live call.
  *
- * So this one is a searchable list with names, origins and stock.
+ * So this one is a searchable list carrying everything the customer's
+ * deliberately withholds: the name, the origin, the stock — and the
+ * photograph, because half of what a customer says is "the green one"
+ * or "the one with the panda", and a column of names alone makes staff
+ * read every row instead of glancing down it.
+ *
  * Stock especially: staff are about to promise a specific snack out
  * loud and then pack it by hand, and "2 left" is the difference
  * between a promise they can keep and one they cannot.
@@ -155,8 +161,15 @@ export function StaffSnackPicker({
               <button
                 type="button"
                 onClick={() => toggle(snack.id)}
-                className="bg-primary/10 text-primary hover:bg-primary/20 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium"
+                className="bg-primary/10 text-primary hover:bg-primary/20 inline-flex items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1 text-caption font-medium"
               >
+                <span className="bg-border/40 relative size-5 shrink-0 overflow-hidden rounded-full">
+                  {snack.imageUrl ? (
+                    <Image src={snack.imageUrl} alt="" fill sizes="20px" className="object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-[10px]">🍬</span>
+                  )}
+                </span>
                 {snack.name}
                 <X className="size-3" aria-hidden="true" />
                 <span className="sr-only">Remove {snack.name}</span>
@@ -204,13 +217,25 @@ export function StaffSnackPicker({
                   )}
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <span
-                      className={cn(
-                        'flex size-5 shrink-0 items-center justify-center rounded-full border',
-                        isSelected ? 'bg-primary border-primary text-white' : 'border-border',
+                    {/*
+                      The packet, not just its name. Staff are matching
+                      what a customer is describing out loud — "the
+                      green one", "the one with the panda" — and a list
+                      of names alone makes them read every row. The
+                      selected tick sits on the image rather than
+                      beside it, so the row stays one glance wide.
+                    */}
+                    <span className="bg-border/40 relative size-10 shrink-0 overflow-hidden rounded-md">
+                      {snack.imageUrl ? (
+                        <Image src={snack.imageUrl} alt="" fill sizes="40px" className="object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-lg">🍬</span>
                       )}
-                    >
-                      {isSelected ? <Check className="size-3" strokeWidth={3} aria-hidden="true" /> : null}
+                      {isSelected ? (
+                        <span className="bg-primary/85 absolute inset-0 flex items-center justify-center text-white">
+                          <Check className="size-4" strokeWidth={3} aria-hidden="true" />
+                        </span>
+                      ) : null}
                     </span>
                     <span className="min-w-0">
                       <span className="text-foreground block truncate text-sm font-medium">
