@@ -3,6 +3,7 @@ import type { AuditFields } from './common';
 import type { DeliveryDetails } from './delivery';
 import type { ManualPaymentRecord } from './paymentIntent';
 import type { GuaranteedPick } from './guaranteedPick';
+import type { CheckoutLineItem } from './checkoutLine';
 
 /**
  * `pending` only ever exists transiently inside `OrderService`'s own
@@ -29,6 +30,17 @@ export type OrderStatus =
 export interface OrderProduct {
   packageId: string;
   packageLabel: string;
+  /**
+   * Every box on this order (§ more than one box per order), copied
+   * off the frozen snapshot. Absent on every order placed before line
+   * items existed — read it through `orderLines()`, never directly, or
+   * those orders lose their box entirely.
+   *
+   * `packageId`/`packageLabel`/`quantity` remain the first line, so
+   * the thirteen places that read them — including the warehouse
+   * packing surfaces — keep working untouched.
+   */
+  items?: CheckoutLineItem[];
   /**
    * The snacks the customer chose to be certain of (§ Premium: choose
    * 5, discover the rest), copied off the frozen snapshot at order

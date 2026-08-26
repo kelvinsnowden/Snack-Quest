@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { DeliveryDetails } from './delivery';
 import type { GuaranteedPick } from './guaranteedPick';
+import type { CheckoutLineItem } from './checkoutLine';
 
 /**
  * `conversationCheckoutSnapshots/{snapshotId}` — a frozen, priced
@@ -42,6 +43,16 @@ export interface ConversationCheckoutSnapshot {
    * the stock reservation know how many units to move.
    */
   quantity?: number;
+  /**
+   * Every box on this order (§ more than one box per order). Absent on
+   * every snapshot frozen before line items existed, and on every
+   * WhatsApp order, which can only ever buy one box — read it through
+   * `orderLines()`, which reconstructs the single line those represent.
+   *
+   * When present, `packageId`/`quantity`/`unitPriceKes` above are the
+   * first line, kept so the readers that predate this keep working.
+   */
+  items?: CheckoutLineItem[];
   /**
    * The snacks the customer chose to be certain of (§ Premium: choose
    * 5, discover the rest). Frozen here alongside the price, and for

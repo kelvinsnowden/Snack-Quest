@@ -29,6 +29,8 @@ export interface QuoteSelection {
   packageId: string | null;
   quantity: number;
   deliveryMethod: DeliveryMethod;
+  /** Boxes beyond the primary one (§ more than one box per order). Re-quoted whenever they change, because they change the total. */
+  extras?: { packageId: string; quantity: number }[];
   /** Door delivery only — the quote must price the speed the customer actually picked, or it disagrees with the charge. */
   serviceLevel?: 'next-day' | 'same-day';
   pickupStationId?: string;
@@ -87,6 +89,9 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
           packageId: current.packageId,
           quantity: current.quantity,
           deliveryMethod: current.deliveryMethod,
+          ...(current.extras?.length
+            ? { items: [{ packageId: current.packageId, quantity: current.quantity }, ...current.extras] }
+            : {}),
           ...(current.serviceLevel ? { serviceLevel: current.serviceLevel } : {}),
           pickupStationId: current.pickupStationId,
           referralCode: current.referralCode || undefined,

@@ -64,6 +64,54 @@ export async function reserveStockInTransaction(
 }
 
 /**
+ * Reserves stock for every box on one order, in one transaction
+ * (§ more than one box per order).
+ *
+ * Exists because the obvious thing — calling
+ * `reserveStockInTransaction` once per line — is illegal and only
+ * proves it on the second line: that function reads then writes, so
+ * the second line's read lands after the first line's write, and
+ * Firestore refuses a read after a write outright. A one-box order
+ * never hits it, so the failure appears exactly when a customer buys
+ * two.
+ *
+ * Every read is done first, then every check, then every write. That
+ * ordering is the whole point of this function, so it is written as
+ * three separate passes rather than one loop that happens to be
+ * correct today.
+ *
+ * All-or-nothing by construction: a shortage on any line throws before
+ * a single write, so an order can never reserve one box and fail on
+ * the other.
+ */
+export async function reserveStockForLinesInTransaction(
+  tx: Transaction,
+  lines: { packageId: string; quantity: number }[],
+): Promise<void> {
+  const reads = await Promise.all(
+    lines.map(async (line) => {
+      const ref = adminFirestore.collection('packages').doc(line.packageId);
+      const snapshot = await tx.get(ref);
+      return { ref, line, data: snapshot.data() as Package | undefined };
+    }),
+  );
+
+  for (const { line, data } of reads) {
+    // An untracked box has no stock to run out of — the same meaning
+    // `reserveStockInTransaction` gives an absent `stockCount`.
+    if (!data || data.stockCount === undefined) continue;
+    if (data.stockCount < line.quantity) {
+      throw new OutOfStockError(line.packageId);
+    }
+  }
+
+  for (const { ref, line, data } of reads) {
+    if (!data || data.stockCount === undefined) continue;
+    tx.update(ref, { stockCount: data.stockCount - line.quantity });
+  }
+}
+
+/**
  * Applies a manual stock adjustment (§ Admin: Inventory) inside the
  * caller's transaction, tenant-scoped and validated: the package must
  * belong to `businessId`, must actually track stock (`stockCount` set —

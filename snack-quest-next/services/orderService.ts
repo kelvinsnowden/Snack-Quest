@@ -7,7 +7,8 @@ import {
   orderNumberCounterRef,
   orderRepository,
 } from '@/repositories/orderRepository';
-import { OutOfStockError, reserveStockInTransaction } from '@/repositories/packageRepository';
+import { OutOfStockError, reserveStockForLinesInTransaction } from '@/repositories/packageRepository';
+import { orderLines } from '@/types/checkoutLine';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
 import { formatPaymentReference } from '@/services/conversationService';
@@ -80,6 +81,12 @@ class OrderService {
     // existed, and on every WhatsApp one since — a conversation can
     // only ever buy one box.
     const quantity = snapshot.quantity ?? 1;
+    /*
+     * Every box on this order. Reconstructs the single line for a
+     * snapshot frozen before line items existed, so an old snapshot
+     * settling now still reserves its stock and still gets an order.
+     */
+    const lines = orderLines(snapshot);
 
     const { orderId, orderNumber } = await adminFirestore.runTransaction(async (tx) => {
       // Read before any write anywhere in this transaction — Firestore
@@ -92,10 +99,18 @@ class OrderService {
       const counterSnap = await tx.get(counterRef);
       const orderNumber = ((counterSnap.data()?.value as number | undefined) ?? 0) + 1;
 
-      // Stock check/decrement — if this throws (OutOfStockError), the
-      // whole transaction aborts and neither the counter nor the order
-      // is written.
-      await reserveStockInTransaction(tx, snapshot.packageId, quantity);
+      /*
+       * Stock check/decrement, once per box on the order (§ more than
+       * one box per order). If any line throws `OutOfStockError` the
+       * whole transaction aborts, so a two-box order can never reserve
+       * the first box and then fail on the second — the customer is
+       * either sold everything they asked for or nothing at all.
+       *
+       * Sequential inside the transaction on purpose: `Promise.all`
+       * would interleave the reads and writes Firestore requires to be
+       * ordered.
+       */
+      await reserveStockForLinesInTransaction(tx, lines);
 
       tx.set(counterRef, { value: orderNumber }, { merge: true });
 
@@ -107,6 +122,9 @@ class OrderService {
           product: {
             packageId: snapshot.packageId,
             packageLabel: snapshot.packageLabel,
+            // Only when there is genuinely more than one, so a
+            // single-box order writes the exact document it always did.
+            ...(lines.length > 1 ? { items: lines } : {}),
             // Absent rather than `[]` for a curated box — Firestore
             // rejects `undefined`, and an empty array would read as
             // "picked nothing" rather than "nothing to pick".
@@ -148,18 +166,28 @@ class OrderService {
           packing: null,
           createdBy: 'system',
         },
-        [
-          {
-            packageId: snapshot.packageId,
-            packageLabel: snapshot.packageLabel,
-            quantity,
-            // `subtotalKes` is the extended amount, so the unit price
-            // has to be divided back out — a line item recording the
-            // whole subtotal as its unit cost would overstate revenue
-            // per unit by `quantity`x everywhere it's read.
-            unitCostKes: Math.round(snapshot.subtotalKes / quantity),
-          },
-        ],
+        lines.map((line) => ({
+          packageId: line.packageId,
+          packageLabel: line.packageLabel,
+          quantity: line.quantity,
+          /*
+           * Each line's own per-unit amount (§ more than one box per
+           * order).
+           *
+           * This used to be `subtotalKes / quantity`, which was right
+           * while an order held one box and silently wrong the moment
+           * it held two: it divides the *whole order's* subtotal by
+           * the first line's count, so a Starter Box bought alongside
+           * a Deluxe would report a unit price that is neither box's.
+           * Every revenue-per-unit figure downstream reads this.
+           *
+           * A line carries its own frozen `unitPriceKes` now, so
+           * nothing has to be divided back out at all. Falls back to
+           * the old arithmetic only for a pre-line-item snapshot,
+           * where it was correct.
+           */
+          unitCostKes: line.unitPriceKes || Math.round(snapshot.subtotalKes / quantity),
+        })),
       );
 
       return { orderId, orderNumber };

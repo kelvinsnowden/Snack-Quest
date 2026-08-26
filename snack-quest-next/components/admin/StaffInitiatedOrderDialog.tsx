@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Plus } from 'lucide-react';
+import { CheckCircle2, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -75,8 +75,15 @@ export function StaffInitiatedOrderDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [boxId, setBoxId] = useState(boxes[0]?.id ?? '');
-  const [quantity, setQuantity] = useState('1');
+  /*
+   * A list, because a customer can ask for one of each (§ more than
+   * one box per order). One line is still the overwhelmingly common
+   * case and still what this opens on, so taking a single-box order is
+   * exactly as many taps as it was.
+   */
+  const [lines, setLines] = useState<{ packageId: string; quantity: string }[]>([
+    { packageId: boxes[0]?.id ?? '', quantity: '1' },
+  ]);
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
@@ -93,7 +100,7 @@ export function StaffInitiatedOrderDialog({
   const [sent, setSent] = useState<WebCheckoutResponse | null>(null);
 
   function reset() {
-    setQuantity('1');
+    setLines([{ packageId: boxes[0]?.id ?? '', quantity: '1' }]);
     setCustomerName('');
     setPhone('');
     setDeliveryMethod('pickup');
@@ -109,8 +116,54 @@ export function StaffInitiatedOrderDialog({
     setSent(null);
   }
 
-  const selectedBox = boxes.find((candidate) => candidate.id === boxId) ?? null;
+  const chosenBoxes = lines
+    .map((line) => boxes.find((candidate) => candidate.id === line.packageId))
+    .filter((box): box is OrderableBox => Boolean(box));
+
+  /*
+   * Picks belong to one box, so an order may only contain one box that
+   * offers them — the server refuses more, and the dialog must not
+   * offer what the server will reject after the operator has read the
+   * total back to the customer.
+   */
+  const pickBoxes = chosenBoxes.filter((box) => box.guaranteedPickCount > 0);
+  const selectedBox = pickBoxes[0] ?? null;
   const requiredPicks = selectedBox?.guaranteedPickCount ?? 0;
+  const tooManyPickBoxes = pickBoxes.length > 1;
+
+  const parsedLines = lines.map((line) => ({
+    packageId: line.packageId,
+    quantity: Number.parseInt(line.quantity, 10),
+  }));
+  const linesValid =
+    parsedLines.length > 0 &&
+    parsedLines.every(
+      (line) => Boolean(line.packageId) && Number.isFinite(line.quantity) && line.quantity >= 1,
+    ) &&
+    new Set(parsedLines.map((line) => line.packageId)).size === parsedLines.length;
+
+  const orderTotalKes = chosenBoxes.reduce((sum, box, index) => {
+    const count = parsedLines[index]?.quantity;
+    return sum + box.priceKes * (Number.isFinite(count) && count >= 1 ? count : 0);
+  }, 0);
+
+  function setLine(index: number, patch: Partial<{ packageId: string; quantity: string }>) {
+    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+    // Picks belong to the box they were chosen for; changing which
+    // boxes are on the order invalidates them.
+    if (patch.packageId !== undefined) setGuaranteedSnackIds([]);
+  }
+
+  function addLine() {
+    const unused = boxes.find((box) => !lines.some((line) => line.packageId === box.id));
+    if (!unused) return;
+    setLines((current) => [...current, { packageId: unused.id, quantity: '1' }]);
+  }
+
+  function removeLine(index: number) {
+    setLines((current) => (current.length === 1 ? current : current.filter((_, i) => i !== index)));
+    setGuaranteedSnackIds([]);
+  }
 
   /*
    * Picks belong to the box they were chosen for. Switching box has to
@@ -121,23 +174,16 @@ export function StaffInitiatedOrderDialog({
    * Cleared in the change handler rather than an effect, so this never
    * sets state during a render pass.
    */
-  function chooseBox(nextBoxId: string) {
-    setBoxId(nextBoxId);
-    setGuaranteedSnackIds([]);
-  }
-
-  const parsedQuantity = Number.parseInt(quantity, 10);
   const alreadyPaid = paymentMode === 'already_paid';
   // Cash is the only method with nothing to reference. The server
   // enforces this too — this is here so the button explains itself
   // rather than the request coming back 400.
   const manualReferenceReady = manualMethod === 'cash' || manualReference.trim().length > 0;
   const ready =
-    Boolean(boxId) &&
+    linesValid &&
+    !tooManyPickBoxes &&
     customerName.trim().length >= 2 &&
     isValidKenyanPhone(phone) &&
-    Number.isFinite(parsedQuantity) &&
-    parsedQuantity >= 1 &&
     (deliveryMethod === 'pickup' ? Boolean(station) : addressText.trim().length >= 5) &&
     // Exactly the required number, matching what the server enforces.
     // Fewer or more is refused there, so the button must not offer it.
@@ -152,8 +198,12 @@ export function StaffInitiatedOrderDialog({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          packageId: boxId,
-          quantity: parsedQuantity,
+          // The first line stays in the fields the route has always
+          // required; `items` carries the whole order. A one-box order
+          // therefore sends exactly the request it always sent.
+          packageId: parsedLines[0].packageId,
+          quantity: parsedLines[0].quantity,
+          ...(parsedLines.length > 1 ? { items: parsedLines } : {}),
           customerName: customerName.trim(),
           phone: phone.trim(),
           county: deliveryMethod === 'pickup' ? (station?.county ?? '') : 'Nairobi',
@@ -300,31 +350,80 @@ export function StaffInitiatedOrderDialog({
               </DialogHeader>
 
               <div className="flex flex-col gap-4">
-                <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="staff-order-box">Box</Label>
-                    <select
-                      id="staff-order-box"
-                      value={boxId}
-                      onChange={(event) => chooseBox(event.target.value)}
-                      className="border-border bg-surface text-foreground focus-visible:ring-primary h-10 rounded-md border px-3 text-sm shadow-sm outline-none focus-visible:ring-2"
+                {/*
+                  One row per box (§ more than one box per order). A
+                  customer asking for one of each used to mean two
+                  separate orders and two delivery fees.
+
+                  Each row only offers boxes not already on the order,
+                  so the duplicate the server refuses cannot be built
+                  here in the first place.
+                */}
+                <div className="flex flex-col gap-2">
+                  <Label>Boxes</Label>
+                  {lines.map((line, index) => (
+                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_5rem_auto]">
+                      <select
+                        aria-label={`Box ${index + 1}`}
+                        value={line.packageId}
+                        onChange={(event) => setLine(index, { packageId: event.target.value })}
+                        className="border-border bg-surface text-foreground focus-visible:ring-primary h-10 rounded-md border px-3 text-sm shadow-sm outline-none focus-visible:ring-2"
+                      >
+                        {boxes
+                          .filter(
+                            (box) =>
+                              box.id === line.packageId ||
+                              !lines.some((other) => other.packageId === box.id),
+                          )
+                          .map((box) => (
+                            <option key={box.id} value={box.id}>
+                              {box.name} — {formatKes(box.priceKes)}
+                            </option>
+                          ))}
+                      </select>
+                      <Input
+                        aria-label={`Quantity for box ${index + 1}`}
+                        value={line.quantity}
+                        onChange={(event) => setLine(index, { quantity: event.target.value })}
+                        inputMode="numeric"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeLine(index)}
+                        disabled={lines.length === 1}
+                        aria-label={`Remove box ${index + 1}`}
+                        className="h-10 px-3"
+                      >
+                        <X className="size-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center justify-between gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addLine}
+                      disabled={lines.length >= boxes.length}
+                      className="h-9 self-start"
                     >
-                      {boxes.map((box) => (
-                        <option key={box.id} value={box.id}>
-                          {box.name} — {formatKes(box.priceKes)}
-                        </option>
-                      ))}
-                    </select>
+                      <Plus className="size-4" aria-hidden="true" />
+                      Add another box
+                    </Button>
+                    {lines.length > 1 ? (
+                      <p className="text-muted-foreground text-sm tabular-nums">
+                        Boxes total {formatKes(orderTotalKes)} + delivery
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="flex w-24 flex-col gap-2">
-                    <Label htmlFor="staff-order-qty">Quantity</Label>
-                    <Input
-                      id="staff-order-qty"
-                      value={quantity}
-                      onChange={(event) => setQuantity(event.target.value)}
-                      inputMode="numeric"
-                    />
-                  </div>
+
+                  {tooManyPickBoxes ? (
+                    <p className="text-warning text-sm">
+                      Only one box per order can have snacks chosen for it. Remove one, or take them
+                      as separate orders.
+                    </p>
+                  ) : null}
                 </div>
 
                 {/*

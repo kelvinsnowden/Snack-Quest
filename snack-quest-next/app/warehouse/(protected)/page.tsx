@@ -11,6 +11,7 @@ import { ShipmentStatusBadge } from '@/components/admin/ShipmentStatusBadge';
 import { CompleteManualBookingDialog } from '@/components/admin/CompleteManualBookingDialog';
 import { MarkDispatchedButton } from '@/components/warehouse/MarkDispatchedButton';
 import { formatDate } from '@/lib/orders/format';
+import { orderBoxSummary } from '@/types/checkoutLine';
 
 export const metadata: Metadata = { title: 'Queue' };
 
@@ -79,7 +80,7 @@ export default async function WarehouseQueuePage({
                         <span className="font-medium text-foreground">{data.customer.customerName || 'Guest'}</span>
                         <span className="block text-caption text-muted-foreground tabular-nums">{data.customer.phoneNumber}</span>
                       </td>
-                      <td className="px-4 py-3 text-foreground">{data.product.packageLabel}</td>
+                      <td className="px-4 py-3 text-foreground">{orderBoxSummary(data.product)}</td>
                       <td className="px-4 py-3 text-foreground capitalize">
                         {data.delivery.method}
                         {data.delivery.method === 'pickup' && data.delivery.pickupStationName

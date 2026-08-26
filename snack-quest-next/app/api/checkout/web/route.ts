@@ -37,6 +37,7 @@ export async function POST(request: Request): Promise<Response> {
   const {
     packageId,
     quantity,
+    items,
     customerName,
     phone,
     email,
@@ -110,6 +111,14 @@ export async function POST(request: Request): Promise<Response> {
     const result = await conversationService.startWebCheckout(businessId, {
       packageId,
       quantity,
+      /*
+       * Every box on the order (§ more than one box per order).
+       * Forwarded only when it is genuinely a list — the service
+       * re-reads each box from the catalogue and refuses a duplicate,
+       * an unavailable box, or a bad count, so nothing here needs to
+       * decide whether the contents are acceptable.
+       */
+      ...(Array.isArray(items) ? { items: items as { packageId: string; quantity: number }[] } : {}),
       customerName,
       phone,
       // Normalized (or dropped) in the Service, which is where every
