@@ -1321,19 +1321,32 @@ describe('guaranteed picks on a Premium box', () => {
    * and a picker left open on a stale list is exactly how that would
    * otherwise happen.
    */
-  it('refuses a staff order with the wrong number of picks, exactly as a customer one', async () => {
+  /*
+   * This used to be refused, on the reasoning that staff should be
+   * held to the same rules as the website. That was wrong: staff are
+   * writing a packing list from a phone call, not making a
+   * self-service choice, and four snacks is a perfectly good answer to
+   * "what did they ask for" (§ staff are not picking, they are
+   * packing). The customer's own checkout still insists on five —
+   * see 'a staff packing list' below for both halves.
+   */
+  it('accepts a staff order with a different number of picks', async () => {
     const ids = await seedPremium();
 
-    await expect(
-      service().startWebCheckout(
-        BUSINESS_ID,
-        pickupInput({
-          packageId: PREMIUM_ID,
-          guaranteedSnackIds: ids.slice(0, 4),
-          initiatedBy: PICKING_STAFF,
-        }),
-      ),
-    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        packageId: PREMIUM_ID,
+        guaranteedSnackIds: ids.slice(0, 4),
+        initiatedBy: PICKING_STAFF,
+      }),
+    );
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot?.guaranteedPicks).toHaveLength(4);
   });
 
   it('refuses a staff order naming a snack that has run out', async () => {
@@ -1844,5 +1857,175 @@ describe('snacks chosen for each of two boxes', () => {
     const snapshot = await snapshotFor(result.checkoutSessionId);
     expect(snapshot?.guaranteedPicks).toHaveLength(5);
     expect(snapshot?.items).toBeUndefined();
+  });
+});
+
+/**
+ * Staff taking an order are writing a packing list, not making a
+ * self-service choice (§ staff are not picking, they are packing).
+ *
+ * The website's two rules — exactly five, and only from the snacks an
+ * admin opted in — exist to make a self-service promise work. A staff
+ * member is writing down what a customer just asked for on the phone
+ * and what will physically go in the box, so neither applies.
+ */
+describe('a staff packing list', () => {
+  const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
+  const PREMIUM_ID = 'premium-box';
+
+  async function seedCatalogue() {
+    await adminFirestore.collection('packages').doc(PREMIUM_ID).set({
+      businessId: BUSINESS_ID,
+      name: 'Premium Box',
+      description: 'Pick 5, we surprise you with the rest.',
+      priceKes: 5000,
+      isActive: true,
+      imageUrl: null,
+      guaranteedPickCount: 5,
+    });
+    const optedIn: string[] = [];
+    const notOptedIn: string[] = [];
+    for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+      const ref = adminFirestore.collection('snackItems').doc(`snack-${name}`);
+      // Half the catalogue has never been opted in — which is the real
+      // state of this shop's data, and why staff could not find them.
+      const available = ['A', 'B', 'C', 'D'].includes(name);
+      await ref.set({
+        businessId: BUSINESS_ID,
+        name: `Snack ${name}`,
+        imageUrl: null,
+        expectedUnitCostKes: 100,
+        unitLabel: 'bag',
+        origin: 'Japan',
+        sourcingNote: null,
+        isActive: true,
+        availableForPremiumSelection: available,
+      });
+      (available ? optedIn : notOptedIn).push(ref.id);
+    }
+    return { optedIn, notOptedIn };
+  }
+
+  async function picksFor(sessionId: string) {
+    const conversation = await conversationRepository.findById(sessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    return snapshot?.guaranteedPicks ?? [];
+  }
+
+  it('accepts more snacks than the box offers a customer', async () => {
+    const { optedIn, notOptedIn } = await seedCatalogue();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        packageId: PREMIUM_ID,
+        initiatedBy: STAFF,
+        // Eight, where the website would insist on exactly five.
+        guaranteedSnackIds: [...optedIn, ...notOptedIn],
+      }),
+    );
+
+    expect(await picksFor(result.checkoutSessionId)).toHaveLength(8);
+  });
+
+  it('accepts fewer, including none at all', async () => {
+    const { optedIn } = await seedCatalogue();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ packageId: PREMIUM_ID, initiatedBy: STAFF, guaranteedSnackIds: optedIn.slice(0, 2) }),
+    );
+
+    expect(await picksFor(result.checkoutSessionId)).toHaveLength(2);
+  });
+
+  /*
+   * The opt-in is a merchandising decision about what to offer
+   * strangers on a website. It is also unset across most of this
+   * catalogue, which is exactly what made the staff picker come up
+   * empty.
+   */
+  it('accepts a snack no customer is allowed to choose', async () => {
+    const { notOptedIn } = await seedCatalogue();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ packageId: PREMIUM_ID, initiatedBy: STAFF, guaranteedSnackIds: notOptedIn }),
+    );
+
+    expect((await picksFor(result.checkoutSessionId)).map((pick) => pick.snackItemId)).toEqual(
+      notOptedIn,
+    );
+  });
+
+  /** A box that offers a customer nothing can still be packed by hand. */
+  it('lets staff name snacks in a fully-curated box', async () => {
+    const { optedIn } = await seedCatalogue();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, guaranteedSnackIds: optedIn.slice(0, 3) }),
+    );
+
+    expect(await picksFor(result.checkoutSessionId)).toHaveLength(3);
+  });
+
+  /*
+   * What is emphatically *not* relaxed. These are not the website's
+   * rules — they are the difference between a packing list and a work
+   * of fiction.
+   */
+  it('still refuses a snack that has been retired', async () => {
+    const { optedIn } = await seedCatalogue();
+    await adminFirestore.collection('snackItems').doc(optedIn[0]).update({ isActive: false });
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({ packageId: PREMIUM_ID, initiatedBy: STAFF, guaranteedSnackIds: optedIn }),
+      ),
+    ).rejects.toThrow(/out of stock/i);
+  });
+
+  it('still refuses the same snack named twice', async () => {
+    const { optedIn } = await seedCatalogue();
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          packageId: PREMIUM_ID,
+          initiatedBy: STAFF,
+          guaranteedSnackIds: [optedIn[0], optedIn[0]],
+        }),
+      ),
+    ).rejects.toThrow(/different snack/i);
+  });
+
+  /*
+   * The whole relaxation is staff-only, and the field arrives over an
+   * HTTP body — so the customer's own checkout must be unmoved.
+   */
+  it('holds a customer to exactly five, from the opted-in snacks only', async () => {
+    const { optedIn, notOptedIn } = await seedCatalogue();
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({ packageId: PREMIUM_ID, guaranteedSnackIds: [...optedIn, ...notOptedIn] }),
+      ),
+    ).rejects.toThrow(/exactly 5 snacks/i);
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          packageId: PREMIUM_ID,
+          guaranteedSnackIds: [...optedIn, notOptedIn[0]],
+        }),
+      ),
+    ).rejects.toThrow(/out of stock/i);
   });
 });

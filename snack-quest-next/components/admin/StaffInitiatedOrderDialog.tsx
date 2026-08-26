@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PickupStationPicker, type SelectedStation } from '@/components/checkout/PickupStationPicker';
 import { StaffSnackPicker } from '@/components/admin/StaffSnackPicker';
+import { MAX_STAFF_PICKS } from '@/lib/packages/guaranteedPicks';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { formatKes } from '@/lib/orders/format';
 import { cn } from '@/lib/utils';
@@ -140,15 +141,17 @@ export function StaffInitiatedOrderDialog({
     .filter((box): box is OrderableBox => Boolean(box));
 
   /*
-   * Every box on the order that offers picks, each with its own
-   * picker. This used to be capped at one — the server refused a
-   * second, so the dialog could not offer it — and a customer wanting
-   * a Premium and a Deluxe had to place two orders.
+   * Every box on the order gets a picker, not only the ones that offer
+   * a customer picks (§ staff are not picking, they are packing). This
+   * is the packing list: a Starter Box can perfectly well have named
+   * snacks in it because someone asked for them on the phone, and the
+   * box's own number is a website promise rather than a rule staff
+   * are held to.
+   *
+   * There is consequently nothing to complete — any number is a valid
+   * packing list, including none.
    */
-  const pickBoxes = chosenBoxes.filter((box) => box.guaranteedPickCount > 0);
-  const picksComplete = pickBoxes.every(
-    (box) => (picksByBox[box.id]?.length ?? 0) === box.guaranteedPickCount,
-  );
+  const pickBoxes = chosenBoxes;
 
   const parsedLines = lines.map((line) => ({
     packageId: line.packageId,
@@ -197,10 +200,6 @@ export function StaffInitiatedOrderDialog({
     customerName.trim().length >= 2 &&
     isValidKenyanPhone(phone) &&
     (deliveryMethod === 'pickup' ? Boolean(station) : addressText.trim().length >= 5) &&
-    // Exactly the required number for every pick box, matching what
-    // the server enforces per line. Fewer or more is refused there, so
-    // the button must not offer it.
-    picksComplete &&
     (!alreadyPaid || manualReferenceReady);
 
   async function onSubmit() {
@@ -216,7 +215,7 @@ export function StaffInitiatedOrderDialog({
           // therefore sends exactly the request it always sent.
           packageId: parsedLines[0].packageId,
           quantity: parsedLines[0].quantity,
-          ...(parsedLines.length > 1 || pickBoxes.length > 1
+          ...(parsedLines.length > 1
             ? {
                 items: parsedLines.map((line) => ({
                   ...line,
@@ -463,11 +462,13 @@ export function StaffInitiatedOrderDialog({
                       {pickBoxes.length > 1 ? `Snacks for the ${pickBox.name}` : 'Snacks for this box'}
                     </Label>
                     <p className="text-muted-foreground text-caption">
-                      {pickBox.name} includes {pickBox.guaranteedPickCount} snacks the customer
-                      chooses. Pick what they asked for — we curate the rest.
+                      {pickBox.guaranteedPickCount > 0
+                        ? `The website lets a customer choose ${pickBox.guaranteedPickCount} in a ${pickBox.name}. You are not held to that — name whatever they asked for, and we curate the rest.`
+                        : `Optional. Name anything they asked for by name, and we curate the rest of the ${pickBox.name}.`}
                     </p>
                     <StaffSnackPicker
-                      required={pickBox.guaranteedPickCount}
+                      suggested={pickBox.guaranteedPickCount}
+                      max={MAX_STAFF_PICKS}
                       selectedIds={picksByBox[pickBox.id] ?? []}
                       onChange={(ids) =>
                         setPicksByBox((current) => ({ ...current, [pickBox.id]: ids }))

@@ -4,8 +4,15 @@ import { snackItemRepository } from '@/repositories/snackItemRepository';
 
 /**
  * `GET /api/admin/premium-snacks` (§ staff pick the snacks too) — the
- * same selectable snacks as the public route, for a staff member
- * taking an order on someone's behalf.
+ * snacks a staff member can put in a box while taking an order on
+ * someone's behalf.
+ *
+ * A wider list than the public route's, not the same one. That route
+ * answers "what may a stranger choose from on the website", which an
+ * admin controls with the per-snack "Customers can pick this in a
+ * Premium box" opt-in. This one answers "what does the shop have",
+ * because a customer on the phone naming a packet is not browsing an
+ * offer (§ staff are not picking, they are packing).
  *
  * A separate route rather than a flag on the public one, because the
  * two answer to different people. `/api/premium-snacks` deliberately
@@ -31,7 +38,7 @@ export async function GET(request: Request): Promise<Response> {
     return forbiddenResponse();
   }
 
-  const snacks = await snackItemRepository.listSelectableForPremium(session.businessId);
+  const snacks = await snackItemRepository.listForStaffPacking(session.businessId);
 
   return Response.json(
     {
