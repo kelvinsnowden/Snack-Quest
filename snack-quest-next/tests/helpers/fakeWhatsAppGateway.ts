@@ -10,6 +10,21 @@ export class FakeWhatsAppGateway implements WhatsAppGateway {
     this.counter += 1;
     return { providerMessageId: `fake-${this.counter}` };
   }
+
+  /**
+   * Also a `ConversationOutputSink`, so one fake can stand in for both
+   * halves of what `ConversationService` sends.
+   *
+   * Customer-facing replies no longer go through `sendMessage` at all
+   * — they are texts now (§ customer communications move to SMS) — but
+   * the BSP inbox calls still go through this gateway. Recording both
+   * into the same `sent` array keeps every existing assertion about
+   * what a customer was told meaningful, and keeps the tests about the
+   * message rather than about the transport.
+   */
+  async send(input: { businessId: string; phone: string; text: string }): Promise<WhatsAppSendResult> {
+    return this.sendMessage(input);
+  }
   async sendTemplate(): Promise<WhatsAppSendResult> {
     throw new Error('not used in this test');
   }

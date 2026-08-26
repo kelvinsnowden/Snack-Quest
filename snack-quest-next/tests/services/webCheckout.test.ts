@@ -100,7 +100,7 @@ async function seedReferralLink() {
 }
 
 function service() {
-  return new ConversationService(new FakeWhatsAppGateway());
+  return (() => { const g = new FakeWhatsAppGateway(); return new ConversationService(g, g); })();
 }
 
 function pickupInput(overrides: Record<string, unknown> = {}) {
@@ -870,7 +870,7 @@ describe('a paid customer whose callback never arrives', () => {
    */
   it('releases a long-abandoned failed payment without messaging the customer', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
     const result = await svc.startWebCheckout(BUSINESS_ID, pickupInput());
     const conversation = await conversationRepository.findById(result.checkoutSessionId);
     const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
@@ -893,7 +893,7 @@ describe('a paid customer whose callback never arrives', () => {
 
   it('does tell a customer still waiting that their payment failed', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
     const result = await svc.startWebCheckout(BUSINESS_ID, pickupInput());
     const conversation = await conversationRepository.findById(result.checkoutSessionId);
     const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
@@ -1109,7 +1109,7 @@ describe('startWebCheckout — staff-initiated', () => {
 
   it('warns the customer on WhatsApp before the prompt arrives', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
 
     await svc.startWebCheckout(BUSINESS_ID, pickupInput({ initiatedBy: STAFF }));
 
@@ -1124,7 +1124,7 @@ describe('startWebCheckout — staff-initiated', () => {
 
   it('says nothing to a customer who checked out themselves', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
 
     await svc.startWebCheckout(BUSINESS_ID, pickupInput());
 
@@ -1605,7 +1605,7 @@ describe('a delivery fee collected at the door', () => {
 
   it('tells the customer what the courier will ask for', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
 
     await svc.startWebCheckout(
       BUSINESS_ID,
@@ -1620,7 +1620,7 @@ describe('a delivery fee collected at the door', () => {
 
   it('says nothing about a courier when the fee is prepaid', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
 
     await svc.startWebCheckout(BUSINESS_ID, pickupInput({ initiatedBy: STAFF }));
 
@@ -1683,7 +1683,7 @@ describe('a delivery fee that is not charged at all', () => {
 
   it('promises the customer no courier payment', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const svc = new ConversationService(gateway);
+    const svc = new ConversationService(gateway, gateway);
 
     await svc.startWebCheckout(
       BUSINESS_ID,
