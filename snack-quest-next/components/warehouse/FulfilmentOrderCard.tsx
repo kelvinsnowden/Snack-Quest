@@ -3,7 +3,10 @@ import { OrderPackingList } from '@/components/warehouse/OrderPackingList';
 import { RecordCostsForm } from '@/components/warehouse/RecordCostsForm';
 import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
 import { MarkDispatchedButton } from '@/components/warehouse/MarkDispatchedButton';
-import { formatDate } from '@/lib/orders/format';
+import { Phone } from 'lucide-react';
+import { DeliveryTarget } from '@/components/warehouse/DeliveryTarget';
+import { formatDate, formatOrderNumber } from '@/lib/orders/format';
+import { orderBoxSummary } from '@/types/checkoutLine';
 import type { Order } from '@/types';
 
 /**
@@ -37,33 +40,44 @@ export function FulfilmentOrderCard({
 
   return (
     <Card className="flex flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <div className="min-w-0">
-          <span className="text-foreground block font-semibold">
-            {customer.customerName || 'Guest'}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-baseline justify-between gap-3">
+          {/*
+            The reference a customer says on the phone, so it is the
+            first thing here rather than something only Admin knows.
+          */}
+          <span className="text-foreground font-semibold tabular-nums">
+            {order.orderNumber !== undefined ? formatOrderNumber(order.orderNumber) : 'Order'}
           </span>
-          <span className="text-muted-foreground block text-caption tabular-nums">
-            {customer.phoneNumber}
+          <span className="text-muted-foreground shrink-0 text-caption tabular-nums">
+            {formatDate(order.createdAt)}
           </span>
         </div>
-        <span className="text-muted-foreground shrink-0 text-caption tabular-nums">
-          {formatDate(order.createdAt)}
-        </span>
+        <span className="text-foreground text-sm">{customer.customerName || 'Guest'}</span>
+        {/* Dials. The point of doing this on a phone. */}
+        <a
+          href={`tel:${customer.phoneNumber}`}
+          className="text-foreground hover:text-primary flex w-fit items-center gap-2 text-sm tabular-nums underline-offset-4 hover:underline"
+        >
+          <Phone className="size-4 shrink-0" aria-hidden="true" />
+          {customer.phoneNumber}
+        </a>
       </div>
 
-      {/* Only while the box is still being packed. */}
-      {stage === 'pack' ? <OrderPackingList product={product} /> : null}
+      {/*
+        Photographs while it is being packed, since that is when the
+        packets have to be found. Once it is out for delivery the boxes
+        are sealed and the rider only needs to know what they are
+        carrying, so it collapses to the summary.
+      */}
+      {stage === 'pack' ? (
+        <OrderPackingList product={product} />
+      ) : (
+        <span className="text-foreground text-sm font-medium">{orderBoxSummary(product)}</span>
+      )}
 
-      <div className="border-border flex flex-col gap-1 border-t pt-3">
-        <span className="text-foreground text-sm font-medium capitalize">
-          {delivery.method === 'pickup' ? 'Pickup' : 'Door delivery'}
-          {delivery.method === 'pickup' && delivery.pickupStationName
-            ? ` — ${delivery.pickupStationName}`
-            : null}
-        </span>
-        {delivery.method === 'door' && delivery.addressText ? (
-          <span className="text-muted-foreground text-sm">{delivery.addressText}</span>
-        ) : null}
+      <div className="border-border flex flex-col gap-2 border-t pt-3">
+        <DeliveryTarget delivery={delivery} orderPhone={customer.phoneNumber} />
         {/*
           Two different sums, and confusing them costs real money: the
           whole order is unpaid, or only the courier's fee is.
@@ -114,7 +128,7 @@ export function FulfilmentOrderCard({
         </div>
       </details>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         {/*
           The money before the button that closes the job. An order
           marked done with payment outstanding is one nobody goes back

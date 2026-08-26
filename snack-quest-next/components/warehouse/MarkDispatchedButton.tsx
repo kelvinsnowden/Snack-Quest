@@ -112,8 +112,8 @@ export function MarkDispatchedButton({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button size="sm" onClick={onClick} loading={submitting}>
+    <div className="flex flex-col gap-1 sm:items-end">
+      <Button size="sm" onClick={onClick} loading={submitting} className="w-full sm:w-auto">
         {action.label}
       </Button>
       {error ? <p className="text-xs text-danger">{error}</p> : null}
