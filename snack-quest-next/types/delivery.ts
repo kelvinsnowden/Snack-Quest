@@ -46,6 +46,24 @@ export interface DeliveryDetails {
   shippingOrigin: string;
   /** 0 until priced. Never fabricated — auto-computed for pickup, human-entered for door. */
   feeKes: number;
+  /**
+   * Who the customer pays `feeKes` to, and when (§ delivery paid on
+   * delivery).
+   *
+   * `'prepaid'` — the default and every website order: the fee is part
+   * of the M-Pesa prompt and Snack Quest has the money before the box
+   * moves.
+   *
+   * `'on_delivery'` — the customer settles it with the courier at the
+   * door. `feeKes` still holds the real figure, because somebody has
+   * to know what to collect; it is simply excluded from what is
+   * charged up front. Recording it as 0 instead would lose that, and
+   * a courier cannot collect a number nobody kept.
+   *
+   * Absent on every order placed before this existed, which means
+   * prepaid — the only thing those could have been.
+   */
+  feeCollection?: 'prepaid' | 'on_delivery';
   county: string;
   /** Set only for method: 'pickup'. */
   pickupStationId: string | null;

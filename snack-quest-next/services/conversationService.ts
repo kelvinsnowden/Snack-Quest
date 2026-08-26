@@ -9,7 +9,7 @@ import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway'
 import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import type { ConversionAttribution, GuaranteedPick, ManualPaymentRecord, SnackItem } from '@/types';
-import type { CheckoutLineItem } from '@/types/checkoutLine';
+import { orderBoxSummary, type CheckoutLineItem } from '@/types/checkoutLine';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { normalizeEmail } from '@/lib/checkout/email';
@@ -250,6 +250,17 @@ export class WebCheckoutConflictError extends Error {
 
 /** Exactly `WebCheckoutRequest`, but with the fields the route has already narrowed to real types. */
 export interface WebCheckoutInput {
+  /**
+   * The customer pays the delivery fee to the courier at the door
+   * instead of now (§ delivery paid on delivery).
+   *
+   * Staff-only, and enforced as such by the route: this is an
+   * arrangement made in a conversation with a customer, not something
+   * the public checkout offers, and a request that could set it would
+   * be a request that could take a box without paying for its
+   * delivery.
+   */
+  deliveryFeeOnDelivery?: boolean;
   /**
    * Every box on the order, when the customer chose more than one
    * (§ more than one box per order). Absent for a single-box order,
@@ -809,6 +820,9 @@ class ConversationService {
       throw new WebCheckoutValidationError(pickResult.reason);
     }
 
+    // Staff-set only; the route refuses it from anyone else.
+    const feeOnDelivery = Boolean(input.deliveryFeeOnDelivery && input.initiatedBy);
+
     const { snapshotId, totalKes, walletCreditAppliedKes, subtotalKes, discountKes } =
       await this.freezeSnapshot(
         businessId,
@@ -826,6 +840,7 @@ class ConversationService {
           // every existing single-box snapshot keeps its exact shape
           // rather than gaining a one-element array.
           ...(lines.length > 1 ? { items: lines } : {}),
+          ...(feeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
           customerName,
           customerEmail,
           county,
@@ -854,10 +869,21 @@ class ConversationService {
           conversationId,
           phoneNumber,
           `Hi ${customerName.split(' ')[0]}, ${input.initiatedBy.staffName} from Snack Quest has set up your order:\n\n` +
-            `${quantity} x ${box.name}\n` +
+            // Every box, not just the first: on a two-box order
+            // naming one of them is how a customer is surprised by
+            // what arrives (§ more than one box per order).
+            `${orderBoxSummary({ items: lines, packageId: lines[0].packageId, packageLabel: box.name, quantity })}\n` +
             `${formatDeliveryLabel(delivery)}\n` +
-            `Total: KES ${totalKes}\n\n` +
-            'An M-Pesa prompt is on its way — enter your PIN to confirm. If you were not expecting this, ignore it and nothing will be charged.',
+            `Total: KES ${totalKes}\n` +
+            /*
+             * The prompt they are about to approve excludes the
+             * delivery fee, so the total above is not everything they
+             * pay. Saying so here — before the courier is at the door
+             * asking for money nobody mentioned — is the whole point
+             * of sending this message ahead of the push.
+             */
+            (feeOnDelivery ? `Plus KES ${delivery.feeKes} to the courier on delivery\n` : '') +
+            '\nAn M-Pesa prompt is on its way — enter your PIN to confirm. If you were not expecting this, ignore it and nothing will be charged.',
         );
       } catch {
         // Best-effort, same discipline as every other notification here.
@@ -1472,6 +1498,8 @@ class ConversationService {
        * these; absent, it is `priceKes × quantity` exactly as before.
        */
       items?: CheckoutLineItem[];
+      /** The delivery fee is collected by the courier (§ delivery paid on delivery). */
+      deliveryFeeOnDelivery?: boolean;
       customerName: string;
       /** Website checkout only; every WhatsApp path omits it. */
       customerEmail?: string | null;
@@ -1545,6 +1573,7 @@ class ConversationService {
       unitPriceKes: common.priceKes,
       quantity,
       ...(common.items?.length ? { lines: common.items } : {}),
+      ...(common.deliveryFeeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
       discountKes: rawDiscountKes,
       walletCreditAppliedKes: availableWalletCreditKes,
       deliveryFeeKes: delivery.feeKes,
@@ -1571,7 +1600,9 @@ class ConversationService {
       // nothing" instead of "this box has nothing to pick".
       ...(common.guaranteedPicks?.length ? { guaranteedPicks: common.guaranteedPicks } : {}),
       county: common.county,
-      delivery,
+      delivery: common.deliveryFeeOnDelivery
+        ? { ...delivery, feeCollection: 'on_delivery' as const }
+        : delivery,
       referralCode: common.referralCode ?? null,
       referralLinkId: referral?.referralLinkId ?? null,
       referralOwnerId: referral?.ownerId ?? null,

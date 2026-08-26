@@ -1568,3 +1568,86 @@ describe('a paid two-box order', () => {
     });
   });
 });
+
+/**
+ * The customer pays for the boxes now and hands the delivery fee to
+ * the courier at the door (§ delivery paid on delivery).
+ *
+ * The distinction that matters throughout: `feeKes` still records the
+ * real figure — the courier has to know what to collect, and the
+ * business has to know what it is owed — and only `totalKes`, which is
+ * what M-Pesa asks for, leaves it out. A test that only checked the
+ * total would pass just as happily if the fee had been erased.
+ */
+describe('a delivery fee collected at the door', () => {
+  const STAFF = { staffUid: 'staff-1', staffName: 'Achieng' };
+
+  it('charges for the boxes only, while still recording what the courier collects', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, deliveryFeeOnDelivery: true }),
+    );
+
+    // 2500 for the box; the 300 fee is real but not in the prompt.
+    expect(result.pricing.deliveryFeeKes).toBe(300);
+    expect(result.pricing.totalKes).toBe(2500);
+    expect(initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 2500 }));
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    // Frozen on the order itself, because this is read at the door by
+    // someone who was not on the phone call that agreed it.
+    expect(snapshot?.delivery).toMatchObject({ feeKes: 300, feeCollection: 'on_delivery' });
+    expect(snapshot?.totalKes).toBe(2500);
+  });
+
+  it('tells the customer what the courier will ask for', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+
+    await svc.startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ initiatedBy: STAFF, deliveryFeeOnDelivery: true }),
+    );
+
+    const toCustomer = gateway.sent.find((message) => message.phone === PHONE_NORMALIZED);
+    // Being charged 2500 and then asked for 300 more at the door is
+    // the surprise this line exists to prevent.
+    expect(toCustomer!.text).toMatch(/300 to the courier/i);
+  });
+
+  it('says nothing about a courier when the fee is prepaid', async () => {
+    const gateway = new FakeWhatsAppGateway();
+    const svc = new ConversationService(gateway);
+
+    await svc.startWebCheckout(BUSINESS_ID, pickupInput({ initiatedBy: STAFF }));
+
+    const toCustomer = gateway.sent.find((message) => message.phone === PHONE_NORMALIZED);
+    // Not the word "courier" — the pickup label itself reads "Fargo
+    // Courier pickup". What must be absent is the money sentence.
+    expect(toCustomer!.text).not.toMatch(/to the courier on delivery/i);
+    expect(toCustomer!.text).toContain('2800');
+  });
+
+  /*
+   * The one that actually guards the money. This is an arrangement a
+   * staff member makes, and the field arrives over an HTTP body — so a
+   * customer posting it at the public checkout must simply be charged
+   * the fee as normal.
+   */
+  it('ignores a customer who asks to pay the fee on delivery', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ deliveryFeeOnDelivery: true }),
+    );
+
+    expect(result.pricing.totalKes).toBe(2800);
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot?.delivery).not.toHaveProperty('feeCollection');
+  });
+});

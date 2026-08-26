@@ -82,6 +82,15 @@ export async function POST(request: Request): Promise<Response> {
     items,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
 
+  /*
+   * The customer settles delivery with the courier (§ delivery paid on
+   * delivery). Read off the raw body rather than `WebCheckoutRequest`,
+   * because it is not something a customer's own checkout may ask for
+   * — the service ignores it unless the order is staff-initiated, and
+   * this route is the only caller that sets `initiatedBy`.
+   */
+  const deliveryFeeOnDelivery = (body as { deliveryFeeOnDelivery?: unknown } | null)?.deliveryFeeOnDelivery === true;
+
   const rawManualPayment = (body as { manualPayment?: unknown } | null)?.manualPayment;
   let manualPayment:
     | { method: ManualPaymentMethod; reference: string | null; recordedByUid: string; recordedByName: string; note: string | null }
@@ -189,6 +198,7 @@ export async function POST(request: Request): Promise<Response> {
         // service against the live catalogue, exactly as a customer's
         // own checkout is.
         ...(Array.isArray(items) ? { items } : {}),
+        ...(deliveryFeeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
         guaranteedSnackIds: Array.isArray(guaranteedSnackIds)
           ? guaranteedSnackIds.filter((id): id is string => typeof id === 'string')
           : undefined,

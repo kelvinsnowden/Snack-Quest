@@ -86,6 +86,17 @@ export default async function WarehouseQueuePage({
                         {data.delivery.method === 'pickup' && data.delivery.pickupStationName
                           ? ` — ${data.delivery.pickupStationName}`
                           : null}
+                        {/*
+                          This is the last screen before the box leaves,
+                          so it is the last chance to notice that money
+                          is still owed on it. Unmissable on purpose:
+                          once it is on the van, nobody is collecting.
+                        */}
+                        {data.delivery.feeCollection === 'on_delivery' ? (
+                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
+                            Collect KES {data.delivery.feeKes.toLocaleString()} on delivery
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground tabular-nums">{formatDate(data.createdAt)}</td>
                       <td className="px-4 py-3 text-right">
