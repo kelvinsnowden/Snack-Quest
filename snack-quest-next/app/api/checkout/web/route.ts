@@ -6,7 +6,7 @@ import {
 } from '@/services/conversationService';
 import { InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { FBCLID_COOKIE, TTCLID_COOKIE } from '@/lib/analytics/cookies';
+import { FBCLID_COOKIE, TTCLID_COOKIE, VISITOR_COOKIE } from '@/lib/analytics/cookies';
 import { verifyCreatorSessionFromRequest } from '@/lib/auth/creatorSession';
 import type { WebCheckoutRequest, WebCheckoutResponse } from '@/types/webCheckout';
 import type { ConversionAttribution } from '@/types';
@@ -94,11 +94,16 @@ export async function POST(request: Request): Promise<Response> {
   const referer = request.headers.get('referer');
   const ttclid = cookies[TTCLID_COOKIE];
   const fbclid = cookies[FBCLID_COOKIE];
+  // The same id every funnel event from this browser already carries,
+  // so the order can be lined up against what the visitor actually did
+  // on the way to it.
+  const visitorId = cookies[VISITOR_COOKIE];
   const attribution: ConversionAttribution = {
     channel: 'web',
     ...(referer ? { landingUrl: referer } : {}),
     ...(ttclid ? { ttclid } : {}),
     ...(fbclid ? { fbclid } : {}),
+    ...(visitorId ? { visitorId } : {}),
   };
 
   // The creator discount (§ Creator-Only Offers) is derived from the

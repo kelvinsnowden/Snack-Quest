@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminUserMenu } from '@/components/admin/AdminUserMenu';
+import { ViewAsSwitcher } from '@/components/admin/ViewAsSwitcher';
 
 const NAV_ITEMS = [
   { href: '/warehouse', label: 'Queue' },
@@ -39,6 +40,14 @@ export default async function WarehouseLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
+      {/*
+        The way back out of a role a super admin stepped into
+        (§ see it from every angle). Rendered here as well as in Admin
+        because choosing a role sends you to that role's workspace — a
+        control that only existed in Admin would be a door that locks
+        behind you.
+      */}
+      {session.viewingAs ? <ViewAsSwitcher viewingAs={session.viewingAs} /> : null}
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 md:px-6">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">

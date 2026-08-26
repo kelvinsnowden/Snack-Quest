@@ -109,6 +109,21 @@ export interface ConversionAttribution {
   ttclid?: string;
   /** Meta's click id, same first-touch capture, off `?fbclid=`. Not yet used by `metaConversionGateway` (Advanced Matching there is phone-only today) — stored now so it's not lost before that's built. */
   fbclid?: string;
+  /**
+   * The `sq_visitor` cookie, which is the same id every funnel event
+   * from this browser already carries (§ close the loop: ad-conversion
+   * attribution).
+   *
+   * Without it an order and the visit that produced it were two
+   * unrelated records: `analyticsEvents` knew someone looked at three
+   * boxes and abandoned a quote, `orders` knew somebody bought, and
+   * nothing joined them. Storing it here is what makes "what did this
+   * customer actually do before buying" a question with an answer.
+   *
+   * Absent on every order placed before this existed, and on any
+   * browser that refused the cookie.
+   */
+  visitorId?: string;
 }
 
 export interface Conversation {

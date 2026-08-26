@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { requireStaffSession } from '@/lib/auth/session';
+import { ViewAsSwitcher } from '@/components/admin/ViewAsSwitcher';
 import { visibleAdminSections } from '@/lib/auth/adminSections';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
@@ -78,6 +79,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           role={session.roles[0] ?? 'staff'}
           visibleSections={visibleSections}
         />
+        {/*
+          A super admin's own controls (§ see it from every angle) —
+          the roles they can look through, or the way back out of one.
+          Only ever rendered for a super admin, so nobody else is
+          offered a switch they cannot make.
+        */}
+        {session.viewingAs || session.actualRoles?.includes('super_admin') || session.roles.includes('super_admin') ? (
+          <ViewAsSwitcher viewingAs={session.viewingAs} />
+        ) : null}
         {/*
           The bottom padding reserves the phone's quick-nav bar, so the
           last row of a table or the last field of a form is never

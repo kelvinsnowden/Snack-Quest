@@ -120,6 +120,9 @@ describe('POST /api/checkout/web attribution capture', () => {
           landingUrl: 'https://snackquests.shop/checkout',
           ttclid: 'tt-abc',
           fbclid: 'fb-xyz',
+          // The same id the funnel events carry, so this order can be
+          // lined up against what the visitor actually did.
+          visitorId: 'v-1',
         },
       }),
     );
