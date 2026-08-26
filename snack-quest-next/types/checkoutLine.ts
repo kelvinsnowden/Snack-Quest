@@ -1,3 +1,5 @@
+import type { GuaranteedPick } from '@/types';
+
 /**
  * One box on an order (§ more than one box per order).
  *
@@ -22,6 +24,22 @@ export interface CheckoutLineItem {
   packageLabel: string;
   quantity: number;
   unitPriceKes: number;
+  /**
+   * The snacks chosen for *this* box (§ Premium: choose 5, discover
+   * the rest), on the line rather than on the order.
+   *
+   * An order used to be allowed only one pick-offering box, because
+   * a single list of picks at the top of the order could not say which
+   * box it belonged to — so a customer buying a Premium and a Deluxe
+   * was told to place two separate orders. Putting the picks on the
+   * line answers that by construction.
+   *
+   * Absent on a fully-curated box, which is what "the whole box is a
+   * surprise" looks like in the data. Where `quantity` is more than
+   * one, every box on the line is packed to the same picks; the
+   * customer chose once for that row.
+   */
+  guaranteedPicks?: GuaranteedPick[];
 }
 
 /**
