@@ -67,7 +67,18 @@ export default async function AdminOrderDetailPage({
    */
   const attribution = (order.attribution ?? null) as ConversionAttribution | null;
   const journeyPromise = attribution?.visitorId
-    ? analyticsEventRepository.listByVisitor(order.businessId, attribution.visitorId)
+    ? analyticsEventRepository
+        .listByVisitor(order.businessId, attribution.visitorId)
+        /*
+         * Degrades to "no journey recorded" rather than taking the
+         * page down with it. This query needs a composite index that
+         * is deployed by hand — nothing in CI does it — so the window
+         * between shipping the code and running that deploy would
+         * otherwise turn every order detail page into a crash, and
+         * only for orders new enough to carry a visitor id. The rest
+         * of this page is what somebody opens it for.
+         */
+        .catch(() => [])
     : Promise.resolve([]);
 
   const [items, shipment, refunds, boxes, confirmationSms, journey] = await Promise.all([
