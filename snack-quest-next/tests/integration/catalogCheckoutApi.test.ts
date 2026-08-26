@@ -73,6 +73,21 @@ function mockProviders({ stkShouldFail = false }: { stkShouldFail?: boolean } = 
         { status: 200 },
       );
     }
+    // Customer-facing replies go out as texts now.
+    if (urlStr.includes('/api/services/sendsms/')) {
+      return new Response(
+        JSON.stringify({
+          responses: [
+            {
+              'response-code': 200,
+              'response-description': 'Success',
+              messageid: `sms-${Date.now()}-${Math.random()}`,
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
     if (urlStr.includes('/whatsapp/')) {
       return new Response(
         JSON.stringify({ status: '1', wa_message_id: `wamid-${Date.now()}-${Math.random()}` }),
@@ -102,6 +117,14 @@ async function seedBusiness() {
   await businessIntegrationSecretRepository.set(BUSINESS_ID, 'whatchimp', {
     apiKey: 'wa-key',
     phoneNumberId: PHONE_NUMBER_ID,
+  });
+  // Customer-facing replies are texts now (§ customer communications
+  // move to SMS), so this journey needs an SMS account as much as it
+  // needs a WhatsApp one.
+  await businessIntegrationSecretRepository.set(BUSINESS_ID, 'textSms', {
+    apiKey: 'sms-key',
+    partnerId: 'sms-partner',
+    senderId: 'SNACKQUEST',
   });
   await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', {
     consumerKey: 'daraja-key',

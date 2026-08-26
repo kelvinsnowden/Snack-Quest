@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { conversationRepository } from '@/repositories/conversationRepository';
-import { ConversationService, ConversationNotFoundError } from '@/services/conversationService';
+import {
+  ConversationService,
+  ConversationNotFoundError,
+  type ConversationOutputSink,
+} from '@/services/conversationService';
 import type { WhatsAppGateway } from '@/lib/integrations/types';
 
 /**
  * `ConversationService`'s admin methods (§ Admin: Conversation
  * monitoring) — tenant scoping, assign/return, and the agent-reply
- * wire (a real `WhatsAppGateway.sendMessage` call plus a transcript
+ * wire (a real `ConversationOutputSink.send` call plus a transcript
  * append), against the real emulator. The bot's own turn-by-turn
  * logic is exercised via tests/integration/conversationJourney.test.ts.
  */
@@ -15,9 +19,12 @@ import type { WhatsAppGateway } from '@/lib/integrations/types';
 const BUSINESS_ID = 'biz-conversation-service-admin-test';
 const OTHER_BUSINESS_ID = 'biz-conversation-service-admin-other';
 
-function mockGateway(): WhatsAppGateway {
+function mockGateway(): WhatsAppGateway & ConversationOutputSink {
   return {
     sendMessage: vi.fn().mockResolvedValue({ providerMessageId: 'msg-1' }),
+    // Doubles as the ConversationOutputSink — customer replies are
+    // texts now, and these tests care about the message, not the wire.
+    send: vi.fn().mockResolvedValue({ providerMessageId: 'msg-1' }),
     sendTemplate: vi.fn(),
     sendButtons: vi.fn(),
     sendList: vi.fn(),
@@ -27,7 +34,7 @@ function mockGateway(): WhatsAppGateway {
     verifyWebhookChallenge: vi.fn(),
     assignHumanAgent: vi.fn(),
     updateConversationStatus: vi.fn(),
-  } as unknown as WhatsAppGateway;
+  } as unknown as WhatsAppGateway & ConversationOutputSink;
 }
 
 beforeEach(async () => {
@@ -36,21 +43,21 @@ beforeEach(async () => {
 
 describe('ConversationService.getConversation', () => {
   it('throws ConversationNotFoundError for a conversation in a different business', async () => {
-    const service = new ConversationService(mockGateway());
+    const service = (() => { const g = mockGateway(); return new ConversationService(g, g); })();
     const id = await conversationRepository.create({ businessId: OTHER_BUSINESS_ID, phoneNumber: '254700000001' });
 
     await expect(service.getConversation(BUSINESS_ID, id)).rejects.toBeInstanceOf(ConversationNotFoundError);
   });
 
   it('throws ConversationNotFoundError for an unknown id', async () => {
-    const service = new ConversationService(mockGateway());
+    const service = (() => { const g = mockGateway(); return new ConversationService(g, g); })();
     await expect(service.getConversation(BUSINESS_ID, 'does-not-exist')).rejects.toBeInstanceOf(ConversationNotFoundError);
   });
 });
 
 describe('ConversationService.adminAssignAgent / adminReturnToBot', () => {
   it('assigns and then returns to the bot', async () => {
-    const service = new ConversationService(mockGateway());
+    const service = (() => { const g = mockGateway(); return new ConversationService(g, g); })();
     const id = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000002' });
 
     await service.adminAssignAgent(BUSINESS_ID, id, 'staff-1');
@@ -65,7 +72,7 @@ describe('ConversationService.adminAssignAgent / adminReturnToBot', () => {
   });
 
   it('rejects a conversation outside the business', async () => {
-    const service = new ConversationService(mockGateway());
+    const service = (() => { const g = mockGateway(); return new ConversationService(g, g); })();
     const id = await conversationRepository.create({ businessId: OTHER_BUSINESS_ID, phoneNumber: '254700000003' });
 
     await expect(service.adminAssignAgent(BUSINESS_ID, id, 'staff-1')).rejects.toBeInstanceOf(ConversationNotFoundError);
@@ -75,7 +82,7 @@ describe('ConversationService.adminAssignAgent / adminReturnToBot', () => {
 describe('ConversationService.adminPriceDoorDelivery', () => {
   it('prices a door-delivery conversation awaiting agent pricing and sends the quote', async () => {
     const gateway = mockGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     const id = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000010' });
     await conversationRepository.update(id, {
       status: 'agent_assigned',
@@ -91,12 +98,12 @@ describe('ConversationService.adminPriceDoorDelivery', () => {
     expect(conversation?.escalationReason).toBeNull();
     expect(conversation?.currentStep).toBe('awaiting_customer_payment_confirmation');
     expect(conversation?.stateBlob.deliveryFeeKes).toBe(350);
-    expect(gateway.sendMessage).toHaveBeenCalledTimes(1);
+    expect(gateway.send).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a conversation outside the business without pricing it', async () => {
     const gateway = mockGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     const id = await conversationRepository.create({ businessId: OTHER_BUSINESS_ID, phoneNumber: '254700000011' });
     await conversationRepository.update(id, {
       status: 'agent_assigned',
@@ -107,12 +114,12 @@ describe('ConversationService.adminPriceDoorDelivery', () => {
     await expect(
       service.adminPriceDoorDelivery(BUSINESS_ID, id, { agentId: 'staff-1', feeKes: 350 }),
     ).rejects.toBeInstanceOf(ConversationNotFoundError);
-    expect(gateway.sendMessage).not.toHaveBeenCalled();
+    expect(gateway.send).not.toHaveBeenCalled();
   });
 
   it('propagates the underlying state error for a conversation not awaiting pricing', async () => {
     const gateway = mockGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     const id = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000012' });
 
     await expect(
@@ -123,7 +130,7 @@ describe('ConversationService.adminPriceDoorDelivery', () => {
 
 describe('ConversationService.listMyConversations', () => {
   it('returns only conversations assigned to the given agent', async () => {
-    const service = new ConversationService(mockGateway());
+    const service = (() => { const g = mockGateway(); return new ConversationService(g, g); })();
     const mine = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000013' });
     await conversationRepository.update(mine, { assignedAgentId: 'staff-1', status: 'agent_assigned' });
     const someoneElses = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000014' });
@@ -138,12 +145,12 @@ describe('ConversationService.listMyConversations', () => {
 describe('ConversationService.sendAgentReply', () => {
   it('sends through the gateway and appends the message to the transcript', async () => {
     const gateway = mockGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     const id = await conversationRepository.create({ businessId: BUSINESS_ID, phoneNumber: '254700000004' });
 
     await service.sendAgentReply(BUSINESS_ID, id, 'Hi! An agent is here to help.');
 
-    expect(gateway.sendMessage).toHaveBeenCalledWith({
+    expect(gateway.send).toHaveBeenCalledWith({
       businessId: BUSINESS_ID,
       phone: '254700000004',
       text: 'Hi! An agent is here to help.',
@@ -155,10 +162,10 @@ describe('ConversationService.sendAgentReply', () => {
 
   it('rejects a conversation outside the business without calling the gateway', async () => {
     const gateway = mockGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     const id = await conversationRepository.create({ businessId: OTHER_BUSINESS_ID, phoneNumber: '254700000005' });
 
     await expect(service.sendAgentReply(BUSINESS_ID, id, 'hi')).rejects.toBeInstanceOf(ConversationNotFoundError);
-    expect(gateway.sendMessage).not.toHaveBeenCalled();
+    expect(gateway.send).not.toHaveBeenCalled();
   });
 });

@@ -99,6 +99,13 @@ async function seedBusiness(tenant: TenantConfig) {
     apiKey: `wa-key-${tenant.businessId}`,
     phoneNumberId: tenant.whatsappPhoneNumberId,
   });
+  // Customer-facing replies are texts now (§ customer communications
+  // move to SMS), so this journey needs an SMS account too.
+  await businessIntegrationSecretRepository.set(tenant.businessId, 'textSms', {
+    apiKey: 'sms-key',
+    partnerId: 'sms-partner',
+    senderId: 'SNACKQUEST',
+  });
   await businessIntegrationSecretRepository.set(tenant.businessId, 'meta', {
     pixelId: tenant.metaPixelId,
     accessToken: `meta-token-${tenant.businessId}`,
@@ -192,6 +199,20 @@ function mockAllProviders() {
     }
     if (urlStr.includes('business-api.tiktok.com')) {
       return new Response(JSON.stringify({ code: 0, message: 'OK' }), { status: 200 });
+    }
+    if (urlStr.includes('/api/services/sendsms/')) {
+      return new Response(
+        JSON.stringify({
+          responses: [
+            {
+              'response-code': 200,
+              'response-description': 'Success',
+              messageid: `sms-${Date.now()}-${Math.random()}`,
+            },
+          ],
+        }),
+        { status: 200 },
+      );
     }
     if (urlStr.includes('/whatsapp/')) {
       // Real WhatchimpGateway HTTP call — only hit when a Service uses the
@@ -294,7 +315,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
   it('closes the entire loop: order created, inventory reserved, Fargo shipment created, Meta CAPI dispatched, admin notified', async () => {
     const fetchMock = mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await walkToConfirmation(service, SNACK_QUEST.businessId);
 
@@ -368,7 +389,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
   });
 
   it('rejects checkout for the exit-intent rescue offer once its offerExpiresAt has passed', async () => {
-    const service = new ConversationService(new FakeWhatsAppGateway());
+    const service = (() => { const g = new FakeWhatsAppGateway(); return new ConversationService(g, g); })();
     const rescueId = await packageRepository.create(
       {
         businessId: SNACK_QUEST.businessId,
@@ -399,7 +420,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
 
   it('records rescue_offer_purchase_completed when a completed order is for the exit-intent rescue offer, and stays silent for a normal one', async () => {
     mockAllProviders();
-    const service = new ConversationService(new FakeWhatsAppGateway());
+    const service = (() => { const g = new FakeWhatsAppGateway(); return new ConversationService(g, g); })();
     const rescueId = await packageRepository.create(
       {
         businessId: SNACK_QUEST.businessId,
@@ -474,7 +495,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
   it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {
     const fetchMock = mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
     // A dedicated station, not the shared `seedFreePickupStation` one
@@ -599,7 +620,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     });
 
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     await walkToConfirmation(service, SNACK_QUEST.businessId, { referralReply: 'CREATOR10' });
 
     const conversation = await conversationRepository.findActiveByPhoneNumber(
@@ -647,7 +668,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     );
 
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
     await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' }); // cheapest = Limited Edition
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Jane Doe, Nairobi' });
@@ -681,7 +702,7 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
   it('rejects a duplicate Daraja callback delivery without reprocessing', async () => {
     mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await walkToConfirmation(service, SNACK_QUEST.businessId);
 
@@ -728,7 +749,7 @@ describe('the full Fargo pickup point journey: search, select, auto-priced fee, 
     );
 
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
     await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' }); // Starter Box (2500)
@@ -797,7 +818,7 @@ describe('door delivery, human-assisted fallback (used only when no Tushop rate 
 
   it('collects address details, escalates to a human agent with the exact required copy, and pauses the bot', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
     await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' }); // Starter Box
@@ -834,7 +855,7 @@ describe('door delivery, human-assisted fallback (used only when no Tushop rate 
   it('prices the order through the real internal agent API WITHOUT charging, then only charges once the customer replies PAY, completing with the nested delivery/provider schema', async () => {
     mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
     await service.start(SNACK_QUEST.businessId, PHONE, { text: '1' });
@@ -946,7 +967,7 @@ describe('door delivery, human-assisted fallback (used only when no Tushop rate 
 
   it('rejects pricing a conversation that was never escalated', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     await service.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
 
     const conversation = await conversationRepository.findActiveByPhoneNumber(
@@ -1047,7 +1068,7 @@ describe('platform proof: a second, independent tenant', () => {
     // customer can absolutely be a customer of two different WhatsApp
     // businesses.
     const sqGateway = new FakeWhatsAppGateway();
-    const sqService = new ConversationService(sqGateway);
+    const sqService = new ConversationService(sqGateway, sqGateway);
     await sqService.start(SNACK_QUEST.businessId, PHONE, { text: 'Hi' });
     // Snack Quest's cheapest package is index 1: Starter Box (2500).
     await sqService.start(SNACK_QUEST.businessId, PHONE, { text: '1' });
@@ -1059,7 +1080,7 @@ describe('platform proof: a second, independent tenant', () => {
     await sqService.start(SNACK_QUEST.businessId, PHONE, { text: 'PAY' });
 
     const rivalGateway = new FakeWhatsAppGateway();
-    const rivalService = new ConversationService(rivalGateway);
+    const rivalService = new ConversationService(rivalGateway, rivalGateway);
     await rivalService.start(RIVAL_SNACKS.businessId, PHONE, { text: 'Hi' });
     // Rival's only package is index 1: Rival Mega Box (4200).
     await rivalService.start(RIVAL_SNACKS.businessId, PHONE, { text: '1' });
@@ -1173,7 +1194,7 @@ describe('customer loyalty / Quest wallet (§ Phase 4)', () => {
 
     mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await walkToConfirmation(service, SNACK_QUEST.businessId);
     const conversation = await conversationRepository.findActiveByPhoneNumber(SNACK_QUEST.businessId, PHONE);
@@ -1202,7 +1223,7 @@ describe('customer loyalty / Quest wallet (§ Phase 4)', () => {
 
     mockAllProviders();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     await walkToConfirmation(service, SNACK_QUEST.businessId);
 
@@ -1244,7 +1265,7 @@ describe('feature flags gate real behavior (§ Phase 6)', () => {
 
   it('answers the BALANCE command by default, and stops once the flag is disabled', async () => {
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
 
     // Two different phone numbers, each texting BALANCE as their
     // very first-ever message — isolates the flag's effect from any
@@ -1294,7 +1315,7 @@ describe('order confirmation SMS (§ SMS-1)', () => {
 
   async function payForABox() {
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     await walkToConfirmation(service, SNACK_QUEST.businessId);
     const callback = await paymentService.processCallback(
       SNACK_QUEST.businessId,
@@ -1324,7 +1345,7 @@ describe('order confirmation SMS (§ SMS-1)', () => {
     mockAllProviders();
     await seedConfirmationTemplate();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     await walkToConfirmation(service, SNACK_QUEST.businessId);
 
     const callback = await paymentService.processCallback(
@@ -1412,7 +1433,7 @@ describe('recording an order that is already paid (§ manual payment)', () => {
   ) {
     const { packageId, pickupStationId } = await seededIds();
     const gateway = new FakeWhatsAppGateway();
-    const service = new ConversationService(gateway);
+    const service = new ConversationService(gateway, gateway);
     const result = await service.startWebCheckout(SNACK_QUEST.businessId, {
       packageId,
       quantity: 1,
@@ -1546,7 +1567,7 @@ describe('recording an order that is already paid (§ manual payment)', () => {
       }
     }
 
-    const service = new ConversationService(new DisabledWhatsAppGateway());
+    const service = (() => { const g = new DisabledWhatsAppGateway(); return new ConversationService(g, g); })();
 
     // The decisive assertion: this resolves rather than throwing. Before
     // the fix the IntegrationDisabledError propagated out of

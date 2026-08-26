@@ -6,6 +6,8 @@ import { packageRepository, OutOfStockError } from '@/repositories/packageReposi
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway';
+import { textSmsGateway } from '@/lib/integrations/sms/textSmsGateway';
+import { toSmsSafeText } from '@/lib/sms/gsm7';
 import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import type { ConversionAttribution, GuaranteedPick, ManualPaymentRecord, SnackItem } from '@/types';
@@ -389,6 +391,23 @@ export interface WebCheckoutQuoteInput {
   creatorUid?: string | null;
 }
 
+/**
+ * The default customer-facing channel: an ordinary text.
+ *
+ * Deliberately the transactional SMS path and not the marketing one —
+ * it does not consult `smsOptOuts`, which registers people who asked
+ * to stop receiving *marketing*. A customer who opted out of offers
+ * has not opted out of being told what an M-Pesa prompt on their
+ * screen is for, and suppressing that would be the wrong kind of
+ * obedient.
+ */
+const smsOutputSink: ConversationOutputSink = {
+  send: ({ businessId, phone, text }) =>
+    // Normalised here rather than at each of the fourteen call sites,
+    // so a message written tomorrow is priced like the rest.
+    textSmsGateway.send({ businessId, to: phone, body: toSmsSafeText(text) }),
+};
+
 class ConversationService {
   private readonly notifications: NotificationService;
   private readonly outputSink: ConversationOutputSink;
@@ -402,16 +421,25 @@ class ConversationService {
    * escalation just because a caller wants customer replies captured
    * instead of sent (§ WhatChimp Integration Redesign, Phase 2 — the
    * channel-agnostic turn engine constructs a `ConversationService`
-   * with the real `gateway` but a capturing `outputSink`). Defaults to
-   * forwarding through `gateway.sendMessage` — today's exact behavior
-   * — when no `outputSink` is given.
+   * with the real `gateway` but a capturing `outputSink`).
+   *
+   * That seam is now carrying the weight it was built for: the default
+   * is SMS, not WhatsApp (§ customer communications move to SMS).
+   * Everything this service says to a customer — the message ahead of
+   * an M-Pesa prompt on a staff-taken order, an agent's reply from
+   * Admin, every bot turn — goes out as a text.
+   *
+   * The reason is reach rather than preference. A staff-taken order is
+   * a cold outbound message to someone who never opened a WhatsApp
+   * thread with the shop, and a business-initiated WhatsApp message to
+   * a stranger is exactly the kind that does not arrive. A text does.
    */
   constructor(
     private readonly gateway: WhatsAppGateway = whatchimpGateway,
-    outputSink?: ConversationOutputSink,
+    outputSink: ConversationOutputSink = smsOutputSink,
   ) {
     this.notifications = new NotificationService(gateway);
-    this.outputSink = outputSink ?? { send: (input) => gateway.sendMessage(input) };
+    this.outputSink = outputSink;
   }
 
   /**
