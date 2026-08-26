@@ -214,6 +214,8 @@ export interface Order extends AuditFields {
   reviewRequestedAt?: Timestamp | null;
   /** Who recorded the ask. Absent for the same reason as `reviewRequestedAt`. */
   reviewRequestedBy?: string | null;
+  /** What this box really cost to fulfil (§ fulfilment records the real cost). Absent means nobody has entered it, never zero. */
+  costs?: OrderCosts;
 }
 
 /** Snapshotted once at the batch's creation time — never recomputed if the order's own pricing later changes. */
@@ -221,6 +223,35 @@ export interface OrderFulfillment {
   allocatedCostKes: number;
   orderRevenueKes: number;
   estimatedProfitKes: number;
+}
+
+/**
+ * What this order actually cost to fulfil, recorded by the person who
+ * packed it (§ fulfilment records the real cost).
+ *
+ * Deliberately separate from `OrderFulfillment`, which snapshots a
+ * *batch's* allocated cost at batch-creation time and is an estimate
+ * shared across every order in it. This is the real figure for this
+ * box, entered by someone holding the receipts.
+ *
+ * Split in two because they behave differently at the till: the snacks
+ * in the box are the cost of goods, and everything else — packaging,
+ * a Bolt to the door, airtime — is not. Reporting margin needs to be
+ * able to tell them apart.
+ *
+ * Absent until somebody records it, which is most orders. An absent
+ * `costs` means unknown, never zero: treating "nobody has entered it"
+ * as "it cost nothing" would report an impossible margin.
+ */
+export interface OrderCosts {
+  /** What the snacks in the box cost. */
+  goodsCostKes: number;
+  /** Packaging, transport, anything else spent getting this box out. */
+  otherCostKes: number;
+  note: string | null;
+  recordedAt: Timestamp;
+  recordedBy: string;
+  recordedByName: string;
 }
 
 export type OrderPackingStatus = 'not_started' | 'in_progress' | 'packed';

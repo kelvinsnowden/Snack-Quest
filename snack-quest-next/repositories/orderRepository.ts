@@ -122,6 +122,35 @@ class OrderRepository {
   }
 
   /**
+   * What this box really cost to fulfil, from the person who packed it
+   * (§ fulfilment records the real cost).
+   *
+   * Overwrites rather than appends: a packer correcting a figure they
+   * mistyped is the common case, and a history of wrong numbers helps
+   * nobody. Who entered it and when are recorded, so the correction is
+   * still attributable.
+   */
+  async recordCosts(
+    orderId: string,
+    costs: {
+      goodsCostKes: number;
+      otherCostKes: number;
+      note: string | null;
+      recordedBy: string;
+      recordedByName: string;
+    },
+  ): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(orderId)
+      .update({
+        costs: { ...costs, recordedAt: FieldValue.serverTimestamp() },
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: costs.recordedBy,
+      });
+  }
+
+  /**
    * The money for a pay-on-delivery order has arrived (§ pay on
    * delivery) — the customer paid the prompt at the door.
    *

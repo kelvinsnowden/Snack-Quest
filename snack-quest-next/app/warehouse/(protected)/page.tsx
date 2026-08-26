@@ -9,10 +9,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ShipmentStatusBadge } from '@/components/admin/ShipmentStatusBadge';
 import { CompleteManualBookingDialog } from '@/components/admin/CompleteManualBookingDialog';
-import { MarkDispatchedButton } from '@/components/warehouse/MarkDispatchedButton';
-import { formatDate } from '@/lib/orders/format';
-import { OrderPackingList } from '@/components/warehouse/OrderPackingList';
-import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
+import { FulfilmentOrderCard } from '@/components/warehouse/FulfilmentOrderCard';
 
 export const metadata: Metadata = { title: 'Queue' };
 
@@ -68,76 +65,11 @@ export default async function WarehouseQueuePage({
         {toPack.orders.length === 0 ? (
           <EmptyState icon={PackageCheck} title="Nothing to pack right now" description="Paid orders waiting to be boxed up will show here." />
         ) : (
-          <Card className="overflow-hidden p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Customer</th>
-                    <th className="px-4 py-3 font-medium">Boxes and contents</th>
-                    <th className="px-4 py-3 font-medium">Delivery</th>
-                    <th className="px-4 py-3 font-medium">Placed</th>
-                    <th className="px-4 py-3 font-medium" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {toPack.orders.map(({ id, data }) => (
-                    <tr key={id} className="border-b border-border last:border-0 hover:bg-border/20">
-                      <td className="px-4 py-3">
-                        <span className="font-medium text-foreground">{data.customer.customerName || 'Guest'}</span>
-                        <span className="block text-caption text-muted-foreground tabular-nums">{data.customer.phoneNumber}</span>
-                      </td>
-                      <td className="px-4 py-3 text-foreground">
-                        <OrderPackingList product={data.product} />
-                      </td>
-                      <td className="px-4 py-3 text-foreground capitalize">
-                        {data.delivery.method}
-                        {data.delivery.method === 'pickup' && data.delivery.pickupStationName
-                          ? ` — ${data.delivery.pickupStationName}`
-                          : null}
-                        {/*
-                          Not paid for yet (§ pay on delivery). Said on
-                          the packing screen as well as the delivery
-                          one, because it changes what the person
-                          handing the box over has to do.
-                        */}
-                        {data.payment?.dueOnDelivery ? (
-                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
-                            Unpaid — collect KES {data.pricing.totalKes.toLocaleString()}
-                          </span>
-                        ) : null}
-                        {/*
-                          Where it is actually going. A door order
-                          without its address is not something anyone
-                          can deliver.
-                        */}
-                        {data.delivery.method === 'door' && data.delivery.addressText ? (
-                          <span className="mt-0.5 block text-caption text-muted-foreground normal-case">
-                            {data.delivery.addressText}
-                          </span>
-                        ) : null}
-                        {/*
-                          This is the last screen before the box leaves,
-                          so it is the last chance to notice that money
-                          is still owed on it. Unmissable on purpose:
-                          once it is on the van, nobody is collecting.
-                        */}
-                        {data.delivery.feeCollection === 'on_delivery' ? (
-                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
-                            Collect KES {data.delivery.feeKes.toLocaleString()} on delivery
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{formatDate(data.createdAt)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <MarkDispatchedButton orderId={id} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <div className="flex flex-col gap-3">
+            {toPack.orders.map(({ id, data }) => (
+              <FulfilmentOrderCard key={id} orderId={id} order={data} stage="pack" />
+            ))}
+          </div>
         )}
         {toPack.nextCursor ? (
           <div className="flex justify-center">
@@ -221,83 +153,14 @@ export default async function WarehouseQueuePage({
           <EmptyState
             icon={Truck}
             title="Nothing out for delivery"
-            description="Orders you have marked dispatched will wait here until the customer has them."
+            description="Orders you have marked on their way will wait here until the customer has them."
           />
         ) : (
-          <Card className="overflow-hidden p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead className="border-b border-border bg-border/20 text-left text-caption text-muted-foreground uppercase">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Customer</th>
-                    <th className="px-4 py-3 font-medium">Going to</th>
-                    <th className="px-4 py-3 font-medium">Placed</th>
-                    <th className="px-4 py-3 font-medium" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {outForDelivery.orders.map(({ id, data }) => (
-                    <tr key={id} className="border-b border-border last:border-0 hover:bg-border/20">
-                      <td className="px-4 py-3">
-                        <span className="font-medium text-foreground">
-                          {data.customer.customerName || 'Guest'}
-                        </span>
-                        <span className="block text-caption text-muted-foreground tabular-nums">
-                          {data.customer.phoneNumber}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-foreground capitalize">
-                        {data.delivery.method}
-                        {data.delivery.method === 'pickup' && data.delivery.pickupStationName
-                          ? ` — ${data.delivery.pickupStationName}`
-                          : null}
-                        {data.delivery.method === 'door' && data.delivery.addressText ? (
-                          <span className="mt-0.5 block text-caption text-muted-foreground normal-case">
-                            {data.delivery.addressText}
-                          </span>
-                        ) : null}
-                        {/*
-                          Still owed, and this is the doorstep. Last
-                          chance to collect it.
-                        */}
-                        {data.payment?.dueOnDelivery ? (
-                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
-                            Unpaid — collect KES {data.pricing.totalKes.toLocaleString()}
-                          </span>
-                        ) : null}
-                        {data.delivery.feeCollection === 'on_delivery' ? (
-                          <span className="mt-1 block text-caption font-semibold text-warning normal-case">
-                            Collect KES {data.delivery.feeKes.toLocaleString()} on delivery
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                        {formatDate(data.createdAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col items-end gap-2">
-                          {/*
-                            The money, before the button that says the
-                            job is done. An order marked delivered with
-                            payment still outstanding is one nobody
-                            goes back for.
-                          */}
-                          {data.payment?.dueOnDelivery ? (
-                            <CollectPaymentButton
-                              orderId={id}
-                              amountKes={data.pricing.totalKes}
-                              phoneNumber={data.customer.phoneNumber}
-                            />
-                          ) : null}
-                          <MarkDispatchedButton orderId={id} to="delivered" />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <div className="flex flex-col gap-3">
+            {outForDelivery.orders.map(({ id, data }) => (
+              <FulfilmentOrderCard key={id} orderId={id} order={data} stage="out" />
+            ))}
+          </div>
         )}
         {outForDelivery.nextCursor ? (
           <div className="flex justify-center">
