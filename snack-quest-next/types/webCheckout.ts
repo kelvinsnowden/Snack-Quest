@@ -24,7 +24,17 @@ export interface WebCheckoutRequest {
    * when this is absent, so an older client, the WhatsApp path and
    * every existing test keep working unchanged.
    */
-  items?: { packageId: string; quantity: number }[];
+  items?: {
+    packageId: string;
+    quantity: number;
+    /**
+     * The snacks chosen for *this* box (§ Premium: choose 5, discover
+     * the rest). On the line rather than at the top of the order,
+     * because two pick-offering boxes need two sets of picks and one
+     * list cannot say which box it belongs to.
+     */
+    guaranteedSnackIds?: string[];
+  }[];
   customerName: string;
   /** Any Kenyan form — `0712…`, `+254712…`, `254712…`. Normalized server-side. */
   phone: string;

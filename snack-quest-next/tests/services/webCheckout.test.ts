@@ -1483,7 +1483,13 @@ describe('more than one box on an order', () => {
     ).rejects.toThrow(/Deluxe Box/);
   });
 
-  it('refuses an order where two boxes both want snacks chosen', async () => {
+  /*
+   * This used to be refused outright — two pick-offering boxes on one
+   * order had no way to say which snacks belonged to which. They carry
+   * their own ids now, so what is refused is an order that names two
+   * such boxes and chooses for neither.
+   */
+  it('asks for snacks for both boxes when both want them chosen', async () => {
     await packageRepository.update(packageId, { guaranteedPickCount: 5 }, 'admin');
     await packageRepository.update(secondBoxId, { guaranteedPickCount: 5 }, 'admin');
 
@@ -1497,7 +1503,7 @@ describe('more than one box on an order', () => {
           ],
         }),
       ),
-    ).rejects.toThrow(/one box per order/i);
+    ).rejects.toThrow(/Choose exactly 5 snacks/i);
   });
 });
 
@@ -1701,5 +1707,142 @@ describe('a delivery fee that is not charged at all', () => {
     );
 
     expect(result.pricing.totalKes).toBe(2800);
+  });
+});
+
+/**
+ * Two boxes that each let the customer choose their own snacks
+ * (§ more than one box per order).
+ *
+ * This was refused outright until now: with one list of snack ids at
+ * the top of the order there was no way to say which box they belonged
+ * to, so a customer wanting a Premium and a Deluxe was told to place
+ * two separate orders. The ids live on the line now, so the question
+ * does not arise.
+ */
+describe('snacks chosen for each of two boxes', () => {
+  const PREMIUM_ID = 'premium-box';
+  const DELUXE_ID = 'deluxe-pick-box';
+
+  async function seedTwoPickBoxes() {
+    for (const [id, name, pickCount] of [
+      [PREMIUM_ID, 'Premium Box', 5],
+      [DELUXE_ID, 'Deluxe Box', 3],
+    ] as const) {
+      await adminFirestore.collection('packages').doc(id).set({
+        businessId: BUSINESS_ID,
+        name,
+        description: 'Pick some, we surprise you with the rest.',
+        priceKes: 5000,
+        isActive: true,
+        imageUrl: null,
+        guaranteedPickCount: pickCount,
+      });
+    }
+    const ids: string[] = [];
+    for (const name of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+      const ref = adminFirestore.collection('snackItems').doc(`snack-${name}`);
+      await ref.set({
+        businessId: BUSINESS_ID,
+        name: `Snack ${name}`,
+        imageUrl: null,
+        expectedUnitCostKes: 100,
+        unitLabel: 'bag',
+        origin: 'Japan',
+        sourcingNote: null,
+        isActive: true,
+        availableForPremiumSelection: true,
+      });
+      ids.push(ref.id);
+    }
+    return ids;
+  }
+
+  async function snapshotFor(sessionId: string) {
+    const conversation = await conversationRepository.findById(sessionId);
+    return conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+  }
+
+  it('packs each box with the snacks chosen for it', async () => {
+    const ids = await seedTwoPickBoxes();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        packageId: PREMIUM_ID,
+        items: [
+          { packageId: PREMIUM_ID, quantity: 1, guaranteedSnackIds: ids.slice(0, 5) },
+          { packageId: DELUXE_ID, quantity: 1, guaranteedSnackIds: ids.slice(5, 8) },
+        ],
+      }),
+    );
+
+    const snapshot = await snapshotFor(result.checkoutSessionId);
+    // Each line's own count, from its own box's `guaranteedPickCount`.
+    expect(snapshot?.items?.[0].guaranteedPicks).toHaveLength(5);
+    expect(snapshot?.items?.[1].guaranteedPicks).toHaveLength(3);
+    // And genuinely different snacks, not the same five twice — the
+    // failure this whole change exists to prevent.
+    expect(snapshot?.items?.[1].guaranteedPicks?.map((pick) => pick.snackItemId)).toEqual(
+      ids.slice(5, 8),
+    );
+  });
+
+  it('names the box when one of them is short', async () => {
+    const ids = await seedTwoPickBoxes();
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          packageId: PREMIUM_ID,
+          items: [
+            { packageId: PREMIUM_ID, quantity: 1, guaranteedSnackIds: ids.slice(0, 5) },
+            // Two, where the Deluxe needs three.
+            { packageId: DELUXE_ID, quantity: 1, guaranteedSnackIds: ids.slice(5, 7) },
+          ],
+        }),
+      ),
+      // "Choose exactly 3 snacks" alone would not say which box.
+    ).rejects.toThrow(/Deluxe Box/);
+  });
+
+  /*
+   * A second pick box must not inherit the first one's ids. Silently
+   * packing both boxes identically and calling it the customer's
+   * choice is worse than refusing.
+   */
+  it('refuses a second pick box with no picks of its own', async () => {
+    const ids = await seedTwoPickBoxes();
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          packageId: PREMIUM_ID,
+          guaranteedSnackIds: ids.slice(0, 5),
+          items: [
+            { packageId: PREMIUM_ID, quantity: 1 },
+            { packageId: DELUXE_ID, quantity: 1 },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/Deluxe Box/);
+  });
+
+  /** The one-box order still writes exactly what it always did. */
+  it('leaves a single pick box reading from the top of the order', async () => {
+    const ids = await seedTwoPickBoxes();
+
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({ packageId: PREMIUM_ID, guaranteedSnackIds: ids.slice(0, 5) }),
+    );
+
+    const snapshot = await snapshotFor(result.checkoutSessionId);
+    expect(snapshot?.guaranteedPicks).toHaveLength(5);
+    expect(snapshot?.items).toBeUndefined();
   });
 });

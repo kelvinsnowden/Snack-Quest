@@ -269,12 +269,17 @@ export interface WebCheckoutInput {
    * (§ more than one box per order). Absent for a single-box order,
    * which keeps using `packageId`/`quantity` exactly as before.
    */
-  items?: { packageId: string; quantity: number }[];
+  items?: { packageId: string; quantity: number; guaranteedSnackIds?: string[] }[];
   /**
    * Snack ids the customer chose as guaranteed picks (§ Premium:
    * choose 5, discover the rest). Ids only — every name, photo and
    * eligibility decision is re-read from the catalogue server-side.
    * Ignored for a box that does not offer picks.
+   *
+   * Applies to the *first* pick-offering box. A second one carries its
+   * own ids on its `items` entry — an order with two Premium-style
+   * boxes needs two sets of picks, and one list at the top of the
+   * order cannot say which box it belongs to.
    */
   guaranteedSnackIds?: string[];
   /**
@@ -655,8 +660,14 @@ class ConversationService {
      */
     const requested =
       input.items?.length
-        ? input.items.map((item) => ({ packageId: item.packageId, quantity: Math.trunc(item.quantity) }))
-        : [{ packageId: input.packageId, quantity }];
+        ? input.items.map((item) => ({
+            packageId: item.packageId,
+            quantity: Math.trunc(item.quantity),
+            // Carried through so each line's picks stay attached to
+            // the box they were chosen for.
+            ...(item.guaranteedSnackIds ? { guaranteedSnackIds: item.guaranteedSnackIds } : {}),
+          }))
+        : [{ packageId: input.packageId, quantity } as { packageId: string; quantity: number; guaranteedSnackIds?: string[] }];
 
     if (requested.length > MAX_WEB_CHECKOUT_LINES) {
       throw new WebCheckoutValidationError(
@@ -822,32 +833,66 @@ class ConversationService {
      * wrong box, never an unavailable snack.
      */
     /*
-     * Picks belong to a box, so an order has to name which one
-     * (§ more than one box per order). With a single pick-offering box
-     * that is unambiguous; with two, the ids the customer sent could
-     * belong to either, and packing the wrong one is worse than
-     * refusing.
+     * Picks belong to a box, so they are resolved per line
+     * (§ more than one box per order).
      *
-     * Refused with a plain instruction rather than guessed at, and
-     * refused here rather than in the UI alone — the UI can be
-     * bypassed, and the packing list cannot be un-printed.
+     * This used to refuse an order with two pick-offering boxes
+     * outright — with one list of ids at the top of the order there
+     * was no way to say which box they belonged to, and packing the
+     * wrong one is worse than refusing. Now each line carries its own
+     * ids, so the question does not arise and a customer can buy a
+     * Premium and a Deluxe in one go.
+     *
+     * The first pick-offering box may still take its ids from the
+     * top-level field, which is what the website sent before this and
+     * what a one-box order still sends.
      */
-    const pickBoxes = lines.filter((line) => offersGuaranteedPicks(boxes.get(line.packageId)!));
-    if (pickBoxes.length > 1) {
-      throw new WebCheckoutValidationError(
-        'Only one box per order can have snacks chosen for it. Please order them separately.',
-      );
-    }
-    const pickBox = pickBoxes[0] ? boxes.get(pickBoxes[0].packageId)! : box;
+    const wantedSnackIds = [
+      ...(input.guaranteedSnackIds ?? []),
+      ...requested.flatMap((item) => item.guaranteedSnackIds ?? []),
+    ];
+    const catalogue = wantedSnackIds.length
+      ? await snackItemRepository.findManyById([...new Set(wantedSnackIds)])
+      : new Map<string, SnackItem>();
 
-    const catalogue =
-      offersGuaranteedPicks(pickBox) && input.guaranteedSnackIds?.length
-        ? await snackItemRepository.findManyById(input.guaranteedSnackIds)
-        : new Map<string, SnackItem>();
-    const pickResult = validateGuaranteedPicks(businessId, pickBox, input.guaranteedSnackIds, catalogue);
-    if (!pickResult.ok) {
-      throw new WebCheckoutValidationError(pickResult.reason);
+    let topLevelIdsUsed = false;
+    for (const line of lines) {
+      const lineBox = boxes.get(line.packageId)!;
+      if (!offersGuaranteedPicks(lineBox)) {
+        continue;
+      }
+      const requestedLine = requested.find((item) => item.packageId === line.packageId);
+      /*
+       * Its own ids when it has them; otherwise the top-level list,
+       * but only for the first pick box that asks. Letting a second
+       * one fall back to the same list would silently pack two boxes
+       * identically and call it the customer's choice.
+       */
+      let ids = requestedLine?.guaranteedSnackIds;
+      if (ids === undefined && !topLevelIdsUsed) {
+        ids = input.guaranteedSnackIds;
+        topLevelIdsUsed = true;
+      }
+
+      const lineResult = validateGuaranteedPicks(businessId, lineBox, ids, catalogue);
+      if (!lineResult.ok) {
+        // Named, because "choose exactly 5 snacks" on a two-box order
+        // does not say which box is short.
+        throw new WebCheckoutValidationError(
+          lines.length > 1 ? `${lineBox.name}: ${lineResult.reason}` : lineResult.reason,
+        );
+      }
+      if (lineResult.picks.length) {
+        line.guaranteedPicks = lineResult.picks;
+      }
     }
+
+    /*
+     * What everything that predates per-line picks still reads: the
+     * first box's picks, at the top of the snapshot. A one-box order
+     * therefore writes exactly what it always did.
+     */
+    const pickResult = { picks: lines.find((line) => line.guaranteedPicks)?.guaranteedPicks ?? [] };
 
     // Staff-set only; the route refuses it from anyone else.
     /*

@@ -21,7 +21,7 @@ import { OrderStatusActions } from '@/components/admin/OrderStatusActions';
 import { RefundActions } from '@/components/admin/RefundActions';
 import { RefundStatusBadge } from '@/components/admin/RefundStatusBadge';
 import { formatDateTime, formatKes, formatOrderNumber } from '@/lib/orders/format';
-import { orderBoxSummary } from '@/types/checkoutLine';
+import { orderBoxSummary, orderLines } from '@/types/checkoutLine';
 
 export const metadata: Metadata = { title: 'Order detail' };
 
@@ -67,6 +67,27 @@ export default async function AdminOrderDetailPage({
   ]);
 
   const { customer, delivery, payment, pricing, product } = order;
+
+  /*
+   * Which boxes on this order had snacks chosen for them. Per line
+   * now, since an order can hold two pick-offering boxes; an order
+   * written before that carries its picks at the top of `product`, so
+   * it falls back to the first line and renders as it always did.
+   */
+  const pickedLines = orderLines(product)
+    .map((line) => ({
+      packageId: line.packageId,
+      packageLabel: line.packageLabel,
+      picks: line.guaranteedPicks ?? [],
+    }))
+    .filter((line) => line.picks.length > 0);
+  if (pickedLines.length === 0 && product.guaranteedPicks?.length) {
+    pickedLines.push({
+      packageId: product.packageId,
+      packageLabel: product.packageLabel,
+      picks: product.guaranteedPicks,
+    });
+  }
   const canInitiateRefund =
     order.status === 'refund_requested' &&
     !refunds.some(({ data }) => data.status === 'processing' || data.status === 'succeeded');
@@ -306,15 +327,25 @@ export default async function AdminOrderDetailPage({
         the rest). Stated as a floor rather than the contents — the
         rest of the box is still curated, and a packer reading this as
         "the box contains these five" would ship a worse box.
+
+        Read off the lines rather than the order, because an order can
+        now hold two boxes that each had snacks chosen for them, and
+        one list would send five of them into the wrong box. The order
+        that predates per-line picks has none on its lines, so its own
+        list is used and it renders exactly as it always did.
       */}
-      {product.guaranteedPicks?.length ? (
-        <Card>
+      {pickedLines.map((line, lineIndex) => (
+        <Card key={`${line.packageId}-${lineIndex}`}>
           <CardHeader>
-            <CardTitle>Guaranteed picks — must be in this box</CardTitle>
+            <CardTitle>
+              {pickedLines.length > 1
+                ? `Guaranteed picks — ${line.packageLabel}`
+                : 'Guaranteed picks — must be in this box'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ol className="divide-border divide-y">
-              {product.guaranteedPicks.map((pick, index) => (
+              {line.picks.map((pick, index) => (
                 <li key={pick.snackItemId} className="flex items-baseline gap-3 py-2 text-sm">
                   <span className="text-muted-foreground w-4 shrink-0 tabular-nums">{index + 1}.</span>
                   <span className="text-foreground font-medium">{pick.name}</span>
@@ -329,7 +360,7 @@ export default async function AdminOrderDetailPage({
             </p>
           </CardContent>
         </Card>
-      ) : null}
+      ))}
 
       {items.length > 0 ? (
         <Card>

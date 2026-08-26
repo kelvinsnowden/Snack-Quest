@@ -90,7 +90,13 @@ export function StaffInitiatedOrderDialog({
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
   const [referralCode, setReferralCode] = useState('');
-  const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
+  /*
+   * Picks per box, keyed by package id (§ more than one box per
+   * order). One shared list would have to belong to one of the boxes,
+   * and an operator taking an order for a Premium and a Deluxe needs
+   * to choose for both.
+   */
+  const [picksByBox, setPicksByBox] = useState<Record<string, string[]>>({});
   /*
    * Who settles the delivery fee (§ delivery paid on delivery). One
    * question with three answers rather than two independent
@@ -119,7 +125,7 @@ export function StaffInitiatedOrderDialog({
     setStation(null);
     setAddressText('');
     setReferralCode('');
-    setGuaranteedSnackIds([]);
+    setPicksByBox({});
     setFeeCollection('prepaid');
     setPaymentMode('request');
     setManualMethod('cash');
@@ -134,15 +140,15 @@ export function StaffInitiatedOrderDialog({
     .filter((box): box is OrderableBox => Boolean(box));
 
   /*
-   * Picks belong to one box, so an order may only contain one box that
-   * offers them — the server refuses more, and the dialog must not
-   * offer what the server will reject after the operator has read the
-   * total back to the customer.
+   * Every box on the order that offers picks, each with its own
+   * picker. This used to be capped at one — the server refused a
+   * second, so the dialog could not offer it — and a customer wanting
+   * a Premium and a Deluxe had to place two orders.
    */
   const pickBoxes = chosenBoxes.filter((box) => box.guaranteedPickCount > 0);
-  const selectedBox = pickBoxes[0] ?? null;
-  const requiredPicks = selectedBox?.guaranteedPickCount ?? 0;
-  const tooManyPickBoxes = pickBoxes.length > 1;
+  const picksComplete = pickBoxes.every(
+    (box) => (picksByBox[box.id]?.length ?? 0) === box.guaranteedPickCount,
+  );
 
   const parsedLines = lines.map((line) => ({
     packageId: line.packageId,
@@ -162,9 +168,6 @@ export function StaffInitiatedOrderDialog({
 
   function setLine(index: number, patch: Partial<{ packageId: string; quantity: string }>) {
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
-    // Picks belong to the box they were chosen for; changing which
-    // boxes are on the order invalidates them.
-    if (patch.packageId !== undefined) setGuaranteedSnackIds([]);
   }
 
   function addLine() {
@@ -175,17 +178,14 @@ export function StaffInitiatedOrderDialog({
 
   function removeLine(index: number) {
     setLines((current) => (current.length === 1 ? current : current.filter((_, i) => i !== index)));
-    setGuaranteedSnackIds([]);
   }
 
   /*
-   * Picks belong to the box they were chosen for. Switching box has to
-   * drop them, or a Premium selection would silently ride along on a
-   * Starter Box and be refused by the server at submit — after the
-   * operator has already read the total back to the customer.
-   *
-   * Cleared in the change handler rather than an effect, so this never
-   * sets state during a render pass.
+   * Picks are keyed by the box they were chosen for, so switching a
+   * line no longer has to clear anything: an entry for a box that is
+   * no longer on the order is simply not read, and only the boxes
+   * actually chosen are checked for completeness. Switching away and
+   * back brings the operator's picks with it.
    */
   const alreadyPaid = paymentMode === 'already_paid';
   // Cash is the only method with nothing to reference. The server
@@ -194,13 +194,13 @@ export function StaffInitiatedOrderDialog({
   const manualReferenceReady = manualMethod === 'cash' || manualReference.trim().length > 0;
   const ready =
     linesValid &&
-    !tooManyPickBoxes &&
     customerName.trim().length >= 2 &&
     isValidKenyanPhone(phone) &&
     (deliveryMethod === 'pickup' ? Boolean(station) : addressText.trim().length >= 5) &&
-    // Exactly the required number, matching what the server enforces.
-    // Fewer or more is refused there, so the button must not offer it.
-    guaranteedSnackIds.length === requiredPicks &&
+    // Exactly the required number for every pick box, matching what
+    // the server enforces per line. Fewer or more is refused there, so
+    // the button must not offer it.
+    picksComplete &&
     (!alreadyPaid || manualReferenceReady);
 
   async function onSubmit() {
@@ -216,7 +216,16 @@ export function StaffInitiatedOrderDialog({
           // therefore sends exactly the request it always sent.
           packageId: parsedLines[0].packageId,
           quantity: parsedLines[0].quantity,
-          ...(parsedLines.length > 1 ? { items: parsedLines } : {}),
+          ...(parsedLines.length > 1 || pickBoxes.length > 1
+            ? {
+                items: parsedLines.map((line) => ({
+                  ...line,
+                  ...(picksByBox[line.packageId]?.length
+                    ? { guaranteedSnackIds: picksByBox[line.packageId] }
+                    : {}),
+                })),
+              }
+            : {}),
           customerName: customerName.trim(),
           phone: phone.trim(),
           county: deliveryMethod === 'pickup' ? (station?.county ?? '') : 'Nairobi',
@@ -225,7 +234,11 @@ export function StaffInitiatedOrderDialog({
             ? { pickupStationId: station?.id }
             : { addressText: addressText.trim() }),
           referralCode: referralCode.trim() || undefined,
-          ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
+          // The first pick box's ids still travel at the top level,
+          // which is the shape a one-box order has always sent.
+          ...(pickBoxes[0] && picksByBox[pickBoxes[0].id]?.length
+            ? { guaranteedSnackIds: picksByBox[pickBoxes[0].id] }
+            : {}),
           ...(feeCollection !== 'prepaid' ? { deliveryFeeCollection: feeCollection } : {}),
           ...(alreadyPaid
             ? {
@@ -432,34 +445,36 @@ export function StaffInitiatedOrderDialog({
                     ) : null}
                   </div>
 
-                  {tooManyPickBoxes ? (
-                    <p className="text-warning text-sm">
-                      Only one box per order can have snacks chosen for it. Remove one, or take them
-                      as separate orders.
-                    </p>
-                  ) : null}
                 </div>
 
                 {/*
-                  Only for a box that actually offers picks (§ staff
-                  pick the snacks too). A Starter Box has nothing to
-                  choose, and rendering an empty picker on it would
-                  imply otherwise.
+                  One picker per box that actually offers picks
+                  (§ staff pick the snacks too). A Starter Box has
+                  nothing to choose, and rendering an empty picker on
+                  it would imply otherwise.
+
+                  Each is labelled with its box name once there is more
+                  than one, because two identical-looking pickers with
+                  no names is how five snacks end up in the wrong box.
                 */}
-                {requiredPicks > 0 ? (
-                  <div className="flex flex-col gap-2">
-                    <Label>Snacks for this box</Label>
+                {pickBoxes.map((pickBox) => (
+                  <div key={pickBox.id} className="flex flex-col gap-2">
+                    <Label>
+                      {pickBoxes.length > 1 ? `Snacks for the ${pickBox.name}` : 'Snacks for this box'}
+                    </Label>
                     <p className="text-muted-foreground text-caption">
-                      {selectedBox?.name} includes {requiredPicks} snacks the customer chooses. Pick
-                      what they asked for — we curate the rest.
+                      {pickBox.name} includes {pickBox.guaranteedPickCount} snacks the customer
+                      chooses. Pick what they asked for — we curate the rest.
                     </p>
                     <StaffSnackPicker
-                      required={requiredPicks}
-                      selectedIds={guaranteedSnackIds}
-                      onChange={setGuaranteedSnackIds}
+                      required={pickBox.guaranteedPickCount}
+                      selectedIds={picksByBox[pickBox.id] ?? []}
+                      onChange={(ids) =>
+                        setPicksByBox((current) => ({ ...current, [pickBox.id]: ids }))
+                      }
                     />
                   </div>
-                ) : null}
+                ))}
 
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="staff-order-name">Customer name</Label>

@@ -203,7 +203,24 @@ export async function POST(request: Request): Promise<Response> {
         // Every box a staff member put on the order. Validated by the
         // service against the live catalogue, exactly as a customer's
         // own checkout is.
-        ...(Array.isArray(items) ? { items } : {}),
+        // Sanitised rather than forwarded raw: `items` now carries
+        // snack ids, and everything they name is re-read from the
+        // catalogue server-side regardless.
+        ...(Array.isArray(items)
+          ? {
+              items: items.map((item) => ({
+                packageId: item.packageId,
+                quantity: item.quantity,
+                ...(Array.isArray(item.guaranteedSnackIds)
+                  ? {
+                      guaranteedSnackIds: item.guaranteedSnackIds.filter(
+                        (id): id is string => typeof id === 'string',
+                      ),
+                    }
+                  : {}),
+              })),
+            }
+          : {}),
         ...(deliveryFeeCollection ? { deliveryFeeCollection } : {}),
         guaranteedSnackIds: Array.isArray(guaranteedSnackIds)
           ? guaranteedSnackIds.filter((id): id is string => typeof id === 'string')
