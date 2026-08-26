@@ -1352,3 +1352,219 @@ describe('guaranteed picks on a Premium box', () => {
     ).rejects.toBeInstanceOf(WebCheckoutValidationError);
   });
 });
+
+/**
+ * More than one box on a single order (§ more than one box per order).
+ *
+ * A customer asked for one of each and the shop could only sell them
+ * one. What these guard is the half of that change which is dangerous:
+ * the money and the stock. A two-box order that charges for one, or
+ * reserves one, is worse than not selling it at all.
+ */
+describe('more than one box on an order', () => {
+  let secondBoxId: string;
+
+  beforeEach(async () => {
+    secondBoxId = await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Deluxe Box',
+        description: 'A bigger box',
+        priceKes: 3500,
+        isActive: true,
+        imageUrl: null,
+        stockCount: 5,
+      },
+      'test',
+    );
+  });
+
+  it('charges the sum of both boxes, not just the first', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        items: [
+          { packageId, quantity: 1 },
+          { packageId: secondBoxId, quantity: 2 },
+        ],
+      }),
+    );
+
+    // 2500 + (3500 x 2) = 9500, plus the 300 station fee.
+    expect(result.pricing.subtotalKes).toBe(9500);
+    expect(result.pricing.totalKes).toBe(9800);
+    // The prompt is for the whole order, never the first line.
+    expect(initiateStkPushMock).toHaveBeenCalledWith(
+      expect.objectContaining({ amountKes: 9800 }),
+    );
+  });
+
+  it('charges one delivery fee, not one per box', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        items: [
+          { packageId, quantity: 1 },
+          { packageId: secondBoxId, quantity: 1 },
+        ],
+      }),
+    );
+
+    expect(result.pricing.deliveryFeeKes).toBe(300);
+  });
+
+  it('freezes every line onto the snapshot', async () => {
+    const result = await service().startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        items: [
+          { packageId, quantity: 1 },
+          { packageId: secondBoxId, quantity: 2 },
+        ],
+      }),
+    );
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot?.items).toHaveLength(2);
+    expect(snapshot?.items?.[1]).toMatchObject({
+      packageId: secondBoxId,
+      packageLabel: 'Deluxe Box',
+      quantity: 2,
+      unitPriceKes: 3500,
+    });
+    // The first line stays where it always was, so everything that
+    // predates line items keeps reading the order correctly.
+    expect(snapshot?.packageId).toBe(packageId);
+    expect(snapshot?.quantity).toBe(1);
+  });
+
+  /** The single-box order must be untouched by all of this. */
+  it('writes no items array at all for a one-box order', async () => {
+    const result = await service().startWebCheckout(BUSINESS_ID, pickupInput());
+
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(
+      conversation!.conversationCheckoutSnapshotId!,
+    );
+    expect(snapshot?.items).toBeUndefined();
+    expect(snapshot?.subtotalKes).toBe(2500);
+  });
+
+  it('refuses the same box twice rather than guessing which count was meant', async () => {
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          items: [
+            { packageId, quantity: 1 },
+            { packageId, quantity: 2 },
+          ],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(WebCheckoutValidationError);
+  });
+
+  it('names the box that is short, not just "out of stock"', async () => {
+    await packageRepository.update(secondBoxId, { stockCount: 1 }, 'admin');
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          items: [
+            { packageId, quantity: 1 },
+            { packageId: secondBoxId, quantity: 3 },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/Deluxe Box/);
+  });
+
+  it('refuses an order where two boxes both want snacks chosen', async () => {
+    await packageRepository.update(packageId, { guaranteedPickCount: 5 }, 'admin');
+    await packageRepository.update(secondBoxId, { guaranteedPickCount: 5 }, 'admin');
+
+    await expect(
+      service().startWebCheckout(
+        BUSINESS_ID,
+        pickupInput({
+          items: [
+            { packageId, quantity: 1 },
+            { packageId: secondBoxId, quantity: 1 },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/one box per order/i);
+  });
+});
+
+/**
+ * The half of a two-box order that costs real money if it is wrong:
+ * what actually gets reserved and what actually gets packed
+ * (§ more than one box per order).
+ */
+describe('a paid two-box order', () => {
+  it('reserves stock for both boxes and records both as line items', async () => {
+    await packageRepository.update(packageId, { stockCount: 10 }, 'admin');
+    const secondBoxId = await packageRepository.create(
+      {
+        businessId: BUSINESS_ID,
+        name: 'Deluxe Box',
+        description: 'A bigger box',
+        priceKes: 3500,
+        isActive: true,
+        imageUrl: null,
+        stockCount: 10,
+      },
+      'test',
+    );
+
+    const svc = service();
+    const result = await svc.startWebCheckout(
+      BUSINESS_ID,
+      pickupInput({
+        items: [
+          { packageId, quantity: 2 },
+          { packageId: secondBoxId, quantity: 3 },
+        ],
+      }),
+    );
+    const conversation = await conversationRepository.findById(result.checkoutSessionId);
+    const intents = await paymentIntentRepository.listByStatus(BUSINESS_ID, ['processing']);
+
+    await svc.handlePaymentResult({
+      status: 'succeeded',
+      intentId: intents[0].id,
+      conversationId: result.checkoutSessionId,
+      snapshotId: conversation!.conversationCheckoutSnapshotId!,
+      amountKes: result.pricing.totalKes,
+      mpesaReceiptNumber: 'NLJ7RT61SV',
+    });
+
+    // Both boxes left the shelf — the failure this guards against is
+    // an order that takes money for two and reserves one.
+    expect((await packageRepository.findById(BUSINESS_ID, packageId))?.stockCount).toBe(8);
+    expect((await packageRepository.findById(BUSINESS_ID, secondBoxId))?.stockCount).toBe(7);
+
+    const order = await orderRepository.findByConversationId(BUSINESS_ID, result.checkoutSessionId);
+    expect(order).not.toBeNull();
+    expect(order?.data.product.items).toHaveLength(2);
+
+    // The packing list is built from the subcollection, so it has to
+    // hold both lines too — each at its own price, never the order's
+    // subtotal divided by the first line's count.
+    const items = await orderRepository.listItems(order!.id);
+    expect(items).toHaveLength(2);
+    expect(items.find((item) => item.packageId === packageId)).toMatchObject({
+      quantity: 2,
+      unitCostKes: 2500,
+    });
+    expect(items.find((item) => item.packageId === secondBoxId)).toMatchObject({
+      quantity: 3,
+      unitCostKes: 3500,
+    });
+  });
+});

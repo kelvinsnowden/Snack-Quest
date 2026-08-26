@@ -26,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { packageId, quantity, deliveryMethod, serviceLevel, pickupStationId, referralCode, phone } =
+  const { packageId, quantity, items, deliveryMethod, serviceLevel, pickupStationId, referralCode, phone } =
     (body ?? {}) as Record<string, unknown>;
 
   if (typeof packageId !== 'string' || !packageId || typeof quantity !== 'number') {
@@ -46,6 +46,7 @@ export async function POST(request: Request): Promise<Response> {
     {
       packageId,
       quantity,
+      ...(Array.isArray(items) ? { items } : {}),
       deliveryMethod,
       // Without this the quote prices next-day while the order charges
       // same-day — the divergence this endpoint exists to prevent.

@@ -9,6 +9,7 @@ import { whatchimpGateway } from '@/lib/integrations/whatchimp/whatchimpGateway'
 import { Timestamp } from 'firebase-admin/firestore';
 import { DELIVERY_PROVIDER_FOR_METHOD } from '@/types';
 import type { ConversionAttribution, GuaranteedPick, ManualPaymentRecord, SnackItem } from '@/types';
+import type { CheckoutLineItem } from '@/types/checkoutLine';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { normalizeEmail } from '@/lib/checkout/email';
@@ -219,6 +220,18 @@ export class ConversationNotFoundError extends Error {
  */
 export const MAX_WEB_CHECKOUT_QUANTITY = MAX_CHECKOUT_QUANTITY;
 
+/**
+ * How many *different* boxes one order may hold (§ more than one box
+ * per order).
+ *
+ * A ceiling rather than none at all: every line is a catalogue read,
+ * a stock check and a row on a packing list, and an order naming
+ * hundreds of boxes is a request to exhaust the request, not a
+ * customer. Comfortably above any real order — this shop sells three
+ * boxes today.
+ */
+export const MAX_WEB_CHECKOUT_LINES = 10;
+
 /** The customer got something wrong (or sent something impossible) — safe to show them verbatim, answered as 400. */
 export class WebCheckoutValidationError extends Error {
   constructor(message: string) {
@@ -237,6 +250,12 @@ export class WebCheckoutConflictError extends Error {
 
 /** Exactly `WebCheckoutRequest`, but with the fields the route has already narrowed to real types. */
 export interface WebCheckoutInput {
+  /**
+   * Every box on the order, when the customer chose more than one
+   * (§ more than one box per order). Absent for a single-box order,
+   * which keeps using `packageId`/`quantity` exactly as before.
+   */
+  items?: { packageId: string; quantity: number }[];
   /**
    * Snack ids the customer chose as guaranteed picks (§ Premium:
    * choose 5, discover the rest). Ids only — every name, photo and
@@ -337,6 +356,14 @@ export interface WebCheckoutResult {
 export interface WebCheckoutQuoteInput {
   packageId: string;
   quantity: number;
+  /**
+   * Every box being quoted, when there is more than one (§ more than
+   * one box per order). The quote and the charge must agree, so this
+   * mirrors `WebCheckoutInput.items` exactly — a customer shown one
+   * box's price and charged for two would be the worst possible
+   * version of this feature.
+   */
+  items?: { packageId: string; quantity: number }[];
   deliveryMethod: DeliveryMethod;
   /** Door delivery only — the quote has to show the speed the customer will actually be charged for. */
   serviceLevel?: 'next-day' | 'same-day';
@@ -575,17 +602,78 @@ class ConversationService {
     // wants their snacks.
     const customerEmail = normalizeEmail(input.email);
 
-    const box = await packageRepository.findById(businessId, input.packageId);
-    if (!box || !box.isActive || isOfferExpired(box.offerExpiresAt)) {
-      throw new WebCheckoutValidationError(`Box ${input.packageId} is not available`);
-    }
-    if (box.stockCount !== undefined && box.stockCount < quantity) {
+    /*
+     * Every box on the order, priced from the catalogue (§ more than
+     * one box per order).
+     *
+     * `input.items` is the multi-box form; `packageId`/`quantity` is
+     * the one-box form every existing caller still uses, and the
+     * WhatsApp path can only ever produce. Both end up as the same
+     * list, so there is exactly one piece of code below that prices,
+     * validates and reserves — a second path for "the simple case" is
+     * how two boxes end up charged at one box's price.
+     */
+    const requested =
+      input.items?.length
+        ? input.items.map((item) => ({ packageId: item.packageId, quantity: Math.trunc(item.quantity) }))
+        : [{ packageId: input.packageId, quantity }];
+
+    if (requested.length > MAX_WEB_CHECKOUT_LINES) {
       throw new WebCheckoutValidationError(
-        box.stockCount <= 0
-          ? `${box.name} is out of stock`
-          : `Only ${box.stockCount} of ${box.name} left — reduce the quantity`,
+        `An order can hold at most ${MAX_WEB_CHECKOUT_LINES} different boxes`,
       );
     }
+    // The same box twice is two lines claiming the same stock, and the
+    // second would silently overwrite the first in any map keyed by id.
+    // Refused rather than merged: the client that sent it is confused
+    // about what the customer asked for, and guessing which count was
+    // meant is not this code's decision to make.
+    if (new Set(requested.map((item) => item.packageId)).size !== requested.length) {
+      throw new WebCheckoutValidationError('Each box can only appear once — change its quantity instead');
+    }
+    for (const item of requested) {
+      if (!Number.isFinite(item.quantity) || item.quantity < 1 || item.quantity > MAX_WEB_CHECKOUT_QUANTITY) {
+        throw new WebCheckoutValidationError(
+          `Every quantity must be a whole number between 1 and ${MAX_WEB_CHECKOUT_QUANTITY}`,
+        );
+      }
+    }
+
+    const boxes = new Map<string, NonNullable<Awaited<ReturnType<typeof packageRepository.findById>>>>();
+    for (const item of requested) {
+      const found = await packageRepository.findById(businessId, item.packageId);
+      if (!found || !found.isActive || isOfferExpired(found.offerExpiresAt)) {
+        throw new WebCheckoutValidationError(`Box ${item.packageId} is not available`);
+      }
+      // Checked per line, and named per line: "out of stock" on a
+      // two-box order has to say which box, or the customer is left
+      // guessing which half of their order to change.
+      if (found.stockCount !== undefined && found.stockCount < item.quantity) {
+        throw new WebCheckoutValidationError(
+          found.stockCount <= 0
+            ? `${found.name} is out of stock`
+            : `Only ${found.stockCount} of ${found.name} left — reduce the quantity`,
+        );
+      }
+      boxes.set(item.packageId, found);
+    }
+
+    const lines: CheckoutLineItem[] = requested.map((item) => {
+      const found = boxes.get(item.packageId)!;
+      return {
+        packageId: item.packageId,
+        packageLabel: found.name,
+        quantity: item.quantity,
+        unitPriceKes: found.priceKes,
+      };
+    });
+
+    /*
+     * The first line, and what everything downstream that predates
+     * line items still reads. Keeping it means a one-box order writes
+     * exactly the snapshot and order it always did, byte for byte.
+     */
+    const box = boxes.get(requested[0].packageId)!;
 
     // A customer mid-way through a WhatsApp conversation that a human
     // agent has taken over must not have an STK push fired at them
@@ -693,11 +781,30 @@ class ConversationService {
      * still in stock — is read here. A tampered request can order the
      * wrong box, never an unavailable snack.
      */
+    /*
+     * Picks belong to a box, so an order has to name which one
+     * (§ more than one box per order). With a single pick-offering box
+     * that is unambiguous; with two, the ids the customer sent could
+     * belong to either, and packing the wrong one is worse than
+     * refusing.
+     *
+     * Refused with a plain instruction rather than guessed at, and
+     * refused here rather than in the UI alone — the UI can be
+     * bypassed, and the packing list cannot be un-printed.
+     */
+    const pickBoxes = lines.filter((line) => offersGuaranteedPicks(boxes.get(line.packageId)!));
+    if (pickBoxes.length > 1) {
+      throw new WebCheckoutValidationError(
+        'Only one box per order can have snacks chosen for it. Please order them separately.',
+      );
+    }
+    const pickBox = pickBoxes[0] ? boxes.get(pickBoxes[0].packageId)! : box;
+
     const catalogue =
-      offersGuaranteedPicks(box) && input.guaranteedSnackIds?.length
+      offersGuaranteedPicks(pickBox) && input.guaranteedSnackIds?.length
         ? await snackItemRepository.findManyById(input.guaranteedSnackIds)
         : new Map<string, SnackItem>();
-    const pickResult = validateGuaranteedPicks(businessId, box, input.guaranteedSnackIds, catalogue);
+    const pickResult = validateGuaranteedPicks(businessId, pickBox, input.guaranteedSnackIds, catalogue);
     if (!pickResult.ok) {
       throw new WebCheckoutValidationError(pickResult.reason);
     }
@@ -709,10 +816,16 @@ class ConversationService {
         phoneNumber,
         existing?.conversation.customerId ?? null,
         {
-          packageId: input.packageId,
-          packageLabel: box.name,
-          priceKes: box.priceKes,
-          quantity,
+          // The first line, so a one-box order freezes exactly the
+          // snapshot it always did.
+          packageId: lines[0].packageId,
+          packageLabel: lines[0].packageLabel,
+          priceKes: lines[0].unitPriceKes,
+          quantity: lines[0].quantity,
+          // Written only when there is genuinely more than one, so
+          // every existing single-box snapshot keeps its exact shape
+          // rather than gaining a one-element array.
+          ...(lines.length > 1 ? { items: lines } : {}),
           customerName,
           customerEmail,
           county,
@@ -1156,9 +1269,34 @@ class ConversationService {
       }
     }
 
+    /*
+     * Priced from the catalogue, the same as the charge is. An extra
+     * box that cannot be read, is inactive, or is the primary box
+     * repeated is dropped from the quote rather than guessed at — the
+     * real checkout refuses those outright, and a quote that priced
+     * something the charge will reject is a number the customer can
+     * never actually pay.
+     */
+    const quoteLines: { unitPriceKes: number; quantity: number }[] = [
+      { unitPriceKes: box.priceKes, quantity },
+    ];
+    if (input.items?.length) {
+      const seen = new Set([input.packageId]);
+      for (const item of input.items) {
+        if (item.packageId === input.packageId || seen.has(item.packageId)) continue;
+        const count = Math.trunc(item.quantity);
+        if (!Number.isFinite(count) || count < 1 || count > MAX_WEB_CHECKOUT_QUANTITY) continue;
+        const extra = await packageRepository.findById(businessId, item.packageId);
+        if (!extra || !extra.isActive) continue;
+        seen.add(item.packageId);
+        quoteLines.push({ unitPriceKes: extra.priceKes, quantity: count });
+      }
+    }
+
     const totals = computeCheckoutTotals({
       unitPriceKes: box.priceKes,
       quantity,
+      ...(quoteLines.length > 1 ? { lines: quoteLines } : {}),
       discountKes: rawDiscountKes,
       walletCreditAppliedKes: availableWalletCreditKes,
       deliveryFeeKes,
@@ -1328,6 +1466,12 @@ class ConversationService {
       priceKes: number;
       /** Unit count. Omitted by every WhatsApp path — a conversation can only ever buy one box. */
       quantity?: number;
+      /**
+       * Every box on the order, when there is more than one
+       * (§ more than one box per order). The subtotal is summed across
+       * these; absent, it is `priceKes × quantity` exactly as before.
+       */
+      items?: CheckoutLineItem[];
       customerName: string;
       /** Website checkout only; every WhatsApp path omits it. */
       customerEmail?: string | null;
@@ -1382,10 +1526,16 @@ class ConversationService {
     const rawDiscountKes = common.isRescueOffer
       ? 0
       : (referral?.discountKes ?? 0) + creatorDiscountKes;
+    // The whole order, not just its first line — a wallet ceiling
+    // computed from one box of a two-box order would under-redeem the
+    // customer's own credit.
+    const linesSubtotalKes = common.items?.length
+      ? common.items.reduce((sum, line) => sum + line.unitPriceKes * line.quantity, 0)
+      : common.priceKes * quantity;
     const availableWalletCreditKes = await walletService.redeemableAmount(
       businessId,
       phoneNumber,
-      redeemableCeilingKes(common.priceKes * quantity, rawDiscountKes),
+      redeemableCeilingKes(linesSubtotalKes, rawDiscountKes),
     );
     // `computeCheckoutTotals` is the one definition of this arithmetic
     // — shared with `quoteWebCheckout`, so the figure a customer is
@@ -1394,6 +1544,7 @@ class ConversationService {
     const { subtotalKes, discountKes, walletCreditAppliedKes, totalKes } = computeCheckoutTotals({
       unitPriceKes: common.priceKes,
       quantity,
+      ...(common.items?.length ? { lines: common.items } : {}),
       discountKes: rawDiscountKes,
       walletCreditAppliedKes: availableWalletCreditKes,
       deliveryFeeKes: delivery.feeKes,
@@ -1407,6 +1558,9 @@ class ConversationService {
       packageId: common.packageId,
       packageLabel: common.packageLabel,
       quantity,
+      // Absent key rather than `undefined`: Firestore rejects a
+      // document containing one outright.
+      ...(common.items?.length ? { items: common.items } : {}),
       customerName: common.customerName,
       // Absent key, never `undefined` — Firestore rejects a document
       // containing an undefined value outright, and this field is

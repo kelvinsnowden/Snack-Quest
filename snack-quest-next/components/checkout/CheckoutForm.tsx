@@ -84,6 +84,18 @@ export function CheckoutForm({
     boxes.some((box) => box.id === initialBoxId) ? initialBoxId : (boxes[0]?.id ?? null),
   );
   const [quantity, setQuantity] = useState(1);
+  /*
+   * Additional boxes, on top of the one selected above (§ more than
+   * one box per order).
+   *
+   * Deliberately *additional* rather than turning the box list into a
+   * multi-select. Tapping a card to switch box is the path almost
+   * every customer takes, and making a tap mean "add" instead would
+   * hand anyone changing their mind two boxes and a bill to match. So
+   * the common path keeps its exact behaviour and a second box is an
+   * explicit, separate act.
+   */
+  const [extraBoxes, setExtraBoxes] = useState<{ packageId: string; quantity: number }[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -193,12 +205,44 @@ export function CheckoutForm({
   const quote = useCheckoutQuote({
     packageId: boxId,
     quantity,
+    // Without this the live total would price the first box only, and
+    // the M-Pesa prompt would be for more than the screen said.
+    extras: extraBoxes,
     deliveryMethod,
     pickupStationId: station?.id,
     referralCode: referralCode.trim(),
     phone,
     serviceLevel: deliveryMethod === 'door' ? serviceLevel : undefined,
   });
+
+  /*
+   * Boxes that could still be added: not the primary, not already an
+   * extra, and not sold out. A control that offers something the
+   * server will refuse is worse than no control.
+   */
+  const availableExtras = boxes.filter(
+    (candidate) =>
+      candidate.id !== boxId &&
+      candidate.stockCount !== 0 &&
+      !extraBoxes.some((extra) => extra.packageId === candidate.id),
+  );
+
+  function addExtraBox(packageId: string) {
+    setExtraBoxes((current) => [...current, { packageId, quantity: 1 }]);
+  }
+
+  /** Stepping the last one off removes the line, so an extra can never sit at zero. */
+  function changeExtraQuantity(packageId: string, delta: number) {
+    setExtraBoxes((current) =>
+      current
+        .map((extra) =>
+          extra.packageId === packageId
+            ? { ...extra, quantity: extra.quantity + delta }
+            : extra,
+        )
+        .filter((extra) => extra.quantity >= 1),
+    );
+  }
 
   const maxQuantity = Math.min(MAX_QUANTITY, box?.stockCount ?? MAX_QUANTITY);
   const outOfStock = box?.stockCount === 0;
@@ -246,6 +290,11 @@ export function CheckoutForm({
         body: JSON.stringify({
           packageId: box.id,
           quantity,
+          // Only when there is genuinely more than one box, so a
+          // single-box checkout sends the request it always sent.
+          ...(extraBoxes.length > 0
+            ? { items: [{ packageId: box.id, quantity }, ...extraBoxes] }
+            : {}),
           customerName: customerName.trim(),
           phone: phone.trim(),
           email: email.trim() || undefined,
@@ -358,6 +407,11 @@ export function CheckoutForm({
                   onClick={() => {
                     setBoxId(candidate.id);
                     setQuantity(1);
+                    // The new primary could be one of the extras, and
+                    // the same box twice is refused server-side.
+                    setExtraBoxes((current) =>
+                      current.filter((extra) => extra.packageId !== candidate.id),
+                    );
                     // Picks belong to the box that offered them.
                     // Carrying them across would submit snacks against
                     // a box that never asked for any — which the
@@ -484,6 +538,87 @@ export function CheckoutForm({
             </Button>
           </div>
         </div>
+
+        {/*
+          A second, different box (§ more than one box per order). A
+          customer asked for one of each and could only be sold one,
+          which meant two orders and two delivery fees.
+
+          Below the primary box rather than woven into the cards above,
+          so nothing about choosing a single box changes. Hidden
+          entirely when there is only one box in the catalogue, where
+          the control could do nothing.
+        */}
+        {availableExtras.length > 0 || extraBoxes.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {extraBoxes.map((extra) => {
+              const extraBox = boxes.find((candidate) => candidate.id === extra.packageId);
+              if (!extraBox) return null;
+              const extraMax = Math.min(MAX_QUANTITY, extraBox.stockCount ?? MAX_QUANTITY);
+              return (
+                <div
+                  key={extra.packageId}
+                  className="border-border bg-surface flex items-center justify-between gap-3 rounded-lg border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-foreground truncate text-sm font-medium">{extraBox.name}</p>
+                    <p className="text-muted-foreground mt-0.5 text-sm">
+                      {formatKes(extraBox.priceKes)} each
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => changeExtraQuantity(extra.packageId, -1)}
+                      aria-label={`Decrease ${extraBox.name}`}
+                    >
+                      <Minus aria-hidden="true" />
+                    </Button>
+                    <span className="text-foreground w-6 text-center text-base font-semibold tabular-nums">
+                      {extra.quantity}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => changeExtraQuantity(extra.packageId, 1)}
+                      disabled={extra.quantity >= extraMax}
+                      aria-label={`Increase ${extraBox.name}`}
+                    >
+                      <Plus aria-hidden="true" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {availableExtras.length > 0 ? (
+              <details className="border-border rounded-lg border p-3">
+                <summary className="text-foreground cursor-pointer text-sm font-medium">
+                  Add another box
+                </summary>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {availableExtras.map((candidate) => (
+                    <li key={candidate.id}>
+                      <button
+                        type="button"
+                        onClick={() => addExtraBox(candidate.id)}
+                        className="hover:bg-border/40 flex w-full items-center justify-between gap-3 rounded-md p-2 text-left"
+                      >
+                        <span className="text-foreground text-sm">{candidate.name}</span>
+                        <span className="text-muted-foreground text-sm tabular-nums">
+                          {formatKes(candidate.priceKes)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {/*
@@ -747,6 +882,32 @@ export function CheckoutForm({
           quote={quote}
           stationChosen={deliveryMethod === 'pickup' ? Boolean(station) : true}
           fallbackLabel={box ? `${quantity} × ${box.name}` : 'Your order'}
+          /*
+            One row per box (§ more than one box per order). Without
+            this the summary printed the *whole order's* subtotal
+            against the first box's name — "1 × Starter Box KES 6,000"
+            for a Starter plus a Deluxe. A total a customer cannot
+            reconcile is a total they do not trust.
+          */
+          lines={
+            box
+              ? [
+                  { label: box.name, quantity, amountKes: box.priceKes * quantity },
+                  ...extraBoxes.flatMap((extra) => {
+                    const extraBox = boxes.find((candidate) => candidate.id === extra.packageId);
+                    return extraBox
+                      ? [
+                          {
+                            label: extraBox.name,
+                            quantity: extra.quantity,
+                            amountKes: extraBox.priceKes * extra.quantity,
+                          },
+                        ]
+                      : [];
+                  }),
+                ]
+              : []
+          }
           fallbackTotalKes={box ? box.priceKes * quantity : null}
         />
         <p className="text-muted-foreground text-sm">
@@ -851,12 +1012,15 @@ function OrderSummary({
   quote,
   stationChosen,
   fallbackLabel,
+  lines,
   fallbackTotalKes,
 }: {
   quote: WebCheckoutQuote | null;
   /** Whether a real pickup station has been selected — distinguishes "no fee yet" from "a fee of zero". Always true for door delivery, which has no station. */
   stationChosen: boolean;
   fallbackLabel: string;
+  /** Every box, each at its own extended price. One entry renders exactly the single row this always showed. */
+  lines: { label: string; quantity: number; amountKes: number }[];
   fallbackTotalKes: number | null;
 }) {
   if (!quote) {
@@ -873,12 +1037,23 @@ function OrderSummary({
   const { pricing } = quote;
   return (
     <dl className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-4">
-        <dt className="text-muted-foreground text-sm">
-          {pricing.quantity} × {pricing.packageLabel}
-        </dt>
-        <dd className="text-foreground text-sm tabular-nums">{formatKes(pricing.subtotalKes)}</dd>
-      </div>
+      {lines.length > 1 ? (
+        lines.map((line) => (
+          <div key={line.label} className="flex items-baseline justify-between gap-4">
+            <dt className="text-muted-foreground text-sm">
+              {line.quantity} × {line.label}
+            </dt>
+            <dd className="text-foreground text-sm tabular-nums">{formatKes(line.amountKes)}</dd>
+          </div>
+        ))
+      ) : (
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-muted-foreground text-sm">
+            {pricing.quantity} × {pricing.packageLabel}
+          </dt>
+          <dd className="text-foreground text-sm tabular-nums">{formatKes(pricing.subtotalKes)}</dd>
+        </div>
+      )}
 
       {pricing.discountKes > 0 ? (
         <div className="flex items-baseline justify-between gap-4">

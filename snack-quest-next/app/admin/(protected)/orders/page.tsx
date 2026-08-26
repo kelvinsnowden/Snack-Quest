@@ -18,6 +18,7 @@ import { getDictionary } from '@/lib/i18n/dictionary';
 import { ORDER_STATUS_LABELS } from '@/lib/orders/transitions';
 import { formatDate } from '@/lib/orders/format';
 import type { Order, OrderStatus } from '@/types';
+import { orderBoxSummary } from '@/types/checkoutLine';
 
 export const metadata: Metadata = { title: 'Orders' };
 
@@ -140,7 +141,7 @@ export default async function AdminOrdersPage({
             orderNumber: data.orderNumber ?? null,
             customerName: data.customer.customerName,
             phoneNumber: data.customer.phoneNumber,
-            packageLabel: data.product.packageLabel,
+            packageLabel: orderBoxSummary(data.product),
             totalKes: data.pricing.totalKes,
             status: data.status,
             fulfillmentBatchId: data.fulfillmentBatchId,

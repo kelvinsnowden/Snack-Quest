@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { formatDateTime, formatKes } from '@/lib/orders/format';
 import type { FulfillmentBatch, Order } from '@/types';
+import { orderBoxSummary } from '@/types/checkoutLine';
 
 export const metadata: Metadata = { title: 'Fulfillment batch detail' };
 
@@ -117,7 +118,7 @@ export default async function AdminFulfillmentBatchDetailPage({
                         {order.customer.customerName || 'Guest'}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-foreground">{order.product.packageLabel}</td>
+                    <td className="px-4 py-3 text-foreground">{orderBoxSummary(order.product)}</td>
                     <td className="px-4 py-3">
                       <OrderStatusBadge status={order.status} />
                     </td>

@@ -14,6 +14,17 @@ import type { OrderPaymentStatus } from './whatchimpBridge';
 export interface WebCheckoutRequest {
   packageId: string;
   quantity: number;
+  /**
+   * More than one box, each with its own quantity (§ more than one box
+   * per order). Ids and counts only — like every other field here it
+   * says *what* the customer chose, and the server re-reads the
+   * catalogue for the price.
+   *
+   * `packageId`/`quantity` above stay required and stay authoritative
+   * when this is absent, so an older client, the WhatsApp path and
+   * every existing test keep working unchanged.
+   */
+  items?: { packageId: string; quantity: number }[];
   customerName: string;
   /** Any Kenyan form — `0712…`, `+254712…`, `254712…`. Normalized server-side. */
   phone: string;

@@ -29,6 +29,18 @@ export const MAX_CHECKOUT_QUANTITY = 20;
 export interface CheckoutPricingInputs {
   unitPriceKes: number;
   quantity: number;
+  /**
+   * Every box being bought (§ more than one box per order). When
+   * present the subtotal is the sum across these lines; when absent it
+   * is `unitPriceKes × quantity`, exactly as it always was.
+   *
+   * Both are accepted rather than replacing the pair, because this is
+   * the one function that decides what a customer is charged and it is
+   * shared by the live quote and the actual charge. A single-box order
+   * must produce the identical number it produced yesterday, and the
+   * surest way to guarantee that is to leave its arithmetic alone.
+   */
+  lines?: { unitPriceKes: number; quantity: number }[];
   discountKes: number;
   walletCreditAppliedKes: number;
   deliveryFeeKes: number;
@@ -48,7 +60,9 @@ export function redeemableCeilingKes(subtotalKes: number, discountKes: number): 
 }
 
 export function computeCheckoutTotals(inputs: CheckoutPricingInputs): CheckoutTotals {
-  const subtotalKes = inputs.unitPriceKes * inputs.quantity;
+  const subtotalKes = inputs.lines?.length
+    ? inputs.lines.reduce((sum, line) => sum + line.unitPriceKes * line.quantity, 0)
+    : inputs.unitPriceKes * inputs.quantity;
   const discountKes = Math.min(inputs.discountKes, subtotalKes);
   const walletCreditAppliedKes = Math.min(
     inputs.walletCreditAppliedKes,

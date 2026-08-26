@@ -79,6 +79,7 @@ export async function POST(request: Request): Promise<Response> {
     landmark,
     referralCode,
     guaranteedSnackIds,
+    items,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
 
   const rawManualPayment = (body as { manualPayment?: unknown } | null)?.manualPayment;
@@ -184,6 +185,10 @@ export async function POST(request: Request): Promise<Response> {
          * that does not exist or has run out — and a picker showing a
          * stale list is exactly how that would otherwise happen.
          */
+        // Every box a staff member put on the order. Validated by the
+        // service against the live catalogue, exactly as a customer's
+        // own checkout is.
+        ...(Array.isArray(items) ? { items } : {}),
         guaranteedSnackIds: Array.isArray(guaranteedSnackIds)
           ? guaranteedSnackIds.filter((id): id is string => typeof id === 'string')
           : undefined,
