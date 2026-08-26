@@ -260,7 +260,8 @@ export interface WebCheckoutInput {
    * be a request that could take a box without paying for its
    * delivery.
    */
-  deliveryFeeOnDelivery?: boolean;
+  /** Staff-only; see `DeliveryDetails.feeCollection`. Ignored without `initiatedBy`. */
+  deliveryFeeCollection?: 'prepaid' | 'on_delivery' | 'waived';
   /**
    * Every box on the order, when the customer chose more than one
    * (§ more than one box per order). Absent for a single-box order,
@@ -821,7 +822,16 @@ class ConversationService {
     }
 
     // Staff-set only; the route refuses it from anyone else.
-    const feeOnDelivery = Boolean(input.deliveryFeeOnDelivery && input.initiatedBy);
+    /*
+     * Staff-only. The field arrives over an HTTP body, so a customer
+     * posting it at the public checkout must simply be priced as
+     * normal — hence the `initiatedBy` requirement rather than trusting
+     * the caller.
+     */
+    const feeCollection =
+      input.initiatedBy && input.deliveryFeeCollection && input.deliveryFeeCollection !== 'prepaid'
+        ? input.deliveryFeeCollection
+        : null;
 
     const { snapshotId, totalKes, walletCreditAppliedKes, subtotalKes, discountKes } =
       await this.freezeSnapshot(
@@ -840,7 +850,7 @@ class ConversationService {
           // every existing single-box snapshot keeps its exact shape
           // rather than gaining a one-element array.
           ...(lines.length > 1 ? { items: lines } : {}),
-          ...(feeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
+          ...(feeCollection ? { deliveryFeeCollection: feeCollection } : {}),
           customerName,
           customerEmail,
           county,
@@ -882,7 +892,9 @@ class ConversationService {
              * asking for money nobody mentioned — is the whole point
              * of sending this message ahead of the push.
              */
-            (feeOnDelivery ? `Plus KES ${delivery.feeKes} to the courier on delivery\n` : '') +
+            (feeCollection === 'on_delivery'
+              ? `Plus KES ${delivery.feeKes} to the courier on delivery\n`
+              : '') +
             '\nAn M-Pesa prompt is on its way — enter your PIN to confirm. If you were not expecting this, ignore it and nothing will be charged.',
         );
       } catch {
@@ -1499,7 +1511,7 @@ class ConversationService {
        */
       items?: CheckoutLineItem[];
       /** The delivery fee is collected by the courier (§ delivery paid on delivery). */
-      deliveryFeeOnDelivery?: boolean;
+      deliveryFeeCollection?: 'prepaid' | 'on_delivery' | 'waived';
       customerName: string;
       /** Website checkout only; every WhatsApp path omits it. */
       customerEmail?: string | null;
@@ -1573,7 +1585,9 @@ class ConversationService {
       unitPriceKes: common.priceKes,
       quantity,
       ...(common.items?.length ? { lines: common.items } : {}),
-      ...(common.deliveryFeeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
+      ...(common.deliveryFeeCollection
+        ? { deliveryFeeCollection: common.deliveryFeeCollection }
+        : {}),
       discountKes: rawDiscountKes,
       walletCreditAppliedKes: availableWalletCreditKes,
       deliveryFeeKes: delivery.feeKes,
@@ -1600,8 +1614,15 @@ class ConversationService {
       // nothing" instead of "this box has nothing to pick".
       ...(common.guaranteedPicks?.length ? { guaranteedPicks: common.guaranteedPicks } : {}),
       county: common.county,
-      delivery: common.deliveryFeeOnDelivery
-        ? { ...delivery, feeCollection: 'on_delivery' as const }
+      delivery: common.deliveryFeeCollection
+        ? {
+            ...delivery,
+            feeCollection: common.deliveryFeeCollection,
+            // A waived fee is genuinely nothing owed, by anyone. Left
+            // at its real figure it would show up on the packing list
+            // as money to collect at a door where nobody is collecting.
+            ...(common.deliveryFeeCollection === 'waived' ? { feeKes: 0 } : {}),
+          }
         : delivery,
       referralCode: common.referralCode ?? null,
       referralLinkId: referral?.referralLinkId ?? null,

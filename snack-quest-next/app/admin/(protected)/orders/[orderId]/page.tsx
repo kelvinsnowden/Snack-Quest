@@ -215,7 +215,8 @@ export default async function AdminOrderDetailPage({
               An on-delivery fee is money that has not been received
               yet, and this row is where anyone chasing an order looks.
               Showing it identically to a prepaid one would read as
-              "already collected".
+              "already collected". A waived one says so outright, so a
+              zero here does not look like missing data.
             */}
             <DetailRow
               label="Fee"
@@ -224,6 +225,8 @@ export default async function AdminOrderDetailPage({
                   <span className="text-warning font-medium">
                     {formatKes(delivery.feeKes)} — collect on delivery
                   </span>
+                ) : delivery.feeCollection === 'waived' ? (
+                  <span className="text-muted-foreground">Not charged</span>
                 ) : (
                   formatKes(delivery.feeKes)
                 )

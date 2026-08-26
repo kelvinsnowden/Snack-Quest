@@ -92,12 +92,17 @@ export function StaffInitiatedOrderDialog({
   const [referralCode, setReferralCode] = useState('');
   const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
   /*
-   * The customer pays delivery to the courier at the door
-   * (§ delivery paid on delivery). Off by default: the arrangement
-   * has to be made deliberately, and defaulting to it would quietly
-   * stop charging for delivery on every order taken by phone.
+   * Who settles the delivery fee (§ delivery paid on delivery). One
+   * question with three answers rather than two independent
+   * checkboxes, because "pays at the door" and "not charged at all"
+   * cannot both be true and a pair of checkboxes would let an
+   * operator say so.
+   *
+   * Defaults to prepaid: the other two have to be chosen
+   * deliberately, and defaulting to either would quietly stop
+   * charging for delivery on every order taken by phone.
    */
-  const [deliveryFeeOnDelivery, setDeliveryFeeOnDelivery] = useState(false);
+  const [feeCollection, setFeeCollection] = useState<'prepaid' | 'on_delivery' | 'waived'>('prepaid');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('request');
   const [manualMethod, setManualMethod] = useState<ManualPaymentMethod>('cash');
   const [manualReference, setManualReference] = useState('');
@@ -115,7 +120,7 @@ export function StaffInitiatedOrderDialog({
     setAddressText('');
     setReferralCode('');
     setGuaranteedSnackIds([]);
-    setDeliveryFeeOnDelivery(false);
+    setFeeCollection('prepaid');
     setPaymentMode('request');
     setManualMethod('cash');
     setManualReference('');
@@ -221,7 +226,7 @@ export function StaffInitiatedOrderDialog({
             : { addressText: addressText.trim() }),
           referralCode: referralCode.trim() || undefined,
           ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
-          ...(deliveryFeeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
+          ...(feeCollection !== 'prepaid' ? { deliveryFeeCollection: feeCollection } : {}),
           ...(alreadyPaid
             ? {
                 manualPayment: {
@@ -517,40 +522,67 @@ export function StaffInitiatedOrderDialog({
                       placeholder="Kilimani, Argwings Kodhek Rd"
                     />
                     <p className="text-muted-foreground text-sm">
-                      Tushop delivers to the address given, and the fee is in the total above.
+                      {feeCollection === 'prepaid'
+                        ? 'Tushop delivers to the address given, and the fee is in the total above.'
+                        : 'Tushop delivers to the address given. See the delivery fee choice below for who pays for it.'}
                     </p>
                   </div>
                 )}
 
                 {/*
-                  Who collects the delivery fee (§ delivery paid on
+                  Who settles the delivery fee (§ delivery paid on
                   delivery). Sits with the delivery choice rather than
                   with payment, because it is a fact about the delivery
                   — the box is still paid for now either way.
 
-                  States the consequence in money rather than
-                  restating the setting: an operator is reading this
-                  back to a customer on the phone, and "KES 250 to the
-                  courier" is the sentence they need.
+                  Each option states its consequence in money rather
+                  than restating its own label: an operator is reading
+                  this back to a customer on the phone, and "KES 250 to
+                  the courier" is the sentence they need.
                 */}
-                <label className="border-border bg-surface flex cursor-pointer items-start gap-3 rounded-lg border p-3">
-                  <input
-                    type="checkbox"
-                    checked={deliveryFeeOnDelivery}
-                    onChange={(event) => setDeliveryFeeOnDelivery(event.target.checked)}
-                    className="accent-primary mt-0.5 size-4 shrink-0"
-                  />
-                  <span className="min-w-0">
-                    <span className="text-foreground block text-sm font-medium">
-                      Customer pays delivery on delivery
-                    </span>
-                    <span className="text-muted-foreground mt-0.5 block text-sm">
-                      {deliveryFeeOnDelivery
-                        ? 'The M-Pesa prompt covers the boxes only. The courier collects the delivery fee at the door.'
-                        : 'The delivery fee is included in the M-Pesa prompt, as it is on the website.'}
-                    </span>
-                  </span>
-                </label>
+                <div className="flex flex-col gap-2">
+                  <Label>Delivery fee</Label>
+                  <div className="flex flex-col gap-1.5">
+                    {(
+                      [
+                        ['prepaid', 'Charge it now', 'Included in the M-Pesa prompt, as it is on the website.'],
+                        [
+                          'on_delivery',
+                          'Collect on delivery',
+                          'The prompt covers the boxes only. The courier collects the fee at the door.',
+                        ],
+                        [
+                          'waived',
+                          'Do not charge it',
+                          'No delivery fee on this order — for a Bolt or self-arranged drop-off the customer is not billed for here.',
+                        ],
+                      ] as const
+                    ).map(([value, label, hint]) => (
+                      <label
+                        key={value}
+                        className={cn(
+                          'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                          feeCollection === value
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border bg-surface hover:bg-border/30',
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="staff-order-fee-collection"
+                          value={value}
+                          checked={feeCollection === value}
+                          onChange={() => setFeeCollection(value)}
+                          className="accent-primary mt-0.5 size-4 shrink-0"
+                        />
+                        <span className="min-w-0">
+                          <span className="text-foreground block text-sm font-medium">{label}</span>
+                          <span className="text-muted-foreground mt-0.5 block text-sm">{hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
 
                 {canRecordManualPayment ? (
                   <div className="flex flex-col gap-2">

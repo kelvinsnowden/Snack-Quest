@@ -83,13 +83,19 @@ export async function POST(request: Request): Promise<Response> {
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
 
   /*
-   * The customer settles delivery with the courier (§ delivery paid on
-   * delivery). Read off the raw body rather than `WebCheckoutRequest`,
-   * because it is not something a customer's own checkout may ask for
-   * — the service ignores it unless the order is staff-initiated, and
-   * this route is the only caller that sets `initiatedBy`.
+   * Who settles the delivery fee (§ delivery paid on delivery). Read
+   * off the raw body rather than `WebCheckoutRequest`, because it is
+   * not something a customer's own checkout may ask for — the service
+   * ignores it unless the order is staff-initiated, and this route is
+   * the only caller that sets `initiatedBy`.
+   *
+   * Validated against the allowed values here rather than cast, so an
+   * unrecognised string falls back to prepaid instead of reaching the
+   * snapshot and being frozen onto the order.
    */
-  const deliveryFeeOnDelivery = (body as { deliveryFeeOnDelivery?: unknown } | null)?.deliveryFeeOnDelivery === true;
+  const rawFeeCollection = (body as { deliveryFeeCollection?: unknown } | null)?.deliveryFeeCollection;
+  const deliveryFeeCollection =
+    rawFeeCollection === 'on_delivery' || rawFeeCollection === 'waived' ? rawFeeCollection : null;
 
   const rawManualPayment = (body as { manualPayment?: unknown } | null)?.manualPayment;
   let manualPayment:
@@ -198,7 +204,7 @@ export async function POST(request: Request): Promise<Response> {
         // service against the live catalogue, exactly as a customer's
         // own checkout is.
         ...(Array.isArray(items) ? { items } : {}),
-        ...(deliveryFeeOnDelivery ? { deliveryFeeOnDelivery: true } : {}),
+        ...(deliveryFeeCollection ? { deliveryFeeCollection } : {}),
         guaranteedSnackIds: Array.isArray(guaranteedSnackIds)
           ? guaranteedSnackIds.filter((id): id is string => typeof id === 'string')
           : undefined,
