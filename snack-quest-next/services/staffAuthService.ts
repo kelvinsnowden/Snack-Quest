@@ -40,6 +40,18 @@ export interface StaffSession {
   businessId: string;
   /** Which Admin Portal sections this staff member can reach (§ Staff access control) — empty means unrestricted. See `lib/auth/adminSections.ts`. */
   permissions: string[];
+  /**
+   * A super admin is currently looking through this role
+   * (§ see it from every angle). Absent for everyone else, and for a
+   * super admin who has not chosen one.
+   *
+   * When set, `roles` holds only this role — the narrowing is real and
+   * applies to Route Handlers too. `actualRoles` is what they really
+   * are, kept so the banner can say so and the switch back can be
+   * authorised.
+   */
+  viewingAs?: Role;
+  actualRoles?: Role[];
 }
 
 class StaffAuthService {

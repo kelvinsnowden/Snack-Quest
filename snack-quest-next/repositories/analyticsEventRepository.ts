@@ -31,6 +31,27 @@ class AnalyticsEventRepository {
       .get();
     return snapshot.docs.map((doc) => doc.data() as AnalyticsEvent);
   }
+
+  /**
+   * Everything one browser did, oldest first — the visit that produced
+   * an order (§ close the loop: ad-conversion attribution).
+   *
+   * The aggregate funnel answers "how many people reached checkout".
+   * This answers the different and, on a shop with a handful of sales,
+   * far more useful question: what did the person who actually bought
+   * do on the way there. Needs a composite index
+   * (businessId + visitorId + createdAt) — see firestore.indexes.json.
+   */
+  async listByVisitor(businessId: string, visitorId: string, limit = 200): Promise<AnalyticsEvent[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('visitorId', '==', visitorId)
+      .orderBy('createdAt', 'asc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => doc.data() as AnalyticsEvent);
+  }
 }
 
 export const analyticsEventRepository = new AnalyticsEventRepository();

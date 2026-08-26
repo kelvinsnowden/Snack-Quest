@@ -10,6 +10,9 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { ChangeOrderBoxDialog } from '@/components/admin/ChangeOrderBoxDialog';
 import { SendConfirmationSmsButton } from '@/components/admin/SendConfirmationSmsButton';
+import { OrderAttributionCard } from '@/components/admin/OrderAttributionCard';
+import { analyticsEventRepository } from '@/repositories/analyticsEventRepository';
+import type { ConversionAttribution } from '@/types';
 import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
@@ -55,7 +58,19 @@ export default async function AdminOrderDetailPage({
     notFound();
   }
 
-  const [items, shipment, refunds, boxes, confirmationSms] = await Promise.all([
+  /*
+   * What this browser did on the way to buying (§ close the loop:
+   * ad-conversion attribution). Only for an order that carries a
+   * visitor id — every order placed before that was captured has none,
+   * and querying for `undefined` would return the wrong visitor's
+   * journey rather than nothing.
+   */
+  const attribution = (order.attribution ?? null) as ConversionAttribution | null;
+  const journeyPromise = attribution?.visitorId
+    ? analyticsEventRepository.listByVisitor(order.businessId, attribution.visitorId)
+    : Promise.resolve([]);
+
+  const [items, shipment, refunds, boxes, confirmationSms, journey] = await Promise.all([
     orderRepository.listItems(orderId),
     shipmentRepository.findByOrderId(orderId),
     refundRepository.listByOrderId(session.businessId, orderId),
@@ -65,6 +80,7 @@ export default async function AdminOrderDetailPage({
     // Whether the confirmation text has already gone out — the send is
     // deduped on this exact id, so its presence is the whole answer.
     outboundMessageRepository.findById(`sms:order-confirmed:${orderId}`).catch(() => null),
+    journeyPromise,
   ]);
 
   const { customer, delivery, payment, pricing, product } = order;
@@ -340,6 +356,12 @@ export default async function AdminOrderDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <OrderAttributionCard
+        attribution={attribution}
+        referralLinkId={order.referralLinkId ?? null}
+        journey={journey}
+      />
 
       {/*
         The packing list's whole point (§ Premium: choose 5, discover
