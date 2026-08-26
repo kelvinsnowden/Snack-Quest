@@ -36,6 +36,12 @@ export interface CreateIntentInput {
   customerId: string | null;
   phoneNumber: string;
   amountKes: number;
+  /**
+   * Collecting for an order that already exists (§ pay on delivery).
+   * See `PaymentIntent.orderId` — its presence routes the callback to
+   * settling that order instead of creating one from the snapshot.
+   */
+  orderId?: string;
 }
 
 /**

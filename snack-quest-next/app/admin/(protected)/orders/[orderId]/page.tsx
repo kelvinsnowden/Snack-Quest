@@ -10,6 +10,7 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { ChangeOrderBoxDialog } from '@/components/admin/ChangeOrderBoxDialog';
 import { SendConfirmationSmsButton } from '@/components/admin/SendConfirmationSmsButton';
+import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { refundRepository } from '@/repositories/refundRepository';
@@ -147,6 +148,24 @@ export default async function AdminOrderDetailPage({
             <CardTitle>Payment</CardTitle>
           </CardHeader>
           <CardContent className="divide-y divide-border">
+            {/*
+              Money still owed (§ pay on delivery). First in the card
+              and stated as an amount, because on an unpaid order it is
+              the only line anyone is looking for — and the prompt to
+              collect it sits right here rather than on another screen.
+            */}
+            {payment.dueOnDelivery ? (
+              <div className="flex flex-col gap-3 py-3">
+                <p className="text-warning text-sm font-semibold">
+                  Unpaid — {formatKes(pricing.totalKes)} due on delivery
+                </p>
+                <CollectPaymentButton
+                  orderId={orderId}
+                  amountKes={pricing.totalKes}
+                  phoneNumber={customer.phoneNumber}
+                />
+              </div>
+            ) : null}
             <DetailRow
               label="M-Pesa receipt"
               value={<span className="tabular-nums">{payment.mpesaReceiptNumber ?? '—'}</span>}

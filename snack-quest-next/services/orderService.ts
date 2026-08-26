@@ -42,6 +42,16 @@ export interface CreateOrderInput {
   snapshot: ConversationCheckoutSnapshot;
   paymentIntentId: string;
   /**
+   * The order is real but nothing has been collected for it yet
+   * (§ pay on delivery) — the customer pays when the box arrives.
+   *
+   * The order is created at the same status and reserves stock the
+   * same way, because it is going to be packed and delivered like any
+   * other. Only the money is outstanding, so only the payment record
+   * says so.
+   */
+  dueOnDelivery?: boolean;
+  /**
    * The real Safaricom receipt for a Daraja-settled order. Empty for a
    * manually-recorded payment with no M-Pesa code behind it (cash, bank
    * transfer) — never a placeholder that would read as a receipt to a
@@ -148,6 +158,9 @@ class OrderService {
             // instead of the honest "no receipt" this represents.
             mpesaReceiptNumber: mpesaReceiptNumber || null,
             manualPayment: manualPayment ?? null,
+            // Absent unless it is true, so a paid order writes exactly
+            // the payment record it always did.
+            ...(input.dueOnDelivery ? { dueOnDelivery: true } : {}),
           },
           pricing: {
             subtotalKes: snapshot.subtotalKes,
