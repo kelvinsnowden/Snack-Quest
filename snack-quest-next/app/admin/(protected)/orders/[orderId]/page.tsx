@@ -11,6 +11,7 @@ import { packageRepository } from '@/repositories/packageRepository';
 import { ChangeOrderBoxDialog } from '@/components/admin/ChangeOrderBoxDialog';
 import { SendConfirmationSmsButton } from '@/components/admin/SendConfirmationSmsButton';
 import { OrderAttributionCard } from '@/components/admin/OrderAttributionCard';
+import { RecordCostsForm } from '@/components/warehouse/RecordCostsForm';
 import { analyticsEventRepository } from '@/repositories/analyticsEventRepository';
 import type { ConversionAttribution } from '@/types';
 import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
@@ -367,6 +368,39 @@ export default async function AdminOrderDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/*
+        What this box cost, on the order itself (§ fulfilment records
+        the real cost). The warehouse queue's own box disappears when
+        the order is delivered, so this is where a figure gets
+        corrected — or entered at all, for an order somebody finished
+        before anyone thought about the cost.
+      */}
+      <Card>
+        <CardHeader>
+          <CardTitle>What this cost to fulfil</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RecordCostsForm
+            orderId={orderId}
+            revenueKes={pricing.totalKes}
+            existing={
+              order.costs
+                ? {
+                    goodsCostKes: order.costs.goodsCostKes,
+                    otherCostKes: order.costs.otherCostKes,
+                    note: order.costs.note,
+                  }
+                : null
+            }
+          />
+          {order.costs ? (
+            <p className="text-muted-foreground mt-3 text-caption">
+              Last entered by {order.costs.recordedByName}.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <OrderAttributionCard
         attribution={attribution}

@@ -40,6 +40,7 @@ export const zhCN: Dictionary = {
       '/admin/deliveries': '配送',
       '/admin/fulfillment-batches': '履约批次',
       '/admin/delivery-zones': '配送区域',
+      '/admin/fulfilment-costs': '履约成本',
       '/admin/products': '商品',
       '/admin/inventory': '库存',
       '/admin/snack-items': '零食',
@@ -66,6 +67,7 @@ export const zhCN: Dictionary = {
       '/admin/settings': '设置',
     },
     shortItems: {
+      '/admin/fulfilment-costs': '成本',
       '/admin/fulfillment-batches': '批次',
       '/admin/recipes': '配方',
       '/admin/marketing-sms': '短信',
