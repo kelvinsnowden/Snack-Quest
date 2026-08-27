@@ -54,3 +54,7 @@ database-debug.log
 pubsub-debug.log
 *-debug.log
 emulator-data/
+
+# Built by scripts/deck/build.py for publishing outside our own domain;
+# the version served from /deck is public/deck/index.html.
+scripts/deck/snack-quest-deck.html
