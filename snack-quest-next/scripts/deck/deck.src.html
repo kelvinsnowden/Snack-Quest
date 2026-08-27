@@ -77,7 +77,7 @@
   .deck {
     max-width: 1180px;
     margin: 0 auto;
-    padding: 0 clamp(16px, 4vw, 40px) 96px;
+    padding: 0 clamp(14px, 3vw, 36px) 72px;
     /* Slides number themselves. They were hand-numbered, which meant
        inserting one in the middle silently renumbered nothing and the
        spine started lying about the order. */
@@ -91,8 +91,8 @@
     border: 1px solid var(--edge);
     border-radius: 22px;
     box-shadow: var(--shadow);
-    padding: clamp(28px, 5vw, 64px);
-    margin-top: clamp(20px, 3vw, 34px);
+    padding: clamp(26px, 4.2vw, 56px);
+    margin-top: clamp(18px, 2.4vw, 28px);
     overflow: hidden;
   }
   .slide:first-child { margin-top: clamp(20px, 3vw, 34px); }
@@ -106,7 +106,7 @@
   .slide::before {
     content: "";
     position: absolute;
-    left: clamp(28px, 5vw, 64px);
+    left: clamp(26px, 4.2vw, 56px);
     top: 0;
     bottom: 0;
     width: 1px;
@@ -122,11 +122,11 @@
     align-items: baseline;
     gap: 14px;
     padding-left: 30px;
-    margin-bottom: 26px;
+    margin-bottom: 20px;
   }
   .num {
     position: absolute;
-    left: clamp(28px, 5vw, 64px);
+    left: clamp(26px, 4.2vw, 56px);
     transform: translateX(-50%);
     width: 26px; height: 26px;
     display: grid; place-items: center;
@@ -170,7 +170,7 @@
     font-size: clamp(17px, 1.7vw, 20px);
     color: var(--ink-soft);
     max-width: 62ch;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
   }
   .body { padding-left: 30px; }
 
@@ -235,18 +235,27 @@
   .card.cool { background: var(--void-wash); border-color: color-mix(in srgb, var(--void) 45%, transparent); }
 
   ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  /*
+    The marker is positioned, not a grid cell. As a two-column grid the
+    row's inline content stopped being one flow: a `<b>` mid-sentence
+    became its own grid item and landed back in the 18px marker column,
+    so "keeps <b>cash cost per creator low</b>" set one word per line.
+    Absolute positioning leaves the text a single normal inline flow,
+    which is the only thing that wraps correctly.
+  */
   ul.ticks li {
-    display: grid;
-    grid-template-columns: 18px 1fr;
-    gap: 11px;
-    align-items: start;
+    position: relative;
+    padding-left: 20px;
     font-size: 16px;
+    line-height: 1.55;
     color: var(--ink-soft);
   }
   ul.ticks li::before {
     content: "";
+    position: absolute;
+    left: 0;
+    top: .58em;
     width: 9px; height: 9px;
-    margin-top: 8px;
     border-radius: 2px;
     background: var(--quest);
     transform: rotate(45deg);
@@ -271,6 +280,12 @@
     height: auto;
     border-radius: 14px;
     border: 1px solid var(--edge);
+    /* A portrait phone photo at full column width ran to 800px tall and
+       set the height of the whole slide on its own. Cap it against the
+       viewport so an image can never be taller than the screen showing
+       it. */
+    max-height: 56vh;
+    object-fit: cover;
   }
   figcaption {
     margin-top: 9px;
@@ -326,7 +341,7 @@
   .shot figcaption b { color: var(--ink); font-weight: 650; }
   .shot.hero { margin-bottom: 22px; }
   .shot.hero img, .slot.hero { aspect-ratio: 3 / 2; object-fit: cover; }
-  .shot.panel img, .slot.panel { aspect-ratio: 4 / 3; object-fit: cover; }
+  .shot.panel img, .slot.panel { aspect-ratio: 3 / 2; object-fit: cover; }
   /* The operations photographs are phone shots, held portrait. */
   .shot.tall img, .slot.tall { aspect-ratio: 3 / 4; object-fit: cover; }
   .slot.hero, .slot.panel, .slot.tall { min-height: 0; }
@@ -348,6 +363,66 @@
   }
   td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scroll { overflow-x: auto; }
+
+  /* --- metric pairs ----------------------------------------- */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    gap: 0 clamp(20px, 4vw, 48px);
+  }
+  .metric {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .metric .ml { font-size: 15px; color: var(--ink-soft); }
+
+  /*
+    Money on a phone. The use-of-funds table put its Amount column
+    off the right edge at 390px — every figure sat behind an inner
+    scrollbar nobody discovers, on the one slide an investor opens
+    the deck to read. Below the breakpoint each row becomes its own
+    block and every cell carries its column name, so the amount is
+    always on screen next to what it buys.
+  */
+  @media (max-width: 720px) {
+    .scroll table, .scroll thead, .scroll tbody, .scroll tr, .scroll th, .scroll td {
+      display: block;
+      width: auto;
+    }
+    .scroll thead { display: none; }
+    .scroll tr {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--edge);
+    }
+    .scroll td {
+      border: 0;
+      padding: 2px 0;
+      text-align: left;
+    }
+    /*
+      No column labels: three of them per row cost more height than
+      they earn, and the typography already says which is which — the
+      allocation is bold, what it covers is muted, and the amount is a
+      dashed chip. The chip is allowed to wrap here; nowrap is what put
+      it off the edge in the first place.
+    */
+    .scroll td.n { text-align: left; }
+    .scroll td.n .fill { white-space: normal; }
+    .scroll td[data-label="Allocation"] {
+      font-size: 16.5px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .scroll td[data-label="What it covers"] {
+      font-size: 14px;
+      color: var(--ink-soft);
+      margin: 1px 0 5px;
+    }
+  }
 
   .rule { height: 1px; background: var(--edge); border: 0; margin: 26px 0; }
 
@@ -450,12 +525,33 @@
     font-style: italic;
   }
 
+  /*
+    Phones. Two things matter here and they pull against each other:
+    the left gutter costs content width on a 390px screen, and stacking
+    every grid one-per-row turns each slide into a scroll of its own.
+    So the gutter tightens, and the card grids go two-up rather than
+    one-up — six cards become three rows instead of six, which is the
+    single biggest cut to how far a reader has to scroll.
+  */
   @media (max-width: 640px) {
     body { font-size: 16px; }
-    .slide::before { left: 18px; }
-    .num { left: 18px; }
-    .slide { padding: 26px 22px; border-radius: 18px; }
-    .slide-head, h2.title, .lede, .body { padding-left: 22px; }
+    .slide::before { left: 16px; }
+    .num { left: 16px; }
+    .slide { padding: 24px 16px; border-radius: 18px; }
+    .slide-head, h2.title, .lede, .body { padding-left: 20px; }
+    .slide-head { margin-bottom: 16px; gap: 10px; }
+    .lede { margin-bottom: 22px; }
+
+    .g3, .g4, .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid, .panels { gap: 12px; }
+    .card { padding: 14px; border-radius: 12px; }
+    .card h3 { font-size: 14px; }
+    .card p, ul.ticks li { font-size: 14.5px; }
+    .chip { font-size: 13px; padding: 5px 11px; }
+    .spoke { padding: 11px 12px; gap: 11px; }
+    .spoke span { font-size: 14.5px; }
+    .shot figcaption, .metric .ml { font-size: 13.5px; }
+    .pull { padding: 18px; font-size: 19px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1014,16 +1110,16 @@
             <tr><th>Allocation</th><th>What it covers</th><th style="text-align:right;">Amount</th></tr>
           </thead>
           <tbody>
-            <tr><td><strong>Store fit-out</strong></td><td>Build, shelving, lighting, the experiential elements</td><td class="n"><span class="fill">[STORE FIT-OUT — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Equipment</strong></td><td>Fixtures, storage, point-of-sale hardware</td><td class="n"><span class="fill">[EQUIPMENT — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Initial inventory</strong></td><td>Opening assortment across countries and price points</td><td class="n"><span class="fill">[INITIAL INVENTORY — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Branding &amp; signage</strong></td><td>Exterior, in-store identity, the photographable moments</td><td class="n"><span class="fill">[BRANDING — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Payment infrastructure</strong></td><td>In-store payment, M-Pesa, pay-on-collection</td><td class="n"><span class="fill">[PAYMENTS — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Operational setup</strong></td><td>Licensing, staffing, systems, first months of operation</td><td class="n"><span class="fill">[OPERATIONS — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Creator activation</strong></td><td>Seeding stock, hosting and shooting at the store</td><td class="n"><span class="fill">[CREATOR ACTIVATION — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Launch marketing</strong></td><td>Opening campaign and first drops</td><td class="n"><span class="fill">[LAUNCH MARKETING — INSERT AMOUNT]</span></td></tr>
-            <tr><td><strong>Working capital</strong></td><td>Runway to trade through the proving period</td><td class="n"><span class="fill">[WORKING CAPITAL — INSERT AMOUNT]</span></td></tr>
-            <tr><td colspan="2"><strong>Total</strong></td><td class="n"><span class="fill">[TOTAL — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Store fit-out</strong></td><td data-label="What it covers">Build, shelving, lighting, the experiential elements</td><td class="n" data-label="Amount"><span class="fill">[STORE FIT-OUT — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Equipment</strong></td><td data-label="What it covers">Fixtures, storage, point-of-sale hardware</td><td class="n" data-label="Amount"><span class="fill">[EQUIPMENT — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Initial inventory</strong></td><td data-label="What it covers">Opening assortment across countries and price points</td><td class="n" data-label="Amount"><span class="fill">[INITIAL INVENTORY — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Branding &amp; signage</strong></td><td data-label="What it covers">Exterior, in-store identity, the photographable moments</td><td class="n" data-label="Amount"><span class="fill">[BRANDING — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Payment infrastructure</strong></td><td data-label="What it covers">In-store payment, M-Pesa, pay-on-collection</td><td class="n" data-label="Amount"><span class="fill">[PAYMENTS — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Operational setup</strong></td><td data-label="What it covers">Licensing, staffing, systems, first months of operation</td><td class="n" data-label="Amount"><span class="fill">[OPERATIONS — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Creator activation</strong></td><td data-label="What it covers">Seeding stock, hosting and shooting at the store</td><td class="n" data-label="Amount"><span class="fill">[CREATOR ACTIVATION — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Launch marketing</strong></td><td data-label="What it covers">Opening campaign and first drops</td><td class="n" data-label="Amount"><span class="fill">[LAUNCH MARKETING — INSERT AMOUNT]</span></td></tr>
+            <tr><td data-label="Allocation"><strong>Working capital</strong></td><td data-label="What it covers">Runway to trade through the proving period</td><td class="n" data-label="Amount"><span class="fill">[WORKING CAPITAL — INSERT AMOUNT]</span></td></tr>
+            <tr><td colspan="2"><strong>Total</strong></td><td class="n" data-label="Total"><span class="fill">[TOTAL — INSERT AMOUNT]</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -1032,17 +1128,27 @@
 
       <h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">Store-level economics</h3>
       <p class="note" style="margin-bottom:16px;">The model an investor will want to interrogate. Left deliberately blank rather than estimated — these will be completed with real figures before this deck goes out.</p>
-      <div class="scroll">
-        <table>
-          <tbody>
-            <tr><td>Store setup cost</td><td class="n"><span class="fill">[INSERT]</span></td><td>Monthly fixed costs</td><td class="n"><span class="fill">[INSERT]</span></td></tr>
-            <tr><td>Inventory requirement</td><td class="n"><span class="fill">[INSERT]</span></td><td>Gross margin %</td><td class="n"><span class="fill">[INSERT]</span></td></tr>
-            <tr><td>Average order value</td><td class="n"><span class="fill">[INSERT]</span></td><td>Customer acquisition cost</td><td class="n"><span class="fill">[INSERT]</span></td></tr>
-            <tr><td>Repeat purchase rate</td><td class="n"><span class="fill">[INSERT]</span></td><td>Contribution margin</td><td class="n"><span class="fill">[INSERT]</span></td></tr>
-            <tr><td>Monthly revenue</td><td class="n"><span class="fill">[INSERT]</span></td><td>Break-even point</td><td class="n"><span class="fill">[INSERT]</span></td></tr>
-            <tr><td>Payback period</td><td class="n"><span class="fill">[INSERT]</span></td><td>Store-level contribution</td><td class="n"><span class="fill">[INSERT]</span></td></tr>
-          </tbody>
-        </table>
+      <!--
+        A list of twelve metrics, not a table. It was marked up as a
+        four-column table purely to get two pairs per row, which meant
+        that on a phone half of every pair sat off the right edge,
+        clipped mid-word. A grid of label/value pairs carries the same
+        meaning and simply reflows to one column.
+      -->
+      <div class="metrics">
+        <div class="metric"><span class="ml">Store setup cost</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Monthly fixed costs</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Inventory requirement</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Gross margin %</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Average order value</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Customer acquisition cost</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Repeat purchase rate</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Contribution margin</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Monthly revenue</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Break-even point</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Payback period</span><span class="fill">[INSERT]</span></div>
+        <div class="metric"><span class="ml">Store-level contribution</span><span class="fill">[INSERT]</span></div>
+      </div>
       </div>
     </div>
   </section>
