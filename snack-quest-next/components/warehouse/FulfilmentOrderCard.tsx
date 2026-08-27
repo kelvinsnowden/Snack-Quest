@@ -29,11 +29,14 @@ export function FulfilmentOrderCard({
   orderId,
   order,
   stage,
+  sourcingNotes,
 }: {
   orderId: string;
   order: Order;
   /** `pack` is still in the building; `out` is with the customer's courier. */
   stage: 'pack' | 'out';
+  /** Where to buy each snack, by snack id — see `OrderPackingList`. */
+  sourcingNotes?: Map<string, string | null>;
 }) {
   const { customer, delivery, pricing, payment, product, costs } = order;
   const outstandingKes = payment?.dueOnDelivery ? pricing.totalKes : 0;
@@ -71,7 +74,7 @@ export function FulfilmentOrderCard({
         carrying, so it collapses to the summary.
       */}
       {stage === 'pack' ? (
-        <OrderPackingList product={product} />
+        <OrderPackingList product={product} sourcingNotes={sourcingNotes} />
       ) : (
         <span className="text-foreground text-sm font-medium">{orderBoxSummary(product)}</span>
       )}

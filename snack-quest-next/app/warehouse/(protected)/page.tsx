@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ShipmentStatusBadge } from '@/components/admin/ShipmentStatusBadge';
 import { CompleteManualBookingDialog } from '@/components/admin/CompleteManualBookingDialog';
 import { FulfilmentOrderCard } from '@/components/warehouse/FulfilmentOrderCard';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
+import { orderLines } from '@/types/checkoutLine';
 
 export const metadata: Metadata = { title: 'Queue' };
 
@@ -47,6 +49,27 @@ export default async function WarehouseQueuePage({
     orderRepository.listByBusiness(session.businessId, { status: 'dispatched', cursor: outCursor }),
   ]);
 
+  /*
+   * Where to buy each snack on this screen (§ the packer needs the
+   * supermarket too). One lookup for every snack across every order
+   * rather than one per order — the same packet turns up on most of
+   * them, and `findManyById` de-duplicates before it reads.
+   *
+   * Read live rather than off the order: a sourcing note answers
+   * "where do I get this today", so a supplier that changed last month
+   * has to reach the packer now. Best-effort — the packing list is
+   * still worth having without it.
+   */
+  const snackIds = toPack.orders.flatMap(({ data }) =>
+    orderLines(data.product).flatMap((line) =>
+      (line.guaranteedPicks ?? data.product.guaranteedPicks ?? []).map((pick) => pick.snackItemId),
+    ),
+  );
+  const sourcingNotes = await snackItemRepository
+    .findManyById(snackIds)
+    .then((snacks) => new Map([...snacks].map(([id, snack]) => [id, snack.sourcingNote])))
+    .catch(() => new Map<string, string | null>());
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -67,7 +90,13 @@ export default async function WarehouseQueuePage({
         ) : (
           <div className="flex flex-col gap-3">
             {toPack.orders.map(({ id, data }) => (
-              <FulfilmentOrderCard key={id} orderId={id} order={data} stage="pack" />
+              <FulfilmentOrderCard
+                key={id}
+                orderId={id}
+                order={data}
+                stage="pack"
+                sourcingNotes={sourcingNotes}
+              />
             ))}
           </div>
         )}
