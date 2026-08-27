@@ -87,7 +87,47 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
+      // The investor deck (`public/deck/`) is a document we hand to
+      // specific people, not a page we want ranking under "snack quest
+      // nairobi" — and once the funding figures on its use-of-funds
+      // slide are filled in, letting Google keep a copy would publish
+      // them.
+      //
+      // Deliberately NOT a `Disallow: /deck` in `app/robots.ts`:
+      // robots.txt is itself a public file, so listing the path there
+      // advertises the URL it is supposed to keep quiet, and a
+      // disallowed URL can still be indexed by reference. `noindex`
+      // lets the crawler fetch the page and tells it not to keep it,
+      // which is the behavior actually wanted. Mirrored as a `<meta
+      // name="robots">` inside the document so the instruction
+      // survives the page being saved or served another way.
+      {
+        source: '/deck',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
+      {
+        source: '/deck/:path*',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
     ];
+  },
+  /*
+   * `snackquests.shop/deck` → `public/deck/index.html`.
+   *
+   * The deck is a self-contained static document with its own design
+   * system, so it is a file in `public/` rather than a route: a page
+   * under `app/` would inherit the root layout's `globals.css`, whose
+   * `:root` tokens collide with the deck's own, plus the site fonts,
+   * providers and tracking pixels — none of which it wants.
+   *
+   * A rewrite rather than a redirect so the address bar keeps the
+   * clean `/deck` the founder actually sends to people. Returning an
+   * array (rather than the `beforeFiles`/`afterFiles` object form)
+   * means this is checked only *after* the filesystem and `public/`,
+   * so it can never shadow a real route.
+   */
+  async rewrites() {
+    return [{ source: '/deck', destination: '/deck/index.html' }];
   },
 };
 
