@@ -8,17 +8,18 @@
 
 <!--
   Not for search results. This is a document we hand to specific people,
-  not a page we want surfaced under "snack quest nairobi" — and once the
-  funding figures on the use-of-funds slide are filled in, indexing it
-  would publish them. Deliberately NOT a robots.txt Disallow: robots.txt
-  is itself public, so listing the path there advertises the URL it is
-  meant to keep quiet. `noindex` (here and as an X-Robots-Tag header in
-  next.config.ts) tells the crawler not to keep the page after fetching
-  it, which is the behaviour actually wanted.
+  not a page we want surfaced under "snack quest nairobi", and it now
+  carries the actual funding figures. Deliberately NOT a robots.txt
+  Disallow: robots.txt is itself public, so listing the path there
+  advertises the URL it is meant to keep quiet. `noindex` (here and as
+  an X-Robots-Tag header in next.config.ts) tells the crawler not to
+  keep the page after fetching it, which is the behaviour wanted.
 -->
 <meta name="robots" content="noindex, nofollow">
 
 <link rel="canonical" href="https://snackquests.shop/deck">
+<link rel="alternate" hreflang="zh-Hans" href="https://snackquests.shop/deck/zh">
+<link rel="alternate" hreflang="en" href="https://snackquests.shop/deck">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Snack Quest">
 <meta property="og:title" content="Snack Quest — Investor Deck">
@@ -232,6 +233,88 @@
     transform: rotate(-3deg);
     background: var(--void-wash);
   }
+
+  /* --- language ---------------------------------------------
+     A document people forward to each other, so each language is its
+     own URL rather than a toggle: the link opens in the reader's
+     language with no interaction, and survives being emailed on. */
+  .langbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: -12px;
+  }
+  .langbar a {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-soft);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-decoration: none;
+  }
+  .langbar a:hover { color: var(--quest); border-color: var(--quest); }
+
+  /*
+    Chinese sets denser than Latin and has no spaces to break at, so the
+    measure that suits English runs long here, and the stack has to name
+    a CJK face — Geist and Bagel Fat One carry no CJK glyphs at all, and
+    without this the whole document silently falls back to a system font.
+  */
+  html[lang^="zh"] body {
+    font-family: "Noto Sans SC", "Geist", "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  }
+  html[lang^="zh"] .display,
+  html[lang^="zh"] h2.title,
+  html[lang^="zh"] .hf-num,
+  html[lang^="zh"] .bn-v {
+    font-family: "Noto Sans SC", "Geist", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+  html[lang^="zh"] .lede { max-width: 38em; }
+  html[lang^="zh"] .card p,
+  html[lang^="zh"] ul.ticks li,
+  html[lang^="zh"] .spoke span { line-height: 1.7; }
+  /* Latin-only faces still carry the Latin runs — brand name, KSh, US$. */
+  html[lang^="zh"] .eyebrow,
+  html[lang^="zh"] .a-v,
+  html[lang^="zh"] .bn-k,
+  html[lang^="zh"] th {
+    font-family: "Geist Mono", ui-monospace, monospace;
+  }
+
+  /* Platform screenshots, shown as evidence. */
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px;
+    max-width: 620px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+  .shot.screen img {
+    max-height: none;
+    object-fit: contain;
+    border-radius: 12px;
+    background: var(--ground);
+  }
+
+  /* The same amount in a currency the reader thinks in. */
+  .usd {
+    display: block;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .hf-cap .usd, .bn-k .usd { margin-top: 4px; text-transform: none; letter-spacing: 0; }
 
   /* A caveat that has to be read but must not shout. */
   .caveat {
@@ -735,6 +818,8 @@
 </head>
 <body>
 <div class="deck">
+  <nav class="langbar" aria-label="Language"><a href="/deck/zh" hreflang="zh-Hans" title="Switch to Simplified Chinese">中文</a></nav>
+
 
   <!-- ================= 1. COVER ================= -->
   <section class="slide cover">
@@ -881,6 +966,71 @@
 
       <div class="pull" style="margin-top:26px;">The machine works. What it does not have is a front door.</div>
       <p class="note" style="margin-top:12px;">No volume figures on this slide by choice. The claim being made is that the operating infrastructure exists and is proven end to end — not that it is yet at scale. Scale is what the raise is for.</p>
+    </div>
+  </section>
+
+  <!-- ================= TIKTOK ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Demand signal</span>
+      <span class="stamp">TikTok &middot; @snackquests</span>
+    </div>
+    <h2 class="title">Demand showed up on TikTok before we spent anything on it.</h2>
+    <p class="lede">Under two weeks of organic content, plus three days of paid promotion. That is the entire window these numbers come from.</p>
+    <div class="body">
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">177.8K</span>
+          <span class="bn-k">Post views, 28 days to 25 Aug</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">74K</span>
+          <span class="bn-k">Best single video</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">1,208</span>
+          <span class="bn-k">Followers</span>
+        </div>
+      </div>
+
+      <div class="grid g4" style="margin-bottom:22px;">
+        <div class="card"><h3>11.4K</h3><p>Likes</p></div>
+        <div class="card"><h3>4.7K</h3><p>Profile views</p></div>
+        <div class="card"><h3>278</h3><p>Shares</p></div>
+        <div class="card"><h3>144</h3><p>Comments</p></div>
+      </div>
+
+      <div class="screens">
+        <figure class="shot screen">
+          <img src="/deck/shot-ttmetrics.webp" alt="TikTok's analytics screen for @snackquests, 28 days to 25 August 2026: 177.8K post views, 4.7K profile views, 11.4K likes, 144 comments, 278 shares.">
+          <figcaption>TikTok&rsquo;s own 28-day analytics for @snackquests.</figcaption>
+        </figure>
+        <figure class="shot screen">
+          <img src="/deck/shot-ttprofile.webp" alt="The @snackquests TikTok profile: 1,208 followers, 13.7K likes, and a grid of videos with 74K, 37.8K and 13.5K views.">
+          <figcaption>The account, with the 74K video pinned.</figcaption>
+        </figure>
+      </div>
+
+      <div class="pull">Under two weeks of organic posting. Three days of ads. No agency, no production budget.</div>
+
+      <div class="grid g2" style="margin-top:24px;">
+        <div class="card hot">
+          <h3>What this establishes</h3>
+          <ul class="ticks" style="margin-top:12px;">
+            <li>The product is <b>natively shareable</b> — 278 shares is people sending it to each other, not us buying reach.</li>
+            <li>A single founder with a phone can <b>reach six figures of views</b> in days.</li>
+            <li>It explains the <b>inbound from creators</b>: they can see the format works.</li>
+            <li>Paid promotion <b>amplifies rather than substitutes</b> — the organic posts came first.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>What it does not yet prove</h3>
+          <p style="margin-bottom:10px;">Views are attention, not revenue. This audience is real and it is growing, but converting it is currently throttled by the two constraints on the next slides — customers who will not pay online before they trust us, and no physical place to send them.</p>
+          <p><strong>That gap is what the raise closes.</strong></p>
+        </div>
+      </div>
+      <p class="note" style="margin-top:18px;">Figures from TikTok&rsquo;s own analytics for @snackquests, 28-day window ending 25 August 2026. Percentage growth figures are deliberately omitted: the prior period was close to zero, so they read as thousands of percent and mean very little.</p>
     </div>
   </section>
 

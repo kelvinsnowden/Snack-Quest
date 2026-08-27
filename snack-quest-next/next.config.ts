@@ -127,7 +127,14 @@ const nextConfig: NextConfig = {
    * so it can never shadow a real route.
    */
   async rewrites() {
-    return [{ source: '/deck', destination: '/deck/index.html' }];
+    return [
+      { source: '/deck', destination: '/deck/index.html' },
+      // The Simplified Chinese edition. Its own URL rather than a
+      // toggle on /deck, because this is a document people forward:
+      // the link opens in the reader's language with no interaction,
+      // and survives being emailed on.
+      { source: '/deck/zh', destination: '/deck/zh/index.html' },
+    ];
   },
 };
 
