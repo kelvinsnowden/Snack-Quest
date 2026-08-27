@@ -40,6 +40,23 @@ export interface CheckoutLineItem {
    * customer chose once for that row.
    */
   guaranteedPicks?: GuaranteedPick[];
+  /**
+   * The rest of what actually went in this box, chosen by the shop
+   * (§ staff complete the box).
+   *
+   * A Premium box holds far more than the five a customer may choose.
+   * Those five are a promise; this is the curation that fills the rest,
+   * and it is only knowable after the order arrives and somebody packs
+   * it — so it is written later rather than frozen at checkout.
+   *
+   * Deliberately a separate field from `guaranteedPicks` rather than
+   * appended to it. Blending them would destroy the one distinction
+   * that matters: what was promised to the customer, versus what the
+   * shop chose. A packing list that cannot tell them apart cannot be
+   * checked against the promise, and "guaranteed" would quietly come
+   * to mean "whatever we happened to put in".
+   */
+  curatedSnacks?: GuaranteedPick[];
 }
 
 /**

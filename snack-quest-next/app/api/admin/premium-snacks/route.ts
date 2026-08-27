@@ -1,4 +1,4 @@
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
+import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 
@@ -26,6 +26,12 @@ import { snackItemRepository } from '@/repositories/snackItemRepository';
  * know it is down to its last two, because they are about to promise
  * it to someone out loud and then pack it by hand.
  *
+ * Reachable by the Warehouse workspace as well as Admin. It began as
+ * the list behind "take an order", which is an admin job — but the
+ * same picker now completes a box on the packing queue (§ staff
+ * complete the box), and a packer who cannot read the catalogue gets
+ * an empty list and no way to record what they put in.
+ *
  * Never cached: staff are reading this while stock moves, and a stale
  * count is worse than a slow one.
  */
@@ -34,7 +40,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
+  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
     return forbiddenResponse();
   }
 
