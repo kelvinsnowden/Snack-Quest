@@ -27,7 +27,27 @@ import { MpesaLogo } from '@/components/icons/MpesaLogo';
  *
  * The track renders the logo list twice and scrolls exactly `-50%` —
  * see `animate-marquee`'s doc comment in `globals.css` for why that
- * makes the loop seamless. `marquee-pause-on-hover` stops the scroll
+ * makes the loop seamless.
+ *
+ * Each copy repeats the set `SETS_PER_COPY` times, and that is what
+ * makes the strip reach both edges. Three logos come to roughly 600px,
+ * so two copies of a single set filled about 1200px and simply
+ * stopped — on a desktop screen the logos bunched against the left and
+ * the right half of the strip sat empty.
+ *
+ * Repeating rather than spreading three logos thin across the whole
+ * width, because a marquee reads as a moving ribbon: evenly spacing
+ * three items over 1920px removes the gap at the end but leaves long
+ * empty stretches drifting past instead.
+ *
+ * `min-w-screen` is the backstop for a display wider than the repeats
+ * cover, and `justify-around` is what it spreads them with — on any
+ * ordinary screen the content is wider than the viewport and neither
+ * does anything.
+ *
+ * Both copies are built by the same rule, so they stay identical and
+ * `-50%` still lands exactly one copy along, which is the whole
+ * requirement for the loop to be seamless. `marquee-pause-on-hover` stops the scroll
  * so a visitor who stops to look at a logo isn't fighting it to read.
  * The whole strip is `aria-hidden`, with one static, unduplicated list
  * for screen readers — a scrolling, doubled DOM list has nothing
@@ -50,12 +70,21 @@ const PARTNERS = [
   { Icon: MpesaLogo, name: 'M-Pesa', className: 'h-7 sm:h-8' },
 ] as const;
 
+/**
+ * Enough repeats of the three logos to cover a wide desktop at their
+ * natural spacing — one set is roughly 600px, so four clears 1920 with
+ * room to spare. Higher costs nothing but a few more inline SVGs.
+ */
+const SETS_PER_COPY = 4;
+
 function LogoTrack() {
   return (
-    <div className="flex shrink-0 items-center gap-12 pr-12 sm:gap-16 sm:pr-16">
-      {PARTNERS.map(({ Icon, name, className }) => (
-        <Icon key={name} className={className} />
-      ))}
+    <div className="flex min-w-screen shrink-0 items-center justify-around gap-12 pr-12 sm:gap-16 sm:pr-16">
+      {Array.from({ length: SETS_PER_COPY }).flatMap((_, set) =>
+        PARTNERS.map(({ Icon, name, className }) => (
+          <Icon key={`${set}-${name}`} className={className} />
+        )),
+      )}
     </div>
   );
 }
