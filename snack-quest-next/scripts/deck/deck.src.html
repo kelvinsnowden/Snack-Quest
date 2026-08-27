@@ -196,6 +196,13 @@
     background: var(--void-wash);
   }
 
+  /* A caveat that has to be read but must not shout. */
+  .caveat {
+    font-size: 13px;
+    font-style: italic;
+    color: var(--ink-faint);
+  }
+
   /* --- editable placeholder --------------------------------- */
   .fill {
     display: inline-block;
@@ -344,6 +351,8 @@
   .shot.panel img, .slot.panel { aspect-ratio: 3 / 2; object-fit: cover; }
   /* The operations photographs are phone shots, held portrait. */
   .shot.tall img, .slot.tall { aspect-ratio: 3 / 4; object-fit: cover; }
+  .shot.founder img, .slot.founder { aspect-ratio: 4 / 5; object-fit: cover; }
+  .shot.founder { max-width: 340px; }
   .slot.hero, .slot.panel, .slot.tall { min-height: 0; }
   .slot.tall { padding: 18px; }
   .slot.tall .h { font-size: 13px; }
@@ -364,21 +373,119 @@
   td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scroll { overflow-x: auto; }
 
-  /* --- metric pairs ----------------------------------------- */
-  .metrics {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-    gap: 0 clamp(20px, 4vw, 48px);
-  }
-  .metric {
+  /* --- the one number a slide is about ---------------------- */
+  .headline-figure {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    justify-content: space-between;
+    gap: 6px 18px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    border-radius: 16px;
+    background: var(--quest-wash);
+    border: 1px solid var(--quest);
+  }
+  .hf-num {
+    font-family: "Geist", system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: clamp(34px, 5.4vw, 58px);
+    line-height: 1;
+    color: var(--quest);
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-cap {
+    font-size: 15px;
+    color: var(--ink-soft);
+    max-width: 46ch;
+  }
+
+  /* --- the three numbers that carry the model --------------- */
+  .bignums {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
     gap: 14px;
-    padding: 11px 0;
+    margin-bottom: 18px;
+  }
+  .bignum {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px;
+    border-radius: 14px;
+    background: var(--ground);
+    border: 1px solid var(--edge);
+  }
+  .bn-v {
+    font-family: "Geist", system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: clamp(28px, 3.4vw, 40px);
+    line-height: 1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .bn-k {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* The arithmetic, on one line where there is room for it. */
+  .equation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 16px 20px;
+    border-radius: 14px;
+    border: 1px dashed var(--edge);
+    font-size: 15px;
+    color: var(--ink-soft);
+  }
+  .equation b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .eq-o { color: var(--quest); font-weight: 700; font-size: 18px; }
+  .eq-r b { color: var(--quest); }
+
+  /* --- the assumptions, deliberately quieter ---------------- */
+  .assumptions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0 clamp(20px, 4vw, 44px);
+  }
+  .assumption {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 14px;
+    padding: 12px 0;
     border-bottom: 1px solid var(--edge);
   }
-  .metric .ml { font-size: 15px; color: var(--ink-soft); }
+  .a-k { font-size: 15px; font-weight: 650; color: var(--ink); }
+  .a-v {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--quest);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .a-n {
+    grid-column: 1 / -1;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin-top: 3px;
+  }
+
+  /* The lines that carry most of the raise. */
+  tr.lead td { background: var(--quest-wash); }
+  tr.lead td:first-child { border-radius: 8px 0 0 8px; }
+  tr.lead td:last-child { border-radius: 0 8px 8px 0; }
+  tr.total td { border-bottom: 0; border-top: 2px solid var(--ink); font-size: 17px; }
 
   /*
     Money on a phone. The use-of-funds table put its Amount column
@@ -550,8 +657,22 @@
     .chip { font-size: 13px; padding: 5px 11px; }
     .spoke { padding: 11px 12px; gap: 11px; }
     .spoke span { font-size: 14.5px; }
-    .shot figcaption, .metric .ml { font-size: 13.5px; }
+    .shot figcaption { font-size: 13.5px; }
     .pull { padding: 18px; font-size: 19px; }
+
+    .headline-figure { padding: 16px 18px; margin-bottom: 18px; gap: 4px 12px; }
+    .hf-cap { font-size: 14px; }
+    .bignums { grid-template-columns: 1fr; gap: 10px; }
+    /* Value over label, not beside it — "target monthly store-level
+       contribution" is too long to sit in a right-hand column and was
+       stacking one word per line. */
+    .bignum { padding: 14px 16px; gap: 4px; }
+    .bn-v { font-size: 30px; }
+    /* The equation stacks rather than wrapping mid-term, so each part
+       of the sum stays readable as its own line. */
+    .equation { flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px 16px; }
+    .assumptions { grid-template-columns: 1fr; }
+    .a-n { font-size: 13px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1094,62 +1215,164 @@
     </div>
   </section>
 
-  <!-- ================= 14. USE OF FUNDS ================= -->
+  <!-- ================= USE OF FUNDS ================= -->
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head">
       <span class="eyebrow">Use of funds</span>
-      <span class="stamp">Figures to be completed</span>
     </div>
     <h2 class="title">Every shilling points at the first location.</h2>
-    <p class="lede">Capital is deployed to open, launch and prove one store — and to build the operating record that makes the second one financeable.</p>
+    <p class="lede">Capital is deployed to open, launch and prove one store &mdash; and to build the operating record that makes the second one financeable.</p>
     <div class="body">
+      <div class="headline-figure">
+        <span class="hf-num">KSh&nbsp;10M</span>
+        <span class="hf-cap">Total raise, allocated in full below</span>
+      </div>
+
+      <!--
+        Three lines carry the bulk of the raise: fit-out, opening
+        inventory and working capital. They are marked rather than
+        left for the reader to add up, because the shape of the
+        allocation is itself the argument &mdash; this is a shop being
+        opened, stocked and given room to trade, not a marketing
+        budget.
+      -->
       <div class="scroll">
         <table>
           <thead>
             <tr><th>Allocation</th><th>What it covers</th><th style="text-align:right;">Amount</th></tr>
           </thead>
           <tbody>
-            <tr><td data-label="Allocation"><strong>Store fit-out</strong></td><td data-label="What it covers">Build, shelving, lighting, the experiential elements</td><td class="n" data-label="Amount"><span class="fill">[STORE FIT-OUT — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Equipment</strong></td><td data-label="What it covers">Fixtures, storage, point-of-sale hardware</td><td class="n" data-label="Amount"><span class="fill">[EQUIPMENT — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Initial inventory</strong></td><td data-label="What it covers">Opening assortment across countries and price points</td><td class="n" data-label="Amount"><span class="fill">[INITIAL INVENTORY — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Branding &amp; signage</strong></td><td data-label="What it covers">Exterior, in-store identity, the photographable moments</td><td class="n" data-label="Amount"><span class="fill">[BRANDING — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Payment infrastructure</strong></td><td data-label="What it covers">In-store payment, M-Pesa, pay-on-collection</td><td class="n" data-label="Amount"><span class="fill">[PAYMENTS — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Operational setup</strong></td><td data-label="What it covers">Licensing, staffing, systems, first months of operation</td><td class="n" data-label="Amount"><span class="fill">[OPERATIONS — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Creator activation</strong></td><td data-label="What it covers">Seeding stock, hosting and shooting at the store</td><td class="n" data-label="Amount"><span class="fill">[CREATOR ACTIVATION — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Launch marketing</strong></td><td data-label="What it covers">Opening campaign and first drops</td><td class="n" data-label="Amount"><span class="fill">[LAUNCH MARKETING — INSERT AMOUNT]</span></td></tr>
-            <tr><td data-label="Allocation"><strong>Working capital</strong></td><td data-label="What it covers">Runway to trade through the proving period</td><td class="n" data-label="Amount"><span class="fill">[WORKING CAPITAL — INSERT AMOUNT]</span></td></tr>
-            <tr><td colspan="2"><strong>Total</strong></td><td class="n" data-label="Total"><span class="fill">[TOTAL — INSERT AMOUNT]</span></td></tr>
+            <tr class="lead"><td data-label="Allocation"><strong>Store fit-out</strong></td><td data-label="What it covers">Build, shelving, lighting, experiential elements</td><td class="n" data-label="Amount">KSh&nbsp;1,800,000</td></tr>
+            <tr><td data-label="Allocation"><strong>Equipment</strong></td><td data-label="What it covers">Fixtures, storage, POS hardware and store equipment</td><td class="n" data-label="Amount">KSh&nbsp;700,000</td></tr>
+            <tr class="lead"><td data-label="Allocation"><strong>Initial inventory</strong></td><td data-label="What it covers">Opening assortment across countries, categories and price points</td><td class="n" data-label="Amount">KSh&nbsp;2,000,000</td></tr>
+            <tr><td data-label="Allocation"><strong>Branding &amp; signage</strong></td><td data-label="What it covers">Exterior, in-store identity and photo-ready moments</td><td class="n" data-label="Amount">KSh&nbsp;300,000</td></tr>
+            <tr><td data-label="Allocation"><strong>Payment infrastructure</strong></td><td data-label="What it covers">In-store payments, M-Pesa and payment-on-delivery/collection capability</td><td class="n" data-label="Amount">KSh&nbsp;150,000</td></tr>
+            <tr><td data-label="Allocation"><strong>Operational setup</strong></td><td data-label="What it covers">Deposits/startup costs, licensing, staffing, systems and initial operations</td><td class="n" data-label="Amount">KSh&nbsp;1,500,000</td></tr>
+            <tr><td data-label="Allocation"><strong>Creator activation</strong></td><td data-label="What it covers">Product seeding, creator visits, UGC shoots and launch collaborations</td><td class="n" data-label="Amount">KSh&nbsp;400,000</td></tr>
+            <tr><td data-label="Allocation"><strong>Launch marketing</strong></td><td data-label="What it covers">Opening campaign, first drops and customer acquisition</td><td class="n" data-label="Amount">KSh&nbsp;650,000</td></tr>
+            <tr class="lead"><td data-label="Allocation"><strong>Working capital</strong></td><td data-label="What it covers">Cash runway through the initial proving period</td><td class="n" data-label="Amount">KSh&nbsp;2,500,000</td></tr>
+            <tr class="total"><td data-label="Allocation"><strong>Total</strong></td><td data-label="What it covers"></td><td class="n" data-label="Amount"><strong>KSh&nbsp;10,000,000</strong></td></tr>
           </tbody>
         </table>
+      </div>
+      <p class="note" style="margin-top:16px;">The three highlighted lines &mdash; fit-out, opening inventory and working capital &mdash; are KSh&nbsp;6.3M of the KSh&nbsp;10M between them.</p>
+    </div>
+  </section>
+
+  <!-- ================= STORE-LEVEL ECONOMICS ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Store-level economics</span>
+      <span class="caveat">Base-case planning assumptions &mdash; to be validated with Store&nbsp;#1</span>
+    </div>
+    <h2 class="title">A measurable path to attractive unit economics.</h2>
+    <p class="lede">Management planning assumptions for the first location. None of it is history &mdash; Store&nbsp;#1 exists to test whether these hold.</p>
+    <div class="body">
+      <!--
+        Three numbers, then the arithmetic that connects them. An
+        investor should be able to read the shape of this business in
+        about ten seconds; everything below the rule is for the second
+        pass, and is deliberately quieter.
+      -->
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;7.5M</span>
+          <span class="bn-k">First-location setup</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;3.0M</span>
+          <span class="bn-k">Target monthly revenue</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;700K</span>
+          <span class="bn-k">Target monthly store-level contribution</span>
+        </div>
+      </div>
+
+      <div class="equation">
+        <span class="eq-t"><b>KSh&nbsp;2,000</b> blended AOV</span>
+        <span class="eq-o">&times;</span>
+        <span class="eq-t"><b>~1,500</b> transactions / month</span>
+        <span class="eq-o">=</span>
+        <span class="eq-t eq-r"><b>KSh&nbsp;3.0M</b> monthly revenue</span>
+      </div>
+
+      <div class="grid g2" style="margin-top:20px;">
+        <div class="card hot">
+          <h3>Physical store</h3>
+          <p>Discovery and acquisition.</p>
+        </div>
+        <div class="card cool">
+          <h3>Snack boxes</h3>
+          <p>Retention and higher AOV.</p>
+        </div>
       </div>
 
       <hr class="rule">
 
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">Store-level economics</h3>
-      <p class="note" style="margin-bottom:16px;">The model an investor will want to interrogate. Left deliberately blank rather than estimated — these will be completed with real figures before this deck goes out.</p>
-      <!--
-        A list of twelve metrics, not a table. It was marked up as a
-        four-column table purely to get two pairs per row, which meant
-        that on a phone half of every pair sat off the right edge,
-        clipped mid-word. A grid of label/value pairs carries the same
-        meaning and simply reflows to one column.
-      -->
-      <div class="metrics">
-        <div class="metric"><span class="ml">Store setup cost</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Monthly fixed costs</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Inventory requirement</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Gross margin %</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Average order value</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Customer acquisition cost</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Repeat purchase rate</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Contribution margin</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Monthly revenue</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Break-even point</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Payback period</span><span class="fill">[INSERT]</span></div>
-        <div class="metric"><span class="ml">Store-level contribution</span><span class="fill">[INSERT]</span></div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">The assumptions behind those numbers</h3>
+      <p class="note" style="margin-bottom:18px;">Every figure below is a base-case planning assumption, not a result.</p>
+      <div class="assumptions">
+        <div class="assumption">
+          <span class="a-k">Store setup cost</span>
+          <span class="a-v">KSh&nbsp;7.5M</span>
+          <span class="a-n">Estimated capital to establish the first location, excluding the KSh&nbsp;2.5M held back as working capital.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Monthly fixed costs</span>
+          <span class="a-v">KSh&nbsp;650K</span>
+          <span class="a-n">Rent and occupancy, staff, utilities, security, technology, insurance and licensing, and baseline marketing, on a 600&ndash;700 sq ft first location.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Inventory requirement</span>
+          <span class="a-v">KSh&nbsp;2.0M</span>
+          <span class="a-n">Matches the opening inventory allocation &mdash; enough assortment across countries, categories and price points.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Gross margin</span>
+          <span class="a-v">45%</span>
+          <span class="a-n">Target to be validated against actual landed product costs and the store&rsquo;s real sales mix.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Average order value</span>
+          <span class="a-v">KSh&nbsp;2,000</span>
+          <span class="a-n">A blended in-store assumption: single snacks sit below it, boxes and bundles pull it up.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Customer acquisition cost</span>
+          <span class="a-v">KSh&nbsp;500</span>
+          <span class="a-n">A planning target. The creator strategy is what could pull the blended figure down &mdash; many micro-creators will work for product rather than cash.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Repeat purchase rate</span>
+          <span class="a-v">30%</span>
+          <span class="a-n">A target to be validated. The thesis runs through the boxes: the store acquires, the box is the reason to come back.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Target monthly revenue</span>
+          <span class="a-v">KSh&nbsp;3.0M</span>
+          <span class="a-n">A steady-state planning target for the first store. At KSh&nbsp;2,000 blended AOV that implies roughly 1,500 transactions a month, about 50 a day over 30 trading days.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Contribution margin</span>
+          <span class="a-v">~23%</span>
+          <span class="a-n">Modelled store-level contribution after cost of goods and variable selling and fulfilment costs, before financing and corporate overhead.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Break-even point</span>
+          <span class="a-v">KSh&nbsp;2.8M / month</span>
+          <span class="a-n">The modelled revenue level at which store contribution covers the assumed KSh&nbsp;650K of monthly fixed cost.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Payback period</span>
+          <span class="a-v">~11 months</span>
+          <span class="a-n">Modelled payback on the KSh&nbsp;7.5M setup at roughly KSh&nbsp;700K of monthly store-level contribution.</span>
+        </div>
       </div>
-      </div>
+
+      <p class="note" style="margin-top:20px;">Illustrative base case. Actual economics will be validated after launch based on rent, product margins, traffic, AOV, CAC and repeat purchase behaviour.</p>
     </div>
   </section>
 
@@ -1182,14 +1405,11 @@
     <div class="slide-head"><span class="eyebrow">The ask</span></div>
     <h2 class="title">Raising to open the first Snack Quest location.</h2>
     <div class="body">
-      <p style="font-size:clamp(20px,2.6vw,30px);font-weight:750;letter-spacing:-.02em;margin-bottom:22px;">
-        Raising <span class="fill" style="font-size:.8em;">[INSERT TARGET AMOUNT]</span>
-      </p>
+      <div class="headline-figure">
+        <span class="hf-num">KSh&nbsp;10,000,000</span>
+        <span class="hf-cap">To open and launch the first Snack Quest location, prove the store economics, and establish the operating blueprint for further locations and franchises.</span>
+      </div>
       <div class="grid g2">
-        <div class="card hot">
-          <h3>Purpose</h3>
-          <p>Open and launch the first Snack Quest physical location, prove the store economics, and establish the blueprint for expansion.</p>
-        </div>
         <div class="card">
           <h3>The partner we&rsquo;re looking for</h3>
           <p style="margin-bottom:10px;">Capital matters. So does knowing what to do next.</p>
@@ -1231,10 +1451,12 @@
           <p><strong>Kelvin Kimathi</strong> — Founder, Snack Quest.</p>
           <p style="color:var(--ink-soft);font-size:15px;">Building the company from the ground up and hands-on across marketing, operations and customer experience. Focused on proving a repeatable retail and commerce model rather than scaling a story ahead of it.</p>
         </div>
-        <div class="slot" style="min-height:150px;">
-          <span class="k">Founder photograph</span>
-          <span class="h">Optional. A portrait here makes the deck feel like a person, not a document.</span>
-        </div>
+        <figure class="shot founder">
+          <div data-shot="founder" class="slot">
+            <span class="k">Founder photograph</span>
+            <span class="h">Kelvin with a packed box.</span>
+          </div>
+        </figure>
       </div>
     </div>
   </section>

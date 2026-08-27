@@ -43,6 +43,9 @@ SHOT_ALT = {
              'Snack Quest branded boxes strapped to the back of the motorbike.',
     'dispatch': 'A delivery rider in a hi-vis vest standing beside his motorbike, '
                 'securing three stacked Snack Quest branded boxes.',
+    # The founder, on the ask slide.
+    'founder': 'Kelvin Kimathi, founder of Snack Quest, seated at a counter '
+               'beside an open Snack Quest box packed with snacks.',
 }
 
 
