@@ -13,6 +13,12 @@ import { SendConfirmationSmsButton } from '@/components/admin/SendConfirmationSm
 import { OrderAttributionCard } from '@/components/admin/OrderAttributionCard';
 import { RecordCostsForm } from '@/components/warehouse/RecordCostsForm';
 import { analyticsEventRepository } from '@/repositories/analyticsEventRepository';
+import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
+import { webhookEventRepository } from '@/repositories/webhookEventRepository';
+import {
+  confirmationSourceOf,
+  CONFIRMATION_SOURCE_LABELS,
+} from '@/lib/payments/confirmationSource';
 import type { ConversionAttribution } from '@/types';
 import { CollectPaymentButton } from '@/components/warehouse/CollectPaymentButton';
 import { outboundMessageRepository } from '@/repositories/outboundMessageRepository';
@@ -82,7 +88,31 @@ export default async function AdminOrderDetailPage({
         .catch(() => [])
     : Promise.resolve([]);
 
-  const [items, shipment, refunds, boxes, confirmationSms, journey] = await Promise.all([
+  /*
+   * How this payment was actually confirmed (§ was the callback ever
+   * received). Best-effort: it is diagnostic, and an order page must
+   * not fail because a webhook lookup did.
+   */
+  const confirmationSourcePromise = order.payment?.manualPayment
+    ? Promise.resolve('manual' as const)
+    : paymentIntentRepository
+        .listCheckoutRequestIds(order.payment.paymentIntentId)
+        .then(async (ids) => {
+          for (const id of ids) {
+            const event = await webhookEventRepository.findByProviderEventId(
+              order.businessId,
+              'daraja',
+              id,
+            );
+            if (event) {
+              return confirmationSourceOf(event);
+            }
+          }
+          return 'unknown' as const;
+        })
+        .catch(() => 'unknown' as const);
+
+  const [items, shipment, refunds, boxes, confirmationSms, journey, confirmationSource] = await Promise.all([
     orderRepository.listItems(orderId),
     shipmentRepository.findByOrderId(orderId),
     refundRepository.listByOrderId(session.businessId, orderId),
@@ -93,6 +123,7 @@ export default async function AdminOrderDetailPage({
     // deduped on this exact id, so its presence is the whole answer.
     outboundMessageRepository.findById(`sms:order-confirmed:${orderId}`).catch(() => null),
     journeyPromise,
+    confirmationSourcePromise,
   ]);
 
   const { customer, delivery, payment, pricing, product } = order;
@@ -197,6 +228,27 @@ export default async function AdminOrderDetailPage({
             <DetailRow
               label="M-Pesa receipt"
               value={<span className="tabular-nums">{payment.mpesaReceiptNumber ?? '—'}</span>}
+            />
+            {/*
+              Whether Safaricom's callback actually reached us
+              (§ was the callback ever received). An order existing
+              does not prove it: the recovery sweep asks Safaricom what
+              happened when no callback arrives, and it settling the
+              payment is exactly what hides the callback being broken.
+            */}
+            <DetailRow
+              label="Confirmed by"
+              value={
+                confirmationSource === 'recovery_query' ? (
+                  <span className="text-warning font-medium">
+                    {CONFIRMATION_SOURCE_LABELS[confirmationSource]}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {CONFIRMATION_SOURCE_LABELS[confirmationSource]}
+                  </span>
+                )
+              }
             />
             {/*
               An order settled outside Daraja says so plainly, and says
