@@ -9,10 +9,10 @@
 <!--
   Not for search results. This is a document we hand to specific people,
   not a page we want surfaced under "snack quest nairobi" — and once the
-  funding figures on slide 13 are filled in, indexing it would publish
-  them. Deliberately NOT a robots.txt Disallow: robots.txt is itself
-  public, so listing the path there advertises the URL it is meant to
-  keep quiet. `noindex` (here and as an X-Robots-Tag header in
+  funding figures on the use-of-funds slide are filled in, indexing it
+  would publish them. Deliberately NOT a robots.txt Disallow: robots.txt
+  is itself public, so listing the path there advertises the URL it is
+  meant to keep quiet. `noindex` (here and as an X-Robots-Tag header in
   next.config.ts) tells the crawler not to keep the page after fetching
   it, which is the behaviour actually wanted.
 -->
@@ -333,6 +333,35 @@
   }
   .slot .h { font-size: 14px; color: var(--ink-soft); max-width: 34ch; }
 
+  /* The store renders, laid out to their real proportions so nothing
+     reflows when the files drop in. */
+  .shot { margin: 0; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+  }
+  /* Prose, not a label — so the body face, overriding the mono
+     `figcaption` rule the brand photographs use for their captions. */
+  .shot figcaption {
+    margin-top: 9px;
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .shot figcaption b { color: var(--ink); font-weight: 650; }
+  .shot.hero { margin-bottom: 22px; }
+  .shot.hero img, .slot.hero { aspect-ratio: 3 / 2; object-fit: cover; }
+  .shot.panel img, .slot.panel { aspect-ratio: 4 / 3; object-fit: cover; }
+  .slot.hero, .slot.panel { min-height: 0; }
+  .slot.panel { padding: 16px; }
+  .slot.panel .h { font-size: 13px; }
+  .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--edge); vertical-align: top; }
   th {
@@ -644,16 +673,51 @@
     <h2 class="title">The first Snack Quest location.</h2>
     <p class="lede">This raise is to open one store. Not inventory, not general marketing, not working capital in the abstract — a physical location that proves the model and becomes the blueprint for every location after it.</p>
     <div class="body">
-      <div class="grid g2" style="margin-bottom:24px;">
-        <div class="slot">
-          <span class="k">Store concept image 1</span>
-          <span class="h">Replace with the franchise store render / concept image. Front elevation or hero view.</span>
+      <!--
+        The franchise design. Captions name the commercial job each
+        view is evidence of, rather than describing the picture — an
+        investor can see that it is a shop; what they are being shown
+        is that the format is specified.
+      -->
+      <figure class="shot hero">
+        <div data-shot="interior" class="slot hero">
+          <span class="k">Interior — wide view</span>
+          <span class="h">The wide interior render — the one showing the country walls, pick wall and seating corner together.</span>
         </div>
-        <div class="slot">
-          <span class="k">Store concept image 2</span>
-          <span class="h">Interior, shelving or creator-corner view.</span>
-        </div>
+        <figcaption><b>The format, specified.</b> Country walls, the Build Your Quest pick wall, a mystery-box table and a seating corner — laid out so a second location is a build, not a redesign.</figcaption>
+      </figure>
+
+      <div class="panels" style="margin-bottom:26px;">
+        <figure class="shot panel">
+          <div data-shot="front" class="slot panel">
+            <span class="k">Storefront</span>
+            <span class="h">Top-left panel of the four-up: the corner storefront at night.</span>
+          </div>
+          <figcaption><b>Acquisition.</b> A lit corner unit that reads as a destination from the street.</figcaption>
+        </figure>
+        <figure class="shot panel">
+          <div data-shot="aisles" class="slot panel">
+            <span class="k">Country walls</span>
+            <span class="h">Top-right panel: the Korea / Japan / China / Thailand walls.</span>
+          </div>
+          <figcaption><b>Discovery.</b> Korea, Japan, China and Thailand each get their own wall — browsing as the product.</figcaption>
+        </figure>
+        <figure class="shot panel">
+          <div data-shot="pickwall" class="slot panel">
+            <span class="k">Build Your Quest wall</span>
+            <span class="h">Bottom-left panel: the Build Your Quest / Pick 5 wall.</span>
+          </div>
+          <figcaption><b>The box, in person.</b> Pick 5 off the wall — the online mechanic customers already know, made physical.</figcaption>
+        </figure>
+        <figure class="shot panel">
+          <div data-shot="counter" class="slot panel">
+            <span class="k">Counter &amp; creator corner</span>
+            <span class="h">Bottom-right panel: the entrance and the lit counter.</span>
+          </div>
+          <figcaption><b>Payment and content.</b> Pay in person, and a lit corner built to be filmed in.</figcaption>
+        </figure>
       </div>
+
       <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">One space doing seven jobs</h3>
       <div class="grid g4">
         <div class="card"><h3>Retail store</h3><p>Buy on the spot.</p></div>
