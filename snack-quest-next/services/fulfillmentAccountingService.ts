@@ -4,6 +4,7 @@ import { orderRepository } from '@/repositories/orderRepository';
 import { fulfillmentBatchRepository } from '@/repositories/fulfillmentBatchRepository';
 import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
 import { toMillis } from '@/lib/firestoreTimestamp';
+import { orderLines } from '@/types/checkoutLine';
 import type { FulfillmentBatch, Order } from '@/types';
 
 /**
@@ -39,6 +40,29 @@ export interface FulfillmentAccountingTotals {
   marginPct: number;
 }
 
+/**
+ * Margin for one kind of box (§ fulfilment records the real cost).
+ *
+ * The rollup answers "are we making money"; this answers the question
+ * that can actually be acted on — *which box* makes it. A shop selling
+ * two products at very different margins reads the same average
+ * whichever one it sells more of.
+ *
+ * Counted per line, so a two-box order contributes to both. Its cost
+ * is split across the boxes it contains, in proportion to nothing more
+ * clever than the count — the recorded cost is for the order as a
+ * whole and nobody wrote down which packet went where.
+ */
+export interface PackageMargin {
+  packageId: string;
+  packageLabel: string;
+  boxCount: number;
+  revenueKes: number;
+  costKes: number;
+  grossProfitKes: number;
+  marginPct: number;
+}
+
 /** One paid order carrying revenue that no shopping trip has been costed against yet. */
 export interface UncostedOrder {
   id: string;
@@ -70,6 +94,8 @@ export interface FulfillmentAccountingOverview {
   costCoveragePct: number;
   /** The oldest uncosted orders first — the ones most overdue a shopping trip being recorded. */
   oldestUncosted: UncostedOrder[];
+  /** Which box actually makes money, best margin first. Costed orders only. */
+  byPackage: PackageMargin[];
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -102,7 +128,51 @@ class FulfillmentAccountingService {
     const uncosted = { orderCount: 0, revenueKes: 0 };
     const uncostedOrders: UncostedOrder[] = [];
 
+    const packageTotals = new Map<string, PackageMargin>();
+
+    function attributeToPackages(data: Order, revenueKes: number, costKes: number) {
+      const lines = orderLines(data.product);
+      const boxes = lines.reduce((sum, line) => sum + line.quantity, 0) || 1;
+      for (const line of lines) {
+        const share = line.quantity / boxes;
+        const current = packageTotals.get(line.packageId) ?? {
+          packageId: line.packageId,
+          packageLabel: line.packageLabel,
+          boxCount: 0,
+          revenueKes: 0,
+          costKes: 0,
+          grossProfitKes: 0,
+          marginPct: 0,
+        };
+        current.boxCount += line.quantity;
+        current.revenueKes += Math.round(revenueKes * share);
+        current.costKes += Math.round(costKes * share);
+        packageTotals.set(line.packageId, current);
+      }
+    }
+
     for (const { id, data } of inWindow) {
+      /*
+       * A cost somebody actually recorded against this order beats a
+       * batch's allocation of a shopping trip across many
+       * (§ fulfilment records the real cost).
+       *
+       * The allocation is an estimate spread evenly; `costs` is the
+       * real figure from the person who packed the box and held the
+       * receipts. When an order has both, the real one wins — and
+       * before this it was ignored entirely, so every cost the
+       * warehouse entered was invisible here and its order still
+       * counted as an unaccounted gap.
+       */
+      if (data.costs) {
+        const costKes = data.costs.goodsCostKes + data.costs.otherCostKes;
+        costed.orderCount += 1;
+        costed.revenueKes += data.pricing.totalKes;
+        costed.costKes += costKes;
+        attributeToPackages(data, data.pricing.totalKes, costKes);
+        continue;
+      }
+
       if (data.fulfillment) {
         costed.orderCount += 1;
         // The batch's own snapshot, not the order's current pricing —
@@ -110,6 +180,7 @@ class FulfillmentAccountingService {
         // are what the batch's profit was computed from.
         costed.revenueKes += data.fulfillment.orderRevenueKes;
         costed.costKes += data.fulfillment.allocatedCostKes;
+        attributeToPackages(data, data.fulfillment.orderRevenueKes, data.fulfillment.allocatedCostKes);
         continue;
       }
 
@@ -149,6 +220,17 @@ class FulfillmentAccountingService {
       averageBatchCostKes:
         batchesInWindow.length > 0 ? Math.round(totalBatchCostKes / batchesInWindow.length) : 0,
       costCoveragePct: totalRevenueKes > 0 ? (costed.revenueKes / totalRevenueKes) * 100 : 100,
+      byPackage: [...packageTotals.values()]
+        .map((entry) => ({
+          ...entry,
+          grossProfitKes: entry.revenueKes - entry.costKes,
+          marginPct:
+            entry.revenueKes > 0 ? ((entry.revenueKes - entry.costKes) / entry.revenueKes) * 100 : 0,
+        }))
+        // Worst margin first: the box quietly losing money is the one
+        // worth finding, and it is never the one at the top of an
+        // alphabetical list.
+        .sort((a, b) => a.marginPct - b.marginPct),
       oldestUncosted: uncostedOrders.sort((a, b) => b.ageDays - a.ageDays).slice(0, 10),
     };
   }

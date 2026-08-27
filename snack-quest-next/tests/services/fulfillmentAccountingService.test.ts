@@ -134,3 +134,139 @@ describe('getOverview', () => {
     expect(overview.costed.orderCount).toBe(0);
   });
 });
+
+/**
+ * Costs recorded straight onto the order by the person who packed it
+ * (§ fulfilment records the real cost).
+ *
+ * This rollup only ever knew about batch allocations, so every figure
+ * the warehouse entered was invisible here and its order still counted
+ * as an unaccounted gap — the exact opposite of what recording it was
+ * for.
+ */
+describe('costs recorded against the order itself', () => {
+  function costs(goodsCostKes: number, otherCostKes: number) {
+    return {
+      goodsCostKes,
+      otherCostKes,
+      note: null,
+      recordedAt: new Date(),
+      recordedBy: 'staff-1',
+      recordedByName: 'Boniface',
+    };
+  }
+
+  it('counts as costed, with the real profit', async () => {
+    await seedConfirmedOrder(5000, { costs: costs(1800, 350) });
+
+    const overview = await fulfillmentAccountingService.getOverview(BUSINESS_ID);
+
+    expect(overview.costed).toMatchObject({
+      orderCount: 1,
+      revenueKes: 5000,
+      costKes: 2150,
+      grossProfitKes: 2850,
+    });
+    // And crucially not sitting in the gap it used to sit in.
+    expect(overview.uncosted).toEqual({ orderCount: 0, revenueKes: 0 });
+    expect(overview.costCoveragePct).toBe(100);
+  });
+
+  it('still reports an order with no cost of any kind as a gap', async () => {
+    await seedConfirmedOrder(5000, { costs: costs(1000, 0) });
+    await seedConfirmedOrder(3000);
+
+    const overview = await fulfillmentAccountingService.getOverview(BUSINESS_ID);
+
+    expect(overview.costed.orderCount).toBe(1);
+    expect(overview.uncosted).toEqual({ orderCount: 1, revenueKes: 3000 });
+    // 5000 of 8000 in-window revenue has a cost behind it.
+    expect(overview.costCoveragePct).toBe(62.5);
+  });
+
+  /*
+   * The precedence that matters. A batch spreads one shopping trip
+   * evenly across its orders; `costs` is the real figure from somebody
+   * holding the receipts for this box. When both exist the real one
+   * wins, and it must not be added to the estimate — that would
+   * double-count the same spending.
+   */
+  it('prefers the recorded cost over a batch allocation, never both', async () => {
+    const orderId = await seedConfirmedOrder(6000);
+    await fulfillmentBatchService.createFulfillmentBatch(
+      BUSINESS_ID,
+      { orderIds: [orderId], productsPurchasedKes: 4000, packagingKes: 0 },
+      'staff-1',
+    );
+    // Recorded afterwards, by the person who actually packed it.
+    await adminFirestore.collection('orders').doc(orderId).update({ costs: costs(1500, 200) });
+
+    const overview = await fulfillmentAccountingService.getOverview(BUSINESS_ID);
+
+    expect(overview.costed.orderCount).toBe(1);
+    expect(overview.costed.costKes).toBe(1700);
+    expect(overview.costed.grossProfitKes).toBe(4300);
+  });
+});
+
+/**
+ * Which box actually makes money (§ fulfilment records the real cost).
+ *
+ * The rollup answers "are we making money"; a shop selling two
+ * products at very different margins reads the same average whichever
+ * one it sells more of, so the average cannot be acted on.
+ */
+describe('margin by box', () => {
+  function costs(goodsCostKes: number) {
+    return {
+      goodsCostKes,
+      otherCostKes: 0,
+      note: null,
+      recordedAt: new Date(),
+      recordedBy: 'staff-1',
+      recordedByName: 'Boniface',
+    };
+  }
+
+  it('separates a profitable box from one losing money', async () => {
+    await seedConfirmedOrder(5000, {
+      costs: costs(1000),
+      product: { packageId: 'premium', packageLabel: 'Premium Box', quantity: 1, unitPriceKes: 5000 },
+    });
+    await seedConfirmedOrder(2000, {
+      costs: costs(2600),
+      product: { packageId: 'starter', packageLabel: 'Starter Box', quantity: 1, unitPriceKes: 2000 },
+    });
+
+    const overview = await fulfillmentAccountingService.getOverview(BUSINESS_ID);
+
+    // Worst first: the box quietly losing money is the one worth
+    // finding, and it is never at the top of an alphabetical list.
+    expect(overview.byPackage.map((entry) => entry.packageId)).toEqual(['starter', 'premium']);
+    expect(overview.byPackage[0]).toMatchObject({ costKes: 2600, grossProfitKes: -600 });
+    expect(overview.byPackage[1]).toMatchObject({ costKes: 1000, grossProfitKes: 4000 });
+  });
+
+  it('splits a two-box order across both boxes', async () => {
+    await seedConfirmedOrder(8000, {
+      costs: costs(4000),
+      product: {
+        packageId: 'premium',
+        packageLabel: 'Premium Box',
+        quantity: 1,
+        unitPriceKes: 5000,
+        items: [
+          { packageId: 'premium', packageLabel: 'Premium Box', quantity: 1, unitPriceKes: 5000 },
+          { packageId: 'starter', packageLabel: 'Starter Box', quantity: 1, unitPriceKes: 3000 },
+        ],
+      },
+    });
+
+    const overview = await fulfillmentAccountingService.getOverview(BUSINESS_ID);
+
+    expect(overview.byPackage).toHaveLength(2);
+    // The whole order's cost is accounted for, not half of it.
+    expect(overview.byPackage.reduce((sum, entry) => sum + entry.costKes, 0)).toBe(4000);
+    expect(overview.byPackage.reduce((sum, entry) => sum + entry.revenueKes, 0)).toBe(8000);
+  });
+});
