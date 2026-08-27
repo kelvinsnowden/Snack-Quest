@@ -5,6 +5,7 @@ import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { WhatsAppCheckoutButton } from '@/components/marketing/WhatsAppCheckoutButton';
 import { buildBoxOrderMessage } from '@/lib/whatsapp/orderLink';
 import { formatKes } from '@/lib/orders/format';
+import { boxContentsHeadline, boxContentsLine } from '@/lib/packages/boxContents';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS } from '../design/ctaStyles';
 import { OfferCountdown } from './OfferCountdown';
@@ -204,9 +205,9 @@ export function PickYourBox({
                     the description instead of becoming the last of
                     several identical trust bullets.
                   */}
-                  {pickCount > 0 ? (
+                  {boxContentsHeadline(pkg.data.snackCountLabel, pickCount) ? (
                     <p className="text-secondary mt-2 text-base font-bold">
-                      Pick {pickCount}. We&apos;ll surprise you with the rest.
+                      {boxContentsHeadline(pkg.data.snackCountLabel, pickCount)}
                     </p>
                   ) : null}
                   {pkg.data.description ? (
@@ -220,10 +221,16 @@ export function PickYourBox({
 
                   <ul className="mt-4 flex flex-1 flex-col gap-2 md:mt-7 md:gap-3">
                     {[
-                      ...(pickCount > 0
-                        ? [`Choose ${pickCount} snacks you know you'll love — we curate the rest`]
+                      /*
+                        One line, not two. "Choose 5" beside "15+
+                        snacks" reads as five plus fifteen — a real
+                        customer added them up and asked why the maths
+                        did not work. `boxContentsLine` puts the five
+                        inside the total.
+                      */
+                      ...(boxContentsLine(pkg.data.snackCountLabel, pickCount)
+                        ? [boxContentsLine(pkg.data.snackCountLabel, pickCount)!]
                         : []),
-                      ...(pkg.data.snackCountLabel ? [pkg.data.snackCountLabel] : []),
                       ...TRUST_LINES,
                     ].map((line) => (
                       <li
