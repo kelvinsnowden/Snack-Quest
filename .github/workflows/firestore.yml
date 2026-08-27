@@ -1,0 +1,111 @@
+# Firestore rules and indexes, deployed on merge instead of by hand.
+#
+# Nothing in this repo deployed either of them. Vercel ships the code
+# and stops there, so every rules or index change was a manual step
+# somebody had to remember after the merge — and twice it was not
+# remembered, which took production down with FAILED_PRECONDITION on a
+# query whose index had never been created.
+#
+# Two things make automating this safe rather than reckless:
+#
+#   1. The rules are tested. `tests/rules` runs the real Firestore
+#      emulator against the real rules file, and this deploys nothing
+#      if those fail. Auto-deploying untested rules is how a business
+#      locks itself out of its own data.
+#   2. It only runs on `main`, so every change has already been through
+#      a pull request.
+#
+# Indexes build asynchronously. A green run here means Firebase
+# accepted them, not that they are READY — a large index can take
+# minutes, and a query needing one fails until it is.
+name: Firestore rules and indexes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'snack-quest-next/firestore.rules'
+      - 'snack-quest-next/firestore.indexes.json'
+      - '.github/workflows/firestore.yml'
+  # So a deploy can be re-run without an empty commit — the usual case
+  # being an index that failed to build the first time.
+  workflow_dispatch:
+
+# One deploy at a time. Two concurrent runs would race to replace the
+# same rules document, and the winner would be whichever finished last
+# rather than whichever was newer.
+concurrency:
+  group: firestore-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: snack-quest-next
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: snack-quest-next/package-lock.json
+
+      # The Firestore emulator is a Java program. Without this the
+      # rules tests below fail on a missing JVM rather than on anything
+      # to do with the rules.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      # The gate. `firebase-tools` is already a devDependency, so this
+      # needs no separate install.
+      - name: Test the rules being deployed
+        run: npm run test:rules
+
+      # Checked explicitly so a missing secret reads as a missing
+      # secret, rather than as an authentication error from a tool that
+      # was never given a credential.
+      - name: Check the deploy credential exists
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT is not set. Add the service account JSON as a repository secret — see .github/workflows/README.md."
+            exit 1
+          fi
+
+      - name: Deploy
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          # Written to a file rather than passed as an argument: the
+          # whole JSON would otherwise appear in the process list.
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/service-account.json"
+
+          # `--project` explicitly: .firebaserc points at `demo-project`,
+          # which is the emulator, and deploying rules to it would
+          # silently succeed while changing nothing in production.
+          npx firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project snack-quest-os \
+            --non-interactive
+
+          rm -f "$RUNNER_TEMP/service-account.json"
+
+      - name: Say what still needs watching
+        run: |
+          echo "### Firestore deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Rules are live immediately." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Indexes build asynchronously.** Firebase has accepted them; it has not finished building them. Check the console until each shows READY — a query that needs one fails until then." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://console.firebase.google.com/project/snack-quest-os/firestore/indexes" >> "$GITHUB_STEP_SUMMARY"
