@@ -34,7 +34,9 @@ export default async function FinanceFulfillmentPage() {
       <div>
         <h1 className="text-page-title text-foreground font-bold tracking-tight">Fulfilment accounting</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          The last 30 days of shopping trips — what they cost, and what the orders they covered brought in.
+          The last 30 days — what fulfilling the orders cost, and what they brought in. Costs come
+          from what the warehouse records against an order, or from a shopping trip batched across
+          several.
         </p>
       </div>
 
@@ -48,7 +50,17 @@ export default async function FinanceFulfillmentPage() {
         <StatCard
           label="Cost of goods"
           value={formatKes(overview.costed.costKes)}
-          detail={`${overview.batchCount} batch${overview.batchCount === 1 ? '' : 'es'}, avg ${formatKes(overview.averageBatchCostKes)}`}
+          /*
+            Only mention batches when there are any. Costs recorded
+            straight onto an order do not come from a shopping trip, so
+            "0 batches, avg KES 0" under a real five-figure cost reads
+            as though nothing was recorded at all.
+          */
+          detail={
+            overview.batchCount > 0
+              ? `${overview.batchCount} batch${overview.batchCount === 1 ? '' : 'es'}, avg ${formatKes(overview.averageBatchCostKes)}`
+              : 'recorded against orders'
+          }
           icon={<Receipt className="size-5" />}
         />
         <StatCard
@@ -87,6 +99,57 @@ export default async function FinanceFulfillmentPage() {
                 <Link href="/admin/fulfillment-batches/new">Record a batch</Link>
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/*
+        Which box actually makes the money (§ fulfilment records the
+        real cost). The rollup above answers "are we profitable"; this
+        answers the question that can be acted on, because a shop
+        selling two products at very different margins reads the same
+        average whichever one it sells more of.
+
+        Worst margin first: the box quietly losing money is the one
+        worth finding.
+      */}
+      {overview.byPackage.length > 0 ? (
+        <Card className="overflow-hidden p-0">
+          <CardHeader className="p-5">
+            <CardTitle>Margin by box</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-border divide-y">
+              {overview.byPackage.map((entry) => (
+                <li
+                  key={entry.packageId}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 py-3"
+                >
+                  <span className="min-w-0">
+                    <span className="text-foreground block font-medium">{entry.packageLabel}</span>
+                    <span className="text-muted-foreground block text-caption tabular-nums">
+                      {entry.boxCount} {entry.boxCount === 1 ? 'box' : 'boxes'} ·{' '}
+                      {formatKes(entry.revenueKes)} in, {formatKes(entry.costKes)} out
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span
+                      className={
+                        entry.grossProfitKes < 0
+                          ? 'text-danger block font-semibold tabular-nums'
+                          : 'text-foreground block font-semibold tabular-nums'
+                      }
+                    >
+                      {entry.grossProfitKes < 0 ? '-' : ''}
+                      {formatKes(Math.abs(entry.grossProfitKes))}
+                    </span>
+                    <span className="text-muted-foreground block text-caption tabular-nums">
+                      {entry.marginPct.toFixed(0)}% margin
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       ) : null}
