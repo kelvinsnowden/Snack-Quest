@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { MapPin } from 'lucide-react';
 import { orderLines, type CheckoutLineItem } from '@/types/checkoutLine';
 import type { GuaranteedPick } from '@/types';
 
@@ -26,9 +27,17 @@ import type { GuaranteedPick } from '@/types';
  * Stated as a floor, never as the contents: the rest of the box is
  * still curated, and a packer reading these as "the box contains
  * exactly these" would ship a worse box.
+ *
+ * Where to buy each one comes from the live catalogue rather than the
+ * order, deliberately. `GuaranteedPick` freezes the name and photo
+ * because an order records what was sold; a sourcing note is the
+ * opposite kind of fact — it answers "where do I get this today", and
+ * a shop that moved supplier last month needs the packer to be told
+ * the new one, not the one that was true when the order was placed.
  */
 export function OrderPackingList({
   product,
+  sourcingNotes,
   /** Bigger squares for the order page, where the packer is working from one order. */
   size = 'compact',
 }: {
@@ -39,6 +48,8 @@ export function OrderPackingList({
     quantity?: number;
     guaranteedPicks?: GuaranteedPick[];
   };
+  /** Where to buy each snack, by snack id — read live, see this component's own note. */
+  sourcingNotes?: Map<string, string | null>;
   size?: 'compact' | 'large';
 }) {
   const lines = orderLines(product);
@@ -99,6 +110,17 @@ export function OrderPackingList({
                       {pick.origin ? (
                         <span className="text-muted-foreground block text-caption leading-tight">
                           {pick.origin}
+                        </span>
+                      ) : null}
+                      {/*
+                        Where to buy it. The same pin the shopping run
+                        uses, so the two screens read as one system to
+                        somebody who moves between them.
+                      */}
+                      {sourcingNotes?.get(pick.snackItemId) ? (
+                        <span className="text-foreground mt-0.5 flex items-start gap-1 text-caption leading-tight">
+                          <MapPin className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                          <span>{sourcingNotes.get(pick.snackItemId)}</span>
                         </span>
                       ) : null}
                     </li>
