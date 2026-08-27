@@ -51,6 +51,31 @@ class WebhookEventRepository {
    * these providers, not an error. The doc ID is businessId-prefixed
    * so two tenants' providers can never collide on the same event ID.
    */
+  /**
+   * One recorded event, by the provider's own id
+   * (§ was the callback ever received).
+   *
+   * The sibling of `exists`, which answers the same question with a
+   * boolean. This returns the document because the *payload* is what
+   * distinguishes a real Safaricom callback from this system asking
+   * Safaricom what happened — and that difference is the whole point
+   * of asking.
+   */
+  async findByProviderEventId(
+    businessId: string,
+    provider: WebhookProvider,
+    providerEventId: string,
+  ): Promise<WebhookEvent | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('provider', '==', provider)
+      .where('providerEventId', '==', providerEventId)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : (snapshot.docs[0].data() as WebhookEvent);
+  }
+
   async recordIfNew(
     input: RecordWebhookEventInput,
   ): Promise<{ isNew: boolean }> {

@@ -210,6 +210,27 @@ class PaymentIntentRepository {
    * `null` means either no attempts exist yet or the newest one
    * already resolved (nothing to query).
    */
+  /**
+   * Every Safaricom `checkoutRequestId` this intent has ever pushed
+   * against, newest first (§ was the callback ever received).
+   *
+   * Unlike `getPendingAttempt` this does not care about status: the
+   * question it answers is asked *after* an attempt resolved, and the
+   * ids are what a `webhookEvents` record is keyed by.
+   */
+  async listCheckoutRequestIds(intentId: string): Promise<string[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .doc(intentId)
+      .collection('attempts')
+      .orderBy('initiatedAt', 'desc')
+      .limit(20)
+      .get();
+    return snapshot.docs
+      .map((doc) => (doc.data() as PaymentAttempt).checkoutRequestId)
+      .filter((id): id is string => Boolean(id));
+  }
+
   async getPendingAttempt(
     intentId: string,
   ): Promise<{
