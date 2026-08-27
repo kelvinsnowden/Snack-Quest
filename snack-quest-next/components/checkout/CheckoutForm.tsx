@@ -630,8 +630,15 @@ export function CheckoutForm({
       {requiredPicks > 0 ? (
         <section className="flex flex-col gap-4">
           <SectionHeading step={2} title={`Choose your ${requiredPicks} guaranteed picks`} />
+          {/*
+            Names the total, not just the five. "Choose 5" without it
+            left customers assuming the picks were on top of the box's
+            advertised count rather than part of it.
+          */}
           <p className="text-muted-foreground -mt-2 text-sm">
-            {`Pick any ${requiredPicks} snacks from the current selection. These are guaranteed to be in your box — we'll fill the rest with surprises.`}
+            {box?.snackCountLabel
+              ? `Your box has ${box.snackCountLabel}. Pick ${requiredPicks} of them yourself — we choose the rest as your surprise.`
+              : `Pick any ${requiredPicks} snacks from the current selection. These are guaranteed to be in your box — we'll fill the rest with surprises.`}
           </p>
           <GuaranteedPicker
             required={requiredPicks}

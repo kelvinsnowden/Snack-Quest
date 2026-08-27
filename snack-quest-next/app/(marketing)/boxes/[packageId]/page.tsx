@@ -10,6 +10,8 @@ import { reviewService } from '@/services/reviewService';
 import { WhatsAppOrderButton } from '@/components/marketing/WhatsAppOrderButton';
 import { WhatsAppCheckoutButton } from '@/components/marketing/WhatsAppCheckoutButton';
 import { buildBoxOrderMessage } from '@/lib/whatsapp/orderLink';
+import { boxContentsHeadline } from '@/lib/packages/boxContents';
+import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { SetActiveBoxName } from '@/components/marketing/design/ActiveBoxContext';
 import { ReviewCard } from '@/components/marketing/review/ReviewCard';
@@ -204,8 +206,14 @@ export default async function BoxDetailPage({
           <p className="text-foreground mt-3 text-2xl font-semibold">
             {formatKes(box.priceKes)}
           </p>
-          {box.snackCountLabel ? (
-            <p className="text-primary mt-1 text-base font-semibold">{box.snackCountLabel}</p>
+          {/*
+            The total and the customer's share as one fact. Shown apart
+            they were read as two separate promises and added together.
+          */}
+          {boxContentsHeadline(box.snackCountLabel, guaranteedPickCountFor(box)) ? (
+            <p className="text-primary mt-1 text-base font-semibold">
+              {boxContentsHeadline(box.snackCountLabel, guaranteedPickCountFor(box))}
+            </p>
           ) : null}
           <p className="text-subtitle text-muted-foreground mt-4">
             {box.description}
