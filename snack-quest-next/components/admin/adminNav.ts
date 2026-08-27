@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { AdminSection } from '@/lib/auth/adminSections';
 import {
+  Receipt,
   Banknote,
   BarChart3,
   Boxes,
@@ -104,6 +105,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/deliveries', label: 'Deliveries', icon: Truck, section: 'orders', group: 'Orders & delivery', quickAccess: true },
   { href: '/admin/fulfillment-batches', label: 'Fulfillment batches', shortLabel: 'Batches', icon: PackageSearch, section: 'orders', group: 'Orders & delivery', quickAccess: true },
   { href: '/admin/delivery-zones', label: 'Delivery zones', icon: MapPinned, section: 'orders', group: 'Orders & delivery' },
+  { href: '/admin/fulfilment-costs', label: 'Fulfilment costs', shortLabel: 'Costs', icon: Receipt, section: 'orders', group: 'Orders & delivery' },
 
   { href: '/admin/products', label: 'Products', icon: Package, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/inventory', label: 'Inventory', icon: Boxes, section: 'orders', group: 'Catalogue & stock' },

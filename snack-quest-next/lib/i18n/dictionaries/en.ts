@@ -43,6 +43,7 @@ export const en = {
       '/admin/deliveries': 'Deliveries',
       '/admin/fulfillment-batches': 'Fulfillment batches',
       '/admin/delivery-zones': 'Delivery zones',
+      '/admin/fulfilment-costs': 'Fulfilment costs',
       '/admin/products': 'Products',
       '/admin/inventory': 'Inventory',
       '/admin/snack-items': 'Snacks',
@@ -70,6 +71,7 @@ export const en = {
     },
     shortItems: {
       '/admin/fulfillment-batches': 'Batches',
+      '/admin/fulfilment-costs': 'Costs',
       '/admin/recipes': 'Recipes',
       '/admin/marketing-sms': 'SMS',
       '/admin/sms-opt-outs': 'Opt-outs',
