@@ -6,7 +6,8 @@ import { MarkDispatchedButton } from '@/components/warehouse/MarkDispatchedButto
 import { Phone } from 'lucide-react';
 import { DeliveryTarget } from '@/components/warehouse/DeliveryTarget';
 import { formatDate, formatOrderNumber } from '@/lib/orders/format';
-import { orderBoxSummary } from '@/types/checkoutLine';
+import { CompleteBoxForm } from '@/components/warehouse/CompleteBoxForm';
+import { orderBoxSummary, orderLines } from '@/types/checkoutLine';
 import type { Order } from '@/types';
 
 /**
@@ -40,6 +41,10 @@ export function FulfilmentOrderCard({
 }) {
   const { customer, delivery, pricing, payment, product, costs } = order;
   const outstandingKes = payment?.dueOnDelivery ? pricing.totalKes : 0;
+  const curatedCount = orderLines(product).reduce(
+    (sum, line) => sum + (line.curatedSnacks?.length ?? 0),
+    0,
+  );
 
   return (
     <Card className="flex flex-col gap-4 p-4">
@@ -96,6 +101,34 @@ export function FulfilmentOrderCard({
           </span>
         ) : null}
       </div>
+
+      {/*
+        The rest of what goes in the box (§ staff complete the box).
+        Only while it is still being packed — once it is sealed and
+        out for delivery there is nothing left to decide, and the
+        record is what it is.
+      */}
+      {stage === 'pack' ? (
+        <details className="border-border rounded-lg border p-3">
+          <summary className="text-foreground cursor-pointer text-sm font-medium">
+            {curatedCount > 0
+              ? `Completed the box — ${curatedCount} ${curatedCount === 1 ? 'snack' : 'snacks'} added`
+              : 'Add the rest of the box'}
+          </summary>
+          <div className="mt-3">
+            <CompleteBoxForm
+              orderId={orderId}
+              boxes={orderLines(product).map((line, lineIndex) => ({
+                lineIndex,
+                packageLabel: line.packageLabel,
+                quantity: line.quantity,
+                promisedCount: (line.guaranteedPicks ?? product.guaranteedPicks ?? []).length,
+                curatedSnackIds: (line.curatedSnacks ?? []).map((snack) => snack.snackItemId),
+              }))}
+            />
+          </div>
+        </details>
+      ) : null}
 
       {/*
         What it cost, entered by the only person who knows

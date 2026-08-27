@@ -2,6 +2,7 @@ import 'server-only';
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
+import type { CheckoutLineItem } from '@/types/checkoutLine';
 import type { ManualPaymentRecord, Order, OrderFulfillment, OrderItem, OrderStatus } from '@/types';
 
 /**
@@ -118,6 +119,31 @@ class OrderRepository {
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: actor,
         ...(reason !== undefined ? { statusReason: reason } : {}),
+      });
+  }
+
+  /**
+   * What the shop put in to complete each box
+   * (§ staff complete the box).
+   *
+   * Writes the whole `product.items` array, because the curated snacks
+   * belong to the box they complete and the box is the line. An order
+   * placed before line items existed gains one here — every reader
+   * already goes through `orderLines()`, which reconstructs exactly
+   * that single line, so nothing sees a change it does not already
+   * handle.
+   *
+   * `guaranteedPicks` on each line is carried through untouched. The
+   * customer's promise is not this call's to edit.
+   */
+  async recordCuratedSnacks(orderId: string, items: CheckoutLineItem[], actor: string): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(orderId)
+      .update({
+        'product.items': items,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor,
       });
   }
 

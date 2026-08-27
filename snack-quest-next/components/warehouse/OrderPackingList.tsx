@@ -35,6 +35,55 @@ import type { GuaranteedPick } from '@/types';
  * a shop that moved supplier last month needs the packer to be told
  * the new one, not the one that was true when the order was placed.
  */
+function SnackTiles({
+  picks,
+  tile,
+  sizes,
+  sourcingNotes,
+}: {
+  picks: GuaranteedPick[];
+  tile: string;
+  sizes: string;
+  sourcingNotes?: Map<string, string | null>;
+}) {
+  return (
+    <ul className="mt-2 flex flex-wrap gap-3">
+      {picks.map((pick) => (
+        <li key={pick.snackItemId} className="w-[5.5rem] shrink-0">
+          <span className={`bg-border/40 relative block ${tile} w-full overflow-hidden rounded-md`}>
+            {pick.imageUrl ? (
+              <Image src={pick.imageUrl} alt={pick.name} fill sizes={sizes} className="object-cover" />
+            ) : (
+              <span className="text-warning flex h-full w-full items-center justify-center px-1 text-center text-caption font-medium">
+                No photo
+              </span>
+            )}
+          </span>
+          <span className="text-foreground mt-1 block text-caption leading-tight font-medium">
+            {pick.name}
+          </span>
+          {pick.origin ? (
+            <span className="text-muted-foreground block text-caption leading-tight">
+              {pick.origin}
+            </span>
+          ) : null}
+          {/*
+            Where to buy it. The same pin the shopping run uses, so the
+            two screens read as one system to somebody who moves
+            between them.
+          */}
+          {sourcingNotes?.get(pick.snackItemId) ? (
+            <span className="text-foreground mt-0.5 flex items-start gap-1 text-caption leading-tight">
+              <MapPin className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+              <span>{sourcingNotes.get(pick.snackItemId)}</span>
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function OrderPackingList({
   product,
   sourcingNotes,
@@ -82,50 +131,30 @@ export function OrderPackingList({
             {picks.length > 0 ? (
               <>
                 <span className="text-muted-foreground mt-0.5 block text-caption">
-                  Must include:
+                  Customer chose:
                 </span>
-                <ul className="mt-2 flex flex-wrap gap-3">
-                  {picks.map((pick) => (
-                    <li key={pick.snackItemId} className="w-[5.5rem] shrink-0">
-                      <span
-                        className={`bg-border/40 relative block ${tile} w-full overflow-hidden rounded-md`}
-                      >
-                        {pick.imageUrl ? (
-                          <Image
-                            src={pick.imageUrl}
-                            alt={pick.name}
-                            fill
-                            sizes={sizes}
-                            className="object-cover"
-                          />
-                        ) : (
-                          <span className="text-warning flex h-full w-full items-center justify-center px-1 text-center text-caption font-medium">
-                            No photo
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-foreground mt-1 block text-caption leading-tight font-medium">
-                        {pick.name}
-                      </span>
-                      {pick.origin ? (
-                        <span className="text-muted-foreground block text-caption leading-tight">
-                          {pick.origin}
-                        </span>
-                      ) : null}
-                      {/*
-                        Where to buy it. The same pin the shopping run
-                        uses, so the two screens read as one system to
-                        somebody who moves between them.
-                      */}
-                      {sourcingNotes?.get(pick.snackItemId) ? (
-                        <span className="text-foreground mt-0.5 flex items-start gap-1 text-caption leading-tight">
-                          <MapPin className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                          <span>{sourcingNotes.get(pick.snackItemId)}</span>
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                <SnackTiles picks={picks} tile={tile} sizes={sizes} sourcingNotes={sourcingNotes} />
+              </>
+            ) : null}
+            {/*
+              What the shop put in to complete the box (§ staff
+              complete the box), under its own heading rather than
+              merged into the list above. The customer was promised
+              the first group; the second is curation, and a packer
+              checking the box against the promise needs to see which
+              is which.
+            */}
+            {line.curatedSnacks?.length ? (
+              <>
+                <span className="text-muted-foreground mt-2 block text-caption">
+                  We added:
+                </span>
+                <SnackTiles
+                  picks={line.curatedSnacks}
+                  tile={tile}
+                  sizes={sizes}
+                  sourcingNotes={sourcingNotes}
+                />
               </>
             ) : null}
           </li>
