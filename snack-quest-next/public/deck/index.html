@@ -288,6 +288,22 @@
     font-family: "Geist Mono", ui-monospace, monospace;
   }
 
+  /* Platform screenshots, shown as evidence. */
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px;
+    max-width: 620px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+  .shot.screen img {
+    max-height: none;
+    object-fit: contain;
+    border-radius: 12px;
+    background: var(--ground);
+  }
+
   /* The same amount in a currency the reader thinks in. */
   .usd {
     display: block;
@@ -983,6 +999,17 @@
         <div class="card"><h3>4.7K</h3><p>Profile views</p></div>
         <div class="card"><h3>278</h3><p>Shares</p></div>
         <div class="card"><h3>144</h3><p>Comments</p></div>
+      </div>
+
+      <div class="screens">
+        <figure class="shot screen">
+          <img src="/deck/shot-ttmetrics.webp" alt="TikTok's analytics screen for @snackquests, 28 days to 25 August 2026: 177.8K post views, 4.7K profile views, 11.4K likes, 144 comments, 278 shares.">
+          <figcaption>TikTok&rsquo;s own 28-day analytics for @snackquests.</figcaption>
+        </figure>
+        <figure class="shot screen">
+          <img src="/deck/shot-ttprofile.webp" alt="The @snackquests TikTok profile: 1,208 followers, 13.7K likes, and a grid of videos with 74K, 37.8K and 13.5K views.">
+          <figcaption>The account, with the 74K video pinned.</figcaption>
+        </figure>
       </div>
 
       <div class="pull">Under two weeks of organic posting. Three days of ads. No agency, no production budget.</div>

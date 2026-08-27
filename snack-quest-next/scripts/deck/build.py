@@ -53,6 +53,10 @@ SHOT_ALT = {
                     'securing three stacked Snack Quest branded boxes.',
         'founder': 'Kelvin Kimathi, founder of Snack Quest, seated at a counter '
                    'beside an open Snack Quest box packed with snacks.',
+        'ttmetrics': "TikTok's analytics screen for @snackquests, 28 days to 25 August 2026: "
+                     '177.8K post views, 4.7K profile views, 11.4K likes, 144 comments, 278 shares.',
+        'ttprofile': 'The @snackquests TikTok profile: 1,208 followers, 13.7K likes, '
+                     'and a grid of videos with 74K, 37.8K and 13.5K views.',
     },
     'zh': {
         'interior': 'Snack Quest 门店内景：按国别陈列的零食墙、“自选盲盒”自选墙、盲盒陈列台与休息区。',
@@ -63,6 +67,10 @@ SHOT_ALT = {
         'rider': '配送骑手骑车驶离内罗毕小路，车后绑着三个 Snack Quest 品牌包装箱。',
         'dispatch': '身穿反光背心的配送骑手站在摩托车旁，固定三个叠放的 Snack Quest 品牌包装箱。',
         'founder': 'Snack Quest 创始人 Kelvin Kimathi 坐在台前，身旁是一个装满零食的 Snack Quest 敞口礼盒。',
+        'ttmetrics': '@snackquests 的 TikTok 后台数据页，截至 2026 年 8 月 25 日的 28 天：'
+                     '播放量 17.8 万，主页访问 4,700，点赞 1.14 万，评论 144，转发 278。',
+        'ttprofile': '@snackquests 的 TikTok 主页：1,208 粉丝，13.7 万点赞，'
+                     '视频列表中有 7.4 万、3.78 万与 1.35 万播放的作品。',
     },
 }
 

@@ -288,6 +288,22 @@
     font-family: "Geist Mono", ui-monospace, monospace;
   }
 
+  /* Platform screenshots, shown as evidence. */
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px;
+    max-width: 620px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+  .shot.screen img {
+    max-height: none;
+    object-fit: contain;
+    border-radius: 12px;
+    background: var(--ground);
+  }
+
   /* The same amount in a currency the reader thinks in. */
   .usd {
     display: block;
@@ -1005,6 +1021,17 @@
         <div class="card"><h3>4,700</h3><p>主页访问</p></div>
         <div class="card"><h3>278</h3><p>转发</p></div>
         <div class="card"><h3>144</h3><p>评论</p></div>
+      </div>
+
+      <div class="screens">
+        <figure class="shot screen">
+          <img src="/deck/shot-ttmetrics.webp" alt="@snackquests 的 TikTok 后台数据页，截至 2026 年 8 月 25 日的 28 天：播放量 17.8 万，主页访问 4,700，点赞 1.14 万，评论 144，转发 278。">
+          <figcaption>@snackquests 的 TikTok 官方 28 天后台数据。</figcaption>
+        </figure>
+        <figure class="shot screen">
+          <img src="/deck/shot-ttprofile.webp" alt="@snackquests 的 TikTok 主页：1,208 粉丝，13.7 万点赞，视频列表中有 7.4 万、3.78 万与 1.35 万播放的作品。">
+          <figcaption>账号主页，置顶的是 7.4 万播放那条。</figcaption>
+        </figure>
       </div>
 
       <div class="pull">不到两周的自然发布。三天的广告投放。没有代理公司，没有制作预算。</div>

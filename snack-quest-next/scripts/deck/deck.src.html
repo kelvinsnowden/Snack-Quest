@@ -250,6 +250,22 @@
     font-family: "Geist Mono", ui-monospace, monospace;
   }
 
+  /* Platform screenshots, shown as evidence. */
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px;
+    max-width: 620px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+  .shot.screen img {
+    max-height: none;
+    object-fit: contain;
+    border-radius: 12px;
+    background: var(--ground);
+  }
+
   /* The same amount in a currency the reader thinks in. */
   .usd {
     display: block;
@@ -948,6 +964,23 @@
         <div class="card"><h3>4.7K</h3><p>Profile views</p></div>
         <div class="card"><h3>278</h3><p>Shares</p></div>
         <div class="card"><h3>144</h3><p>Comments</p></div>
+      </div>
+
+      <div class="screens">
+        <figure class="shot screen">
+          <div data-shot="ttmetrics" class="slot">
+            <span class="k">TikTok analytics</span>
+            <span class="h">Key metrics, 28 days.</span>
+          </div>
+          <figcaption>TikTok&rsquo;s own 28-day analytics for @snackquests.</figcaption>
+        </figure>
+        <figure class="shot screen">
+          <div data-shot="ttprofile" class="slot">
+            <span class="k">TikTok profile</span>
+            <span class="h">Followers and top videos.</span>
+          </div>
+          <figcaption>The account, with the 74K video pinned.</figcaption>
+        </figure>
       </div>
 
       <div class="pull">Under two weeks of organic posting. Three days of ads. No agency, no production budget.</div>
