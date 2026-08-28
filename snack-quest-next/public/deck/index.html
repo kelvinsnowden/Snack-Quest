@@ -335,7 +335,6 @@
     font-weight: 500;
     color: var(--ink-faint);
     letter-spacing: 0;
-    white-space: nowrap;
   }
   .hf-cap .usd, .bn-k .usd { margin-top: 4px; text-transform: none; letter-spacing: 0; }
 
@@ -480,7 +479,8 @@
   }
   /* Prose, not a label — so the body face, overriding the mono
      `figcaption` rule the brand photographs use for their captions. */
-  .shot figcaption {
+  .shot figcaption,
+  .clip figcaption {
     margin-top: 9px;
     font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
     font-size: 14px;
@@ -496,6 +496,18 @@
   .shot.tall img, .slot.tall { aspect-ratio: 3 / 4; object-fit: cover; }
   .shot.founder img, .slot.founder { aspect-ratio: 4 / 5; object-fit: cover; }
   .shot.founder { max-width: 340px; }
+
+  /* Vertical creator footage. Capped by width because at full column
+     width a 384x832 clip would be a thousand pixels tall. */
+  .clip { max-width: 268px; }
+  .clip video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+    background: #000;
+  }
   .slot.hero, .slot.panel, .slot.tall { min-height: 0; }
   .slot.tall { padding: 18px; }
   .slot.tall .h { font-size: 13px; }
@@ -517,6 +529,7 @@
   .scroll { overflow-x: auto; }
 
   /* --- the one number a slide is about ---------------------- */
+  .headline-figure > * { min-width: 0; }
   .headline-figure {
     display: flex;
     flex-wrap: wrap;
@@ -806,8 +819,16 @@
     .chip { font-size: 13px; padding: 5px 11px; }
     .spoke { padding: 11px 12px; gap: 11px; }
     .spoke span { font-size: 14.5px; }
-    .shot figcaption { font-size: 13.5px; }
+    .shot figcaption,
+  .clip figcaption { font-size: 13.5px; }
     .pull { padding: 18px; font-size: 19px; }
+    /* 11px uppercase mono reads as decoration rather than text at arm's
+       length on a phone; every label in the deck uses it. */
+    .eyebrow, .stamp, .bn-k, .quote .who, .slot .k, th, .a-v { font-size: 12px; }
+    /* Two-up keeps the evidence strip from becoming six full-width
+       screenshots. */
+    .proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .clip { max-width: none; }
 
     .headline-figure { padding: 16px 18px; margin-bottom: 18px; gap: 4px 12px; }
     .hf-cap { font-size: 14px; }
@@ -1304,9 +1325,13 @@
     <p class="lede">Snack Quest is unusually well suited to creator content because discovery <em>is</em> the product. Opening the box is the story.</p>
     <div class="body">
       <div class="grid g2">
-        <figure>
-          <img src="/deck/unboxing.webp" alt="Unboxing a Snack Quest box">
-          <figcaption>Real Snack Quest unboxing: the format creators already make natively.</figcaption>
+        <figure class="clip">
+          <video controls playsinline preload="metadata" muted loop width="384" height="832"
+                 aria-label="A creator unboxing a Snack Quest box on camera">
+            <source src="/deck/unboxing-clip.mp4" type="video/mp4">
+            Your browser cannot play this clip.
+          </video>
+          <figcaption><b>A creator unboxing the box.</b> The format creators already make natively, made by one of them.</figcaption>
         </figure>
         <div>
           <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What a creator can make</h3>
@@ -1560,7 +1585,6 @@
               </tbody>
             </table>
           </div>
-          <p class="note" style="margin-top:12px;">Roughly 55 seeded boxes at our <em>measured</em> cost of goods (KSh&nbsp;3,610 average across the first four orders), not an assumed one. The two highlighted lines are the ones that make the test possible at all. The creators cost nothing in cash. They have asked to be paid in product.</p>
         </div>
         <div class="card hot">
           <h3>What it proves</h3>
@@ -1578,6 +1602,8 @@
         proving a shop is needed — so the drop-off is instrumented too,
         and it is the measurement that carries stage two.
       -->
+      <p class="note" style="margin-top:14px;">Roughly 55 seeded boxes at our <em>measured</em> cost of goods, KSh&nbsp;3,610 on average across the first four orders, rather than an assumed one. The two highlighted lines are what make the test possible at all; the creators cost nothing in cash, having asked to be paid in product.</p>
+
       <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The bar, set before we start</h3>
       <div class="grid g4">
         <div class="card"><h3>CAC under KSh&nbsp;1,500</h3><p>Against a KSh&nbsp;4,875 average order, that leaves the first order profitable on its own.</p></div>
@@ -1596,12 +1622,12 @@
         <div class="card hot">
           <h3>It funds paying on delivery</h3>
           <p style="margin-bottom:10px;">Customers arrive in two groups: those happy to pay online, and those who will not until they trust us. Serving the second group means shipping before being paid, and that takes working capital we do not currently have.</p>
-          <p><strong>The float is what lets us offer pay-on-delivery at all</strong>, and offering it is the only way to measure how many people want it. The number that decides the store case cannot be collected without the cash to collect it.</p>
+          <p><strong>The float is what lets us offer it at all</strong>, and the number that decides the store case cannot be collected without the cash to collect it.</p>
         </div>
         <div class="card cool">
           <h3>It borrows trust we have not built</h3>
           <p style="margin-bottom:10px;">The constraint on this business is trust, not interest. 177,800 people watched; four bought. A store closes that gap by being a real place you can walk into.</p>
-          <p><strong>A creator closes it by lending their own credibility.</strong> Their audience already trusts them, and that trust carries to what they hand over. Stage one tests borrowed trust; stage two builds trust we own. Same hypothesis, and the cheap version is worth running first.</p>
+          <p><strong>A creator closes it by lending credibility they have already earned.</strong> Stage one tests borrowed trust; stage two builds trust we own. Same hypothesis, and the cheap version is worth running first.</p>
         </div>
       </div>
       <div class="pull" style="margin-top:24px;">If those four clear, the store case stops being an argument and becomes arithmetic. If they do not, nobody has spent KSh&nbsp;10M finding out.</div>
