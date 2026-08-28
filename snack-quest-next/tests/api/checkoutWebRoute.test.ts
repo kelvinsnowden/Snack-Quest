@@ -107,7 +107,7 @@ describe('POST /api/checkout/web attribution capture', () => {
   it('builds a web attribution snapshot from cookies and the Referer header', async () => {
     await checkoutWebRoute(
       request(VALID_BODY, {
-        cookie: 'sq_visitor=v-1; sq_ttclid=tt-abc; sq_fbclid=fb-xyz',
+        cookie: 'sq_visitor=v-1; sq_ttclid=tt-abc; sq_fbclid=fb.1.1724760000000.fb-xyz; _fbp=fb.1.1724000000000.9876',
         referer: 'https://snackquests.shop/checkout',
       }),
     );
@@ -119,13 +119,48 @@ describe('POST /api/checkout/web attribution capture', () => {
           channel: 'web',
           landingUrl: 'https://snackquests.shop/checkout',
           ttclid: 'tt-abc',
+          // Raw for the admin order page to show a human...
           fbclid: 'fb-xyz',
+          // ...and formatted, with the real click time, for Meta. The
+          // stored value is passed through rather than rebuilt, so the
+          // click keeps the moment it actually happened.
+          fbc: 'fb.1.1724760000000.fb-xyz',
+          // Meta's own Pixel cookie, read straight back off the request.
+          fbp: 'fb.1.1724000000000.9876',
           // The same id the funnel events carry, so this order can be
           // lined up against what the visitor actually did.
           visitorId: 'v-1',
         },
       }),
     );
+  });
+
+  /*
+   * A browser carrying a cookie set before the click time was recorded
+   * holds a bare id. It still converts, and it still gets an `fbc` —
+   * just one stamped with when it was read rather than when it was
+   * clicked.
+   */
+  it('still produces an fbc for a legacy bare click-id cookie', async () => {
+    await checkoutWebRoute(request(VALID_BODY, { cookie: 'sq_fbclid=fb-legacy' }));
+
+    const { attribution } = startWebCheckoutMock.mock.calls[0][1];
+    expect(attribution.fbclid).toBe('fb-legacy');
+    expect(attribution.fbc).toMatch(/^fb\.1\.\d{13}\.fb-legacy$/);
+  });
+
+  /*
+   * Most visitors arrive with no click id at all — the Pixel cookie is
+   * the only thing tying them to a browser Meta recognises, so it has
+   * to be captured on its own and not only alongside a click.
+   */
+  it('captures the Pixel browser cookie even with no ad click', async () => {
+    await checkoutWebRoute(request(VALID_BODY, { cookie: '_fbp=fb.1.1724000000000.9876' }));
+
+    const { attribution } = startWebCheckoutMock.mock.calls[0][1];
+    expect(attribution.fbp).toBe('fb.1.1724000000000.9876');
+    expect('fbclid' in attribution).toBe(false);
+    expect('fbc' in attribution).toBe(false);
   });
 
   /**

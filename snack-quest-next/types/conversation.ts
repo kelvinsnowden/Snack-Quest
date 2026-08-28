@@ -108,8 +108,28 @@ export interface ConversionAttribution {
   landingUrl?: string;
   /** TikTok's click id, captured off the landing URL's `?ttclid=` the first time it appeared (§ PageViewTracker.tsx). */
   ttclid?: string;
-  /** Meta's click id, same first-touch capture, off `?fbclid=`. Not yet used by `metaConversionGateway` (Advanced Matching there is phone-only today) — stored now so it's not lost before that's built. */
+  /** Meta's click id, same first-touch capture, off `?fbclid=`. Kept raw for display; `fbc` below is the form Meta is actually sent. */
   fbclid?: string;
+  /**
+   * The same click, formatted as Meta's `fbc` and stamped with when it
+   * was observed (§ lib/analytics/metaClickId.ts).
+   *
+   * This is what reaches the Conversions API. It is stored separately
+   * from `fbclid` rather than replacing it because the raw id is what
+   * the admin order page shows a human, and because every snapshot
+   * written before this existed holds only the raw form.
+   */
+  fbc?: string;
+  /**
+   * Meta's `_fbp` browser cookie, set by the Pixel and read straight
+   * back off the checkout request.
+   *
+   * Worth as much as the click id and sometimes more: it identifies the
+   * browser to Meta even for a visitor who arrived without any click id
+   * at all, which is most of them. Absent when the Pixel never loaded,
+   * which on this site's traffic means an in-app browser or a blocker.
+   */
+  fbp?: string;
   /**
    * The `sq_visitor` cookie, which is the same id every funnel event
    * from this browser already carries (§ close the loop: ad-conversion

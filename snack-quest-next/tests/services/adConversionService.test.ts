@@ -148,3 +148,72 @@ describe('AdConversionService.dispatchPurchase', () => {
     );
   });
 });
+
+/**
+ * The click id reaching Meta (§ close the loop: ad-conversion
+ * attribution).
+ *
+ * Production had captured `fbclid` for weeks and forwarded it nowhere:
+ * one real Meta-sourced order was reported with a hashed phone number
+ * and nothing else, leaving Meta to guess whether its own ad earned it.
+ */
+describe('AdConversionService.dispatchPurchase — Meta click id', () => {
+  beforeEach(() => {
+    metaSendEventMock.mockReset();
+    tiktokSendEventMock.mockReset();
+    metaSendEventMock.mockResolvedValue(undefined);
+    tiktokSendEventMock.mockResolvedValue(undefined);
+  });
+
+  /*
+   * The stored value carries the moment of the click. Rebuilding it at
+   * dispatch would stamp it with the moment of the purchase, and a
+   * customer who clicked on Monday and paid on Thursday would be
+   * reported three days outside their own attribution window.
+   */
+  it('forwards the stored fbc unchanged, keeping the real click time', async () => {
+    const clickedThreeDaysAgo = 'fb.1.1724760000000.abc123';
+
+    await adConversionService.dispatchPurchase({
+      businessId: 'biz-1',
+      orderId: 'order-1',
+      phoneNumber: '+254700000000',
+      amountKes: 3500,
+      attribution: { channel: 'web', fbclid: 'abc123', fbc: clickedThreeDaysAgo, fbp: 'fb.1.1724000000000.99' },
+    });
+
+    const [call] = metaSendEventMock.mock.calls;
+    expect(call[0].advancedMatching.fbc).toBe(clickedThreeDaysAgo);
+    expect(call[0].advancedMatching.fbp).toBe('fb.1.1724000000000.99');
+    expect(call[0].advancedMatching.phone).toBe('+254700000000');
+  });
+
+  /** Snapshots written before the click time was stored hold a bare id; an approximate time still beats sending none. */
+  it('derives an fbc for a legacy snapshot that only has the raw click id', async () => {
+    await adConversionService.dispatchPurchase({
+      businessId: 'biz-1',
+      orderId: 'order-1',
+      phoneNumber: '+254700000000',
+      amountKes: 3500,
+      attribution: { channel: 'web', fbclid: 'legacy-id' },
+    });
+
+    expect(metaSendEventMock.mock.calls[0][0].advancedMatching.fbc).toMatch(/^fb\.1\.\d{13}\.legacy-id$/);
+  });
+
+  /** A WhatsApp order has no browser behind it, so there is no click id to invent. */
+  it('sends no click id when there is no attribution at all', async () => {
+    await adConversionService.dispatchPurchase({
+      businessId: 'biz-1',
+      orderId: 'order-1',
+      phoneNumber: '+254700000000',
+      amountKes: 3500,
+      attribution: null,
+    });
+
+    const matching = metaSendEventMock.mock.calls[0][0].advancedMatching;
+    expect('fbc' in matching).toBe(false);
+    expect('fbp' in matching).toBe(false);
+    expect(matching.phone).toBe('+254700000000');
+  });
+});

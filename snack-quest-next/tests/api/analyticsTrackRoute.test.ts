@@ -104,7 +104,16 @@ describe('POST /api/analytics/track', () => {
     const byName = Object.fromEntries(setCookies.map((c) => [parseSetCookie(c).name, parseSetCookie(c)]));
     expect(byName.sq_ttclid.value).toBe('tt-abc');
     expect(byName.sq_ttclid.httpOnly).toBe(true);
-    expect(byName.sq_fbclid.value).toBe('fb-xyz');
+
+    /*
+     * Meta's click id is stored already formatted as `fbc`, stamped
+     * with now, because this request is the only one that knows when
+     * the click happened. A purchase days later reads the cookie back
+     * and reports the click at its real time rather than its own.
+     */
+    expect(byName.sq_fbclid.value).toMatch(/^fb\.1\.\d{13}\.fb-xyz$/);
+    const stampedAt = Number(byName.sq_fbclid.value.split('.')[2]);
+    expect(Math.abs(Date.now() - stampedAt)).toBeLessThan(60_000);
   });
 
   it('never overwrites an already-set click-id cookie — first touch wins', async () => {

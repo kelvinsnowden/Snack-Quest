@@ -31,9 +31,25 @@ class MetaConversionGateway implements ConversionGateway {
   }): Promise<void> {
     const config = await getMetaConfig(input.businessId);
 
-    const userData: Record<string, string[]> = {};
+    /*
+     * `ph` is an array of hashed values; `fbc` and `fbp` are single
+     * strings and must NOT be hashed. That asymmetry is Meta's, and
+     * getting it wrong fails silently: a hashed click id is accepted,
+     * matches nothing, and looks exactly like an unmatched conversion.
+     * Hence two separate shapes rather than one loop over the inputs.
+     */
+    const userData: Record<string, string[] | string> = {};
     if (input.advancedMatching?.phone) {
       userData.ph = [hashForMeta(input.advancedMatching.phone)];
+    }
+    // The click that brought them and the browser that did it. Without
+    // these, a purchase from a Meta ad arrives as a hashed phone number
+    // and Meta has to guess whether the ad earned it.
+    if (input.advancedMatching?.fbc) {
+      userData.fbc = input.advancedMatching.fbc;
+    }
+    if (input.advancedMatching?.fbp) {
+      userData.fbp = input.advancedMatching.fbp;
     }
 
     // Failure here must never block the customer-facing flow (§13) —
