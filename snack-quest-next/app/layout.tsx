@@ -11,11 +11,30 @@ import './globals.css';
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
+  display: 'swap',
 });
 
+/**
+ * Not preloaded (§ mobile LCP).
+ *
+ * `next/font` preloads every declared family by default, so all three
+ * of these were being fetched on every page — 67KB of font before the
+ * first screen, on a phone, of which this family was 23KB that the
+ * marketing site never renders a single character in. `font-mono`
+ * appears twice in the whole app: the Admin error page and the API
+ * docs.
+ *
+ * Dropping the preload does not remove the font. The `--font-mono`
+ * variable still resolves and a browser fetches the file the moment
+ * text actually uses it, which on those two pages is exactly what
+ * happens. What goes away is 23KB competing with the hero's own
+ * display face for bandwidth on a page that never needed it.
+ */
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+  display: 'swap',
+  preload: false,
 });
 
 /**
@@ -29,6 +48,12 @@ const displayFont = Bagel_Fat_One({
   variable: '--font-bagel-fat-one',
   weight: '400',
   subsets: ['latin'],
+  // This one renders the home page's <h1>, which is the LCP element,
+  // so it keeps its preload. `swap` means the heading paints in the
+  // metric-matched fallback immediately rather than waiting on the
+  // download, which is what keeps LCP off the font's critical path
+  // and CLS at zero when it swaps in.
+  display: 'swap',
 });
 
 // Was "Snack boxes on WhatsApp" / "Order curated snack boxes on
