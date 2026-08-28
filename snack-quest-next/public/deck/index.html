@@ -288,6 +288,29 @@
     font-family: "Geist Mono", ui-monospace, monospace;
   }
 
+  /* Inbound messages, quoted. The words are the evidence; the
+     screenshots below them are the proof the words are real. */
+  .quote {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    border-radius: 14px;
+    background: var(--ground);
+    border: 1px solid var(--edge);
+  }
+  .quote q { font-size: 16px; line-height: 1.55; color: var(--ink); }
+  .quote .who {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--quest);
+  }
+  .proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: start; }
+  .proof img { width: 100%; height: auto; max-height: none; border-radius: 10px; border: 1px solid var(--edge); }
+
   /* Platform screenshots, shown as evidence. */
   .screens {
     display: grid;
@@ -1147,6 +1170,55 @@
     </div>
   </section>
 
+  <!-- ================= INBOUND, VERBATIM ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Inbound, verbatim</span>
+      <span class="stamp">Unpaid &middot; unsolicited</span>
+    </div>
+    <h2 class="title">Six creators approached us. We approached none of them.</h2>
+    <p class="lede">The previous slide claims creators are coming to us. This is that claim with the evidence attached &mdash; their words, their follower counts, and not one shilling spent to prompt any of it.</p>
+    <div class="body">
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">1.54M</span>
+          <span class="bn-k">Combined followers, across the five showing a count</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">6</span>
+          <span class="bn-k">Inbound approaches</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;0</span>
+          <span class="bn-k">Spent to get them</span>
+        </div>
+      </div>
+
+      <div class="grid g3" style="margin-top:22px;">
+        <div class="quote"><q>Hello can i get a chance to advertise snackquests on my page</q><span class="who">1.2M followers</span></div>
+        <div class="quote"><q>I&rsquo;ve been thinking about SnackQuest and I&rsquo;d actually love to explore a collaboration with you.</q><span class="who">172.1K followers</span></div>
+        <div class="quote"><q>Hey you good I think we can work right</q><span class="who">113.3K followers</span></div>
+        <div class="quote"><q>Hey kindly send me the prices I can promote you and also do an advertising video</q><span class="who">31.7K followers</span></div>
+        <div class="quote"><q>PR?</q><span class="who">23.7K followers</span></div>
+        <div class="quote"><q>I&rsquo;m intrigued by your product! Would you like to do a collab&hellip; I try to help promote small businesses and don&rsquo;t charge for any marketing :)</q><span class="who">Verified food-review account</span></div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The messages themselves</h3>
+      <div class="proof">
+        <img src="/deck/shot-dm-b.webp" alt="An inbound direct message from a creator with 1.2 million followers, asking for a chance to advertise Snack Quest on their page.">
+        <img src="/deck/shot-dm-d.webp" alt="An inbound direct message from a creator with 113,300 followers, suggesting they could work together.">
+        <img src="/deck/shot-dm-c.webp" alt="An inbound direct message from a creator with 31,700 followers, asking for prices and offering an advertising video.">
+        <img src="/deck/shot-dm-a.webp" alt="An inbound direct message from a creator with 23,700 followers, asking about PR.">
+        <img src="/deck/shot-dm-f.webp" alt="An inbound direct message from a verified food-review account offering a collaboration at no charge.">
+        <img src="/deck/shot-dm-e.webp" alt="A long inbound direct message from a creator with 172,100 followers, proposing a Snack Quest tasting and review video with their sister.">
+      </div>
+
+      <div class="pull" style="margin-top:24px;">This is what stage one is buying. The supply of creators is already there and it is free &mdash; what is missing is the product to send them.</div>
+      <p class="note" style="margin-top:14px;">Names, handles and profile photographs are blacked out. These are private messages and the people who sent them have not agreed to appear in a fundraising document; the follower counts and the wording are untouched. Unredacted originals available on request.</p>
+    </div>
+  </section>
+
   <!-- ================= 5. BOTTLENECKS ================= -->
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
@@ -1469,7 +1541,7 @@
     <div class="body">
       <div class="headline-figure">
         <span class="hf-num">KSh&nbsp;500,000</span>
-        <span class="hf-cap">5% of the full raise, spent to de-risk the other 95%.</span>
+        <span class="hf-cap"><strong>for 10% equity in Snack Quest.</strong> An implied post-money valuation of KSh&nbsp;5,000,000.<span class="usd">About US$3,800 for a stake valued at US$38,000</span></span>
       </div>
 
       <div class="grid g2">
@@ -1734,17 +1806,29 @@
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head"><span class="eyebrow">The ask</span></div>
-    <h2 class="title">Two stages. We are raising the first.</h2>
+    <h2 class="title">KSh&nbsp;500,000 for 10%. That is the whole offer.</h2>
     <div class="body">
       <div class="headline-figure">
         <span class="hf-num">KSh&nbsp;500,000</span>
-        <span class="hf-cap"><strong>Now.</strong> Seed the creators already asking, and come back with measured customer acquisition cost, repeat rate, contribution per order and demand for paying in person.<span class="usd">Approximately US$3,800</span></span>
+        <span class="hf-cap"><strong>for 10% equity in Snack Quest.</strong> Straight equity &mdash; no instrument to negotiate, no conditions to unpick. Seed the creators already asking, and come back with measured acquisition cost, repeat rate, contribution per order and demand for paying in person.</span>
       </div>
-      <div class="headline-figure" style="background:var(--void-wash);border-color:color-mix(in srgb, var(--void) 45%, transparent);">
-        <span class="hf-num" style="color:var(--void);">KSh&nbsp;10,000,000</span>
-        <span class="hf-cap"><strong>Next, once stage one clears the bar.</strong> Open and launch the first Snack Quest location, prove the store economics, and establish the operating blueprint for further locations and franchises.<span class="usd">Approximately US$77,000</span></span>
+
+      <div class="bignums" style="margin-bottom:20px;">
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;500,000</span>
+          <span class="bn-k">Investment<span class="usd">about US$3,800</span></span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">10%</span>
+          <span class="bn-k">Equity in Snack Quest</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;5,000,000</span>
+          <span class="bn-k">Implied post-money valuation<span class="usd">about US$38,000</span></span>
+        </div>
       </div>
-      <p class="note" style="margin-bottom:22px;">Stage two is set out in full in this deck so the destination is visible from the start. But nobody is being asked to fund a store on four orders of evidence &mdash; stage one is what turns the model on the previous slides from assumption into measurement.</p>
+
+      <p class="note" style="margin-bottom:22px;">Stage two &mdash; the KSh&nbsp;10,000,000 store round set out earlier in this deck &mdash; is deliberately left unpriced here. It will be raised on what stage one actually measures, not on what this deck assumes. The destination is shown in full so it is visible from the start; nobody is being asked to price a store on four orders of evidence.</p>
       <div class="grid g2">
         <div class="card">
           <h3>The partner we&rsquo;re looking for</h3>
