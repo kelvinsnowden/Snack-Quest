@@ -1,5 +1,6 @@
 'use client';
 
+import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
 import { useEffect, useRef, useState } from 'react';
 import { trackEvent } from '@/lib/analytics/trackEvent';
 import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
@@ -32,7 +33,7 @@ export interface QuoteSelection {
   /** Boxes beyond the primary one (§ more than one box per order). Re-quoted whenever they change, because they change the total. */
   extras?: { packageId: string; quantity: number }[];
   /** Door delivery only — the quote must price the speed the customer actually picked, or it disagrees with the charge. */
-  serviceLevel?: 'next-day' | 'same-day';
+  serviceLevel?: FargoServiceLevel;
   pickupStationId?: string;
   referralCode: string;
   phone: string;

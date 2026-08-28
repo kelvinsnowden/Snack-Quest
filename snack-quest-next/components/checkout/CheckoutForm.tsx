@@ -13,10 +13,16 @@ import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import {
+  EXPRESS_CUTOFF_HOUR,
+  EXPRESS_DELIVERY_MINUTES,
+  EXPRESS_OPEN_HOUR,
+  expressWindowStateAt,
   isSameDayAvailableAt,
   metroAreaLabel,
+  NEXT_DAY_ARRIVAL_HOUR,
   SAME_DAY_ARRIVAL_HOUR,
   SAME_DAY_CUTOFF_HOUR,
+  type FargoServiceLevel,
 } from '@/lib/delivery/deliveryPricing';
 import { MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { formatKes } from '@/lib/orders/format';
@@ -115,13 +121,19 @@ export function CheckoutForm({
    * radius still switches to pickup in one tap.
    */
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('door');
-  const [serviceLevel, setServiceLevel] = useState<'next-day' | 'same-day'>('next-day');
+  const [serviceLevel, setServiceLevel] = useState<FargoServiceLevel>('next-day');
   // Whether Tushop will still accept a same-day parcel. Computed on the
   // client, from the customer's own clock read in Nairobi time, so the
   // option disappears the moment the cut-off passes rather than at the
   // next page load. The server refuses it independently — this only
   // decides whether to offer it.
   const sameDayOpen = isSameDayAvailableAt();
+  // Express is a window rather than a cut-off, so this carries which
+  // side of it we are on: before 10am the option is not closed, it has
+  // not opened, and telling a customer it "closed for today" at
+  // breakfast would be plainly wrong.
+  const expressWindow = expressWindowStateAt();
+  const expressOpen = expressWindow === 'open';
   const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
@@ -732,7 +744,7 @@ export function CheckoutForm({
             onSelect={() => setDeliveryMethod('door')}
             icon={<Truck className="size-5" aria-hidden="true" />}
             title="Door delivery"
-            detail={`${metroAreaLabel()}. Tushop brings it to your address — next day, or same day if you order before 1pm.`}
+            detail={`${metroAreaLabel()}. Tushop brings it to your address: next day, same day, or express in ${EXPRESS_DELIVERY_MINUTES} minutes.`}
           />
           <DeliveryOption
             selected={deliveryMethod === 'pickup'}
@@ -756,12 +768,12 @@ export function CheckoutForm({
           <div className="flex flex-col gap-4">
             <fieldset className="flex flex-col gap-2">
               <legend className="text-foreground text-sm font-medium">How fast?</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <SpeedOption
                   selected={serviceLevel === 'next-day'}
                   onSelect={() => setServiceLevel('next-day')}
                   title="Next day"
-                  detail="Arrives tomorrow."
+                  detail={`Delivered by ${NEXT_DAY_ARRIVAL_HOUR % 12}:00 PM the following day.`}
                 />
                 {/*
                   Only offered while Tushop will still accept it. Shown
@@ -777,8 +789,27 @@ export function CheckoutForm({
                   title="Same day"
                   detail={
                     sameDayOpen
-                      ? `Guaranteed by ${SAME_DAY_ARRIVAL_HOUR % 12}pm today.`
-                      : `Closed for today — orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
+                      ? `Order by ${SAME_DAY_CUTOFF_HOUR % 12}:00 PM for delivery by ${SAME_DAY_ARRIVAL_HOUR % 12}:00 PM today.`
+                      : `Closed for today. Orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
+                  }
+                />
+                {/*
+                  Same disabled-not-hidden treatment, same reason, with
+                  one extra state: express runs 10am to 1pm, so it is
+                  shut both early and late and the two need different
+                  words.
+                */}
+                <SpeedOption
+                  selected={serviceLevel === 'express'}
+                  onSelect={() => expressOpen && setServiceLevel('express')}
+                  disabled={!expressOpen}
+                  title="Express"
+                  detail={
+                    expressOpen
+                      ? `Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
+                      : expressWindow === 'before'
+                        ? `Opens at ${EXPRESS_OPEN_HOUR}am. Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
+                        : `Closed for today. Orders must be in between ${EXPRESS_OPEN_HOUR}am and ${EXPRESS_CUTOFF_HOUR % 12}pm.`
                   }
                 />
               </div>

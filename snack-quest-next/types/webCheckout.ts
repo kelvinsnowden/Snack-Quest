@@ -1,3 +1,4 @@
+import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
 import type { DeliveryMethod } from './delivery';
 import type { OrderPaymentStatus } from './whatchimpBridge';
 
@@ -53,7 +54,7 @@ export interface WebCheckoutRequest {
    * Tushop's cut-off has passed, rather than downgraded — a customer
    * who chose it is buying the arrival guarantee.
    */
-  serviceLevel?: 'next-day' | 'same-day';
+  serviceLevel?: FargoServiceLevel;
   /** Required when `deliveryMethod` is `'pickup'` — which Fargo Courier pickup point to ship to. */
   pickupStationId?: string;
   /** Required when `deliveryMethod` is `'door'`. Collected so Fargo has a number to call on the doorstep when it differs from the paying one. */
@@ -93,7 +94,7 @@ export interface WebCheckoutPricing {
   deliveryFeeKes: number;
   totalKes: number;
   /** Door delivery only — which Fargo speed was bought. Null on pickup, which has one service. */
-  serviceLevel: 'next-day' | 'same-day' | null;
+  serviceLevel: FargoServiceLevel | null;
 }
 
 /**

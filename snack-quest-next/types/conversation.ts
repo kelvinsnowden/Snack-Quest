@@ -1,3 +1,4 @@
+import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
 import type { Timestamp } from 'firebase/firestore';
 import type { DeliveryMethod } from './delivery';
 
@@ -69,7 +70,7 @@ export interface ConversationStateBlob {
   pickupStationId?: string;
   pickupStationName?: string;
   /** Door delivery only — which Fargo speed the customer bought. Absent on pickup orders and on every order predating the field. */
-  serviceLevel?: 'next-day' | 'same-day';
+  serviceLevel?: FargoServiceLevel;
   /** Populated from the selected station's zone fee, or from the door zone rule — never fabricated. */
   deliveryFeeKes?: number;
   /** The most recent search results shown to the customer, so replying with a number needs no new Firestore lookup. */
