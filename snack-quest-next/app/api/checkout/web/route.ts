@@ -7,6 +7,7 @@ import {
 import { InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { FBCLID_COOKIE, TTCLID_COOKIE, VISITOR_COOKIE } from '@/lib/analytics/cookies';
+import { META_BROWSER_ID_COOKIE, rawFbclid, resolveFbc } from '@/lib/analytics/metaClickId';
 import { verifyCreatorSessionFromRequest } from '@/lib/auth/creatorSession';
 import type { WebCheckoutRequest, WebCheckoutResponse } from '@/types/webCheckout';
 import type { ConversionAttribution } from '@/types';
@@ -93,7 +94,14 @@ export async function POST(request: Request): Promise<Response> {
    */
   const referer = request.headers.get('referer');
   const ttclid = cookies[TTCLID_COOKIE];
-  const fbclid = cookies[FBCLID_COOKIE];
+  // One cookie, two shapes. Anything set from now on is a formatted
+  // `fbc`; a browser still carrying a cookie from before that holds the
+  // bare click id, so both are resolved rather than one being assumed.
+  const storedFbclid = cookies[FBCLID_COOKIE];
+  const fbclid = storedFbclid ? rawFbclid(storedFbclid) : undefined;
+  const fbc = storedFbclid ? resolveFbc(storedFbclid, Date.now()) : undefined;
+  // Set by Meta's own Pixel on this domain, so it simply arrives here.
+  const fbp = cookies[META_BROWSER_ID_COOKIE];
   // The same id every funnel event from this browser already carries,
   // so the order can be lined up against what the visitor actually did
   // on the way to it.
@@ -103,6 +111,8 @@ export async function POST(request: Request): Promise<Response> {
     ...(referer ? { landingUrl: referer } : {}),
     ...(ttclid ? { ttclid } : {}),
     ...(fbclid ? { fbclid } : {}),
+    ...(fbc ? { fbc } : {}),
+    ...(fbp ? { fbp } : {}),
     ...(visitorId ? { visitorId } : {}),
   };
 

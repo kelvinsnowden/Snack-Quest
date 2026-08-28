@@ -51,6 +51,62 @@ describe('metaConversionGateway.sendEvent', () => {
     vi.unstubAllGlobals();
   });
 
+  /*
+   * The click that brought the customer, in the form Meta matches on.
+   * Without it a purchase from a Meta ad reaches Meta as a hashed phone
+   * number and nothing else, to be matched against profile data or not
+   * matched at all — which is exactly what production was doing.
+   */
+  it('sends fbc and fbp unhashed while still hashing the phone', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', SECRET);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const fbc = 'fb.1.1724760000000.abc123';
+    const fbp = 'fb.1.1724760000000.987654321';
+    await metaConversionGateway.sendEvent({
+      businessId: BUSINESS_ID,
+      eventName: 'Purchase',
+      params: { currency: 'KES', value: 3500 },
+      advancedMatching: { phone: '+254700000000', fbc, fbp },
+      actionSource: 'website',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const userData = JSON.parse(init.body as string).data[0].user_data;
+
+    /*
+     * The asymmetry is Meta's and it fails silently: a hashed click id
+     * is accepted, matches nothing, and is indistinguishable from a
+     * conversion that simply had no click behind it. So this asserts
+     * the exact values survive rather than merely being present.
+     */
+    expect(userData.fbc).toBe(fbc);
+    expect(userData.fbp).toBe(fbp);
+    expect(userData.ph[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(userData.ph[0]).not.toBe('+254700000000');
+  });
+
+  /** A visitor who arrived with no ad click still converts; the payload just carries what it has. */
+  it('omits fbc and fbp entirely rather than sending empty values', async () => {
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', SECRET);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await metaConversionGateway.sendEvent({
+      businessId: BUSINESS_ID,
+      eventName: 'Purchase',
+      params: { currency: 'KES', value: 3500 },
+      advancedMatching: { phone: '+254700000000' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const userData = JSON.parse(init.body as string).data[0].user_data;
+    expect('fbc' in userData).toBe(false);
+    expect('fbp' in userData).toBe(false);
+    expect(userData.ph).toHaveLength(1);
+  });
+
   it('defaults to action_source "chat" with no event_source_url when the caller says nothing', async () => {
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'meta', SECRET);
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));

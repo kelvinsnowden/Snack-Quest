@@ -9,6 +9,7 @@ import {
   VISITOR_COOKIE,
   VISITOR_COOKIE_MAX_AGE_SECONDS,
 } from '@/lib/analytics/cookies';
+import { toFbc } from '@/lib/analytics/metaClickId';
 
 /**
  * `POST /api/analytics/track` (§ Admin: Analytics, website traffic;
@@ -86,9 +87,17 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // Meta's click id is stored already formatted as `fbc`, which means
+  // stamped with the moment it was seen. Recording that here is the
+  // whole point: this request is the only one that knows when the click
+  // happened, and a purchase days later would otherwise be reported
+  // with its own timestamp and fall outside the attribution window it
+  // is meant to prove it is inside.
+  const fbcValue = typeof fbclid === 'string' && fbclid ? toFbc(fbclid, Date.now()) : fbclid;
+
   for (const [cookieName, value] of [
     [TTCLID_COOKIE, ttclid],
-    [FBCLID_COOKIE, fbclid],
+    [FBCLID_COOKIE, fbcValue],
   ] as const) {
     if (typeof value === 'string' && value && !existingCookies[cookieName]) {
       response.headers.append(

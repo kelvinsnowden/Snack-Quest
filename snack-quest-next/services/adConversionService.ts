@@ -3,6 +3,7 @@ import 'server-only';
 import { metaConversionGateway } from '@/lib/integrations/meta/metaConversionGateway';
 import { tiktokConversionGateway } from '@/lib/integrations/tiktok/tiktokConversionGateway';
 import { publishEvent } from '@/lib/events/eventBus';
+import { resolveFbc } from '@/lib/analytics/metaClickId';
 import type { ConversionAttribution } from '@/types';
 
 /**
@@ -37,13 +38,29 @@ class AdConversionService {
     attribution: ConversionAttribution | null;
   }): Promise<void> {
     const eventSourceUrl = input.attribution?.landingUrl;
+    /*
+     * Prefer the stored `fbc`, which carries the real click time. Fall
+     * back to deriving one from a bare `fbclid` for snapshots written
+     * before the timestamp was recorded — an approximation Meta allows
+     * for a click whose time was not kept, and better than sending
+     * nothing and letting the conversion match on a phone hash alone.
+     */
+    const metaClickId = input.attribution?.fbc
+      ? input.attribution.fbc
+      : input.attribution?.fbclid
+        ? resolveFbc(input.attribution.fbclid, Date.now())
+        : undefined;
 
     try {
       await metaConversionGateway.sendEvent({
         businessId: input.businessId,
         eventName: 'Purchase',
         params: { currency: 'KES', value: input.amountKes },
-        advancedMatching: { phone: input.phoneNumber },
+        advancedMatching: {
+          phone: input.phoneNumber,
+          ...(metaClickId ? { fbc: metaClickId } : {}),
+          ...(input.attribution?.fbp ? { fbp: input.attribution.fbp } : {}),
+        },
         actionSource: input.attribution ? 'website' : 'chat',
         eventSourceUrl,
       });
