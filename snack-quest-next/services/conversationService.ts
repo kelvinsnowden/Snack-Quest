@@ -26,7 +26,10 @@ import {
   FARGO_SHIPPING_ORIGIN,
   isFargoZone,
   isMetroLocation,
-  isSameDayAvailableAt,
+  availableServiceLevels,
+  FARGO_SERVICE_LEVELS,
+  EXPRESS_OPEN_HOUR,
+  EXPRESS_CUTOFF_HOUR,
   metroAreaLabel,
   SAME_DAY_CUTOFF_HOUR,
   WHATSAPP_DOOR_SERVICE_LEVEL,
@@ -238,6 +241,26 @@ export const MAX_WEB_CHECKOUT_QUANTITY = MAX_CHECKOUT_QUANTITY;
 export const MAX_WEB_CHECKOUT_LINES = 10;
 
 /** The customer got something wrong (or sent something impossible) — safe to show them verbatim, answered as 400. */
+/**
+ * The delivery speed a request is actually asking for.
+ *
+ * Anything unrecognised becomes next-day, the one service available at
+ * every hour and to every metro address, so a malformed value prices at
+ * the safe floor rather than throwing at a customer mid-checkout.
+ *
+ * It lives here, called from both the quote and the charge, because the
+ * two used to normalise separately: each read `=== 'same-day' ? … :
+ * 'next-day'`, which silently folded express into next-day the moment
+ * express existed. In the quote that is the number the customer reads
+ * before paying, and in the charge it is KES 250 of express fare simply
+ * not collected.
+ */
+function requestedServiceLevel(value: FargoServiceLevel | undefined): FargoServiceLevel {
+  return FARGO_SERVICE_LEVELS.includes(value as FargoServiceLevel)
+    ? (value as FargoServiceLevel)
+    : 'next-day';
+}
+
 export class WebCheckoutValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -324,7 +347,7 @@ export interface WebCheckoutInput {
    */
   town?: string;
   /** Door delivery only. Absent means next-day, which is the service every metro address can have. */
-  serviceLevel?: 'next-day' | 'same-day';
+  serviceLevel?: FargoServiceLevel;
   deliveryMethod: DeliveryMethod;
   pickupStationId?: string;
   addressText?: string;
@@ -397,8 +420,8 @@ export interface WebCheckoutQuoteInput {
    */
   items?: { packageId: string; quantity: number }[];
   deliveryMethod: DeliveryMethod;
-  /** Door delivery only — the quote has to show the speed the customer will actually be charged for. */
-  serviceLevel?: 'next-day' | 'same-day';
+  /** Door delivery only. The quote has to show the speed the customer will actually be charged for. */
+  serviceLevel?: FargoServiceLevel;
   pickupStationId?: string;
   referralCode?: string;
   /** Optional — only used to look up wallet credit, and ignored when it isn't yet a valid number. */
@@ -1279,14 +1302,26 @@ class ConversationService {
       throw new WebCheckoutValidationError('addressText is required for door delivery');
     }
 
-    // Same-day is refused rather than silently downgraded once the
-    // cut-off has passed. A customer who chose it is buying the 18:00
-    // guarantee; quietly charging them for next-day instead would be
-    // selling something they did not ask for.
-    const requested: FargoServiceLevel = input.serviceLevel === 'same-day' ? 'same-day' : 'next-day';
-    if (requested === 'same-day' && !isSameDayAvailableAt()) {
+    // A speed past its window is refused rather than silently
+    // downgraded. A customer who chose same-day is buying the 18:00
+    // guarantee and one who chose express is buying 90 minutes;
+    // charging them for next-day instead would be selling something
+    // they did not ask for, and at express it would also undercharge
+    // by KES 250.
+    //
+    // Anything unrecognised still falls back to next-day, which is the
+    // one service on offer at every hour. That fallback is why this
+    // must enumerate the levels rather than test for one of them: the
+    // earlier `=== 'same-day' ? … : 'next-day'` form silently swallowed
+    // express into next-day the moment express existed.
+    const requested = requestedServiceLevel(input.serviceLevel);
+    // One source of truth for both windows, so the server cannot come
+    // to a different answer than the checkout that offered the option.
+    if (!availableServiceLevels('nairobi-metro').includes(requested)) {
       throw new WebCheckoutValidationError(
-        `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00 — choose next-day delivery instead.`,
+        requested === 'express'
+          ? `Express delivery runs between ${EXPRESS_OPEN_HOUR}:00 and ${EXPRESS_CUTOFF_HOUR}:00. Choose same-day or next-day delivery instead.`
+          : `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00. Choose next-day delivery instead.`,
       );
     }
 
@@ -1403,7 +1438,7 @@ class ConversationService {
       // exists to prevent.
       const doorFee = await deliveryZoneRuleRepository.findFee(
         businessId,
-        fargoZoneFor('nairobi-metro', input.serviceLevel === 'same-day' ? 'same-day' : 'next-day'),
+        fargoZoneFor('nairobi-metro', requestedServiceLevel(input.serviceLevel)),
         FARGO_SHIPPING_ORIGIN,
         FARGO_PACKAGE_CATEGORY,
         DELIVERY_COURIER,

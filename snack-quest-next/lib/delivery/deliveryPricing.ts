@@ -215,20 +215,26 @@ export const WHATSAPP_DOOR_SERVICE_LEVEL: FargoServiceLevel = 'next-day';
 export const SAME_DAY_CUTOFF_HOUR = 13;
 
 /**
- * The hour, in Nairobi time, after which express can no longer be sold.
+ * The hours, in Nairobi time, between which express may be sold.
  *
- * Express promises collection and delivery inside 90 minutes. Nothing
- * in the courier's terms states when their express desk closes, so
- * this is Snack Quest's own guard rather than a quoted SLA: sell it
- * only while 90 minutes still lands inside a normal working evening.
- * Without a cut-off the checkout would happily take KES 500 for a
- * 90-minute promise at half past eleven at night.
+ * Express is a window, not a cut-off, which is what makes it different
+ * from same-day. Same-day has one boundary — order before 13:00 and it
+ * arrives by 18:00 — so any earlier hour is fine. Express promises
+ * collection and delivery inside 90 minutes, and that promise needs a
+ * rider on the road now, so it also has a floor: before 10:00 there is
+ * nobody to dispatch, and an order taken at 09:30 would be a
+ * 90-minute guarantee against a run that has not started.
  *
- * Business assumption, not a courier commitment. It lives here as one
- * named constant so moving it is a one-line change once the real
- * express hours are confirmed.
+ * Closing at 13:00 alongside same-day is deliberate rather than
+ * incidental: the two share the same afternoon dispatch, so the point
+ * where same-day stops being promisable is also the point where an
+ * express run stops being schedulable.
+ *
+ * Confirmed with the business. Both bounds are named constants so the
+ * window can move without touching the logic that reads it.
  */
-export const EXPRESS_CUTOFF_HOUR = 17;
+export const EXPRESS_OPEN_HOUR = 10;
+export const EXPRESS_CUTOFF_HOUR = 13;
 
 /** What express actually promises, in minutes, stated once for the checkout copy. */
 export const EXPRESS_DELIVERY_MINUTES = 90;
@@ -274,14 +280,36 @@ function nairobiHour(now: Date): number {
 /**
  * Whether express may be offered right now.
  *
- * Same reasoning as same-day and the same trap: evaluated against
- * Nairobi's clock, because the runtime's own clock is an hour behind
- * and would keep selling a 90-minute promise an hour past the point
- * anyone can keep it.
+ * Both bounds matter, and the opening one is the easier to forget: a
+ * cut-off-only check would put express on sale at 03:00 and promise a
+ * 90-minute delivery to someone who would still be waiting at dawn.
+ *
+ * Evaluated against Nairobi's clock, same trap as same-day. The
+ * runtime's own clock is an hour behind, which here would shift the
+ * whole window — opening express at 11:00 Nairobi and still selling it
+ * at 14:00, an hour past the last dispatch.
  */
 export function isExpressAvailableAt(now: Date = new Date()): boolean {
+  return expressWindowStateAt(now) === 'open';
+}
+
+/**
+ * Which side of the express window the clock is on.
+ *
+ * A boolean is enough to decide whether to sell express, but not enough
+ * to say anything useful to the customer about it: "closed for today"
+ * is simply wrong at 08:00, when express opens in two hours. This is
+ * the same question `isExpressAvailableAt` asks, answered with the one
+ * extra bit the copy needs, so the checkout never has to work out
+ * Nairobi's hour for itself.
+ */
+export function expressWindowStateAt(now: Date = new Date()): 'before' | 'open' | 'after' {
   const hour = nairobiHour(now);
-  return Number.isFinite(hour) && hour < EXPRESS_CUTOFF_HOUR;
+  // An unreadable clock should not put a 90-minute promise on sale.
+  if (!Number.isFinite(hour) || hour >= EXPRESS_CUTOFF_HOUR) {
+    return 'after';
+  }
+  return hour < EXPRESS_OPEN_HOUR ? 'before' : 'open';
 }
 
 /**

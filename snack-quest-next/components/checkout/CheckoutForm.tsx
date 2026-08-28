@@ -15,7 +15,8 @@ import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import {
   EXPRESS_CUTOFF_HOUR,
   EXPRESS_DELIVERY_MINUTES,
-  isExpressAvailableAt,
+  EXPRESS_OPEN_HOUR,
+  expressWindowStateAt,
   isSameDayAvailableAt,
   metroAreaLabel,
   NEXT_DAY_ARRIVAL_HOUR,
@@ -127,10 +128,12 @@ export function CheckoutForm({
   // next page load. The server refuses it independently — this only
   // decides whether to offer it.
   const sameDayOpen = isSameDayAvailableAt();
-  // Same reasoning for express, against its own later cut-off: a
-  // 90-minute promise is only sellable while 90 minutes still fits in
-  // the day.
-  const expressOpen = isExpressAvailableAt();
+  // Express is a window rather than a cut-off, so this carries which
+  // side of it we are on: before 10am the option is not closed, it has
+  // not opened, and telling a customer it "closed for today" at
+  // breakfast would be plainly wrong.
+  const expressWindow = expressWindowStateAt();
+  const expressOpen = expressWindow === 'open';
   const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
   const [station, setStation] = useState<SelectedStation | null>(null);
   const [addressText, setAddressText] = useState('');
@@ -787,10 +790,15 @@ export function CheckoutForm({
                   detail={
                     sameDayOpen
                       ? `Order by ${SAME_DAY_CUTOFF_HOUR % 12}:00 PM for delivery by ${SAME_DAY_ARRIVAL_HOUR % 12}:00 PM today.`
-                      : `Closed for today — orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
+                      : `Closed for today. Orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
                   }
                 />
-                {/* Same disabled-not-hidden treatment, same reason. */}
+                {/*
+                  Same disabled-not-hidden treatment, same reason, with
+                  one extra state: express runs 10am to 1pm, so it is
+                  shut both early and late and the two need different
+                  words.
+                */}
                 <SpeedOption
                   selected={serviceLevel === 'express'}
                   onSelect={() => expressOpen && setServiceLevel('express')}
@@ -799,7 +807,9 @@ export function CheckoutForm({
                   detail={
                     expressOpen
                       ? `Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
-                      : `Closed for today — orders must be in by ${EXPRESS_CUTOFF_HOUR % 12}pm.`
+                      : expressWindow === 'before'
+                        ? `Opens at ${EXPRESS_OPEN_HOUR}am. Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
+                        : `Closed for today. Orders must be in between ${EXPRESS_OPEN_HOUR}am and ${EXPRESS_CUTOFF_HOUR % 12}pm.`
                   }
                 />
               </div>

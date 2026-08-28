@@ -1,3 +1,4 @@
+import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
@@ -998,10 +999,16 @@ describe('handlePaymentResult — a snapshot already turned into an order', () =
  * checkout can have.
  */
 describe('quoting door delivery', () => {
-  async function seedDoorRate(feeKes: number, serviceLevel: 'next-day' | 'same-day' = 'next-day') {
+  const DOOR_ZONES = {
+    'next-day': 'Nairobi Metro — Next Day',
+    'same-day': 'Nairobi Metro — Same Day',
+    express: 'Nairobi Metro — Express',
+  } as const;
+
+  async function seedDoorRate(feeKes: number, serviceLevel: FargoServiceLevel = 'next-day') {
     await deliveryZoneRuleRepository.upsertIfMissing({
       businessId: BUSINESS_ID,
-      zone: serviceLevel === 'same-day' ? 'Nairobi Metro — Same Day' : 'Nairobi Metro — Next Day',
+      zone: DOOR_ZONES[serviceLevel],
       shippingOrigin: 'Nairobi',
       packageCategory: 'small',
       courier: 'tushop',
@@ -1051,6 +1058,46 @@ describe('quoting door delivery', () => {
     });
 
     expect(quote?.pricing.deliveryFeeKes).toBe(300);
+  });
+
+  /*
+   * The quote is the number a customer reads before they agree to pay,
+   * so a speed it does not recognise is charged at the wrong price with
+   * nothing on screen to show for it. Both the quote and the charge
+   * once normalised with `serviceLevel === 'same-day' ? … :
+   * 'next-day'`, which quietly folded express into next-day the moment
+   * express was added: the customer picked a 90-minute delivery, was
+   * quoted KES 250, and the business collected KES 250 of a KES 500
+   * fare.
+   */
+  it('quotes the express rate rather than folding express into next-day', async () => {
+    await seedDoorRate(250);
+    await seedDoorRate(500, 'express');
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      serviceLevel: 'express',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.pricing.deliveryFeeKes).toBe(500);
+  });
+
+  /** An unrecognised speed prices at next-day, the service every metro address can have at any hour. */
+  it('falls back to next-day for a speed it does not recognise', async () => {
+    await seedDoorRate(250);
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      serviceLevel: 'overnight-rocket' as FargoServiceLevel,
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.pricing.deliveryFeeKes).toBe(250);
   });
 });
 
