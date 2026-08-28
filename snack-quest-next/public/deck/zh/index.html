@@ -288,6 +288,29 @@
     font-family: "Geist Mono", ui-monospace, monospace;
   }
 
+  /* Inbound messages, quoted. The words are the evidence; the
+     screenshots below them are the proof the words are real. */
+  .quote {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    border-radius: 14px;
+    background: var(--ground);
+    border: 1px solid var(--edge);
+  }
+  .quote q { font-size: 16px; line-height: 1.55; color: var(--ink); }
+  .quote .who {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--quest);
+  }
+  .proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: start; }
+  .proof img { width: 100%; height: auto; max-height: none; border-radius: 10px; border: 1px solid var(--edge); }
+
   /* Platform screenshots, shown as evidence. */
   .screens {
     display: grid;
@@ -1166,6 +1189,55 @@
           <p class="note" style="margin-top:14px;">这是目标人群，并非都已验证 —— 第一家门店的作用之一，就是测出哪一类转化最好。</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= 主动上门的原文 ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">主动上门的原话</span>
+      <span class="stamp">未付费 &middot; 未邀约</span>
+    </div>
+    <h2 class="title">六位达人主动找上门。我们一个都没有去找。</h2>
+    <p class="lede">上一页说达人在主动接触我们，这一页把证据附上 —— 他们的原话、他们的粉丝量，以及为促成这些没有花出去的每一先令。</p>
+    <div class="body">
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">154 万</span>
+          <span class="bn-k">合计粉丝量 · 以显示粉丝数的五位计</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">6</span>
+          <span class="bn-k">主动接触的达人</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;0</span>
+          <span class="bn-k">为此支出</span>
+        </div>
+      </div>
+
+      <div class="grid g3" style="margin-top:22px;">
+        <div class="quote"><q>你好，我可以在我的主页上帮 snackquests 做推广吗？</q><span class="who">120 万粉丝</span></div>
+        <div class="quote"><q>我一直在想 SnackQuest 这个品牌，很想和你们做一次合作。</q><span class="who">17.21 万粉丝</span></div>
+        <div class="quote"><q>嗨，你还好吗？我觉得我们可以合作。</q><span class="who">11.33 万粉丝</span></div>
+        <div class="quote"><q>麻烦把价格发给我，我可以帮你们推广，也可以拍一条广告视频。</q><span class="who">3.17 万粉丝</span></div>
+        <div class="quote"><q>可以寄样吗？</q><span class="who">2.37 万粉丝</span></div>
+        <div class="quote"><q>你们的产品很吸引我！要不要做一次合作推广……我一直在帮小商家做推广，不收任何营销费用 :)</q><span class="who">已认证的美食测评账号</span></div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">消息原件</h3>
+      <div class="proof">
+        <img src="/deck/shot-dm-b.webp" alt="一位拥有 120 万粉丝的达人主动私信，询问能否在其主页为 Snack Quest 做推广。">
+        <img src="/deck/shot-dm-d.webp" alt="一位拥有 11.33 万粉丝的达人主动私信，提出可以合作。">
+        <img src="/deck/shot-dm-c.webp" alt="一位拥有 3.17 万粉丝的达人主动私信，询问价格并提出可拍摄广告视频。">
+        <img src="/deck/shot-dm-a.webp" alt="一位拥有 2.37 万粉丝的达人主动私信，询问寄样合作。">
+        <img src="/deck/shot-dm-f.webp" alt="一个已认证的美食测评账号主动私信，提出免费合作推广。">
+        <img src="/deck/shot-dm-e.webp" alt="一位拥有 17.21 万粉丝的达人发来的长私信，提议与其妹妹一起拍摄 Snack Quest 试吃测评视频。">
+      </div>
+
+      <div class="pull" style="margin-top:24px;">这正是第一阶段要买的东西。达人这一侧的供给已经存在，而且是免费的 —— 缺的是可以寄给他们的产品。</div>
+      <p class="note" style="margin-top:14px;">姓名、账号与头像均已遮盖。这些是私信，发件人并未同意出现在一份融资文件里；粉丝数与文字内容未作改动。上方引用为英文原文的中译，原件如图。未遮盖的原件可应要求提供。</p>
     </div>
   </section>
 
