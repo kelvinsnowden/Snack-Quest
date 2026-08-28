@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { getCurrentBusiness } from '@/lib/business/currentBusiness';
@@ -17,6 +18,7 @@ import { FaqSection } from '@/components/marketing/home/FaqSection';
 import { ReviewsSection } from '@/components/marketing/home/ReviewsSection';
 import { MobileStickyBar } from '@/components/marketing/home/MobileStickyBar';
 import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhatsAppBubble';
+import { HomeBodyFallback } from '@/components/marketing/home/HomeBodyFallback';
 
 export const metadata: Metadata = buildPageMetadata({
   title: "Snack Quest, Kenya's Mystery Snack Adventure",
@@ -25,7 +27,57 @@ export const metadata: Metadata = buildPageMetadata({
   path: '/',
 });
 
-export default async function MarketingHomePage() {
+/**
+ * The page component is deliberately NOT async (§ mobile LCP).
+ *
+ * It used to be, and that was the whole performance problem. Every
+ * section lived after one `await Promise.all([...])` of five Firestore
+ * queries, so nothing rendered until the slowest of them came back —
+ * and because `loading.tsx` wraps this route, what shipped in the
+ * meantime was a pulsing grey skeleton. The hero, which needs no data
+ * at all, was waiting on a review count and an FAQ list to appear.
+ *
+ * Measured on the live HTML before this change: the response contained
+ * the loading skeleton and not one byte of hero markup. The LCP
+ * element is the hero's `<h1>`, so LCP could not happen until Firestore
+ * answered. That is the 5.6s.
+ *
+ * Now the hero, the sticky bar and the WhatsApp bubble are outside the
+ * data path entirely and flush in the first chunk of HTML. Everything
+ * that genuinely needs data sits behind one Suspense boundary and
+ * streams in after, which is what Suspense is for.
+ *
+ * One boundary rather than one per section on purpose: the sections
+ * share queries (packages feeds both the box picker and the "from"
+ * price), so splitting them would either duplicate reads or need a
+ * caching layer to avoid it. A single boundary keeps the existing
+ * parallel `Promise.all` exactly as it was.
+ */
+export default function MarketingHomePage() {
+  return (
+    <div className="flex flex-col overflow-x-hidden">
+      <HomeHero />
+
+      <Suspense fallback={<HomeBodyFallback />}>
+        <HomeBody />
+      </Suspense>
+
+      <MobileStickyBar />
+      <FloatingWhatsAppBubble />
+    </div>
+  );
+}
+
+/**
+ * Everything below the hero that reads from Firestore.
+ *
+ * The static sections between them (`PartnersMarquee`, `TheRoute`,
+ * `FinalCta`) stay here rather than being hoisted out: they sit
+ * *between* data-driven sections, so lifting them would reorder the
+ * page. They cost nothing to render and are not what anyone is
+ * waiting for.
+ */
+async function HomeBody() {
   const businessId = getCurrentBusinessId();
   const [business, packages, faqs, reviews, snacks] = await Promise.all([
     getCurrentBusiness(),
@@ -51,8 +103,7 @@ export default async function MarketingHomePage() {
   const homepageContent = business?.homepageContent;
 
   return (
-    <div className="flex flex-col overflow-x-hidden">
-      <HomeHero />
+    <>
       <WhatsInside
         photoUrl={homepageContent?.whatsInsidePhotoUrl ?? null}
         snacks={snacks.map(({ id, data }) => ({
@@ -92,9 +143,6 @@ export default async function MarketingHomePage() {
       />
       <FinalCta />
       <FaqSection faqs={faqs.map((entry) => entry.data)} />
-
-      <MobileStickyBar />
-      <FloatingWhatsAppBubble />
-    </div>
+    </>
   );
 }
