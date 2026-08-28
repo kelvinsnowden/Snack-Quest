@@ -593,6 +593,12 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  /* Where an assumption carries both a target and a measured value the
+     pair is too long to sit in a right-hand column — it squeezed the
+     label into one word per line. Those stack instead. */
+  .assumption.dual { grid-template-columns: 1fr; }
+  .assumption.dual .a-v { text-align: left; white-space: normal; margin-top: 3px; }
+
   .a-n {
     grid-column: 1 / -1;
     font-size: 13.5px;
@@ -979,7 +985,8 @@
           <span class="bn-k">Revenue</span>
         </div>
       </div>
-      <p class="note" style="margin-top:14px;">Four orders is a small number and we are not going to dress it up. It is here because the shape matters more than the size: the average order came in at <strong>KSh&nbsp;4,875</strong>, while the store model later in this deck assumes <strong>KSh&nbsp;3,500</strong>. The plan is deliberately more conservative than what has actually happened. No repeat rate yet &mdash; four days does not produce one.</p>
+      <p class="note" style="margin-top:14px;">Four orders is a small number and we are not going to dress it up. It is here because the shape matters more than the size, and the shape cuts both ways. The average order came in at <strong>KSh&nbsp;4,875</strong> against the <strong>KSh&nbsp;3,500</strong> the store model assumes &mdash; better than plan. Margin went the other way: <strong>25.9%</strong> gross across the four, against a 45% target, and one order sold below cost. Order-level margin ranged from &minus;21% to +39%. No repeat rate yet; four days does not produce one.</p>
+      <p class="note" style="margin-top:10px;">That spread is the honest headline. We do not yet know our own cost structure, and that is the single clearest reason this deck asks for KSh&nbsp;500,000 before it asks for KSh&nbsp;10M.</p>
 
       <div class="pull" style="margin-top:24px;">The machine works. What it does not have is a front door.</div>
     </div>
@@ -1458,7 +1465,7 @@
       <span class="stamp">Raising now</span>
     </div>
     <h2 class="title">KSh&nbsp;500,000 to buy the four numbers this plan is missing.</h2>
-    <p class="lede">Creators are already asking to work for product. Before anyone commits KSh&nbsp;10M to a store, that offer is worth taking up &mdash; because it produces, cheaply, the exact evidence the store case still lacks.</p>
+    <p class="lede">Across our first four orders, margin ranged from &minus;21% to +39% and one sold below cost. We do not yet know our own cost structure &mdash; and nobody should build a KSh&nbsp;10M store on top of that. Creators have offered to work for product, which makes finding out unusually cheap.</p>
     <div class="body">
       <div class="headline-figure">
         <span class="hf-num">KSh&nbsp;500,000</span>
@@ -1480,14 +1487,14 @@
               </tbody>
             </table>
           </div>
-          <p class="note" style="margin-top:12px;">Roughly 70&ndash;80 seeded boxes at our assumed cost of goods. The creators cost nothing in cash &mdash; they have asked to be paid in product.</p>
+          <p class="note" style="margin-top:12px;">Roughly 55 seeded boxes at our <em>measured</em> cost of goods (KSh&nbsp;3,610 average across the first four orders), not an assumed one. The creators cost nothing in cash &mdash; they have asked to be paid in product.</p>
         </div>
         <div class="card hot">
           <h3>What it proves</h3>
           <ul class="ticks" style="margin-top:12px;">
             <li><b>Customer acquisition cost.</b> Currently a planning target. This makes it a measurement.</li>
             <li><b>Repeat purchase rate.</b> Four days of trading cannot produce one. Sixty days of it can.</li>
-            <li><b>Contribution per order.</b> Real cost of goods and real delivery cost against real revenue.</li>
+            <li><b>Whether margin can reach the model.</b> 25.9% gross today against a 45% target. Direct Korean sourcing at volume is the test.</li>
             <li><b>Demand for paying in person.</b> The one number that decides whether the store is the right answer.</li>
           </ul>
         </div>
@@ -1502,7 +1509,7 @@
       <div class="grid g4">
         <div class="card"><h3>CAC under KSh&nbsp;1,500</h3><p>Against a KSh&nbsp;4,875 average order, that leaves the first order profitable on its own.</p></div>
         <div class="card"><h3>Repeat above 20%</h3><p>Within 60 days of first purchase.</p></div>
-        <div class="card"><h3>Positive contribution</h3><p>Per order, after goods and delivery.</p></div>
+        <div class="card"><h3>Gross margin above 35%</h3><p>Against the 25.9% we have measured so far. Direct sourcing is the lever.</p></div>
         <div class="card cool"><h3>1 in 3 choose collection</h3><p>Of customers offered pay-on-collection &mdash; the direct read on store demand.</p></div>
       </div>
 
@@ -1565,7 +1572,7 @@
       <span class="caveat">Base-case planning assumptions &mdash; to be validated with Store&nbsp;#1</span>
     </div>
     <h2 class="title">A measurable path to attractive unit economics.</h2>
-    <p class="lede">Management planning assumptions for the first location. Two inputs are anchored to something real &mdash; average order value and the delivery rate; the rest are targets. Store&nbsp;#1 exists to test whether they hold.</p>
+    <p class="lede">Management planning assumptions for the first location. Three inputs are now measured rather than assumed &mdash; average order value, gross margin and the delivery rate. Where the measurement disagrees with the target, both are shown. Store&nbsp;#1 exists to test whether they hold.</p>
     <div class="body">
       <!--
         Three numbers, then the arithmetic that connects them. An
@@ -1627,10 +1634,10 @@
           <span class="a-v">KSh&nbsp;2.0M</span>
           <span class="a-n">Matches the opening inventory allocation &mdash; enough assortment across countries, categories and price points.</span>
         </div>
-        <div class="assumption">
+        <div class="assumption dual">
           <span class="a-k">Gross margin</span>
-          <span class="a-v">45%</span>
-          <span class="a-n">Target to be validated against actual landed product costs and the store&rsquo;s real sales mix.</span>
+          <span class="a-v">45% target &middot; 25.9% actual</span>
+          <span class="a-n">The widest gap in this model, and we are not going to bury it. Across the first four orders we recorded <strong>25.9%</strong> gross. Those snacks were bought locally at close to retail. The Korean sourcing line on slide&nbsp;04 is the identified lever &mdash; landed cost on direct import rather than local resale &mdash; and closing this gap is the main commercial job of stage one.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Average order value</span>
@@ -1652,20 +1659,20 @@
           <span class="a-v">KSh&nbsp;3.0M</span>
           <span class="a-n">A steady-state planning target for the first store. At KSh&nbsp;3,500 blended AOV that implies roughly 860 transactions a month, about 29 a day over 30 trading days.</span>
         </div>
-        <div class="assumption">
+        <div class="assumption dual">
           <span class="a-k">Contribution margin</span>
-          <span class="a-v">~23%</span>
-          <span class="a-n">Modelled store-level contribution after cost of goods and variable selling and fulfilment costs, before financing and corporate overhead. The delivery component is now a known rate rather than an estimate &mdash; KSh&nbsp;35 per optimised km plus 3% of order value, under the Tushop terms.</span>
+          <span class="a-v">~23% target &middot; 19.7% actual</span>
+          <span class="a-n">Modelled store-level contribution after cost of goods and variable selling and fulfilment costs, before financing and corporate overhead. Measured at <strong>19.7%</strong> over the first four orders &mdash; KSh&nbsp;959 of contribution per order. The delivery component is now a known rate rather than an estimate: KSh&nbsp;35 per optimised km plus 3% of order value, under the Tushop terms.</span>
         </div>
-        <div class="assumption">
+        <div class="assumption dual">
           <span class="a-k">Break-even point</span>
-          <span class="a-v">KSh&nbsp;2.8M / month</span>
-          <span class="a-n">The modelled revenue level at which store contribution covers the assumed KSh&nbsp;650K of monthly fixed cost.</span>
+          <span class="a-v">KSh&nbsp;2.8M target &middot; KSh&nbsp;3.3M today</span>
+          <span class="a-n">The revenue at which contribution covers KSh&nbsp;650K of monthly fixed cost. At the 23% target margin that is KSh&nbsp;2.8M a month. At the 19.7% we have actually recorded it is <strong>KSh&nbsp;3.3M</strong> &mdash; above the KSh&nbsp;3.0M revenue target, meaning today&rsquo;s margin would not carry the store. Both numbers are shown because the distance between them is the risk.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Payback period</span>
           <span class="a-v">~11 months</span>
-          <span class="a-n">Modelled payback on the KSh&nbsp;7.5M setup at roughly KSh&nbsp;700K of monthly store-level contribution.</span>
+          <span class="a-n">Modelled payback on the KSh&nbsp;7.5M setup at roughly KSh&nbsp;700K of monthly store-level contribution &mdash; which assumes the margin gap above is closed. At today&rsquo;s 19.7% it is not reached, which is the point of proving the margin before the store is built rather than after.</span>
         </div>
       </div>
 
