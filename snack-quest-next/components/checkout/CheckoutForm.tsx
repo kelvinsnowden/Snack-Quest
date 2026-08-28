@@ -818,8 +818,8 @@ export function CheckoutForm({
             <div className="border-border bg-primary/5 rounded-lg border p-4">
               <p className="text-foreground text-sm font-medium">Delivered by Tushop</p>
               <p className="text-muted-foreground mt-2 text-sm">
-                We hand your box to Tushop within 24 hours and they bring it to the address you give below.
-                The delivery fee is in your total — nothing to arrange or pay afterwards.
+                We hand your box to Tushop and they bring it to the address you give below.
+                The delivery fee is in your total, so there is nothing to arrange or pay afterwards.
               </p>
             </div>
             <div className="flex flex-col gap-2">
