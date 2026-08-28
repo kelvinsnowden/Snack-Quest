@@ -34,7 +34,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 PUBLIC = HERE.parent.parent / 'public' / 'deck'
 SITE = 'https://snackquests.shop'
 
-BRAND = {'__LOGO__': 'logo.png', '__BOX__': 'box.webp', '__UNBOX__': 'unboxing.webp'}
+BRAND = {'__LOGO__': 'logo.png', '__BOX__': 'box.webp'}
 
 # Alt text per image, per language. Written out rather than derived from
 # the caption: a screen reader should hear what is in the picture, not
@@ -159,6 +159,9 @@ def compose(lang: str, body: str, style: str, inline: bool) -> tuple[str, list[s
         body = body.replace(token, data_uri(name) if inline else f'/deck/{name}')
     for token in BRAND:
         assert token not in body, token
+    if inline:
+        body = body.replace('src="/deck/unboxing-clip.mp4"',
+                            f'src="{SITE}/deck/unboxing-clip.mp4"')
     body, missing = put_shots(body, lang, inline)
     body = body.replace('<div class="deck">', '<div class="deck">' + langbar(lang), 1)
 

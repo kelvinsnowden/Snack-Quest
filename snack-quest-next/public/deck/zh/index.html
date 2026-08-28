@@ -335,7 +335,6 @@
     font-weight: 500;
     color: var(--ink-faint);
     letter-spacing: 0;
-    white-space: nowrap;
   }
   .hf-cap .usd, .bn-k .usd { margin-top: 4px; text-transform: none; letter-spacing: 0; }
 
@@ -480,7 +479,8 @@
   }
   /* Prose, not a label — so the body face, overriding the mono
      `figcaption` rule the brand photographs use for their captions. */
-  .shot figcaption {
+  .shot figcaption,
+  .clip figcaption {
     margin-top: 9px;
     font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
     font-size: 14px;
@@ -496,6 +496,18 @@
   .shot.tall img, .slot.tall { aspect-ratio: 3 / 4; object-fit: cover; }
   .shot.founder img, .slot.founder { aspect-ratio: 4 / 5; object-fit: cover; }
   .shot.founder { max-width: 340px; }
+
+  /* Vertical creator footage. Capped by width because at full column
+     width a 384x832 clip would be a thousand pixels tall. */
+  .clip { max-width: 268px; }
+  .clip video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+    background: #000;
+  }
   .slot.hero, .slot.panel, .slot.tall { min-height: 0; }
   .slot.tall { padding: 18px; }
   .slot.tall .h { font-size: 13px; }
@@ -517,6 +529,7 @@
   .scroll { overflow-x: auto; }
 
   /* --- the one number a slide is about ---------------------- */
+  .headline-figure > * { min-width: 0; }
   .headline-figure {
     display: flex;
     flex-wrap: wrap;
@@ -806,8 +819,16 @@
     .chip { font-size: 13px; padding: 5px 11px; }
     .spoke { padding: 11px 12px; gap: 11px; }
     .spoke span { font-size: 14.5px; }
-    .shot figcaption { font-size: 13.5px; }
+    .shot figcaption,
+  .clip figcaption { font-size: 13.5px; }
     .pull { padding: 18px; font-size: 19px; }
+    /* 11px uppercase mono reads as decoration rather than text at arm's
+       length on a phone; every label in the deck uses it. */
+    .eyebrow, .stamp, .bn-k, .quote .who, .slot .k, th, .a-v { font-size: 12px; }
+    /* Two-up keeps the evidence strip from becoming six full-width
+       screenshots. */
+    .proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .clip { max-width: none; }
 
     .headline-figure { padding: 16px 18px; margin-bottom: 18px; gap: 4px 12px; }
     .hf-cap { font-size: 14px; }
@@ -1319,9 +1340,13 @@
     <p class="lede">Snack Quest 特别适合达人内容，因为"发现"本身就是产品。拆盒就是故事。</p>
     <div class="body">
       <div class="grid g2">
-        <figure>
-          <img src="/deck/unboxing.webp" alt="拆开一个 Snack Quest 礼盒">
-          <figcaption>真实的 Snack Quest 拆箱：达人本来就在做的内容形式。</figcaption>
+        <figure class="clip">
+          <video controls playsinline preload="metadata" muted loop width="384" height="832"
+                 aria-label="一位达人出镜拆开 Snack Quest 礼盒">
+            <source src="/deck/unboxing-clip.mp4" type="video/mp4">
+            当前浏览器无法播放该视频。
+          </video>
+          <figcaption><b>一位达人在拆箱。</b>达人本来就在做的内容形式，而这条正是他们做的。</figcaption>
         </figure>
         <div>
           <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">达人可以做什么内容</h3>
@@ -1575,7 +1600,6 @@
               </tbody>
             </table>
           </div>
-          <p class="note" style="margin-top:12px;">按<em>实测</em>商品成本（前四单平均 KSh&nbsp;3,610）约合 55 份寄样礼盒，而不是按假设成本推算。高亮的两行，是让这次测试得以成立的前提。达人端不产生现金支出：他们主动提出要的是产品，不是钱。</p>
         </div>
         <div class="card hot">
           <h3>它能验证什么</h3>
@@ -1587,6 +1611,8 @@
           </ul>
         </div>
       </div>
+
+      <p class="note" style="margin-top:14px;">按<em>实测</em>商品成本（前四单平均 KSh&nbsp;3,610）约合 55 份寄样礼盒，而不是按假设成本推算。高亮的两行是让这次测试得以成立的前提；达人端不产生现金支出，他们主动提出要的是产品，不是钱。</p>
 
       <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">开始之前就定好的及格线</h3>
       <div class="grid g4">
@@ -1601,7 +1627,7 @@
         <div class="card hot">
           <h3>它让"货到付款"成为可能</h3>
           <p style="margin-bottom:10px;">顾客分成两类：一类愿意线上先付，另一类在建立信任之前不会付。服务后一类意味着要先发货、后收钱，而这需要我们目前没有的周转资金。</p>
-          <p><strong>这笔周转金是我们能不能提供货到付款的前提</strong>，而只有真的提供了，才谈得上去测量有多少人需要它。决定门店逻辑的那个数字，没有现金就采集不到。</p>
+          <p><strong>这笔周转金是我们能不能提供货到付款的前提</strong>；而决定门店逻辑的那个数字，没有现金就采集不到。</p>
         </div>
         <div class="card cool">
           <h3>它借来了我们尚未建立的信任</h3>
