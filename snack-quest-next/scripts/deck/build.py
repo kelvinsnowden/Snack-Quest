@@ -77,7 +77,7 @@ SHOT_ALT = {
 LANGS = {
     'en': {
         'html_lang': 'en',
-        'title': 'Snack Quest — Investor Deck',
+        'title': 'Snack Quest Investor Deck',
         'desc': 'Snack Quest is building the home of global snack discovery in Africa. '
                 'This deck sets out the case for our first physical location in Nairobi.',
         'social': 'The home of global snack discovery in Africa. '
@@ -91,7 +91,7 @@ LANGS = {
     },
     'zh': {
         'html_lang': 'zh-Hans',
-        'title': 'Snack Quest — 投资人介绍',
+        'title': 'Snack Quest 投资人介绍',
         'desc': 'Snack Quest 正在把非洲打造成全球零食探索的目的地。本文件阐述我们在内罗毕开设首家实体门店的投资逻辑。',
         'social': '全球零食探索在非洲的目的地。内罗毕首家实体门店的投资逻辑。',
         'canonical': f'{SITE}/deck/zh',
