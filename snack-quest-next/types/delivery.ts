@@ -46,6 +46,31 @@ export interface DeliveryDetails {
   shippingOrigin: string;
   /** 0 until priced. Never fabricated — auto-computed for pickup, human-entered for door. */
   feeKes: number;
+
+  /**
+   * What Tushop is expected to bill Snack Quest for this delivery
+   * (§ delivery margin). Never shown to a customer, never used to
+   * price one.
+   *
+   * `feeKes` above is what the customer pays: a flat, published price
+   * per speed. This is the courier's own distance-and-value formula.
+   * They are deliberately independent — see `lib/delivery/courierCost.ts`
+   * — and both are stored so the subsidy or margin on each delivery
+   * type can be measured rather than assumed.
+   *
+   * Optional because orders placed before this existed do not have it,
+   * and because it is an estimate: the distance term is billed on a
+   * batched route the courier only computes later. `routeKmAssumed`
+   * records whether the distance was known or stood in for, so a wrong
+   * assumption can be recomputed instead of silently skewing the
+   * history.
+   */
+  courierCost?: {
+    estimatedKes: number;
+    routeKm: number;
+    routeKmAssumed: boolean;
+    declaredValueKes: number;
+  } | null;
   /**
    * Who the customer pays `feeKes` to, and when (§ delivery paid on
    * delivery).

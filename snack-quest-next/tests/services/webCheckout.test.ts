@@ -1040,7 +1040,7 @@ describe('quoting door delivery', () => {
   });
 
   it('quotes the same-day rate when same-day is asked for', async () => {
-    await seedDoorRate(439, 'same-day');
+    await seedDoorRate(300, 'same-day');
 
     const quote = await service().quoteWebCheckout(BUSINESS_ID, {
       packageId,
@@ -1050,7 +1050,7 @@ describe('quoting door delivery', () => {
       phone: PHONE_TYPED,
     });
 
-    expect(quote?.pricing.deliveryFeeKes).toBe(439);
+    expect(quote?.pricing.deliveryFeeKes).toBe(300);
   });
 });
 

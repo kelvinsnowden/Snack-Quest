@@ -79,6 +79,7 @@ import type {
   QuoteDeliveryResponse,
   WhatchimpCheckoutResponse,
 } from '@/types/whatchimpBridge';
+import { estimateCourierCost } from '@/lib/delivery/courierCost';
 
 /**
  * Owns the conversation lifecycle (PLATFORM_ARCHITECTURE_V2.md §6):
@@ -1774,16 +1775,34 @@ class ConversationService {
       // nothing" instead of "this box has nothing to pick".
       ...(common.guaranteedPicks?.length ? { guaranteedPicks: common.guaranteedPicks } : {}),
       county: common.county,
-      delivery: common.deliveryFeeCollection
-        ? {
-            ...delivery,
-            feeCollection: common.deliveryFeeCollection,
-            // A waived fee is genuinely nothing owed, by anyone. Left
-            // at its real figure it would show up on the packing list
-            // as money to collect at a door where nobody is collecting.
-            ...(common.deliveryFeeCollection === 'waived' ? { feeKes: 0 } : {}),
-          }
-        : delivery,
+      /*
+       * The courier's own cost is stamped on here, beside the fee the
+       * customer pays and never derived from it (§ delivery margin).
+       *
+       * This is the one point where both numbers are known: the
+       * delivery is chosen and the basket is priced, so the 3% of
+       * declared value is exact. The distance term is an assumption,
+       * because Tushop bills the batched route and only computes it
+       * once they know what else is going out on the run. The estimate
+       * carries a flag saying so.
+       *
+       * Recorded even when the customer is charged nothing. A waived
+       * or on-delivery fee still costs Snack Quest a courier run, and
+       * those are exactly the orders where the subsidy is total.
+       */
+      delivery: {
+        ...(common.deliveryFeeCollection
+          ? {
+              ...delivery,
+              feeCollection: common.deliveryFeeCollection,
+              // A waived fee is genuinely nothing owed, by anyone. Left
+              // at its real figure it would show up on the packing list
+              // as money to collect at a door where nobody is collecting.
+              ...(common.deliveryFeeCollection === 'waived' ? { feeKes: 0 } : {}),
+            }
+          : delivery),
+        courierCost: estimateCourierCost({ declaredValueKes: totalKes }),
+      },
       referralCode: common.referralCode ?? null,
       referralLinkId: referral?.referralLinkId ?? null,
       referralOwnerId: referral?.ownerId ?? null,

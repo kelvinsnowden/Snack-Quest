@@ -32,13 +32,14 @@ const SHIPPING_ORIGIN = 'Nairobi';
 const PACKAGE_CATEGORY = 'small';
 const COMMIT = process.argv.includes('--commit');
 
-// Mirrors lib/delivery/fargoPricing.ts. Duplicated rather than imported
+// Mirrors FARGO_SEED_FEES_KES in lib/delivery/deliveryPricing.ts. Duplicated rather than imported
 // because this is a plain ESM script with no TypeScript build step —
 // the pricing test asserts these same figures, so a drift shows up
 // there rather than silently in production.
 const ZONES = {
   'Nairobi Metro — Next Day': 250,
-  'Nairobi Metro — Same Day': 439,
+  'Nairobi Metro — Same Day': 300,
+  'Nairobi Metro — Express': 500,
   Upcountry: 450,
 };
 const UPCOUNTRY_ZONE = 'Upcountry';

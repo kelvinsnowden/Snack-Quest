@@ -15,9 +15,11 @@
  *   Inside the Nairobi radius   DOOR delivery by Tushop. The customer
  *                               types an address; nothing is picked
  *                               from a list.
- *                                 next day  KES 250
- *                                 same day  KES 439, ordered by 13:00,
+ *                                 next day  KES 250, by 16:00 next day
+ *                                 same day  KES 300, ordered by 13:00,
  *                                           guaranteed by 18:00
+ *                                 express   KES 500, collected and
+ *                                           delivered within 90 minutes
  *
  *   Outside the radius          PICKUP at a Fargo branch, KES 450.
  *                               Still handed to Tushop; Fargo is their
@@ -151,7 +153,7 @@ export function isCustomerFacingPickupPoint(region: FargoRegion): boolean {
 }
 
 /** What the customer picks. Only meaningful inside the metro; upcountry has one speed. */
-export const FARGO_SERVICE_LEVELS = ['next-day', 'same-day'] as const;
+export const FARGO_SERVICE_LEVELS = ['next-day', 'same-day', 'express'] as const;
 export type FargoServiceLevel = (typeof FARGO_SERVICE_LEVELS)[number];
 
 /**
@@ -169,11 +171,15 @@ export type FargoServiceLevel = (typeof FARGO_SERVICE_LEVELS)[number];
 export const FARGO_ZONES = {
   'nairobi-metro:next-day': 'Nairobi Metro — Next Day',
   'nairobi-metro:same-day': 'Nairobi Metro — Same Day',
+  'nairobi-metro:express': 'Nairobi Metro — Express',
   'upcountry:next-day': 'Upcountry',
   // Fargo does not offer same-day beyond the metro. Mapped to the same
   // zone as next-day so an out-of-range request prices as the only
   // service that exists rather than falling through to no rule at all.
   'upcountry:same-day': 'Upcountry',
+  // Express is a 90-minute city service; there is no upcountry
+  // equivalent. Same fallback for the same reason.
+  'upcountry:express': 'Upcountry',
 } as const satisfies Record<`${FargoRegion}:${FargoServiceLevel}`, string>;
 
 export type FargoZone = (typeof FARGO_ZONES)[keyof typeof FARGO_ZONES];
@@ -188,7 +194,8 @@ export type FargoZone = (typeof FARGO_ZONES)[keyof typeof FARGO_ZONES];
  */
 export const FARGO_SEED_FEES_KES: Record<FargoZone, number> = {
   'Nairobi Metro — Next Day': 250,
-  'Nairobi Metro — Same Day': 439,
+  'Nairobi Metro — Same Day': 300,
+  'Nairobi Metro — Express': 500,
   Upcountry: 450,
 };
 
@@ -207,8 +214,30 @@ export const WHATSAPP_DOOR_SERVICE_LEVEL: FargoServiceLevel = 'next-day';
 /** The hour, in Nairobi time, after which same-day can no longer be promised. */
 export const SAME_DAY_CUTOFF_HOUR = 13;
 
+/**
+ * The hour, in Nairobi time, after which express can no longer be sold.
+ *
+ * Express promises collection and delivery inside 90 minutes. Nothing
+ * in the courier's terms states when their express desk closes, so
+ * this is Snack Quest's own guard rather than a quoted SLA: sell it
+ * only while 90 minutes still lands inside a normal working evening.
+ * Without a cut-off the checkout would happily take KES 500 for a
+ * 90-minute promise at half past eleven at night.
+ *
+ * Business assumption, not a courier commitment. It lives here as one
+ * named constant so moving it is a one-line change once the real
+ * express hours are confirmed.
+ */
+export const EXPRESS_CUTOFF_HOUR = 17;
+
+/** What express actually promises, in minutes, stated once for the checkout copy. */
+export const EXPRESS_DELIVERY_MINUTES = 90;
+
 /** What same-day actually guarantees, stated once so the checkout copy and any later SLA check agree. */
 export const SAME_DAY_ARRIVAL_HOUR = 18;
+
+/** What next-day guarantees. Stated here for the same reason: the checkout copy reads it rather than hard-coding an hour that could drift from the courier's terms. */
+export const NEXT_DAY_ARRIVAL_HOUR = 16;
 
 export function fargoZoneFor(region: FargoRegion, serviceLevel: FargoServiceLevel): FargoZone {
   return FARGO_ZONES[`${region}:${serviceLevel}`];
@@ -231,6 +260,30 @@ export function isFargoZone(value: string | null | undefined): value is FargoZon
   return typeof value === 'string' && (allFargoZones() as string[]).includes(value);
 }
 
+/** The Nairobi wall-clock hour, which is not the hour this code runs in. */
+function nairobiHour(now: Date): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      hour12: false,
+      timeZone: 'Africa/Nairobi',
+    }).format(now),
+  );
+}
+
+/**
+ * Whether express may be offered right now.
+ *
+ * Same reasoning as same-day and the same trap: evaluated against
+ * Nairobi's clock, because the runtime's own clock is an hour behind
+ * and would keep selling a 90-minute promise an hour past the point
+ * anyone can keep it.
+ */
+export function isExpressAvailableAt(now: Date = new Date()): boolean {
+  const hour = nairobiHour(now);
+  return Number.isFinite(hour) && hour < EXPRESS_CUTOFF_HOUR;
+}
+
 /**
  * Whether same-day may be offered right now.
  *
@@ -240,20 +293,25 @@ export function isFargoZone(value: string | null | undefined): value is FargoZon
  * the courier will not accept.
  */
 export function isSameDayAvailableAt(now: Date = new Date()): boolean {
-  const nairobiHour = Number(
-    new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: 'Africa/Nairobi',
-    }).format(now),
-  );
-  return Number.isFinite(nairobiHour) && nairobiHour < SAME_DAY_CUTOFF_HOUR;
+  const hour = nairobiHour(now);
+  return Number.isFinite(hour) && hour < SAME_DAY_CUTOFF_HOUR;
 }
 
-/** Same-day exists in the metro only, and only before the cut-off. */
+/**
+ * Same-day and express exist in the metro only, and only before their
+ * own cut-offs. Ordered slowest to fastest, which is also cheapest to
+ * dearest, so the checkout list reads as a ladder.
+ */
 export function availableServiceLevels(region: FargoRegion, now: Date = new Date()): FargoServiceLevel[] {
   if (region !== 'nairobi-metro') {
     return ['next-day'];
   }
-  return isSameDayAvailableAt(now) ? ['next-day', 'same-day'] : ['next-day'];
+  const levels: FargoServiceLevel[] = ['next-day'];
+  if (isSameDayAvailableAt(now)) {
+    levels.push('same-day');
+  }
+  if (isExpressAvailableAt(now)) {
+    levels.push('express');
+  }
+  return levels;
 }
