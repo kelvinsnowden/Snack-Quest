@@ -53,6 +53,7 @@ import { walletService } from './walletService';
 import { featureFlagService } from './featureFlagService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
+import { classifyStkFailure } from '@/lib/payments/stkFailureReason';
 import {
   bootstrapFromCatalogSelection,
   formatFinalOrderSummaryMessage,
@@ -1601,6 +1602,25 @@ class ConversationService {
       }
     }
 
+    /*
+     * Only looked up on a failure, and only from the intent's own
+     * `failure` field rather than its attempts — this runs on every
+     * poll tick, and a collection-group query per tick to explain a
+     * state most polls are not even in would be the wrong trade.
+     */
+    let paymentFailure: WebCheckoutStatusResponse['paymentFailure'] = null;
+    if (base.paymentStatus === 'failed' && conversation?.conversationCheckoutSnapshotId) {
+      const intent = await paymentIntentRepository.findFailedBySnapshotId(
+        businessId,
+        conversation.conversationCheckoutSnapshotId,
+      );
+      const recorded = intent?.data.failure;
+      const reason = recorded ? classifyStkFailure(recorded.resultCode, recorded.resultDesc) : null;
+      if (recorded && reason) {
+        paymentFailure = { resultCode: recorded.resultCode, ...reason };
+      }
+    }
+
     return {
       checkoutSessionId: base.checkoutSessionId,
       paymentStatus: base.paymentStatus,
@@ -1612,6 +1632,7 @@ class ConversationService {
       packageLabel,
       guaranteedPicks,
       paidAt,
+      paymentFailure,
     };
   }
 

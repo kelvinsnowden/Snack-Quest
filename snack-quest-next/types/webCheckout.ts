@@ -1,4 +1,5 @@
 import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
+import type { StkFailureCategory } from '@/lib/payments/stkFailureReason';
 import type { DeliveryMethod } from './delivery';
 import type { OrderPaymentStatus } from './whatchimpBridge';
 
@@ -152,4 +153,24 @@ export interface WebCheckoutStatusResponse {
    * and formatting happens where the customer's locale is known.
    */
   paidAt: string | null;
+  /**
+   * Why the payment failed, when Safaricom said something this app
+   * recognises (§ accurate payment failure feedback).
+   *
+   * Null covers two different situations that the screen treats the
+   * same way on purpose: the payment has not failed, and it failed for
+   * a reason not in the known set. Neither is an invitation to guess —
+   * the screen says only that it did not go through and nothing was
+   * charged.
+   *
+   * The raw `resultCode` rides along so support can quote it back
+   * without opening Firestore; it is deliberately not shown to the
+   * customer, who has no use for "1037".
+   */
+  paymentFailure: {
+    resultCode: number;
+    category: StkFailureCategory;
+    message: string;
+    nextStep: string | null;
+  } | null;
 }

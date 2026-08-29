@@ -111,8 +111,9 @@ describe('POST /api/analytics/track', () => {
      * the click happened. A purchase days later reads the cookie back
      * and reports the click at its real time rather than its own.
      */
-    expect(byName.sq_fbclid.value).toMatch(/^fb\.1\.\d{13}\.fb-xyz$/);
-    const stampedAt = Number(byName.sq_fbclid.value.split('.')[2]);
+    const fbcCookie = byName.sq_fbclid.value ?? '';
+    expect(fbcCookie).toMatch(/^fb\.1\.\d{13}\.fb-xyz$/);
+    const stampedAt = Number(fbcCookie.split('.')[2]);
     expect(Math.abs(Date.now() - stampedAt)).toBeLessThan(60_000);
   });
 

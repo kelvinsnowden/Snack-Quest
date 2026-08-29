@@ -15,6 +15,7 @@ import { walletService } from '@/services/walletService';
 import { featureFlagService } from '@/services/featureFlagService';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 import { pickupStationRepository } from '@/repositories/pickupStationRepository';
+import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { POST as priceDoorDeliveryRoute } from '@/app/api/internal/conversations/[conversationId]/price-door-delivery/route';
 import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
 
@@ -251,6 +252,23 @@ function darajaCallbackPayload(shortcode: string, amountKes: number) {
   };
 }
 
+/**
+ * A failed STK callback, shaped exactly as Safaricom sends one: a
+ * result code and description, and no `CallbackMetadata` at all.
+ */
+function darajaFailurePayload(shortcode: string, resultCode: number, resultDesc: string) {
+  return {
+    Body: {
+      stkCallback: {
+        MerchantRequestID: `merchant-${shortcode}`,
+        CheckoutRequestID: `checkout-${shortcode}`,
+        ResultCode: resultCode,
+        ResultDesc: resultDesc,
+      },
+    },
+  };
+}
+
 async function cleanCollections() {
   for (const name of [
     'businesses',
@@ -269,6 +287,11 @@ async function cleanCollections() {
     'customerWallets',
     'outboundMessages',
     'notificationTemplates',
+    // Delivery pricing is per-test state like everything else here.
+    // Left out, a rule seeded by one test survived into the next, and
+    // the door-delivery fallback suite exists precisely to exercise the
+    // case where no Tushop rate is configured.
+    'deliveryZoneRules',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
@@ -490,6 +513,120 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     // other test must never have produced this event — asserted here
     // implicitly by `events.size === 1` counting only what this test
     // itself created (collections are wiped in `beforeEach`).
+  });
+
+  /*
+   * The exact failure a real customer hit: order SQYXHEJV, KES 5,300,
+   * ResultCode 1037 "DS timeout user cannot be reached." — the prompt
+   * never got to their handset. The screen told them it "may not have
+   * reached your phone, or was cancelled before you entered your PIN",
+   * hedging across two causes when Safaricom had already said which.
+   *
+   * This walks the whole path rather than the classifier alone, because
+   * the classifier was never the weak part: the code and description
+   * were being recorded on the attempt and simply never travelling as
+   * far as the customer.
+   */
+  it('carries a real failure reason from the Daraja callback all the way to the payment screen', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    // Door delivery is priced from a zone rule; without one the
+    // checkout refuses before any payment can be attempted.
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Fredrick N',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kensington Court, Valley Road',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaFailurePayload(SNACK_QUEST.shortcode, 1037, 'DS timeout user cannot be reached.'),
+    );
+    expect(callback.status).toBe('failed');
+    await service.handlePaymentResult(callback);
+
+    const status = await service.getWebCheckoutStatus(
+      SNACK_QUEST.businessId,
+      checkout.checkoutSessionId,
+    );
+
+    expect(status.paymentStatus).toBe('failed');
+    // Named, not hedged: this one never reached the phone, and the
+    // customer is told to check the phone rather than to stop
+    // cancelling something they never saw.
+    expect(status.paymentFailure).toMatchObject({
+      resultCode: 1037,
+      category: 'unreachable',
+    });
+    expect(status.paymentFailure?.message).toMatch(/could not reach your phone/i);
+    expect(status.paymentFailure?.nextStep).toMatch(/switched on|network/i);
+    // No order, and no money: the point of saying anything at all.
+    expect(status.orderId).toBeNull();
+  });
+
+  /*
+   * A code outside the known set must reach the screen as null, so the
+   * screen says only what is certain. Sending a plausible guess instead
+   * is the failure mode this whole change exists to remove.
+   */
+  it('reports no reason at all, rather than a guess, for an unrecognised result code', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    // Door delivery is priced from a zone rule; without one the
+    // checkout refuses before any payment can be attempted.
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Jane Doe',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kilimani',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaFailurePayload(SNACK_QUEST.shortcode, 4321, 'Something Safaricom has not documented'),
+    );
+    expect(callback.status).toBe('failed');
+    await service.handlePaymentResult(callback);
+
+    const status = await service.getWebCheckoutStatus(
+      SNACK_QUEST.businessId,
+      checkout.checkoutSessionId,
+    );
+    expect(status.paymentStatus).toBe('failed');
+    expect(status.paymentFailure).toBeNull();
   });
 
   it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {

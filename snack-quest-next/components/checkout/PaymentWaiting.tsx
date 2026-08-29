@@ -101,7 +101,14 @@ export function PaymentWaiting({
   const reference = sessionId.slice(0, 8).toUpperCase();
 
   if (status.paymentStatus === 'failed' || timedOut) {
-    return <PaymentFailed reference={reference} totalKes={status.totalKes} timedOut={timedOut} />;
+    return (
+      <PaymentFailed
+        reference={reference}
+        totalKes={status.totalKes}
+        timedOut={timedOut}
+        failure={status.paymentFailure}
+      />
+    );
   }
 
   return (
@@ -186,10 +193,13 @@ function PaymentFailed({
   reference,
   totalKes,
   timedOut,
+  failure,
 }: {
   reference: string;
   totalKes: number | null;
   timedOut: boolean;
+  /** Null when the payment has not failed, or failed for a reason we cannot name. */
+  failure: WebCheckoutStatusResponse['paymentFailure'];
 }) {
   return (
     <PaymentShell>
@@ -202,12 +212,33 @@ function PaymentFailed({
         restClassName="text-white"
       />
 
-      <p className="mt-4 text-base font-semibold text-[#b98cff]">Oops! Something went wrong.</p>
-      <p className="mt-1 text-sm text-pretty text-white/65">
-        {timedOut
-          ? 'The prompt may have expired before you entered your PIN. Nothing has been charged.'
-          : 'The prompt may not have reached your phone, or it was cancelled before you entered your PIN. Either way, nothing was charged.'}
+      {/*
+        Three states, and the difference between them is what this
+        screen is for.
+
+        When Safaricom told us what happened and we recognise it, say
+        that one thing and what to do about it — someone whose phone was
+        off needs to switch it on, someone who cancelled needs to not
+        cancel, and a single sentence covering both helps neither.
+
+        Otherwise say only what is certain. `timedOut` means we stopped
+        waiting before any answer arrived, so we genuinely do not know;
+        a null `failure` means the code Safaricom sent is not one we can
+        honestly interpret. Both get the plain version rather than a
+        guess dressed as an explanation.
+      */}
+      <p className="mt-4 text-base font-semibold text-[#b98cff]">
+        {failure ? failure.message : 'Oops! Something went wrong.'}
       </p>
+      <p className="mt-1 text-sm text-pretty text-white/65">
+        {failure?.nextStep ??
+          (timedOut
+            ? 'We stopped waiting before M-Pesa came back to us. Nothing has been charged.'
+            : 'We could not complete the M-Pesa payment. Nothing was charged.')}
+      </p>
+      {failure ? (
+        <p className="mt-2 text-sm text-white/50">Nothing was charged.</p>
+      ) : null}
 
       <div className="mt-7 w-full">
         <DetailCard>

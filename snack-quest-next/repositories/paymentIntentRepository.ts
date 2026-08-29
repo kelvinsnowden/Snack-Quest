@@ -92,6 +92,39 @@ class PaymentIntentRepository {
     return { id: doc.id, data: doc.data() as PaymentIntent };
   }
 
+  /**
+   * The failed intent for a snapshot, so the payment screen can say
+   * why (§ accurate payment failure feedback).
+   *
+   * A sibling of `findProcessingBySnapshotId` rather than a `status`
+   * parameter on it: that method's name is a statement about what it
+   * returns, and callers rely on it never handing back a settled
+   * intent.
+   *
+   * Equality filters only, deliberately. Adding an `orderBy` to pick
+   * the most recent would need a composite index, and a missing one
+   * fails as `FAILED_PRECONDITION` at request time — on the checkout
+   * poll, of all places. A snapshot is frozen per checkout attempt, so
+   * in practice there is one failed intent against it anyway.
+   */
+  async findFailedBySnapshotId(
+    businessId: string,
+    snapshotId: string,
+  ): Promise<{ id: string; data: PaymentIntent } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('conversationCheckoutSnapshotId', '==', snapshotId)
+      .where('status', '==', 'failed')
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      return null;
+    }
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() as PaymentIntent };
+  }
+
   async findById(intentId: string): Promise<PaymentIntent | null> {
     const snapshot = await adminFirestore.collection(COLLECTION).doc(intentId).get();
     if (!snapshot.exists) {
@@ -100,9 +133,25 @@ class PaymentIntentRepository {
     return snapshot.data() as PaymentIntent;
   }
 
-  async updateStatus(intentId: string, status: PaymentIntentStatus): Promise<void> {
+  /**
+   * `failure` is written in the same `update()` as the status, so an
+   * intent can never be `'failed'` with the reason for it landing a
+   * moment later — the payment screen polls fast enough to catch that
+   * gap and would show "it failed" with no explanation, which is the
+   * exact thing this exists to stop.
+   *
+   * Omitted rather than set to null when there is nothing to record:
+   * Firestore rejects undefined, and a null would overwrite a reason
+   * already stored by an earlier resolution of the same intent.
+   */
+  async updateStatus(
+    intentId: string,
+    status: PaymentIntentStatus,
+    failure?: { resultCode: number; resultDesc: string } | null,
+  ): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(intentId).update({
       status,
+      ...(failure ? { failure } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }

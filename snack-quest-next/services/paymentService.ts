@@ -541,7 +541,11 @@ class PaymentService {
       resultDesc: query.resultDesc,
       mpesaReceiptNumber: null,
     });
-    await paymentIntentRepository.updateStatus(intentId, succeeded ? 'succeeded' : 'failed');
+    await paymentIntentRepository.updateStatus(
+      intentId,
+      succeeded ? 'succeeded' : 'failed',
+      succeeded ? null : { resultCode: query.resultCode, resultDesc: query.resultDesc },
+    );
     await webhookEventRepository.markProcessed(businessId, 'daraja', pending.checkoutRequestId);
 
     if (!succeeded) {
@@ -819,7 +823,10 @@ class PaymentService {
         resultDesc: query.resultDesc,
         mpesaReceiptNumber: null,
       });
-      await paymentIntentRepository.updateStatus(intentId, 'failed');
+      await paymentIntentRepository.updateStatus(intentId, 'failed', {
+        resultCode: query.resultCode,
+        resultDesc: query.resultDesc,
+      });
       await webhookEventRepository.markProcessed(businessId, 'daraja', pending.checkoutRequestId);
 
       outcomes.push({
@@ -923,6 +930,10 @@ class PaymentService {
     await paymentIntentRepository.updateStatus(
       match.intentId,
       succeeded ? 'succeeded' : 'failed',
+      // What Safaricom actually said, kept verbatim so the screen can
+      // tell the customer which failure this was rather than listing
+      // every failure it might have been.
+      succeeded ? null : { resultCode: callback.resultCode, resultDesc: callback.resultDesc },
     );
     await webhookEventRepository.markProcessed(businessId, 'daraja', callback.checkoutRequestId);
 
