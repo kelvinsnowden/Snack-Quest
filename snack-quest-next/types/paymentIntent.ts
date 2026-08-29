@@ -73,6 +73,21 @@ export interface PaymentIntent {
   amountKes: number;
   status: PaymentIntentStatus;
   /**
+   * What Safaricom said when an attempt failed (§ accurate payment
+   * failure feedback).
+   *
+   * The same code and description are already on the failing attempt.
+   * They are copied here because the payment screen polls once every
+   * couple of seconds and would otherwise need a collection-group
+   * query into `attempts` on every tick to say anything more useful
+   * than "it failed".
+   *
+   * Absent on a successful intent and on every intent that failed
+   * before this field existed, so `failure == null` reads as "no
+   * recorded reason" without a backfill.
+   */
+  failure?: { resultCode: number; resultDesc: string } | null;
+  /**
    * Set only when this intent was settled by a super admin asserting
    * payment already arrived, rather than by a Daraja callback. Absent
    * on every Daraja-settled intent and on every intent predating this
