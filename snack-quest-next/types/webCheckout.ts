@@ -64,6 +64,19 @@ export interface WebCheckoutRequest {
   landmark?: string;
   /** Optional alternate number for the rider to call, when it differs from the paying number. */
   contactPhone?: string;
+  /**
+   * Set when the box is for somebody else (§ send a box as a gift).
+   *
+   * The recipient's name and number, and the note to pack with it. The
+   * buyer stays `customerName`/`phone` above — they are who paid and
+   * who every order update goes to. Absent on an ordinary order.
+   */
+  gift?: {
+    recipientName?: string;
+    /** Any Kenyan form, normalized server-side like the paying number. */
+    recipientPhone?: string;
+    message?: string;
+  };
   referralCode?: string;
   /**
    * The snacks chosen as guaranteed picks, on a box that offers them
@@ -167,6 +180,14 @@ export interface WebCheckoutStatusResponse {
    * without opening Firestore; it is deliberately not shown to the
    * customer, who has no use for "1037".
    */
+  /**
+   * Set when this order is a gift (§ send a box as a gift) — the
+   * recipient's name only, so the confirmation screen can tell the
+   * buyer it is going to the right person. The number is deliberately
+   * not here: nothing customer-facing needs it, and it belongs to
+   * somebody who did not visit this page.
+   */
+  giftRecipientName: string | null;
   paymentFailure: {
     resultCode: number;
     category: StkFailureCategory;

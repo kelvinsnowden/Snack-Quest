@@ -1,3 +1,4 @@
+import type { GiftDetails } from '@/types/gift';
 import type { Timestamp } from 'firebase/firestore';
 import type { DeliveryDetails } from './delivery';
 import type { GuaranteedPick } from './guaranteedPick';
@@ -66,6 +67,12 @@ export interface ConversationCheckoutSnapshot {
    */
   guaranteedPicks?: GuaranteedPick[];
   customerName: string;
+  /**
+   * Present only when this box is a gift (§ send a box as a gift).
+   * Frozen with the rest of the order because who it is for is part of
+   * what was bought, and because the waybill is written from this.
+   */
+  gift?: GiftDetails | null;
   /** Optional, website checkout only (§ optional email capture). Absent on every WhatsApp order and on every snapshot predating the field. */
   customerEmail?: string | null;
   county: string;

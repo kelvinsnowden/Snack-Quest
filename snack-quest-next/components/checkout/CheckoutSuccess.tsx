@@ -38,6 +38,9 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
       ? formatOrderNumber(status.orderNumber)
       : (status.orderId?.slice(0, 8) ?? status.checkoutSessionId.slice(0, 8)).toUpperCase();
   const firstName = status.customerName?.trim().split(/\s+/)[0] ?? null;
+  // Named on the confirmation so the buyer can see the box is going
+  // to the right person before it leaves (§ send a box as a gift).
+  const giftRecipientName = status.giftRecipientName;
 
   return (
     <PaymentShell>
@@ -136,7 +139,9 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
 
       {isDoorDelivery ? (
         <p className="mt-10 text-sm text-pretty text-white/60">
-          Your box is packed and sent, and Tushop brings it to the address you gave us.
+          {giftRecipientName
+            ? `Your box is packed and sent, and Tushop brings it to ${giftRecipientName} at the address you gave us. Every update comes to you, not to them.`
+            : 'Your box is packed and sent, and Tushop brings it to the address you gave us.'}{' '}
           We&rsquo;ll text you the waybill number as soon as it&rsquo;s on its way.
         </p>
       ) : (

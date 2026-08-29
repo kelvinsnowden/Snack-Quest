@@ -11,6 +11,7 @@ import { PickupStationPicker, type SelectedStation } from './PickupStationPicker
 import { GuaranteedPicker } from './GuaranteedPicker';
 import { useCheckoutQuote } from './useCheckoutQuote';
 import { isValidKenyanPhone } from '@/lib/checkout/phone';
+import { GIFT_MESSAGE_MAX_LENGTH } from '@/types/gift';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import {
   EXPRESS_CUTOFF_HOUR,
@@ -136,6 +137,15 @@ export function CheckoutForm({
   const expressOpen = expressWindow === 'open';
   const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
   const [station, setStation] = useState<SelectedStation | null>(null);
+  /*
+   * A gift is off unless asked for. The recipient fields only exist
+   * once it is on, so an ordinary buyer never sees a second name and
+   * number to wonder about.
+   */
+  const [isGift, setIsGift] = useState(false);
+  const [giftRecipientName, setGiftRecipientName] = useState('');
+  const [giftRecipientPhone, setGiftRecipientPhone] = useState('');
+  const [giftMessage, setGiftMessage] = useState('');
   const [addressText, setAddressText] = useState('');
   const [estate, setEstate] = useState('');
   const [landmark, setLandmark] = useState('');
@@ -272,6 +282,18 @@ export function CheckoutForm({
   }
   if (deliveryMethod === 'pickup' && !station) problems.push('Choose a pickup station');
   if (deliveryMethod === 'door' && addressText.trim().length < 5) problems.push('Enter your delivery address');
+  /*
+   * Checked here as well as on the server, for the ordinary reason: a
+   * buyer can fix a typo while it is still on screen, and the server's
+   * copy is what actually guarantees a gift is deliverable.
+   */
+  if (isGift && giftRecipientName.trim().length === 0) problems.push('Enter who the gift is for');
+  if (isGift && !isValidKenyanPhone(giftRecipientPhone)) {
+    problems.push("Enter the recipient's Kenyan mobile number");
+  }
+  if (isGift && giftMessage.trim().length > GIFT_MESSAGE_MAX_LENGTH) {
+    problems.push(`Gift note must be ${GIFT_MESSAGE_MAX_LENGTH} characters or fewer`);
+  }
   const ready = problems.length === 0 && !outOfStock;
 
   async function onSubmit(event: React.FormEvent) {
@@ -293,6 +315,7 @@ export function CheckoutForm({
       quantity,
       deliveryMethod,
       hasReferralCode: referralCode.trim().length > 0,
+      isGift,
     });
 
     try {
@@ -324,6 +347,17 @@ export function CheckoutForm({
           ...(deliveryMethod === 'door' ? { serviceLevel } : {}),
           referralCode: referralCode.trim() || undefined,
           ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
+          // Sent only when the toggle is on, so an ordinary checkout
+          // posts exactly the body it always posted.
+          ...(isGift
+            ? {
+                gift: {
+                  recipientName: giftRecipientName.trim(),
+                  recipientPhone: giftRecipientPhone.trim(),
+                  message: giftMessage.trim() || undefined,
+                },
+              }
+            : {}),
         }),
       });
 
@@ -855,6 +889,101 @@ export function CheckoutForm({
             </div>
           </div>
         )}
+
+        {/*
+          Sits with the address rather than with the buyer's own
+          details, because that is the question it changes: not who is
+          paying, but where this is going and who opens it. Offered for
+          pickup as well as door, with the one honest caveat that a
+          pickup gift cannot stay a secret.
+        */}
+        <fieldset className="border-border flex flex-col gap-3 rounded-lg border p-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={isGift}
+              onChange={(event) => setIsGift(event.target.checked)}
+              className="mt-1 size-4 shrink-0 accent-[color:var(--primary)]"
+            />
+            <span>
+              <span className="text-foreground block text-sm font-medium">
+                This box is a gift for someone else 🎁
+              </span>
+              <span className="text-muted-foreground block text-sm">
+                We&rsquo;ll deliver to them and keep every order update coming to you, so the
+                surprise holds.
+              </span>
+            </span>
+          </label>
+
+          {isGift ? (
+            <div className="flex flex-col gap-4 pt-1">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="checkout-gift-name">Who is it for?</Label>
+                  <Input
+                    id="checkout-gift-name"
+                    value={giftRecipientName}
+                    onChange={(event) => setGiftRecipientName(event.target.value)}
+                    placeholder="Amina Wanjiru"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="checkout-gift-phone">Their phone number</Label>
+                  <Input
+                    id="checkout-gift-phone"
+                    value={giftRecipientPhone}
+                    onChange={(event) => setGiftRecipientPhone(event.target.value)}
+                    placeholder="07XX XXX XXX"
+                    inputMode="tel"
+                    autoComplete="off"
+                  />
+                  {/*
+                    Says what the number is for, because handing over
+                    someone else's number deserves a reason. It goes to
+                    the rider and nowhere else.
+                  */}
+                  <p className="text-muted-foreground text-xs">
+                    Only for the rider to reach them at the door. We never text them about the
+                    order.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="checkout-gift-message">Note to pack in the box (optional)</Label>
+                <textarea
+                  id="checkout-gift-message"
+                  value={giftMessage}
+                  onChange={(event) => setGiftMessage(event.target.value)}
+                  maxLength={GIFT_MESSAGE_MAX_LENGTH}
+                  rows={3}
+                  placeholder="Happy birthday! Thought you'd love these."
+                  className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+                />
+                <p className="text-muted-foreground text-xs">
+                  Hand-written on a card and packed with the snacks.{' '}
+                  {GIFT_MESSAGE_MAX_LENGTH - giftMessage.trim().length} characters left.
+                </p>
+              </div>
+
+              {deliveryMethod === 'pickup' ? (
+                /*
+                  Said plainly rather than discovered afterwards: a
+                  pickup gift needs the recipient to go and collect it,
+                  so the courier has to contact them and the surprise is
+                  spent. Door delivery is the one that stays secret.
+                */
+                <p className="text-sm text-amber-600 dark:text-amber-500">
+                  Heads up: for a pickup point, the courier texts the recipient to come and
+                  collect, so they&rsquo;ll know a parcel is waiting. Choose door delivery to keep
+                  it a surprise.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </fieldset>
       </section>
 
       {/*

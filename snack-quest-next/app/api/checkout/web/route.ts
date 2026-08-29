@@ -50,6 +50,7 @@ export async function POST(request: Request): Promise<Response> {
     estate,
     landmark,
     contactPhone,
+    gift,
     referralCode,
     guaranteedSnackIds,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
@@ -147,6 +148,10 @@ export async function POST(request: Request): Promise<Response> {
       estate: typeof estate === 'string' ? estate : undefined,
       landmark: typeof landmark === 'string' ? landmark : undefined,
       contactPhone: typeof contactPhone === 'string' ? contactPhone : undefined,
+      // Passed through as typed. Normalizing and rejecting is
+      // `parseGiftDetails`'s job, in the service, so the WhatsApp and
+      // web paths cannot disagree about what a valid gift is.
+      gift: isGiftInput(gift) ? gift : undefined,
       referralCode: typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
       // Ids only, and only strings — the service re-reads every one of
       // them from the catalogue before anything reaches an order.
@@ -174,4 +179,17 @@ export async function POST(request: Request): Promise<Response> {
     }
     throw error;
   }
+}
+
+/**
+ * A shape check only. What makes a gift *valid* — a name, a reachable
+ * Kenyan number, a note short enough to write on a card — is decided
+ * once in the service, not duplicated at the edge where it could drift.
+ */
+function isGiftInput(value: unknown): value is {
+  recipientName?: string;
+  recipientPhone?: string;
+  message?: string;
+} {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
