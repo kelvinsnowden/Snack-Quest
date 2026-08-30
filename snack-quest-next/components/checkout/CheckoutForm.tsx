@@ -18,7 +18,7 @@ import {
   EXPRESS_DELIVERY_MINUTES,
   EXPRESS_OPEN_HOUR,
   expressWindowStateAt,
-  isSameDayAvailableAt,
+  sameDayWindowStateAt,
   metroAreaLabel,
   NEXT_DAY_ARRIVAL_HOUR,
   SAME_DAY_ARRIVAL_HOUR,
@@ -128,7 +128,8 @@ export function CheckoutForm({
   // option disappears the moment the cut-off passes rather than at the
   // next page load. The server refuses it independently — this only
   // decides whether to offer it.
-  const sameDayOpen = isSameDayAvailableAt();
+  const sameDayWindow = sameDayWindowStateAt();
+  const sameDayOpen = sameDayWindow === 'open';
   // Express is a window rather than a cut-off, so this carries which
   // side of it we are on: before 10am the option is not closed, it has
   // not opened, and telling a customer it "closed for today" at
@@ -824,7 +825,9 @@ export function CheckoutForm({
                   detail={
                     sameDayOpen
                       ? `Order by ${SAME_DAY_CUTOFF_HOUR % 12}:00 PM for delivery by ${SAME_DAY_ARRIVAL_HOUR % 12}:00 PM today.`
-                      : `Closed for today. Orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
+                      : sameDayWindow === 'closed_today'
+                        ? 'Not available on Sundays. Next day arrives Monday.'
+                        : `Closed for today. Orders must be in by ${SAME_DAY_CUTOFF_HOUR % 12}pm.`
                   }
                 />
                 {/*
@@ -841,9 +844,11 @@ export function CheckoutForm({
                   detail={
                     expressOpen
                       ? `Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
-                      : expressWindow === 'before'
-                        ? `Opens at ${EXPRESS_OPEN_HOUR}am. Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
-                        : `Closed for today. Orders must be in between ${EXPRESS_OPEN_HOUR}am and ${EXPRESS_CUTOFF_HOUR % 12}pm.`
+                      : expressWindow === 'closed_today'
+                        ? 'Not available on Sundays. Next day arrives Monday.'
+                        : expressWindow === 'before'
+                          ? `Opens at ${EXPRESS_OPEN_HOUR}am. Collection and delivery within ${EXPRESS_DELIVERY_MINUTES} minutes.`
+                          : `Closed for today. Orders must be in between ${EXPRESS_OPEN_HOUR}am and ${EXPRESS_CUTOFF_HOUR % 12}pm.`
                   }
                 />
               </div>
