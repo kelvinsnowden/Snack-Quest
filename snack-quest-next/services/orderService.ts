@@ -151,6 +151,11 @@ class OrderService {
             county: snapshot.county,
           },
           delivery: snapshot.delivery,
+          // Carried onto the order so the warehouse, the admin order
+          // page and any later report can see who the box is for
+          // without joining back through the snapshot. `customer`
+          // above stays the buyer (§ send a box as a gift).
+          ...(snapshot.gift ? { gift: snapshot.gift } : {}),
           payment: {
             paymentIntentId,
             // Normalised to null rather than stored as '' — an empty

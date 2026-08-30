@@ -629,6 +629,129 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     expect(status.paymentFailure).toBeNull();
   });
 
+  /*
+   * A box bought for somebody else (§ send a box as a gift).
+   *
+   * The end-to-end property is that the two people stay separate all
+   * the way down: the courier is told about the recipient because they
+   * are the one at the door, and every order notification stays with
+   * the buyer because a "your box is on the way" text is exactly what
+   * a surprise is not supposed to send.
+   */
+  it('ships a gift to the recipient while every order update stays with the buyer', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Fredrick Nyanjwa',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kensington Court, Valley Road',
+      gift: {
+        recipientName: 'Amina Wanjiru',
+        recipientPhone: '0790999780',
+        message: 'Happy birthday!',
+      },
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    expect(callback.status).toBe('succeeded');
+    await service.handlePaymentResult(callback);
+
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(1);
+    const order = orders.docs[0].data();
+
+    // The buyer is still the customer on the order. Every report that
+    // asks who bought this keeps its existing answer.
+    expect(order.customer.customerName).toBe('Fredrick Nyanjwa');
+    expect(order.customer.phoneNumber).toBe(PHONE);
+    expect(order.gift).toMatchObject({
+      recipientName: 'Amina Wanjiru',
+      recipientPhone: '254790999780',
+      message: 'Happy birthday!',
+    });
+
+    // The waybill names whoever is actually at the address.
+    const shipments = await adminFirestore.collection('shipments').get();
+    expect(shipments.size).toBe(1);
+    expect(shipments.docs[0].data()).toMatchObject({
+      recipientName: 'Amina Wanjiru',
+      recipientPhone: '254790999780',
+    });
+
+    /*
+     * The surprise, asserted rather than assumed: nothing this order
+     * produced was addressed to the recipient. If a future change
+     * routes a confirmation or dispatch text off the shipment instead
+     * of the buyer, this is what catches it.
+     */
+    const messages = await adminFirestore.collection('outboundMessages').get();
+    const recipientRefs = messages.docs.map((doc) => doc.data().recipientRef);
+    expect(recipientRefs).not.toContain('254790999780');
+
+    // And the buyer sees who it is going to, before it leaves.
+    const status = await service.getWebCheckoutStatus(
+      SNACK_QUEST.businessId,
+      checkout.checkoutSessionId,
+    );
+    expect(status.giftRecipientName).toBe('Amina Wanjiru');
+  });
+
+  /** A gift that cannot be delivered fails as a message the buyer can fix, before any order exists. */
+  it('refuses a half-filled gift instead of quietly shipping it to the buyer', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    await expect(
+      service.startWebCheckout(SNACK_QUEST.businessId, {
+        packageId: box.id,
+        quantity: 1,
+        customerName: 'Fredrick Nyanjwa',
+        phone: PHONE,
+        county: 'Nairobi',
+        deliveryMethod: 'door',
+        addressText: 'Kensington Court, Valley Road',
+        // A name, no number: plainly a gift, and undeliverable.
+        gift: { recipientName: 'Amina Wanjiru' },
+        attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+      }),
+    ).rejects.toThrow(/number/i);
+
+    // Nothing was written on the way to that rejection.
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(0);
+  });
+
   it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {
     const fetchMock = mockAllProviders();
     const gateway = new FakeWhatsAppGateway();

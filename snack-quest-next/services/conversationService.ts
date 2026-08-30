@@ -15,6 +15,8 @@ import type { ConversionAttribution, GuaranteedPick, ManualPaymentRecord, SnackI
 import { orderBoxSummary, type CheckoutLineItem } from '@/types/checkoutLine';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
+import { courierContactFor, GiftValidationError, parseGiftDetails } from '@/lib/checkout/gift';
+import type { GiftDetails } from '@/types/gift';
 import { normalizeEmail } from '@/lib/checkout/email';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
 import { stkRetryWaitSeconds } from '@/lib/checkout/stkTiming';
@@ -355,6 +357,8 @@ export interface WebCheckoutInput {
   estate?: string;
   landmark?: string;
   contactPhone?: string;
+  /** Raw, unvalidated — `parseGiftDetails` normalizes and rejects (§ send a box as a gift). */
+  gift?: { recipientName?: string; recipientPhone?: string; message?: string };
   referralCode?: string;
   /**
    * Set by the route from a verified `sq_creator_session` cookie (§
@@ -824,6 +828,20 @@ class ConversationService {
       }
     }
 
+    /*
+     * Before any conversation or snapshot exists. A gift that cannot be
+     * delivered should fail as a message the buyer can act on, not as a
+     * half-written order they have to be refunded out of.
+     */
+    let gift: GiftDetails | null;
+    try {
+      gift = parseGiftDetails(input.gift);
+    } catch (error) {
+      throw new WebCheckoutValidationError(
+        error instanceof GiftValidationError ? error.message : 'That gift information is not usable.',
+      );
+    }
+
     const { delivery, stateBlob } = await this.buildWebDeliveryDetails(businessId, county, input);
 
     const conversationId =
@@ -982,6 +1000,7 @@ class ConversationService {
           isCreatorCheckout: input.isCreatorCheckout,
           creatorUid: input.creatorUid,
           guaranteedPicks: pickResult.picks,
+          gift,
         },
         delivery,
       );
@@ -1567,6 +1586,7 @@ class ConversationService {
 
     let deliveryMethod: DeliveryMethod | null = null;
     let customerName: string | null = null;
+    let giftRecipientName: string | null = null;
     let packageLabel: string | null = null;
     // `getOrderStatus`'s totalKes only ever comes from a real Order,
     // which doesn't exist yet while the payment screen is polling —
@@ -1584,6 +1604,7 @@ class ConversationService {
       if (snapshot) {
         deliveryMethod = snapshot.delivery.method;
         customerName = snapshot.customerName;
+        giftRecipientName = snapshot.gift?.recipientName ?? null;
         packageLabel = snapshot.packageLabel;
         totalKes ??= snapshot.totalKes;
         guaranteedPicks = (snapshot.guaranteedPicks ?? []).map(({ name, origin }) => ({ name, origin }));
@@ -1632,6 +1653,7 @@ class ConversationService {
       packageLabel,
       guaranteedPicks,
       paidAt,
+      giftRecipientName,
       paymentFailure,
     };
   }
@@ -1755,6 +1777,8 @@ class ConversationService {
       isCreatorCheckout?: boolean;
       /** Same server-verified meaning as `WebCheckoutInput.creatorUid`. */
       creatorUid?: string | null;
+      /** Already validated and normalized by the caller; this only freezes it (§ send a box as a gift). */
+      gift?: GiftDetails | null;
     },
     delivery: DeliveryDetails,
   ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
@@ -1830,6 +1854,9 @@ class ConversationService {
       // `undefined` outright, and an empty array would read as "picked
       // nothing" instead of "this box has nothing to pick".
       ...(common.guaranteedPicks?.length ? { guaranteedPicks: common.guaranteedPicks } : {}),
+      // Absent key rather than null for an ordinary order, same
+      // Firestore reason as the fields above.
+      ...(common.gift ? { gift: common.gift } : {}),
       county: common.county,
       /*
        * The courier's own cost is stamped on here, beside the fee the
@@ -2749,9 +2776,21 @@ class ConversationService {
         });
 
     try {
+      /*
+       * The waybill names whoever is actually at the address. For a
+       * gift that is the recipient, not the buyer — a rider handed the
+       * buyer's number phones someone who is not there, and on a failed
+       * delivery phones them again to say the surprise did not arrive.
+       */
+      const courierContact = courierContactFor({
+        buyerName: snapshot.customerName,
+        buyerPhone: phoneNumber,
+        gift: snapshot.gift,
+        contactPhone: snapshot.delivery.contactPhone,
+      });
       await deliveryService.createShipmentForOrder(businessId, orderId, {
-        customerName: snapshot.customerName,
-        phoneNumber,
+        customerName: courierContact.name,
+        phoneNumber: courierContact.phone,
         delivery: snapshot.delivery,
       });
     } catch (error) {

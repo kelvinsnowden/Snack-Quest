@@ -126,7 +126,7 @@ export default async function AdminOrderDetailPage({
     confirmationSourcePromise,
   ]);
 
-  const { customer, delivery, payment, pricing, product } = order;
+  const { customer, delivery, payment, pricing, product, gift } = order;
 
   /*
    * Which boxes on this order had snacks chosen for them. Per line
@@ -180,9 +180,41 @@ export default async function AdminOrderDetailPage({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/*
+          Its own card, above the buyer's, because on a gift order it
+          answers the question staff actually have first: who is at the
+          address. The Customer card below still says who paid, which is
+          a different person and a different question.
+        */}
+        {gift ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Gift 🎁</CardTitle>
+            </CardHeader>
+            <CardContent className="divide-y divide-border">
+              <DetailRow label="Deliver to" value={gift.recipientName} />
+              <DetailRow
+                label="Recipient phone"
+                value={<span className="tabular-nums">{gift.recipientPhone}</span>}
+              />
+              {/* Line breaks preserved: a two-line note is two lines on the card a packer writes. */}
+              <DetailRow
+                label="Note to pack"
+                value={
+                  gift.message ? (
+                    <span className="whitespace-pre-line">{gift.message}</span>
+                  ) : (
+                    'No note'
+                  )
+                }
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
         <Card>
           <CardHeader>
-            <CardTitle>Customer</CardTitle>
+            <CardTitle>{gift ? 'Bought by' : 'Customer'}</CardTitle>
           </CardHeader>
           <CardContent className="divide-y divide-border">
             <DetailRow label="Name" value={customer.customerName || 'Guest'} />

@@ -1,3 +1,4 @@
+import type { GiftDetails } from '@/types/gift';
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DeliveryDetails } from './delivery';
@@ -156,6 +157,16 @@ export interface Order extends AuditFields {
   conversationId: string;
   conversationCheckoutSnapshotId: string;
   status: OrderStatus;
+  /**
+   * Copied from the snapshot when the box was bought for somebody else
+   * (§ send a box as a gift). Absent on an ordinary order and on every
+   * order predating the feature, so `gift == null` reads as "the buyer
+   * is the recipient" with no backfill.
+   *
+   * `customer` above remains the buyer throughout — every report that
+   * asks who bought this keeps its existing answer.
+   */
+  gift?: GiftDetails | null;
   /**
    * A short, sequential, per-business number (`1`, `2`, …) — the
    * human-friendly reference a customer or staff member can actually

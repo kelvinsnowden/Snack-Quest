@@ -1,5 +1,6 @@
 export * from './common';
 export * from './guaranteedPick';
+export * from './gift';
 export * from './user';
 export * from './creatorProfile';
 export * from './customerProfile';
