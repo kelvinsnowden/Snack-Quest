@@ -40,6 +40,13 @@
  * time. These functions run in Cape Town, an hour behind, so a naive
  * local-hour check keeps same-day on sale until 14:00 Nairobi and sells
  * a 18:00 guarantee the courier has stopped accepting.
+ *
+ * Neither fast service runs on a Sunday, because both depend on a
+ * same-afternoon dispatch that does not happen. Next-day is untouched
+ * by that: an order placed on Sunday is packed and moves on Monday,
+ * which is what it already promises. The weekday is read in Nairobi
+ * time for the same reason the hour is, and the drift bites harder
+ * here — near midnight the two clocks disagree about the *day*.
  */
 
 /**
@@ -278,6 +285,46 @@ function nairobiHour(now: Date): number {
 }
 
 /**
+ * The Nairobi weekday, which near midnight is not the weekday this
+ * code runs in.
+ *
+ * The same hour's drift that shifts the cut-offs also shifts the
+ * *day*: at 00:30 on Monday in Nairobi it is still 23:30 on Sunday
+ * where this runs, so a naive `getDay()` would refuse same-day to the
+ * first customers of the week, and again at 00:30 Sunday it would
+ * still be selling Saturday's service.
+ */
+function nairobiWeekday(now: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    timeZone: 'Africa/Nairobi',
+  }).format(now);
+}
+
+/**
+ * The day the fast services do not run.
+ *
+ * Same-day and express both depend on a dispatch that happens the same
+ * afternoon, and that does not happen on a Sunday. Next-day is
+ * unaffected: an order placed on Sunday is packed and moves on Monday,
+ * which is exactly what it already promises.
+ */
+const NO_FAST_DELIVERY_WEEKDAY = 'Sunday';
+
+/**
+ * Whether the fast services run at all today, before any question of
+ * what time it is.
+ *
+ * Kept separate from the cut-offs deliberately. "It is Sunday" and "it
+ * is past 1pm" are different reasons to refuse, and a customer told
+ * the wrong one acts on it — waiting until tomorrow morning for a
+ * cut-off that was never the problem.
+ */
+export function isFastDeliveryDay(now: Date = new Date()): boolean {
+  return nairobiWeekday(now) !== NO_FAST_DELIVERY_WEEKDAY;
+}
+
+/**
  * Whether express may be offered right now.
  *
  * Both bounds matter, and the opening one is the easier to forget: a
@@ -303,13 +350,38 @@ export function isExpressAvailableAt(now: Date = new Date()): boolean {
  * extra bit the copy needs, so the checkout never has to work out
  * Nairobi's hour for itself.
  */
-export function expressWindowStateAt(now: Date = new Date()): 'before' | 'open' | 'after' {
+export function expressWindowStateAt(
+  now: Date = new Date(),
+): 'before' | 'open' | 'after' | 'closed_today' {
+  // Checked before the clock: on a Sunday the hour is irrelevant, and
+  // "opens at 10am" would be a promise for a service that is not
+  // running at all today.
+  if (!isFastDeliveryDay(now)) {
+    return 'closed_today';
+  }
   const hour = nairobiHour(now);
   // An unreadable clock should not put a 90-minute promise on sale.
   if (!Number.isFinite(hour) || hour >= EXPRESS_CUTOFF_HOUR) {
     return 'after';
   }
   return hour < EXPRESS_OPEN_HOUR ? 'before' : 'open';
+}
+
+/**
+ * Which side of the same-day cut-off the clock is on, or whether the
+ * service runs today at all.
+ *
+ * Same shape and same reason as `expressWindowStateAt`: the screen has
+ * to say "not on Sundays" rather than "closed for today, order by
+ * 1pm", which would send someone away to try again before a deadline
+ * that is not what stopped them.
+ */
+export function sameDayWindowStateAt(now: Date = new Date()): 'open' | 'after' | 'closed_today' {
+  if (!isFastDeliveryDay(now)) {
+    return 'closed_today';
+  }
+  const hour = nairobiHour(now);
+  return Number.isFinite(hour) && hour < SAME_DAY_CUTOFF_HOUR ? 'open' : 'after';
 }
 
 /**
@@ -321,14 +393,15 @@ export function expressWindowStateAt(now: Date = new Date()): 'before' | 'open' 
  * the courier will not accept.
  */
 export function isSameDayAvailableAt(now: Date = new Date()): boolean {
-  const hour = nairobiHour(now);
-  return Number.isFinite(hour) && hour < SAME_DAY_CUTOFF_HOUR;
+  return sameDayWindowStateAt(now) === 'open';
 }
 
 /**
- * Same-day and express exist in the metro only, and only before their
- * own cut-offs. Ordered slowest to fastest, which is also cheapest to
- * dearest, so the checkout list reads as a ladder.
+ * Same-day and express exist in the metro only, only on a day they
+ * run, and only inside their own windows. Ordered slowest to fastest,
+ * which is also cheapest to dearest, so the checkout list reads as a
+ * ladder. On a Sunday that ladder is one rung: next-day, which is the
+ * one service whose promise a Sunday does not change.
  */
 export function availableServiceLevels(region: FargoRegion, now: Date = new Date()): FargoServiceLevel[] {
   if (region !== 'nairobi-metro') {

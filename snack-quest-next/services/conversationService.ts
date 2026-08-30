@@ -29,6 +29,7 @@ import {
   isFargoZone,
   isMetroLocation,
   availableServiceLevels,
+  isFastDeliveryDay,
   FARGO_SERVICE_LEVELS,
   EXPRESS_OPEN_HOUR,
   EXPRESS_CUTOFF_HOUR,
@@ -1338,10 +1339,19 @@ class ConversationService {
     // One source of truth for both windows, so the server cannot come
     // to a different answer than the checkout that offered the option.
     if (!availableServiceLevels('nairobi-metro').includes(requested)) {
+      /*
+       * Why it was refused, not just that it was. On a Sunday neither
+       * fast service runs at all, and quoting a cut-off would send
+       * someone away to try again before a deadline that was never
+       * what stopped them.
+       */
+      const speed = requested === 'express' ? 'Express' : 'Same-day';
       throw new WebCheckoutValidationError(
-        requested === 'express'
-          ? `Express delivery runs between ${EXPRESS_OPEN_HOUR}:00 and ${EXPRESS_CUTOFF_HOUR}:00. Choose same-day or next-day delivery instead.`
-          : `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00. Choose next-day delivery instead.`,
+        !isFastDeliveryDay()
+          ? `${speed} delivery does not run on Sundays. Choose next-day delivery, which arrives Monday.`
+          : requested === 'express'
+            ? `Express delivery runs between ${EXPRESS_OPEN_HOUR}:00 and ${EXPRESS_CUTOFF_HOUR}:00. Choose same-day or next-day delivery instead.`
+            : `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00. Choose next-day delivery instead.`,
       );
     }
 

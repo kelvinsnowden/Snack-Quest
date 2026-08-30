@@ -12,6 +12,8 @@ import {
   isCustomerFacingPickupPoint,
   isSameDayAvailableAt,
   isExpressAvailableAt,
+  isFastDeliveryDay,
+  sameDayWindowStateAt,
   expressWindowStateAt,
   EXPRESS_OPEN_HOUR,
   EXPRESS_CUTOFF_HOUR,
@@ -248,5 +250,70 @@ describe('telling a customer which towns get door delivery', () => {
     expect(matchesMetroTown('Mombasa')).toBeNull();
     expect(matchesMetroTown('Kisumu')).toBeNull();
     expect(matchesMetroTown('')).toBeNull();
+  });
+});
+
+describe('Sundays run next-day only', () => {
+  /*
+   * 2026-08-30 is a Sunday, 2026-08-31 a Monday. Built as UTC instants
+   * and shifted by three hours, so each is the Nairobi wall-clock time
+   * named, not the runtime's.
+   */
+  const nairobiSunday = (hour: number) => new Date(Date.UTC(2026, 7, 30, hour - 3));
+  const nairobiMonday = (hour: number) => new Date(Date.UTC(2026, 7, 31, hour - 3));
+
+  it('offers only next-day in the metro, at every hour of the day', () => {
+    for (const hour of [9, 11, 12, 15, 20]) {
+      expect(availableServiceLevels('nairobi-metro', nairobiSunday(hour)), `${hour}:00`).toEqual([
+        'next-day',
+      ]);
+    }
+  });
+
+  /* Both fast services depend on a same-afternoon dispatch that does not happen on a Sunday. */
+  it('withholds same-day and express even inside their usual windows', () => {
+    expect(isSameDayAvailableAt(nairobiSunday(11))).toBe(false);
+    expect(isExpressAvailableAt(nairobiSunday(11))).toBe(false);
+  });
+
+  /*
+   * Refused for a different reason than a passed cut-off, and the
+   * screen says so. Telling a Sunday customer "closed for today, order
+   * by 1pm" sends them back tomorrow morning against a deadline that
+   * was never what stopped them.
+   */
+  it('reports Sunday as its own state, not as a missed cut-off', () => {
+    expect(sameDayWindowStateAt(nairobiSunday(11))).toBe('closed_today');
+    expect(expressWindowStateAt(nairobiSunday(11))).toBe('closed_today');
+    // 08:00 would otherwise be express's "before" state. Sunday wins:
+    // "opens at 10am" would promise a service not running today.
+    expect(expressWindowStateAt(nairobiSunday(8))).toBe('closed_today');
+  });
+
+  it('is back to normal on Monday', () => {
+    expect(availableServiceLevels('nairobi-metro', nairobiMonday(11))).toEqual([
+      'next-day',
+      'same-day',
+      'express',
+    ]);
+    expect(isFastDeliveryDay(nairobiMonday(11))).toBe(true);
+  });
+
+  /*
+   * The drift that bites hardest. At 00:30 Monday in Nairobi it is
+   * still 23:30 Sunday where this runs, so a naive `getDay()` would
+   * refuse same-day to the first customers of the week — and at 00:30
+   * Sunday Nairobi it would still be selling Saturday's service.
+   */
+  it('reads the weekday in Nairobi, not in the runtime time zone', () => {
+    // 00:30 Monday EAT === 21:30 Sunday UTC.
+    expect(isFastDeliveryDay(new Date(Date.UTC(2026, 7, 30, 21, 30)))).toBe(true);
+    // 00:30 Sunday EAT === 21:30 Saturday UTC.
+    expect(isFastDeliveryDay(new Date(Date.UTC(2026, 7, 29, 21, 30)))).toBe(false);
+  });
+
+  /** Upcountry never had a choice to lose, and next-day is unaffected by the day it was ordered. */
+  it('leaves upcountry and next-day alone', () => {
+    expect(availableServiceLevels('upcountry', nairobiSunday(11))).toEqual(['next-day']);
   });
 });
