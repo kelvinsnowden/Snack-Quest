@@ -1929,9 +1929,26 @@ class ConversationService {
     const discountCodeKes = common.discount
       ? effectFor(common.discount, linesSubtotalKes).discountKes
       : 0;
-    const rawDiscountKes = common.isRescueOffer
-      ? 0
-      : (referral?.discountKes ?? 0) + creatorDiscountKes + discountCodeKes;
+    /*
+     * The rescue offer suppresses the *automatic* discounts and not a
+     * discount code, and the difference is who chose it.
+     *
+     * A referral discount and the creator discount apply themselves:
+     * stacking either on a box that is already a one-time discounted
+     * price would undercut a margin nobody priced for. A discount code
+     * is the business deliberately issuing that reduction — most
+     * pointedly a 100% PR code, which exists precisely to give a box
+     * away.
+     *
+     * Suppressing it here silently charged full price for a box the
+     * influencer had been told was free, while still spending the
+     * code's single use. That is the same failure this checkout
+     * refuses an exhausted code to avoid, arrived at from the other
+     * direction.
+     */
+    const rawDiscountKes =
+      (common.isRescueOffer ? 0 : (referral?.discountKes ?? 0) + creatorDiscountKes) +
+      discountCodeKes;
     const availableWalletCreditKes = await walletService.redeemableAmount(
       businessId,
       phoneNumber,
