@@ -73,6 +73,15 @@ export interface ConversationCheckoutSnapshot {
    * what was bought, and because the waybill is written from this.
    */
   gift?: GiftDetails | null;
+  /**
+   * The business-issued discount code this order was priced with
+   * (§ discount codes), uppercased.
+   *
+   * Frozen alongside the price because it is part of how that price
+   * was reached, and because a payment that never completes has to
+   * know which code to hand its redemption back to.
+   */
+  discountCode?: string | null;
   /** Optional, website checkout only (§ optional email capture). Absent on every WhatsApp order and on every snapshot predating the field. */
   customerEmail?: string | null;
   county: string;

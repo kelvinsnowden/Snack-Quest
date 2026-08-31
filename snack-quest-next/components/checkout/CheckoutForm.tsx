@@ -143,6 +143,7 @@ export function CheckoutForm({
    * once it is on, so an ordinary buyer never sees a second name and
    * number to wonder about.
    */
+  const [discountCode, setDiscountCode] = useState('');
   const [isGift, setIsGift] = useState(false);
   const [giftRecipientName, setGiftRecipientName] = useState('');
   const [giftRecipientPhone, setGiftRecipientPhone] = useState('');
@@ -347,6 +348,7 @@ export function CheckoutForm({
               }),
           ...(deliveryMethod === 'door' ? { serviceLevel } : {}),
           referralCode: referralCode.trim() || undefined,
+          discountCode: discountCode.trim() || undefined,
           ...(requiredPicks > 0 ? { guaranteedSnackIds } : {}),
           // Sent only when the toggle is on, so an ordinary checkout
           // posts exactly the body it always posted.
@@ -1045,6 +1047,36 @@ export function CheckoutForm({
               We&apos;ll check it and apply any discount to your total before charging you.
             </p>
           )}
+
+          {/*
+            A second, separate field rather than one box accepting
+            either. They are different things: a creator's code names a
+            person and pays them commission, a discount code is issued
+            by Snack Quest and pays nobody. Sharing one input would mean
+            guessing which a customer meant, and guessing wrong on a
+            promo code would quietly credit commission to whichever
+            creator happened to own a code of the same name.
+          */}
+          <div className="mt-4 flex flex-col gap-2">
+            <Label htmlFor="checkout-discount">Discount code</Label>
+            <Input
+              id="checkout-discount"
+              value={discountCode}
+              onChange={(event) => setDiscountCode(event.target.value)}
+              placeholder="PRBOX"
+              autoCapitalize="characters"
+            />
+            {/*
+              Checked when the order is placed rather than as you type.
+              A code with a usage limit is claimed at that moment, so
+              validating early would either be a promise this checkout
+              cannot keep or would spend a limited code on someone still
+              filling in their address.
+            */}
+            <p className="text-muted-foreground text-sm">
+              Applied to your total before you&apos;re charged.
+            </p>
+          </div>
         </div>
         )}
       </section>

@@ -79,6 +79,17 @@ export interface WebCheckoutRequest {
   };
   referralCode?: string;
   /**
+   * A business-issued discount code (§ discount codes).
+   *
+   * Separate from `referralCode` above because they are different
+   * things: a referral names a creator and pays them commission, a
+   * discount code is issued by Snack Quest and pays nobody. One field
+   * for both would mean guessing which a customer meant, and guessing
+   * wrong on a promo code would credit commission to whichever creator
+   * happened to own a code of the same name.
+   */
+  discountCode?: string;
+  /**
    * The snacks chosen as guaranteed picks, on a box that offers them
    * (§ Premium: choose 5, discover the rest). Ids only — like every
    * other field here it says *what the customer chose*, and the server

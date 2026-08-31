@@ -11,6 +11,7 @@ import {
   Flag,
   FolderOpen,
   HelpCircle,
+  Ticket,
   LayoutDashboard,
   Mail,
   MailPlus,
@@ -125,6 +126,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote, section: 'finance', group: 'Money' },
   { href: '/admin/reconciliation', label: 'Reconciliation', icon: Scale, section: 'finance', group: 'Money' },
 
+  { href: '/admin/discount-codes', label: 'Discount codes', shortLabel: 'Discounts', icon: Ticket, section: 'marketing', group: 'Marketing' },
   { href: '/admin/faqs', label: 'FAQ', icon: HelpCircle, section: 'marketing', group: 'Marketing' },
   { href: '/admin/marketing-emails', label: 'Marketing Emails', icon: Mail, section: 'marketing', group: 'Marketing' },
   { href: '/admin/marketing-sms', label: 'Marketing SMS', shortLabel: 'SMS', icon: MessageSquare, section: 'marketing', group: 'Marketing' },
