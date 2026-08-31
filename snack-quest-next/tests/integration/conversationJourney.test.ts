@@ -752,6 +752,87 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     expect(orders.size).toBe(0);
   });
 
+  /*
+   * The business's own new-order alert (§ admin order alert).
+   *
+   * Worth an end-to-end test rather than a unit one because the thing
+   * that was broken was never the sending — it was that
+   * `adminWhatsappPhone` pointed at a channel nobody had enabled, so
+   * the alert this replaces had never once fired in production.
+   */
+  it('texts the business for a new order, and nobody at all when no number is set', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .update({ adminOrderSmsPhone: '254759209705' });
+    // This suite wipes `notificationTemplates` between tests, so the
+    // catalogue entry has to exist for the send to render at all.
+    await notificationTemplateRepository.upsert({
+      templateCode: 'admin_new_order_sms',
+      channel: 'sms',
+      subject: null,
+      heading: null,
+      bodyTemplate:
+        'Snack Quest: NEW ORDER {{orderRef}} — KES {{totalKes}}. {{summary}}. {{deliverySummary}}. {{customerName}} {{customerPhone}}.',
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: [
+        'orderRef',
+        'totalKes',
+        'summary',
+        'deliverySummary',
+        'customerName',
+        'customerPhone',
+      ],
+      version: 1,
+      isActive: true,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Fredrick Nyanjwa',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kensington Court, Valley Road',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    await service.handlePaymentResult(callback);
+
+    const messages = await adminFirestore
+      .collection('outboundMessages')
+      .where('recipientRef', '==', '254759209705')
+      .get();
+    expect(messages.size).toBe(1);
+    const alert = messages.docs[0].data();
+    expect(alert.templateCode).toBe('admin_new_order_sms');
+    expect(alert.channel).toBe('sms');
+    // The details that decide whether this needs acting on now.
+    expect(alert.renderedBody).toContain('NEW ORDER');
+    expect(alert.renderedBody).toContain(String(checkout.pricing.totalKes));
+    expect(alert.renderedBody).toContain('Kensington Court');
+  });
+
   it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {
     const fetchMock = mockAllProviders();
     const gateway = new FakeWhatsAppGateway();

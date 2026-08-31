@@ -16,6 +16,7 @@ import { orderBoxSummary, type CheckoutLineItem } from '@/types/checkoutLine';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { courierContactFor, GiftValidationError, parseGiftDetails } from '@/lib/checkout/gift';
+import { businessRepository } from '@/repositories/businessRepository';
 import type { GiftDetails } from '@/types/gift';
 import { normalizeEmail } from '@/lib/checkout/email';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
@@ -2878,6 +2879,54 @@ class ConversationService {
       }
     } catch (error) {
       await publishEvent(businessId, 'OrderConfirmationSmsFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
+    /*
+     * The business's own alert (§ admin order alert).
+     *
+     * Sent for every order including the ones the customer text is
+     * deliberately withheld from — a pay-on-delivery order and a
+     * manually recorded one are exactly the orders somebody needs to
+     * know about, and the reasons for staying quiet toward the
+     * customer do not apply to the person packing the box.
+     *
+     * Best-effort and last, like every other call past order creation:
+     * an alert that fails must never unmake an order that is already
+     * paid for.
+     */
+    try {
+      const business = await businessRepository.findById(businessId);
+      const alertPhone = business?.adminOrderSmsPhone;
+      if (alertPhone) {
+        const delivery = snapshot.delivery;
+        const deliverySummary =
+          delivery.method === 'pickup'
+            ? `Pickup: ${delivery.pickupStationName ?? delivery.county}`
+            : `Door ${snapshot.gift ? '(GIFT)' : ''} ${delivery.addressText ?? delivery.county}`.trim();
+        await this.notifications.send(businessId, {
+          channel: 'sms',
+          templateCode: 'admin_new_order_sms',
+          recipientType: 'staff',
+          recipientId: orderId,
+          recipientRef: alertPhone,
+          params: {
+            orderRef,
+            totalKes: String(snapshot.totalKes),
+            summary: `${snapshot.quantity ?? 1}x ${snapshot.packageLabel}`,
+            deliverySummary,
+            // Who to call if something is wrong with the order. On a
+            // gift that is still the buyer: the recipient did not ask
+            // for any of this and must not be phoned about it.
+            customerName: snapshot.customerName,
+            customerPhone: phoneNumber,
+          },
+          dedupeKey: `admin-new-order:${orderId}`,
+        });
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'AdminOrderAlertSmsFailed', 'order', orderId, {
         reason: error instanceof Error ? error.message : 'unknown error',
       });
     }

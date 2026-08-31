@@ -307,6 +307,38 @@ const TEMPLATES = [
     version: 1,
     isActive: true,
   },
+  /*
+   * The one alert that goes to the business rather than a customer
+   * (§ admin order alert).
+   *
+   * Deliberately dense: this is read on a phone, in a queue, without
+   * opening the dashboard, and the decision it supports is "do I need
+   * to act on this now". Hence the delivery speed and the area — a
+   * same-day order to Kilimani has a clock on it that a next-day order
+   * upcountry does not — and the gift flag, since those need a note
+   * hand-written before the box is sealed.
+   */
+  {
+    templateCode: 'admin_new_order_sms',
+    channel: 'sms',
+    subject: null,
+    heading: null,
+    bodyTemplate:
+      'Snack Quest: NEW ORDER {{orderRef}} — KES {{totalKes}}. {{summary}}. {{deliverySummary}}. {{customerName}} {{customerPhone}}.',
+    ctaLabel: null,
+    ctaUrl: null,
+    requiredParams: [
+      'orderRef',
+      'totalKes',
+      'summary',
+      'deliverySummary',
+      'customerName',
+      'customerPhone',
+    ],
+    htmlBodyTemplate: null,
+    version: 1,
+    isActive: true,
+  },
   {
     templateCode: 'order_dispatched_sms',
     channel: 'sms',

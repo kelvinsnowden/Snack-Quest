@@ -37,6 +37,7 @@ export type BusinessSettingsPatch = Partial<
     | 'whatsappPhoneNumberId'
     | 'countyCoverage'
     | 'adminWhatsappPhone'
+    | 'adminOrderSmsPhone'
     | 'whatsappCustomerNumber'
     | 'status'
     | 'loyaltyConfig'
@@ -115,6 +116,15 @@ class BusinessSettingsService {
     ) {
       throw new BusinessSettingsValidationError(
         '"adminWhatsappPhone" must be E.164 without the leading "+", e.g. "254712345678".',
+      );
+    }
+    if (
+      patch.adminOrderSmsPhone !== undefined &&
+      patch.adminOrderSmsPhone !== null &&
+      !PHONE_PATTERN.test(patch.adminOrderSmsPhone)
+    ) {
+      throw new BusinessSettingsValidationError(
+        '"adminOrderSmsPhone" must be E.164 without the leading "+", e.g. "254759209705".',
       );
     }
     if (
