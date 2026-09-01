@@ -12,6 +12,8 @@ import { GuaranteedPicker } from './GuaranteedPicker';
 import { useCheckoutQuote } from './useCheckoutQuote';
 import { formatKenyanPhoneInput, isValidKenyanPhone } from '@/lib/checkout/phone';
 import { rememberPendingCheckout } from '@/lib/checkout/resumeSession';
+import { advanceLabelFor, stageForField, stagesFor } from '@/lib/checkout/stages';
+import { CheckoutProgress } from './CheckoutProgress';
 import { GIFT_MESSAGE_MAX_LENGTH } from '@/types/gift';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import {
@@ -327,6 +329,20 @@ export function CheckoutForm({
    * can sit under its own field, the first one can be focused when
    * somebody presses Pay, and the fields still add up to one `ready`.
    */
+  /*
+   * The journey, as which section is on screen. One form, one submit —
+   * the quote, the gift block and the codes all read from one piece of
+   * state, and splitting the stages across routes would mean carrying
+   * that through a URL or rebuilding it per step.
+   */
+  const stages = useMemo(() => stagesFor(requiredPicks > 0), [requiredPicks]);
+  const [stageIndex, setStageIndex] = useState(0);
+  // Clamped rather than reset: switching to a box without picks
+  // shortens the journey, and a customer already past that point
+  // should stay where they are rather than being sent back.
+  const currentStage = stages[Math.min(stageIndex, stages.length - 1)];
+  const isLastStage = stageIndex >= stages.length - 1;
+
   type FieldProblem = { field: string; message: string };
   const problemList: FieldProblem[] = [];
   const flag = (field: string, message: string) => problemList.push({ field, message });
@@ -372,8 +388,28 @@ export function CheckoutForm({
     flag('checkout-gift-message', `Keep the note to ${GIFT_MESSAGE_MAX_LENGTH} characters.`);
   }
 
-  const problems = problemList.map((problem) => problem.message);
   const ready = problemList.length === 0 && !outOfStock;
+
+  /*
+   * What stands between the customer and the *next* stage, which is
+   * not the same as what stands between them and paying. Asking for a
+   * delivery address while they are still choosing a box would be the
+   * old long-form problem in a new shape.
+   */
+  const stageProblems = problemList.filter(
+    (problem) => stageForField(problem.field) === currentStage.id,
+  );
+  const stageReady = stageProblems.length === 0 && !(currentStage.id === 'box' && outOfStock);
+
+  /*
+   * One label for both buttons. Naming the amount only on the stage
+   * that charges it: "Pay KES 3,750" on the box step would be a total
+   * the customer has not finished assembling.
+   */
+  const ctaLabel = advanceLabelFor(
+    stages[stageIndex + 1],
+    quote ? formatKes(quote.pricing.totalKes) : null,
+  );
 
   /*
    * A field's message appears once the customer has left it, or once
@@ -420,11 +456,25 @@ export function CheckoutForm({
     }, 0);
   }
 
-  function focusFirstProblem() {
-    const first = problemList[0];
+  function focusFirstProblem(within: FieldProblem[] = problemList) {
+    const first = within[0];
     if (!first) {
       return;
     }
+
+    /*
+     * The field may belong to a stage that is not on screen. Sections
+     * stay mounted but hidden, so focusing one directly would put the
+     * cursor into `display: none` — the press would appear to do
+     * nothing, which is the exact failure the focus behaviour exists
+     * to prevent. Move to its stage first.
+     */
+    const owningStage = stageForField(first.field);
+    const owningIndex = stages.findIndex((stage) => stage.id === owningStage);
+    if (owningIndex >= 0 && owningIndex !== stageIndex) {
+      setStageIndex(owningIndex);
+    }
+
     const element = document.getElementById(first.field);
     if (!element) {
       return;
@@ -436,14 +486,40 @@ export function CheckoutForm({
      * the customer presses Pay and gets nothing — the exact failure
      * this function exists to prevent.
      */
-    element.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-    // Focus after the scroll is under way; focusing first makes the
-    // browser jump instantly and undoes the smooth scroll.
-    window.setTimeout(() => element.focus({ preventScroll: true }), 250);
+    /*
+     * Deferred, for two reasons at once: a stage change has to paint
+     * before its field can take focus, and focusing before the scroll
+     * is under way makes the browser jump instantly and undo it.
+     */
+    window.setTimeout(() => {
+      const target = document.getElementById(first.field);
+      target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      window.setTimeout(() => (target as HTMLElement | null)?.focus({ preventScroll: true }), 250);
+    }, 0);
   }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+
+    /*
+     * On every stage but the last this button moves forward rather
+     * than paying. One `<form>` and one submit handler keeps Enter
+     * working the way a keyboard user expects at each stage, and keeps
+     * the pay path a single place rather than one per stage.
+     */
+    if (!isLastStage) {
+      if (!stageReady) {
+        setSubmitAttempted(true);
+        focusFirstProblem(stageProblems);
+        return;
+      }
+      setStageIndex((current) => Math.min(current + 1, stages.length - 1));
+      // The next stage starts at its own top, not at the scroll
+      // position of the one just left.
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     if (!ready || !box) {
       // Reveals every message at once, not just the touched ones.
       setSubmitAttempted(true);
@@ -587,9 +663,23 @@ export function CheckoutForm({
         off-screen. Below `lg` none of it applies: the summary sits
         where it always did and the fixed bar carries the action.
       */}
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-10">
+      <CheckoutProgress
+        stages={stages}
+        currentIndex={stageIndex}
+        /*
+          Backwards only. A stage ahead may be blocked by a field the
+          customer has not filled, and a control that sometimes
+          silently refuses is worse than one that is plainly absent.
+        */
+        onJumpTo={(index) => {
+          setStageIndex(index);
+          window.scrollTo?.({ top: 0, behavior: 'smooth' });
+        }}
+      />
+
+      <div className="mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-10">
         <div className="flex flex-col gap-9 sm:gap-12">
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-4" hidden={currentStage.id !== 'box'}>
         <SectionHeading title="Your box" />
         <div id="checkout-box" tabIndex={-1} className="outline-none">
           <FieldError id="checkout-box" message={errorFor('checkout-box')} />
@@ -859,7 +949,7 @@ export function CheckoutForm({
         Standard checkout never shows a gap where step 2 used to be.
       */}
       {requiredPicks > 0 ? (
-        <section className="flex flex-col gap-4">
+        <section className="flex flex-col gap-4" hidden={currentStage.id !== 'snacks'}>
           <SectionHeading title={`Choose your ${requiredPicks} snacks`} />
           {/*
             Names the total, not just the five. "Choose 5" without it
@@ -891,8 +981,11 @@ export function CheckoutForm({
         </section>
       ) : null}
 
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-4" hidden={currentStage.id !== 'details'}>
         <SectionHeading title="Your details" />
+        <p className="text-muted-foreground -mt-2 text-sm">
+          We&rsquo;ll use this to send your order updates and receipt.
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="checkout-name">Full name</Label>
@@ -972,7 +1065,7 @@ export function CheckoutForm({
         </div>
       </section>
 
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-4" hidden={currentStage.id !== 'delivery'}>
         <SectionHeading title="Where it's going" />
         <div className="grid gap-3 sm:grid-cols-2">
           {/*
@@ -1233,7 +1326,7 @@ export function CheckoutForm({
         customer already has one and hiding it would look like it was
         ignored.
       */}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3" hidden={currentStage.id !== 'delivery'}>
         {!referralOpen ? (
           <button
             type="button"
@@ -1385,7 +1478,7 @@ export function CheckoutForm({
           to assemble them from memory at the moment of committing
           money.
         */}
-        {ready && quote ? (
+        {isLastStage && ready && quote ? (
           <div className="border-border bg-surface flex flex-col gap-2 rounded-lg border p-4">
             <div className="flex items-baseline justify-between gap-4">
               <span className="text-muted-foreground text-sm">You&rsquo;re paying</span>
@@ -1412,18 +1505,14 @@ export function CheckoutForm({
             missing and takes them to it.
           */}
           <Button type="submit" size="lg" loading={submitting}>
-            {submitting
-              ? 'Sending M-Pesa request…'
-              : ready && quote
-                ? `Pay ${formatKes(quote.pricing.totalKes)} with M-Pesa`
-                : 'Pay with M-Pesa'}
+            {submitting ? 'Sending M-Pesa request…' : ctaLabel}
           </Button>
-          {submitAttempted && problems.length > 0 ? (
+          {submitAttempted && stageProblems.length > 0 ? (
             <p className="text-muted-foreground text-sm">
-              {problems.length === 1
+              {stageProblems.length === 1
                 ? 'One thing left: '
-                : `${problems.length} things left: `}
-              {problems.join(' · ')}
+                : `${stageProblems.length} things left: `}
+              {stageProblems.map((problem) => problem.message).join(' · ')}
             </p>
           ) : null}
           {/*
@@ -1438,7 +1527,7 @@ export function CheckoutForm({
             STK push, `order_confirmed_sms`, and `order_dispatched_sms`
             — rather than a reassuring sequence invented for the page.
           */}
-          <ol className="text-muted-foreground flex flex-col gap-1.5 text-sm">
+          <ol className="text-muted-foreground flex flex-col gap-1.5 text-sm" hidden={!isLastStage}>
             <li>1. An M-Pesa prompt arrives on your phone. Enter your PIN there, never on this page.</li>
             <li>2. This page confirms your payment by itself and shows your order number.</li>
             <li>3. We text that order number to you.</li>
@@ -1514,24 +1603,34 @@ export function CheckoutForm({
               and made the one place showing the total unreliable.
             */}
             <span className="text-muted-foreground text-sm">
-              {quote ? 'Total to pay now' : 'Your order'}
+              {isLastStage ? (quote ? 'Total to pay' : 'Your order') : 'Your order so far'}
             </span>
             <span className="text-foreground text-lg font-semibold tabular-nums">
               {quote ? formatKes(quote.pricing.totalKes) : box ? formatKes(box.priceKes * quantity) : '—'}
             </span>
           </div>
           <Button type="submit" size="lg" loading={submitting} className="w-full">
-            {submitting
-              ? 'Sending M-Pesa request…'
-              : ready && quote
-                ? `Pay ${formatKes(quote.pricing.totalKes)}`
-                : 'Pay with M-Pesa'}
+            {submitting ? 'Sending M-Pesa request…' : ctaLabel}
           </Button>
-          {submitAttempted && problems.length > 0 ? (
+          {submitAttempted && stageProblems.length > 0 ? (
             <p className="text-muted-foreground text-caption">
-              {problems.length === 1 ? 'One thing left: ' : `${problems.length} things left: `}
-              {problems[0]}
+              {stageProblems.length === 1
+                ? 'One thing left: '
+                : `${stageProblems.length} things left: `}
+              {stageProblems[0].message}
             </p>
+          ) : null}
+          {stageIndex > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setStageIndex((current) => Math.max(current - 1, 0));
+                window.scrollTo?.({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-muted-foreground hover:text-foreground text-caption self-center underline underline-offset-4"
+            >
+              Back to {stages[stageIndex - 1].label.toLowerCase()}
+            </button>
           ) : null}
         </div>
       </div>

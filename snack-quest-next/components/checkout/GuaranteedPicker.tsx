@@ -173,6 +173,58 @@ export const GuaranteedPicker = memo(function GuaranteedPicker({
 
   const chosen = selectedIds.length;
   const full = chosen >= required;
+
+  /*
+   * Close the grid the moment the last pick lands.
+   *
+   * Choosing is finished at that point, and leaving 62 cards open
+   * under a customer who is done pushes the rest of the checkout a
+   * screen further down for no reason. The header collapses to "your 5
+   * picks are locked in", which is the summary they want instead.
+   *
+   * Armed by *how the grid was opened*, not by the count changing.
+   * Watching for the transition into full is not enough: a customer
+   * who reopens a finished set to swap a snack removes one — which
+   * resets that — and then adds one, passing back through full and
+   * slamming the grid shut mid-edit, every single time.
+   *
+   * So it only auto-closes a session that began with picks still to
+   * make. Reopen a complete set and it stays open for as long as you
+   * are editing it.
+   */
+  const autoCloseArmed = useRef(false);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      // Opened just now: arm only if there is still choosing to do.
+      autoCloseArmed.current = !full;
+    }
+    wasOpen.current = open;
+  }, [open, full]);
+
+  /*
+   * Collapsing alone is not enough, and on its own it is disorienting.
+   *
+   * The customer is usually scrolled deep inside the grid when the
+   * fifth pick lands. Removing sixty-odd cards from above them keeps
+   * their scroll offset but changes what is at it, so they surface
+   * somewhere further down the form with the picker far above and no
+   * idea what just happened.
+   *
+   * Scrolling the header back into view lands them on "your 5 picks
+   * are locked in" with the next section directly beneath — which is
+   * the point of collapsing at all.
+   */
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open && full && autoCloseArmed.current) {
+      autoCloseArmed.current = false;
+      setOpen(false);
+      // Optional-called: scrolling is a courtesy, and an environment
+      // without it must not throw out of a state update.
+      rootRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    }
+  }, [open, full]);
   // O(1) per card instead of a linear scan. Small on its own, but it
   // runs 62 times per render and the whole point here is that a tap
   // costs as little as possible.
@@ -256,6 +308,7 @@ export const GuaranteedPicker = memo(function GuaranteedPicker({
 
   return (
     <div
+      ref={rootRef}
       className={cn(
         'overflow-hidden rounded-xl border',
         full ? 'border-primary/40 bg-primary/5' : 'border-border bg-surface',

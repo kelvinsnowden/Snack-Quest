@@ -49,6 +49,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Submits the form, which advances a stage or pays depending where you are. */
+function submitForm() {
+  fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+}
+
+/** Walks to the details stage, the first one with fields of its own. */
+function goToDetails() {
+  // Box is preselected, so the first stage is already satisfied.
+  submitForm();
+}
+
 function renderCheckout() {
   render(
     <CheckoutForm
@@ -75,16 +86,22 @@ describe('before the customer has touched anything', () => {
     expect(screen.queryByText(/things left/i)).toBeNull();
   });
 
-  /** The one control the customer came to press is never dead under a tap. */
-  it('leaves the pay button pressable, and a real submit control', () => {
+  /*
+   * The control the customer came to press is never dead under a tap,
+   * and on the opening stage it says where it goes rather than
+   * offering to charge a total they have not finished assembling.
+   */
+  it('offers a live submit control that names the next stage', () => {
     renderCheckout();
 
-    const buttons = screen.getAllByRole('button', { name: /pay with m-pesa/i });
+    const buttons = screen.getAllByRole('button', { name: /continue to your details/i });
     expect(buttons.length).toBeGreaterThan(0);
     for (const button of buttons) {
       expect(button.hasAttribute('disabled')).toBe(false);
       expect(button.getAttribute('type')).toBe('submit');
     }
+    // Not offering to take money yet.
+    expect(screen.queryByRole('button', { name: /pay .* with m-pesa/i })).toBeNull();
   });
 });
 
@@ -150,6 +167,7 @@ describe('pressing pay on an incomplete form', () => {
    */
   it('reveals every outstanding message at once', () => {
     renderCheckout();
+    goToDetails();
 
     /*
      * Submitting the form rather than clicking the button: jsdom does
@@ -157,7 +175,7 @@ describe('pressing pay on an incomplete form', () => {
      * here would prove nothing about the handler. That the button is a
      * live submit control is asserted on its own above.
      */
-    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    submitForm();
 
     // Each appears twice on purpose: once under its own field, and
     // once in the roll-up beside the button, so the customer sees the
@@ -171,8 +189,9 @@ describe('pressing pay on an incomplete form', () => {
   /** It must not start a payment for a form the server would refuse. */
   it('does not call the checkout API', () => {
     renderCheckout();
+    goToDetails();
 
-    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    submitForm();
 
     const calls = (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     expect(calls.some((call) => String(call[0]).includes('/api/checkout/web'))).toBe(false);
@@ -272,13 +291,36 @@ describe('section headings', () => {
    * count was unstable across the exact comparison a customer makes
    * when switching boxes.
    */
-  it('names sections rather than numbering them', () => {
+  it('shows one stage at a time, and names them all in the progress bar', () => {
     renderCheckout();
 
+    // On screen: the stage you are on. Not on screen: the rest.
     expect(screen.getByRole('heading', { name: 'Your box' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Your details' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: "Where it's going" })).toBeNull();
+
+    // The whole journey is still legible, which is what the indicator
+    // is for — orientation without putting every field on screen.
+    const progress = screen.getByRole('navigation', { name: /checkout progress/i });
+    expect(progress.textContent).toContain('Your box');
+    expect(progress.textContent).toContain('Your details');
+    expect(progress.textContent).toContain('Delivery & pay');
+
+    submitForm();
     expect(screen.getByRole('heading', { name: 'Your details' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: "Where it's going" })).toBeTruthy();
-    expect(screen.queryByText(/^Step \d/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Your box' })).toBeNull();
+  });
+
+  /*
+   * A box with nothing to choose genuinely has three stages. Showing a
+   * greyed-out fourth it will never reach would be a progress bar
+   * lying about the length of the journey.
+   */
+  it('leaves out the snacks stage for a box with no picks', () => {
+    renderCheckout();
+
+    const progress = screen.getByRole('navigation', { name: /checkout progress/i });
+    expect(progress.textContent).not.toContain('Your snacks');
   });
 });
 
@@ -315,6 +357,9 @@ describe('the order summary', () => {
         deliveryFromKes={250}
       />,
     );
+
+    // The picker lives on the snacks stage; walk to it first.
+    submitForm();
 
     const toggle = await screen.findByRole('button', { expanded: false });
     fireEvent.click(toggle);
