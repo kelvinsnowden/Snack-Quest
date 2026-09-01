@@ -347,7 +347,19 @@ export function CheckoutForm({
   const problemList: FieldProblem[] = [];
   const flag = (field: string, message: string) => problemList.push({ field, message });
 
-  if (!box) flag('checkout-box', 'Choose a box to continue.');
+  if (!box) {
+    flag('checkout-box', 'Choose a box to continue.');
+  } else if (outOfStock) {
+    /*
+     * A problem like any other, rather than a separate boolean folded
+     * into `ready`. As a boolean it made the button refuse to advance
+     * while contributing no message to show and no field to focus —
+     * so a customer on a sold-out box pressed Continue, and then Pay,
+     * and both times nothing happened at all. Every reason to refuse
+     * now arrives with something to say.
+     */
+    flag('checkout-box', 'That box has just sold out. Choose another one to continue.');
+  }
   if (customerName.trim().length < 2) flag('checkout-name', 'Enter your name.');
   if (!isValidKenyanPhone(phone)) {
     // Names the shape rather than saying "invalid": the customer
@@ -388,7 +400,13 @@ export function CheckoutForm({
     flag('checkout-gift-message', `Keep the note to ${GIFT_MESSAGE_MAX_LENGTH} characters.`);
   }
 
-  const ready = problemList.length === 0 && !outOfStock;
+  /*
+   * Readiness is exactly "nothing is wrong", with no second condition
+   * beside it. That equivalence is what makes a silent press
+   * impossible: anything that can stop the button is in the list, so
+   * it always has a message to show and a field to move to.
+   */
+  const ready = problemList.length === 0;
 
   /*
    * What stands between the customer and the *next* stage, which is
@@ -399,7 +417,7 @@ export function CheckoutForm({
   const stageProblems = problemList.filter(
     (problem) => stageForField(problem.field) === currentStage.id,
   );
-  const stageReady = stageProblems.length === 0 && !(currentStage.id === 'box' && outOfStock);
+  const stageReady = stageProblems.length === 0;
 
   /*
    * One label for both buttons. Naming the amount only on the stage
@@ -647,7 +665,38 @@ export function CheckoutForm({
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form
+      onSubmit={onSubmit}
+      /*
+       * The stages made native validation actively harmful, and it has
+       * to be off (§ "Continue to snacks" does nothing).
+       *
+       * A browser validates the whole form on submit, not the part of
+       * it that is on screen. Sections stay mounted but `hidden`, so
+       * pressing "Continue to your snacks" on the first stage put the
+       * browser in front of an empty `required` name field it could
+       * not focus — and the spec's answer to that is to abandon the
+       * submission. No `submit` event, no handler, no stage change:
+       * the button was dead for every customer on every stage but the
+       * last, and Chrome said so only in the console ("An invalid form
+       * control with name='' is not focusable" — nameless, because
+       * these inputs are read by id, which makes the message even
+       * harder to trace back to a field).
+       *
+       * Turning it off costs nothing, because this form has never
+       * relied on it: `problemList` below checks every field, including
+       * the ones no browser can check (exactly five picks, a Kenyan
+       * number, a gift with both halves filled). Native bubbles were
+       * only ever able to pre-empt those better messages — the last
+       * stage showed the browser's "Please fill out this field" instead
+       * of the field-level errors this form is built around.
+       *
+       * `required` stays on the inputs: it is what tells a screen
+       * reader the field is mandatory, and with validation off it no
+       * longer blocks anything.
+       */
+      noValidate
+    >
       {/*
         Two columns on a large screen, one everywhere else.
 
