@@ -39,6 +39,7 @@ import {
   isMetroLocation,
   availableServiceLevels,
   isFastDeliveryDay,
+  serviceLevelLabel,
   FARGO_SERVICE_LEVELS,
   EXPRESS_OPEN_HOUR,
   EXPRESS_CUTOFF_HOUR,
@@ -1390,6 +1391,8 @@ class ConversationService {
           landmark: null,
           estate: null,
           contactPhone: null,
+          // Pickup has one speed, so there is nothing to record.
+          serviceLevel: null,
           courierShipmentRef: null,
           // Fargo is booked by hand at a branch, so there is no
           // tracking URL at order time — the waybill number reaches the
@@ -1492,6 +1495,10 @@ class ConversationService {
         landmark: input.landmark?.trim() || null,
         estate: input.estate?.trim() || null,
         contactPhone,
+        // The speed the customer actually chose and was priced for,
+        // recorded on the order rather than only in the conversation's
+        // transient state.
+        serviceLevel: requested,
         courierShipmentRef: null,
         trackingUrl: null,
       },
@@ -3117,10 +3124,24 @@ class ConversationService {
       const alertPhone = business?.adminOrderSmsPhone;
       if (alertPhone) {
         const delivery = snapshot.delivery;
+        /*
+         * The speed leads on a door order, because it is the part that
+         * decides whether this needs packing now: an express box has
+         * ninety minutes on it and a next-day box has until tomorrow
+         * afternoon. Reading that off an SMS is the whole point of
+         * sending one.
+         */
+        const speed = serviceLevelLabel(delivery.serviceLevel);
         const deliverySummary =
           delivery.method === 'pickup'
             ? `Pickup: ${delivery.pickupStationName ?? delivery.county}`
-            : `Door ${snapshot.gift ? '(GIFT)' : ''} ${delivery.addressText ?? delivery.county}`.trim();
+            : [
+                speed ? speed.toUpperCase() : 'Door',
+                snapshot.gift ? '(GIFT)' : '',
+                delivery.addressText ?? delivery.county,
+              ]
+                .filter(Boolean)
+                .join(' ');
         await this.notifications.send(businessId, {
           channel: 'sms',
           templateCode: 'admin_new_order_sms',

@@ -252,6 +252,28 @@ export const SAME_DAY_ARRIVAL_HOUR = 18;
 /** What next-day guarantees. Stated here for the same reason: the checkout copy reads it rather than hard-coding an hour that could drift from the courier's terms. */
 export const NEXT_DAY_ARRIVAL_HOUR = 16;
 
+/**
+ * The speed written out for a person to read (§ order delivery speed).
+ *
+ * One definition, so the admin order page, the orders list and the
+ * new-order alert cannot describe the same order three different ways.
+ * Null covers both pickup, which has one speed, and every order placed
+ * before the field existed — neither is a next-day order, and
+ * defaulting them to one would invent a fact.
+ */
+export function serviceLevelLabel(level: FargoServiceLevel | null | undefined): string | null {
+  switch (level) {
+    case 'next-day':
+      return 'Next day';
+    case 'same-day':
+      return 'Same day';
+    case 'express':
+      return 'Express';
+    default:
+      return null;
+  }
+}
+
 export function fargoZoneFor(region: FargoRegion, serviceLevel: FargoServiceLevel): FargoZone {
   return FARGO_ZONES[`${region}:${serviceLevel}`];
 }
