@@ -1,3 +1,4 @@
+import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
 /**
  * The shared delivery vocabulary (redesign: "Redesign Checkout &
  * Delivery Flow to Support Multiple Delivery Methods"). `method` is
@@ -107,6 +108,21 @@ export interface DeliveryDetails {
   landmark: string | null;
   estate: string | null;
   contactPhone: string | null;
+  /**
+   * Which speed the customer bought (§ order delivery speed).
+   *
+   * Next-day, same-day and express are three different promises with
+   * three different prices and three different clocks, and until now
+   * the only trace of which one an order was left in the conversation's
+   * transient state — the order itself could not say. That made a
+   * same-day order indistinguishable from a next-day one on the very
+   * screen where somebody decides what to pack first.
+   *
+   * Null for pickup, which has one speed, and absent on every order
+   * placed before this field existed. Both mean "not recorded", which
+   * is what staff should be shown rather than a guess.
+   */
+  serviceLevel?: FargoServiceLevel | null;
   courierShipmentRef: string | null;
   trackingUrl: string | null;
 }

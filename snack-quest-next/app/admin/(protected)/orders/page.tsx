@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
+import { serviceLevelLabel } from '@/lib/delivery/deliveryPricing';
 import { requireStaffSession } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { orderRepository } from '@/repositories/orderRepository';
@@ -142,6 +143,7 @@ export default async function AdminOrdersPage({
             customerName: data.customer.customerName,
             phoneNumber: data.customer.phoneNumber,
             packageLabel: orderBoxSummary(data.product),
+            deliveryLabel: serviceLevelLabel(data.delivery?.serviceLevel),
             totalKes: data.pricing.totalKes,
             status: data.status,
             fulfillmentBatchId: data.fulfillmentBatchId,

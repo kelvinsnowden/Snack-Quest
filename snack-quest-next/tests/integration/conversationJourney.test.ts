@@ -1039,6 +1039,67 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     expect(checkout.pricing.totalKes).toBe(0);
   });
 
+  /*
+   * Which speed the customer bought, on the order (§ order delivery
+   * speed).
+   *
+   * It was always chosen and always priced; it just lived in the
+   * conversation's transient state and never reached the order, so a
+   * same-day order and a next-day one looked identical on the screen
+   * where staff decide what to pack first.
+   */
+  it('records the delivery speed on the order, and leaves pickup without one', async () => {
+    /*
+     * Pinned to 11:00 Nairobi on a Tuesday. Written against the real
+     * clock this passed all morning and failed all afternoon, because
+     * same-day genuinely stops being sellable at 13:00 — the guard was
+     * right and the test was the flaky part.
+     */
+    // Only `Date` — faking the timers as well stalls the emulator's
+    // own async calls and the test times out rather than failing.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(Date.UTC(2026, 8, 1, 8, 0)));
+    try {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Same Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 300,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Fredrick Nyanjwa',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kilimani',
+      serviceLevel: 'same-day',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    await service.handlePaymentResult(callback);
+
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(1);
+    expect(orders.docs[0].data().delivery.serviceLevel).toBe('same-day');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   /** An invalid code fails the checkout rather than quietly charging full price for an order the customer thought was discounted. */
   it('refuses an exhausted code instead of silently charging full price', async () => {
     mockAllProviders();

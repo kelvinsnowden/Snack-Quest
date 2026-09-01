@@ -3,6 +3,7 @@ import type { ManualPaymentMethod } from '@/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
+import { serviceLevelLabel } from '@/lib/delivery/deliveryPricing';
 import { requireStaffSession } from '@/lib/auth/session';
 import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { CorrectManualPaymentDialog } from '@/components/admin/CorrectManualPaymentDialog';
@@ -361,6 +362,19 @@ export default async function AdminOrderDetailPage({
           </CardHeader>
           <CardContent className="divide-y divide-border">
             <DetailRow label="Method" value={delivery.method === 'pickup' ? 'Pickup station' : 'Door delivery'} />
+            {/*
+              Which promise this order carries. A same-day order has a
+              clock on it that a next-day one does not, and that is the
+              first thing worth knowing when deciding what to pack now.
+              Orders placed before this was recorded say so, rather than
+              being shown as next-day.
+            */}
+            {delivery.method === 'door' ? (
+              <DetailRow
+                label="Speed"
+                value={serviceLevelLabel(delivery.serviceLevel) ?? 'Not recorded'}
+              />
+            ) : null}
             <DetailRow label="Provider" value={<span className="capitalize">{delivery.provider}</span>} />
             <DetailRow label="Status" value={<span className="capitalize">{delivery.status.replace(/_/g, ' ')}</span>} />
             {/*

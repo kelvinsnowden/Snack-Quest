@@ -26,6 +26,12 @@ export interface OrderTableRow {
   customerName: string;
   phoneNumber: string;
   packageLabel: string;
+  /**
+   * How fast this one was bought (§ order delivery speed). Null for
+   * pickup, which has one speed, and for orders placed before it was
+   * recorded — shown as nothing rather than assumed to be next day.
+   */
+  deliveryLabel: string | null;
   totalKes: number;
   status: OrderStatus;
   fulfillmentBatchId: string | null;
@@ -131,7 +137,12 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
                   ),
                 },
                 { label: 'Total', value: <span className="font-medium tabular-nums">{formatKes(order.totalKes)}</span> },
-                { label: 'Box', value: order.packageLabel },
+                {
+                  label: 'Box',
+                  value: order.deliveryLabel
+                    ? `${order.packageLabel} · ${order.deliveryLabel}`
+                    : order.packageLabel,
+                },
                 { label: 'Placed', value: <span className="tabular-nums">{order.createdAtLabel}</span> },
               ]}
               footer={
@@ -196,7 +207,27 @@ export function OrdersTable({ orders }: { orders: OrderTableRow[] }) {
                         <span className="block text-caption text-muted-foreground tabular-nums">{order.phoneNumber}</span>
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-foreground">{order.packageLabel}</td>
+                    <td className="px-4 py-3 text-foreground">
+                      {order.packageLabel}
+                      {/*
+                        Under the box rather than in a column of its
+                        own: it is a property of this order, and the
+                        table is already wide. Emphasised only when it
+                        is not next day, because same day and express
+                        are the two with a clock on them.
+                      */}
+                      {order.deliveryLabel ? (
+                        <span
+                          className={`block text-caption ${
+                            order.deliveryLabel === 'Next day'
+                              ? 'text-muted-foreground'
+                              : 'text-warning font-medium'
+                          }`}
+                        >
+                          {order.deliveryLabel}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3 font-medium tabular-nums text-foreground">{formatKes(order.totalKes)}</td>
                     <td className="px-4 py-3">
                       <OrderStatusBadge status={order.status} />
