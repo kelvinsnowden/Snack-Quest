@@ -378,3 +378,84 @@ describe('the order summary', () => {
     expect(screen.queryByText(/Your snacks/)).toBeNull();
   });
 });
+
+describe('native browser validation', () => {
+  /*
+   * The regression that broke "Continue to your snacks" for every
+   * customer.
+   *
+   * A browser validates the whole form on submit, not the part of it
+   * that is on screen. The stages keep their sections mounted but
+   * `hidden`, so the first press put Chrome in front of an empty
+   * `required` name field it could not focus — and the spec's answer
+   * to an unfocusable invalid control is to abandon the submission
+   * entirely. No `submit` event, so no handler, so no stage change:
+   * the button was dead, and the only sign of it was a console line
+   * ("An invalid form control with name='' is not focusable") that no
+   * customer will ever read.
+   *
+   * jsdom cannot reproduce that — it runs no constraint validation and
+   * `fireEvent.submit` dispatches the event directly — which is
+   * exactly why every existing test here passed while the live
+   * checkout could not be got past its first step. So this asserts the
+   * two halves of the hazard instead: that mandatory fields really do
+   * sit inside hidden stages, and that native validation is therefore
+   * off.
+   */
+  it('is switched off, because a hidden stage makes it fatal', () => {
+    renderCheckout();
+
+    const form = document.querySelector('form') as HTMLFormElement;
+    const requiredAndUnreachable = Array.from(form.querySelectorAll('[required]')).filter(
+      (field) => field.closest('[hidden]') !== null,
+    );
+
+    // The hazard is present: fields the browser would demand and the
+    // customer cannot see.
+    expect(requiredAndUnreachable.length).toBeGreaterThan(0);
+    // So the browser must not be the one deciding whether this form
+    // may be submitted.
+    expect(form.noValidate).toBe(true);
+  });
+
+  /*
+   * `required` stays on the inputs even with validation off: it is
+   * what tells a screen reader the field is mandatory, and this form's
+   * own checks are what actually stop a bad submission.
+   */
+  it('leaves the fields marked mandatory for assistive technology', () => {
+    renderCheckout();
+
+    expect(screen.getByLabelText(/full name/i).hasAttribute('required')).toBe(true);
+    expect(screen.getByLabelText(/m-pesa number/i).hasAttribute('required')).toBe(true);
+  });
+});
+
+describe('a box that has sold out', () => {
+  const soldOut: CheckoutBox[] = [
+    { ...boxes[0], stockCount: 0 },
+    { ...boxes[0], id: 'box-2', name: 'Another Box', stockCount: 5 },
+  ];
+
+  /*
+   * Sold-out used to be a boolean folded into `ready` rather than a
+   * problem in the list — so it could stop the button while
+   * contributing no message to show and no field to move to. A
+   * customer who arrived on a sold-out box's link pressed Continue,
+   * then Pay, and both times absolutely nothing happened.
+   */
+  it('says so rather than refusing in silence', () => {
+    render(
+      <CheckoutForm
+        boxes={soldOut}
+        initialBoxId="box-1"
+        initialReferralCode={null}
+        deliveryFromKes={250}
+      />,
+    );
+
+    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+
+    expect(screen.getAllByText(/has just sold out/i).length).toBeGreaterThan(0);
+  });
+});
