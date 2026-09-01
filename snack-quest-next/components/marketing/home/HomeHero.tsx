@@ -40,7 +40,9 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
 const TRUST = [
   { icon: MapPin, title: 'Delivered', detail: 'across Kenya', tone: 'text-secondary' },
-  { icon: ShieldCheck, title: 'Secure', detail: 'M-Pesa payments', tone: 'text-secondary' },
+  // Split across the two lines the other two use, so removing
+  // "Secure" costs the word and not the rhythm of the row.
+  { icon: ShieldCheck, title: 'M-Pesa', detail: 'payments', tone: 'text-secondary' },
   { icon: PackageOpen, title: 'Hand-picked', detail: 'snacks', tone: 'text-primary' },
 ] as const;
 
