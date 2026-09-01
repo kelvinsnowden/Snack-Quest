@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { forgetPendingCheckout } from '@/lib/checkout/resumeSession';
 import { RefreshCw } from 'lucide-react';
 import { formatKes } from '@/lib/orders/format';
 import { MPESA_RECIPIENT_NAME } from '@/lib/config/mpesaRecipient';
@@ -54,6 +55,19 @@ export function PaymentWaiting({
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
   const [timedOut, setTimedOut] = useState(false);
+
+  /*
+   * Once the payment has an answer, there is nothing to resume
+   * (§ checkout second pass). Clearing it here rather than only on
+   * success covers the failure case too: a customer who comes back to
+   * buy again should be starting an order, not being offered a
+   * finished one.
+   */
+  useEffect(() => {
+    if (status.paymentStatus === 'succeeded' || status.paymentStatus === 'failed') {
+      forgetPendingCheckout();
+    }
+  }, [status.paymentStatus]);
   // Set on the effect's first run, not during render — the deadline is
   // "when this screen opened", and it must survive the effect
   // re-running as the status changes.
@@ -143,6 +157,25 @@ export function PaymentWaiting({
               {formatKes(status.totalKes)}
             </DetailRow>
             {status.packageLabel ? <DetailRow label="Order">{status.packageLabel}</DetailRow> : null}
+            {/*
+              The reference, while it is still useful. It was on the
+              failure screen and not this one, so a customer messaging
+              support mid-wait — the likeliest moment to need it — had
+              nothing to quote.
+            */}
+            <DetailRow label="Order ID">
+              <span className="font-mono">{reference}</span>
+            </DetailRow>
+            {/*
+              The first thing a customer asks when the prompt has not
+              arrived: did it go to the right phone. The screen could
+              not answer it.
+            */}
+            {status.payingPhoneMasked ? (
+              <DetailRow label="Prompt sent to">
+                <span className="font-mono tabular-nums">{status.payingPhoneMasked}</span>
+              </DetailRow>
+            ) : null}
             <DetailRow label="Payment Method">
               <MpesaMark />
             </DetailRow>
@@ -163,7 +196,25 @@ export function PaymentWaiting({
         </span>
         Confirming with M-Pesa
       </p>
-      <p className="mt-1 text-sm text-white/40">This page updates on its own.</p>
+      {/*
+        For the customer thirty seconds in. The pulsing dot says
+        something is happening; this says what, and that pressing
+        anything again is not the answer — the one instinct that
+        actually makes it worse, because a second prompt confuses which
+        one to approve.
+      */}
+      <p className="mt-1 text-sm text-white/50">
+        This can take up to a minute. There&rsquo;s nothing to press.
+      </p>
+      {/*
+        Answers the two questions a waiting customer actually has, in
+        the order they ask them: is this stuck, and can I leave. The
+        second matters more than it looks — a customer who closes the
+        tab here used to lose the only way back to their own payment.
+      */}
+      <p className="mt-1 text-sm text-white/40">
+        This page updates on its own. Keep it open until it does.
+      </p>
 
       <SnackBoxHero className="mt-8 opacity-90" />
 

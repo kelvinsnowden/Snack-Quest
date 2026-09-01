@@ -67,6 +67,7 @@ import { featureFlagService } from './featureFlagService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import { classifyStkFailure } from '@/lib/payments/stkFailureReason';
+import { maskPhone } from '@/lib/checkout/phone';
 import {
   bootstrapFromCatalogSelection,
   formatFinalOrderSummaryMessage,
@@ -1753,7 +1754,7 @@ class ConversationService {
     // for in the meantime, and it's the same figure the eventual order
     // gets charged, so it's a safe, accurate stand-in while waiting.
     let totalKes = base.totalKes;
-    let guaranteedPicks: { name: string; origin: string | null }[] = [];
+    let guaranteedPicks: { name: string; origin: string | null; imageUrl: string | null }[] = [];
 
     const conversation = await conversationRepository.findById(conversationId);
     if (conversation?.conversationCheckoutSnapshotId) {
@@ -1766,7 +1767,11 @@ class ConversationService {
         giftRecipientName = snapshot.gift?.recipientName ?? null;
         packageLabel = snapshot.packageLabel;
         totalKes ??= snapshot.totalKes;
-        guaranteedPicks = (snapshot.guaranteedPicks ?? []).map(({ name, origin }) => ({ name, origin }));
+        guaranteedPicks = (snapshot.guaranteedPicks ?? []).map(({ name, origin, imageUrl }) => ({
+          name,
+          origin,
+          imageUrl,
+        }));
       }
     }
 
@@ -1813,6 +1818,8 @@ class ConversationService {
       guaranteedPicks,
       paidAt,
       giftRecipientName,
+      // Enough to recognise, not enough to be worth leaking.
+      payingPhoneMasked: conversation?.phoneNumber ? maskPhone(conversation.phoneNumber) : null,
       paymentFailure,
     };
   }

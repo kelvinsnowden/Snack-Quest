@@ -76,7 +76,7 @@ async function openGrid() {
   // not by the word "pick".
   const toggle = await screen.findByRole('button', { expanded: false });
   fireEvent.click(toggle);
-  await screen.findByRole('button', { name: 'Snack 0' });
+  await screen.findByRole('button', { name: /Snack 1 of 62/ });
 }
 
 describe('tapping a snack', () => {
@@ -84,8 +84,8 @@ describe('tapping a snack', () => {
     await openGrid();
 
     cardRenders = 0;
-    fireEvent.click(screen.getByRole('button', { name: 'Snack 3' }));
-    await screen.findByRole('button', { name: 'Snack 3', pressed: true });
+    fireEvent.click(screen.getByRole('button', { name: /Snack 4 of 62/ }));
+    await screen.findByRole('button', { name: /Snack 4 of 62/, pressed: true });
 
     /*
      * One card changed, so one card re-renders. Before the memo this
@@ -98,11 +98,11 @@ describe('tapping a snack', () => {
   it('still selects and deselects correctly', async () => {
     await openGrid();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Snack 1' }));
-    expect(screen.getByRole('button', { name: 'Snack 1' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Snack 2 of 62/ }));
+    expect(screen.getByRole('button', { name: /Snack 2 of 62/ }).getAttribute('aria-pressed')).toBe('true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Snack 1' }));
-    expect(screen.getByRole('button', { name: 'Snack 1' }).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: /Snack 2 of 62/ }));
+    expect(screen.getByRole('button', { name: /Snack 2 of 62/ }).getAttribute('aria-pressed')).toBe('false');
   });
 
   /** The limit still holds — a faster grid that lets someone pick six would be a worse grid. */
@@ -110,12 +110,12 @@ describe('tapping a snack', () => {
     await openGrid();
 
     for (let i = 0; i < 5; i += 1) {
-      fireEvent.click(screen.getByRole('button', { name: `Snack ${i}` }));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`Snack ${i + 1} of 62`) }));
     }
-    fireEvent.click(screen.getByRole('button', { name: 'Snack 5' }));
+    fireEvent.click(screen.getByRole('button', { name: /Snack 6 of 62/ }));
 
-    expect(screen.getByRole('button', { name: 'Snack 5' }).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByRole('button', { name: 'Snack 0' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /Snack 6 of 62/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Snack 1 of 62/ }).getAttribute('aria-pressed')).toBe('true');
   });
 });
 

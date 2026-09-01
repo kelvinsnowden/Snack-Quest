@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { courierContactFor, GiftValidationError, parseGiftDetails } from '@/lib/checkout/gift';
+import { maskPhone } from '@/lib/checkout/phone';
 import { GIFT_MESSAGE_MAX_LENGTH } from '@/types/gift';
 
 /**
@@ -137,5 +138,22 @@ describe('courierContactFor', () => {
         gift: { recipientName: 'Amina', recipientPhone: '254790999780', message: null },
       }).phone,
     ).toBe('254790999780');
+  });
+});
+
+describe('maskPhone', () => {
+  /*
+   * Shown on the payment screen so a customer waiting on a prompt can
+   * check it went to the right phone. Masked because that URL is
+   * shareable, and recognising your own number needs far less than all
+   * of it.
+   */
+  it('keeps enough to recognise and hides the rest', () => {
+    expect(maskPhone('254712345678')).toBe('2547•••••678');
+  });
+
+  it('returns nothing rather than a misleading fragment for an unusable value', () => {
+    expect(maskPhone('')).toBe('');
+    expect(maskPhone('12345')).toBe('');
   });
 });

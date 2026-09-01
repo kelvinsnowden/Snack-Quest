@@ -54,3 +54,55 @@ export function isValidKenyanPhone(raw: string): boolean {
     return false;
   }
 }
+
+/**
+ * The number as a person reads it, from whatever they typed
+ * (§ checkout second pass).
+ *
+ * `0712 345 678` — the grouping every Kenyan sees on their own handset.
+ * Deliberately a *display* concern only: `normalizeKenyanPhone` above
+ * stays strict and unchanged, because the number that reaches Daraja
+ * decides who gets charged, and a formatter that guessed would be
+ * guessing about somebody's money.
+ *
+ * Formats progressively rather than only when complete, so the shape
+ * appears as the customer types and they can see their own mistake at
+ * the digit they made it, rather than after leaving the field.
+ */
+export function formatKenyanPhoneInput(raw: string): string {
+  const digits = (raw ?? '').replace(/\D/g, '');
+
+  /*
+   * International input keeps its `+254 ` prefix rather than being
+   * silently rewritten to `07…`. Someone who typed a country code
+   * meant to, and watching the form rewrite it is unsettling in a way
+   * that reformatting their own local number is not.
+   */
+  if (raw.trim().startsWith('+') || digits.startsWith('254')) {
+    const subscriber = digits.replace(/^254/, '').slice(0, 9);
+    const grouped = [subscriber.slice(0, 3), subscriber.slice(3, 6), subscriber.slice(6, 9)]
+      .filter(Boolean)
+      .join(' ');
+    return grouped ? `+254 ${grouped}` : '+254 ';
+  }
+
+  // Local form. Ten digits, grouped 4-3-3 the way the keypad shows it.
+  const local = digits.slice(0, 10);
+  return [local.slice(0, 4), local.slice(4, 7), local.slice(7, 10)].filter(Boolean).join(' ');
+}
+
+/**
+ * The number as a hint rather than a fact: `2547•••••678`.
+ *
+ * Shown on the payment screen so a customer waiting on a prompt can
+ * check it went to the right phone — the first thing they ask when it
+ * has not arrived. Masked because that URL is shareable, and
+ * recognising your own number needs far less than all of it.
+ */
+export function maskPhone(normalized: string): string {
+  const digits = (normalized ?? '').replace(/\D/g, '');
+  if (digits.length < 7) {
+    return '';
+  }
+  return `${digits.slice(0, 4)}•••••${digits.slice(-3)}`;
+}
