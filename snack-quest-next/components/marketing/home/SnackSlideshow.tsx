@@ -157,7 +157,7 @@ export function SnackSlideshow({
               // screen-reader user has no packet in a photo to read it
               // off, and "Japan" four times over would be four
               // indistinguishable buttons.
-              aria-label={`View ${snack.name} full screen`}
+              aria-label={snack.origin ? `View this ${snack.origin} snack full screen` : 'View this snack full screen'}
               className={cn(
                 'group focus-visible:ring-secondary relative block aspect-[4/5] w-full overflow-hidden rounded-[40px] transition-opacity duration-200 ease-out focus-visible:ring-2 focus-visible:outline-none',
                 /*

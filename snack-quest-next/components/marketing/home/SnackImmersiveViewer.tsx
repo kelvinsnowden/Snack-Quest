@@ -182,7 +182,9 @@ export function SnackImmersiveViewer({
             */}
             <Image
               src={snack.imageUrl}
-              alt={snack.name}
+              // Snacks are not named to customers; the origin below
+              // carries what this is.
+              alt=""
               fill
               sizes="100vw"
               priority={eager}

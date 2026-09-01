@@ -144,7 +144,9 @@ export function CheckoutForm({
    * catalogue loaded already, and asking for it twice to print five
    * names would be a second network round trip for nothing.
    */
-  const [guaranteedSnackNames, setGuaranteedSnackNames] = useState<string[]>([]);
+  const [guaranteedSnackThumbs, setGuaranteedSnackThumbs] = useState<
+    { id: string; imageUrl: string | null; origin: string | null }[]
+  >([]);
   const [station, setStation] = useState<SelectedStation | null>(null);
   /*
    * A gift is off unless asked for. The recipient fields only exist
@@ -254,11 +256,16 @@ export function CheckoutForm({
    * identity and re-render the grid for unrelated reasons, which is the
    * problem this exists to solve.
    */
-  const handlePicksChange = useCallback((ids: string[], snacks: { name: string }[]) => {
-    markFormStartedRef.current();
-    setGuaranteedSnackIds(ids);
-    setGuaranteedSnackNames(snacks.map((snack) => snack.name));
-  }, []);
+  const handlePicksChange = useCallback(
+    (ids: string[], snacks: { id: string; imageUrl: string | null; origin: string | null }[]) => {
+      markFormStartedRef.current();
+      setGuaranteedSnackIds(ids);
+      setGuaranteedSnackThumbs(
+        snacks.map(({ id, imageUrl, origin }) => ({ id, imageUrl, origin })),
+      );
+    },
+    [],
+  );
 
   const quote = useCheckoutQuote({
     packageId: boxId,
@@ -641,7 +648,7 @@ export function CheckoutForm({
                     // server rejects, leaving the customer with an
                     // error they cannot act on.
                     setGuaranteedSnackIds([]);
-                    setGuaranteedSnackNames([]);
+                    setGuaranteedSnackThumbs([]);
                     // Changing the box here is the same intent as
                     // clicking "buy this box" elsewhere, so it reports
                     // as the same event with its own source.
@@ -1314,7 +1321,7 @@ export function CheckoutForm({
         <div className="mt-9 lg:sticky lg:top-24 lg:mt-0 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pb-2">
       <div className="border-border flex flex-col gap-4 border-t pt-8 lg:border-t-0 lg:pt-0">
         <OrderSummary
-          snackNames={guaranteedSnackNames}
+          snackThumbs={guaranteedSnackThumbs}
           quote={quote}
           stationChosen={deliveryMethod === 'pickup' ? Boolean(station) : true}
           fallbackLabel={box ? `${quantity} × ${box.name}` : 'Your order'}
@@ -1547,9 +1554,9 @@ function OrderSummary({
   fallbackLabel,
   lines,
   fallbackTotalKes,
-  snackNames,
+  snackThumbs,
 }: {
-  snackNames: string[];
+  snackThumbs: { id: string; imageUrl: string | null; origin: string | null }[];
   quote: WebCheckoutQuote | null;
   /** Whether a real pickup station has been selected — distinguishes "no fee yet" from "a fee of zero". Always true for door delivery, which has no station. */
   stationChosen: boolean;
@@ -1577,7 +1584,7 @@ function OrderSummary({
             {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
           </span>
         </div>
-        <ChosenSnacks names={snackNames} />
+        <ChosenSnacks picks={snackThumbs} />
         <p className="text-muted-foreground text-sm">
           Delivery is added once you choose where it&rsquo;s going. You&rsquo;ll see the exact
           total here before you pay.
@@ -1607,7 +1614,7 @@ function OrderSummary({
         </div>
       )}
 
-      <ChosenSnacks names={snackNames} />
+      <ChosenSnacks picks={snackThumbs} />
 
       {pricing.discountKes > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
@@ -1700,29 +1707,49 @@ function FieldError({ id, message }: { id: string; message: string | null }) {
  * before paying meant scrolling back past every other section — and on
  * the desktop sticky rail the picker is not on screen at all.
  *
+ * Shown as pictures, never names. Snack Quest does not name individual
+ * snacks anywhere a customer can read it, and the picture is the truer
+ * check anyway: it is exactly what was on screen at the moment of
+ * choosing, so recognising it costs no reading.
+ *
  * Rendered in both states of the summary on purpose. The picks are a
  * fact this browser already knows; making them wait for a server quote
  * would hide them for the first seconds of every checkout, and for the
  * whole of one where the quote never lands.
- *
- * Names only. The photographs did their work at the moment of
- * choosing, and repeating them here would compete with the total for
- * the same glance.
  */
-function ChosenSnacks({ names }: { names: string[] }) {
-  if (names.length === 0) {
+function ChosenSnacks({
+  picks,
+}: {
+  picks: { id: string; imageUrl: string | null; origin: string | null }[];
+}) {
+  if (picks.length === 0) {
     return null;
   }
   return (
-    <div className="border-border flex flex-col gap-1 border-b pb-3">
-      <p className="text-muted-foreground text-sm">Your snacks</p>
-      <ul className="text-foreground flex flex-col gap-0.5 text-sm">
-        {names.map((name) => (
-          <li key={name} className="flex items-baseline gap-1.5">
-            <span aria-hidden="true" className="text-primary">
-              ·
+    <div className="border-border flex flex-col gap-2 border-b pb-3">
+      <p className="text-muted-foreground text-sm">
+        Your snacks ({picks.length})
+      </p>
+      <ul className="flex flex-wrap gap-2">
+        {picks.map((pick) => (
+          <li key={pick.id} className="flex flex-col items-center gap-1">
+            <span className="bg-border/40 relative block size-12 overflow-hidden rounded-md">
+              {pick.imageUrl ? (
+                /*
+                  Empty alt: the origin underneath carries the meaning,
+                  and a name in the alt would put back exactly what
+                  this avoids.
+                */
+                <Image src={pick.imageUrl} alt="" fill sizes="48px" className="object-cover" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center" aria-hidden="true">
+                  🍬
+                </span>
+              )}
             </span>
-            {name}
+            {pick.origin ? (
+              <span className="text-muted-foreground text-caption">{pick.origin}</span>
+            ) : null}
           </li>
         ))}
       </ul>

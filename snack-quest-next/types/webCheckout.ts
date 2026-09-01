@@ -190,7 +190,7 @@ export interface WebCheckoutStatusResponse {
    * listed is the reassurance that the picks actually stuck. Empty for
    * a fully-curated box.
    */
-  guaranteedPicks: { name: string; origin: string | null }[];
+  guaranteedPicks: { name: string; origin: string | null; imageUrl: string | null }[];
   /**
    * When the order was created, ISO-8601, for the confirmation
    * screen's receipt line. Null until an order exists. A string rather

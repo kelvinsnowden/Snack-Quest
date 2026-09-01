@@ -289,15 +289,20 @@ describe('the order summary', () => {
    * section — and on the desktop sticky rail the picker is not even on
    * screen.
    */
-  it('lists the chosen snacks once there are some', async () => {
-    // A box that asks for picks, and a catalogue to pick from.
+  /*
+   * Shown as pictures, never names. Snack Quest does not name
+   * individual snacks anywhere a customer can read it, and the picture
+   * is the truer check anyway — it is exactly what was on screen at the
+   * moment of choosing.
+   */
+  it('shows the chosen snacks as pictures, never as names', async () => {
     cleanup();
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         snacks: [
-          { id: 's1', name: 'Pocky Chocolate', origin: 'Japan', imageUrl: null },
-          { id: 's2', name: 'Buldak Ramen', origin: 'Korea', imageUrl: null },
+          { id: 's1', name: 'Pocky Chocolate', origin: 'Japan', imageUrl: 'https://x.test/1.jpg' },
+          { id: 's2', name: 'Buldak Ramen', origin: 'Korea', imageUrl: 'https://x.test/2.jpg' },
         ],
       }),
     }) as unknown as typeof fetch;
@@ -313,16 +318,18 @@ describe('the order summary', () => {
 
     const toggle = await screen.findByRole('button', { expanded: false });
     fireEvent.click(toggle);
-    fireEvent.click(await screen.findByRole('button', { name: 'Pocky Chocolate' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Snack 1 of 2/ }));
 
-    // Named in the summary, not only inside the grid.
-    expect(screen.getAllByText('Pocky Chocolate').length).toBeGreaterThan(0);
-    expect(screen.getByText('Your snacks')).toBeTruthy();
+    expect(screen.getByText(/Your snacks \(1\)/)).toBeTruthy();
+    // The name appears nowhere a customer can read it — not as text,
+    // not in an alt, not in a label.
+    expect(document.body.textContent).not.toContain('Pocky Chocolate');
+    expect(document.body.innerHTML).not.toContain('Pocky Chocolate');
   });
 
   /** Nothing to verify yet means nothing to show — an empty "Your snacks" heading is noise. */
   it('says nothing about snacks on a box that has none to pick', () => {
     renderCheckout();
-    expect(screen.queryByText('Your snacks')).toBeNull();
+    expect(screen.queryByText(/Your snacks/)).toBeNull();
   });
 });

@@ -1754,7 +1754,7 @@ class ConversationService {
     // for in the meantime, and it's the same figure the eventual order
     // gets charged, so it's a safe, accurate stand-in while waiting.
     let totalKes = base.totalKes;
-    let guaranteedPicks: { name: string; origin: string | null }[] = [];
+    let guaranteedPicks: { name: string; origin: string | null; imageUrl: string | null }[] = [];
 
     const conversation = await conversationRepository.findById(conversationId);
     if (conversation?.conversationCheckoutSnapshotId) {
@@ -1767,7 +1767,11 @@ class ConversationService {
         giftRecipientName = snapshot.gift?.recipientName ?? null;
         packageLabel = snapshot.packageLabel;
         totalKes ??= snapshot.totalKes;
-        guaranteedPicks = (snapshot.guaranteedPicks ?? []).map(({ name, origin }) => ({ name, origin }));
+        guaranteedPicks = (snapshot.guaranteedPicks ?? []).map(({ name, origin, imageUrl }) => ({
+          name,
+          origin,
+          imageUrl,
+        }));
       }
     }
 

@@ -4,6 +4,7 @@ import { formatKes, formatOrderNumber } from '@/lib/orders/format';
 import { CREATOR_COMMISSION_KES, REFERRAL_DISCOUNT_KES } from '@/lib/creators/referralEconomics';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
 import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
+import Image from 'next/image';
 import { PaymentShell } from './payment/PaymentShell';
 import {
   DetailCard,
@@ -109,25 +110,45 @@ export function CheckoutSuccess({ status }: { status: WebCheckoutStatusResponse 
       {/*
         Listed back on the confirmation because the picks are the whole
         reason this box costs more (§ Premium: choose 5, discover the
-        rest). Seeing them named is the proof they actually stuck —
-        and the surprise line beside them keeps the promise honest
-        about what the rest of the box is.
+        rest). Seeing them is the proof they actually stuck — and the
+        surprise line beside them keeps the promise honest about what
+        the rest of the box is.
+
+        Shown as the pictures they were chosen from rather than as
+        names. Snack Quest does not name individual snacks anywhere a
+        customer can read it, and the picture is the better proof
+        anyway: it is exactly what was on screen at the moment of
+        picking, so recognising it takes no reading at all.
       */}
       {status.guaranteedPicks.length > 0 ? (
         <div className="mt-8 w-full rounded-2xl border border-white/10 bg-white/5 p-5 text-left">
           <p className="text-home-lime text-sm font-bold tracking-wide uppercase">
             Your {status.guaranteedPicks.length} guaranteed picks
           </p>
-          <ul className="mt-3 flex flex-col gap-1.5">
-            {status.guaranteedPicks.map((pick) => (
-              <li key={pick.name} className="flex items-baseline gap-2 text-sm text-white/85">
-                <span aria-hidden="true" className="text-home-lime">
-                  •
+          <ul className="mt-3 flex flex-wrap gap-3">
+            {status.guaranteedPicks.map((pick, index) => (
+              <li key={`${pick.origin ?? 'pick'}-${index}`} className="flex flex-col items-center gap-1">
+                <span className="relative block size-16 overflow-hidden rounded-lg bg-white/10">
+                  {pick.imageUrl ? (
+                    <Image
+                      src={pick.imageUrl}
+                      /*
+                        Empty alt, and the origin below carries the
+                        meaning. A filename or a name in the alt would
+                        put back exactly what this is avoiding.
+                      */
+                      alt=""
+                      fill
+                      sizes="64px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-xl" aria-hidden="true">
+                      🍬
+                    </span>
+                  )}
                 </span>
-                <span>
-                  {pick.name}
-                  {pick.origin ? <span className="text-white/50"> · {pick.origin}</span> : null}
-                </span>
+                {pick.origin ? <span className="text-caption text-white/50">{pick.origin}</span> : null}
               </li>
             ))}
           </ul>

@@ -47,11 +47,16 @@ export interface SelectableSnack {
  */
 const SnackCard = memo(function SnackCard({
   snack,
+  position,
+  total,
   selected,
   blocked,
   onToggle,
 }: {
   snack: SelectableSnack;
+  /** 1-based, for a label that tells the cards apart without naming them. */
+  position: number;
+  total: number;
   selected: boolean;
   blocked: boolean;
   /** Stable for the life of the picker; see `toggle`. */
@@ -64,10 +69,21 @@ const SnackCard = memo(function SnackCard({
         onClick={() => onToggle(snack.id)}
         disabled={blocked}
         aria-pressed={selected}
-        // The name lives here rather than on screen: a screen-reader
-        // user has no packet in a photo to read it off, and "Japan"
-        // four times over would be four indistinguishable buttons.
-        aria-label={snack.name}
+        /*
+         * Distinguishable without naming the snack.
+         *
+         * The name used to be the label, on the reasoning that a
+         * screen-reader user has no packet in a photo to read off. The
+         * product decision is that individual snacks are not named to
+         * customers anywhere, and an announced label is somewhere. A
+         * position plus an origin keeps the buttons tellable apart —
+         * "snack 4 of 62, Japan" — which is what the label was for.
+         */
+        aria-label={
+          snack.origin
+            ? `Snack ${position} of ${total}, ${snack.origin}`
+            : `Snack ${position} of ${total}`
+        }
         className={cn(
           'flex h-full w-full flex-col overflow-hidden rounded-lg border text-left transition',
           selected ? 'border-primary ring-primary/30 ring-2' : 'border-border hover:border-foreground/30',
@@ -309,10 +325,12 @@ export const GuaranteedPicker = memo(function GuaranteedPicker({
       {open ? (
         <div className="border-border flex flex-col gap-4 border-t p-4">
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {snacks.map((snack) => (
+            {snacks.map((snack, index) => (
               <SnackCard
                 key={snack.id}
                 snack={snack}
+                position={index + 1}
+                total={snacks.length}
                 // Primitives, so a card re-renders only when its own
                 // state changes. Passing `selectedIds` down instead
                 // would change every card's props on every tap and
