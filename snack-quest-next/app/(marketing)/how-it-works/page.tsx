@@ -148,7 +148,7 @@ export default async function HowItWorksPage() {
           <p className="text-caption text-muted-foreground">
             Curious what actually arrives?{' '}
             <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
-              Read what a mystery box actually is
+              Read what&rsquo;s actually in a box
             </Link>
             .
           </p>

@@ -60,7 +60,7 @@ export default async function BoxesPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           New here?{' '}
           <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
-            Read what a mystery box actually is
+            Read what&rsquo;s actually in a box
           </Link>{' '}
           before you pick one.
         </p>

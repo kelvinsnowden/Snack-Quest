@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   ...buildPageMetadata({
     title: "Try Snack Quest — From KES 1,500",
     description:
-      "Hand-picked mystery snacks from Japan, Korea, China & Thailand, delivered across Kenya in 24–48 hours. Try Snack Quest from KES 1,500.",
+      'Explore hand-picked snack flavours from Japan, Korea, China & Thailand, delivered across Kenya in 24–48 hours. Try Snack Quest from KES 1,500.',
     path: '/try',
   }),
   // A campaign landing page, not a page visitors should find through

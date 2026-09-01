@@ -69,7 +69,7 @@ export default async function FaqPage() {
           </Link>{' '}
           or{' '}
           <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
-            what a mystery box actually is
+            what&rsquo;s actually in a box
           </Link>
           .
         </p>

@@ -184,8 +184,8 @@ export default async function BoxDetailPage({
               src={box.imageUrl}
               alt={
                 isNoodlesOnly
-                  ? `The ${box.name} — a mystery box of noodle snacks.`
-                  : `The ${box.name} — a mystery mix of imported snacks from ${SNACK_ORIGIN_COUNTRIES.join(', ')}.`
+                  ? `The ${box.name} — a box of imported noodle snacks.`
+                  : `The ${box.name} — a hand-picked mix of imported snacks from ${SNACK_ORIGIN_COUNTRIES.join(', ')}.`
               }
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
@@ -328,7 +328,7 @@ export default async function BoxDetailPage({
             </>
           )}
           <Link href="/blog/what-is-a-mystery-snack-box" className="text-primary hover:underline">
-            What a mystery snack box actually is
+            What&rsquo;s actually in a Snack Quest box
           </Link>
         </p>
       </section>

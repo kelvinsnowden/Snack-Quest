@@ -21,9 +21,9 @@ import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhat
 import { HomeBodyFallback } from '@/components/marketing/home/HomeBodyFallback';
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Snack Quest, Kenya's Mystery Snack Adventure",
+  title: "Snack Quest, Explore World Snack Flavours in Kenya",
   description:
-    'Hand-picked mystery snacks from around the world, starting with Japan, Korea, China & Thailand. Delivered across Kenya in 24–48 hours, paid by M-Pesa.',
+    'Explore hand-picked snack flavours from Japan, Korea, China & Thailand. Choose the snacks you want, discover the rest. Delivered across Kenya in 24–48 hours, paid by M-Pesa.',
   path: '/',
 });
 

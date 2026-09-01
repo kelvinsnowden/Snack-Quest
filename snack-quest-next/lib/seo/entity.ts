@@ -49,7 +49,7 @@ export const CURRENT_SOURCING_REGION = 'Asia';
  * long entity description gets truncated anyway.
  */
 export const BRAND_DESCRIPTION_SHORT =
-  'Snack Quest is a Kenya-based mystery snack box company: hand-picked international snacks. First stop Asia — Japan, Korea, China & Thailand.';
+  'Snack Quest is a Kenya-based snack discovery company: explore hand-picked international flavours. First stop Asia — Japan, Korea, China & Thailand.';
 
 /**
  * The full entity description — for Organization JSON-LD and the
@@ -58,4 +58,4 @@ export const BRAND_DESCRIPTION_SHORT =
  * is where the brand has started rather than where it ends.
  */
 export const BRAND_DESCRIPTION_LONG =
-  'Snack Quest is a Kenya-based mystery snack box company bringing international snacks to Kenya. Every box is a hand-picked, personally tasted mix of imported snacks — a curated surprise, not a single-country selection. The first stop is Asia: the range currently covers Japan, Korea, China and Thailand, and grows from there. Customers order and pay by M-Pesa directly on the website, no app needed, and boxes are delivered nationwide: to the door in Nairobi and the surrounding towns, or to a Fargo Courier pickup point anywhere else in Kenya, usually within 24–48 hours.';
+  'Snack Quest is a Kenya-based snack discovery company bringing international flavours to Kenya. Every box is a hand-picked, personally tasted mix of imported snacks, and customers choose the snacks they most want before the rest is curated for them. The first stop is Asia: the range currently covers Japan, Korea, China and Thailand, and grows from there. Customers order and pay by M-Pesa directly on the website, no app needed, and boxes are delivered nationwide: to the door in Nairobi and the surrounding towns, or to a Fargo Courier pickup point anywhere else in Kenya, usually within 24–48 hours.';

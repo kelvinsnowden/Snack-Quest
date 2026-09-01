@@ -70,7 +70,7 @@ const displayFont = Bagel_Fat_One({
 // and says more about where the brand is going. The international
 // framing does its real work in the description and on the page —
 // this line's job is to match what someone types.
-const TITLE_DEFAULT = `${BRAND_NAME} — Mystery snack boxes from Japan, Korea & beyond`;
+const TITLE_DEFAULT = `${BRAND_NAME} — Explore snack flavours from Japan, Korea & beyond`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
