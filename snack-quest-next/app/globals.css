@@ -516,3 +516,17 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * The `hidden` attribute must beat a display utility.
+ *
+ * A UA stylesheet's `[hidden] { display: none }` loses to any class
+ * setting `display`, so `class="flex" hidden` renders anyway. The
+ * checkout gates its stages on the attribute — chosen over a utility
+ * class precisely because it also leaves the tab order and the
+ * accessibility tree — and without this every stage would be on screen
+ * at once.
+ */
+[hidden] {
+  display: none !important;
+}

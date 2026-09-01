@@ -31,6 +31,8 @@ const snacks: SelectableSnack[] = Array.from({ length: SNACK_COUNT }, (_, i) => 
 
 /** Counts how many times each card's image is constructed, which is one per card render. */
 let cardRenders = 0;
+/** jsdom has no scrollIntoView; this records that the component asked for one. */
+let scrolledIntoView = false;
 
 vi.mock('next/image', () => ({
   default: (props: { alt: string }) => {
@@ -44,6 +46,10 @@ vi.mock('next/image', () => ({
 
 beforeEach(() => {
   cardRenders = 0;
+  scrolledIntoView = false;
+  Element.prototype.scrollIntoView = function scrollIntoViewStub() {
+    scrolledIntoView = true;
+  };
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
     json: async () => ({ snacks }),
@@ -112,6 +118,9 @@ describe('tapping a snack', () => {
     for (let i = 0; i < 5; i += 1) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(`Snack ${i + 1} of 62`) }));
     }
+    // The grid closes itself on the fifth pick, so reopen to reach a
+    // sixth card at all.
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     fireEvent.click(screen.getByRole('button', { name: /Snack 6 of 62/ }));
 
     expect(screen.getByRole('button', { name: /Snack 6 of 62/ }).getAttribute('aria-pressed')).toBe('false');
@@ -133,5 +142,53 @@ describe('typing elsewhere in the form', () => {
     fireEvent.change(screen.getByLabelText('address'), { target: { value: 'Kilimani' } });
 
     expect(cardRenders).toBe(0);
+  });
+});
+
+describe('finishing the picks', () => {
+  /*
+   * Choosing is done at that point, and leaving 62 cards open under a
+   * customer who has finished pushes the rest of the checkout a screen
+   * further down for nothing.
+   */
+  it('closes the grid when the last pick lands', async () => {
+    await openGrid();
+
+    for (let i = 0; i < 4; i += 1) {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`Snack ${i + 1} of 62`) }));
+      // Still open: there is another pick to make.
+      expect(screen.queryByRole('button', { name: /Snack 1 of 62/ })).not.toBeNull();
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /Snack 5 of 62/ }));
+
+    expect(screen.queryByRole('button', { name: /Snack 1 of 62/ })).toBeNull();
+    // And the customer is put back on the collapsed header, rather
+    // than left wherever removing sixty cards happened to leave them.
+    expect(scrolledIntoView).toBe(true);
+  });
+
+  /*
+   * The wrinkle. Reopening a finished set to swap one snack must not
+   * slam shut on the way in — and removing then adding passes back
+   * through full, so it must not slam shut after every swap either.
+   */
+  it('stays open when a finished set is reopened to change a pick', async () => {
+    await openGrid();
+
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`Snack ${i + 1} of 62`) }));
+    }
+    expect(screen.queryByRole('button', { name: /Snack 1 of 62/ })).toBeNull();
+
+    // Reopen to change something.
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    expect(screen.queryByRole('button', { name: /Snack 1 of 62/ })).not.toBeNull();
+
+    // Swap one out and another in: back to full, and still open.
+    fireEvent.click(screen.getByRole('button', { name: /Snack 1 of 62/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Snack 7 of 62/ }));
+
+    expect(screen.queryByRole('button', { name: /Snack 2 of 62/ })).not.toBeNull();
   });
 });
