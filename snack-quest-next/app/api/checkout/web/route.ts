@@ -51,6 +51,7 @@ export async function POST(request: Request): Promise<Response> {
     landmark,
     contactPhone,
     gift,
+    discountCode,
     referralCode,
     guaranteedSnackIds,
   } = (body ?? {}) as Partial<WebCheckoutRequest>;
@@ -152,6 +153,10 @@ export async function POST(request: Request): Promise<Response> {
       // `parseGiftDetails`'s job, in the service, so the WhatsApp and
       // web paths cannot disagree about what a valid gift is.
       gift: isGiftInput(gift) ? gift : undefined,
+      // Whether it is usable is decided in the service, against the
+      // live redemption count, so the answer cannot go stale between
+      // here and the freeze.
+      discountCode: typeof discountCode === 'string' ? discountCode : undefined,
       referralCode: typeof referralCode === 'string' && referralCode.trim() ? referralCode.trim() : undefined,
       // Ids only, and only strings — the service re-reads every one of
       // them from the catalogue before anything reaches an order.

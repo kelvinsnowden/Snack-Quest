@@ -21,6 +21,7 @@ export interface BusinessSettingsFormValues {
   whatsappPhoneNumberId: string;
   countyCoverage: string[];
   adminWhatsappPhone: string | null;
+  adminOrderSmsPhone: string | null;
   status: 'active' | 'suspended';
   loyaltyConfig: LoyaltyConfigFormValues;
 }
@@ -80,6 +81,11 @@ export function BusinessSettingsForm({
       );
       return;
     }
+    const trimmedSmsPhone = values.adminOrderSmsPhone?.trim() ?? '';
+    if (trimmedSmsPhone && !/^254\d{9}$/.test(trimmedSmsPhone)) {
+      setError('Admin SMS phone must be E.164 without "+", e.g. 254759209705.');
+      return;
+    }
     if (
       values.loyaltyConfig.firstOrderBonusKes < 0 ||
       values.loyaltyConfig.repeatOrderBonusKes < 0 ||
@@ -100,6 +106,7 @@ export function BusinessSettingsForm({
           whatsappPhoneNumberId: values.whatsappPhoneNumberId.trim(),
           countyCoverage,
           adminWhatsappPhone: trimmedPhone || null,
+          adminOrderSmsPhone: trimmedSmsPhone || null,
           status: values.status,
           loyaltyConfig: values.loyaltyConfig,
         }),
@@ -173,6 +180,31 @@ export function BusinessSettingsForm({
               />
               <p className="text-caption text-muted-foreground">
                 Gets a message for every new order. Leave blank to disable.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="adminOrderSmsPhone">Admin alert SMS number</Label>
+              <Input
+                id="adminOrderSmsPhone"
+                value={values.adminOrderSmsPhone ?? ''}
+                onChange={(event) =>
+                  setValues((v) => ({
+                    ...v,
+                    adminOrderSmsPhone: event.target.value,
+                  }))
+                }
+                placeholder="254759209705"
+              />
+              {/*
+                Named as the separate channel it is. The WhatsApp field
+                above depends on the WhatsApp integration being enabled;
+                this one only needs SMS, which is what is actually
+                connected today.
+              */}
+              <p className="text-caption text-muted-foreground">
+                Texted for every new order, including pay-on-delivery and orders staff record by
+                hand. Leave blank to disable.
               </p>
             </div>
           </div>

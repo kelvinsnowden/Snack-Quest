@@ -79,6 +79,17 @@ export interface WebCheckoutRequest {
   };
   referralCode?: string;
   /**
+   * A business-issued discount code (§ discount codes).
+   *
+   * Separate from `referralCode` above because they are different
+   * things: a referral names a creator and pays them commission, a
+   * discount code is issued by Snack Quest and pays nobody. One field
+   * for both would mean guessing which a customer meant, and guessing
+   * wrong on a promo code would credit commission to whichever creator
+   * happened to own a code of the same name.
+   */
+  discountCode?: string;
+  /**
    * The snacks chosen as guaranteed picks, on a box that offers them
    * (§ Premium: choose 5, discover the rest). Ids only — like every
    * other field here it says *what the customer chose*, and the server
@@ -123,6 +134,27 @@ export interface WebCheckoutQuote {
   referralCodeApplied: boolean;
   /** True when they typed something that isn't a working code — worth telling them before they pay, not after. */
   referralCodeRejected: boolean;
+  /**
+   * Whether the typed discount code is currently usable, checked
+   * without spending a redemption (§ discount codes).
+   *
+   * A preview rather than a claim: a one-use PR code must not be burned
+   * by somebody who typed it and then abandoned the form. The charge
+   * claims it, so these can disagree only if the last use goes to
+   * somebody else in between — the one honest race, and what the
+   * checkout's own error covers.
+   */
+  discountCodeApplied: boolean;
+  discountCodeRejected: boolean;
+  /** So the quote does not show a delivery fee the charge will not collect. */
+  discountCodeWaivesDelivery: boolean;
+  /**
+   * What the code alone takes off, which is not `pricing.discountKes`
+   * when a referral or creator discount is also in play. Saying "code
+   * applied, KES 3,500 off" while a referral supplied part of that
+   * would credit the code with someone else's discount.
+   */
+  discountCodeKes: number;
 }
 
 export interface WebCheckoutResponse {

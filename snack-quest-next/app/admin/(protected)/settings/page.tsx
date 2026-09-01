@@ -103,6 +103,7 @@ export default async function AdminSettingsPage() {
           whatsappPhoneNumberId: business.whatsappPhoneNumberId,
           countyCoverage: business.countyCoverage,
           adminWhatsappPhone: business.adminWhatsappPhone,
+          adminOrderSmsPhone: business.adminOrderSmsPhone ?? null,
           status: business.status,
           loyaltyConfig: business.loyaltyConfig ?? DEFAULT_LOYALTY_CONFIG,
         }}

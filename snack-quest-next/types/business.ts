@@ -25,6 +25,24 @@ export interface Business extends AuditFields {
   /** WhatsApp number (E.164) that gets a message for every new order. Optional — a tenant may not want admin alerts yet. */
   adminWhatsappPhone: string | null;
   /**
+   * Number (E.164, no leading "+") texted for every new order
+   * (§ admin order alert).
+   *
+   * Its own field rather than reusing `adminWhatsappPhone`, for two
+   * reasons that both matter. It is a different channel, so a business
+   * may want one, the other, or both; and in practice the WhatsApp one
+   * has been null with WhatsApp itself disabled, which means the alert
+   * it describes has never actually fired. SMS is the channel that
+   * works today.
+   *
+   * Null means no alert, and is the honest default for a tenant that
+   * has not chosen a number. Optional rather than required because
+   * every business document written before this existed genuinely has
+   * no such field — absent and null both mean "nobody is texted", and
+   * neither needs a backfill to read correctly.
+   */
+  adminOrderSmsPhone?: string | null;
+  /**
    * The customer-facing WhatsApp number (E.164, no leading "+") behind
    * `whatsappPhoneNumberId` above — distinct from it, since that's the
    * Cloud API's internal identifier, not something a `wa.me/` deep

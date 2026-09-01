@@ -5,6 +5,7 @@ import { ConversationService } from '@/services/conversationService';
 import { paymentService } from '@/services/paymentService';
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { conversationCheckoutSnapshotRepository } from '@/repositories/conversationCheckoutSnapshotRepository';
+import { discountCodeRepository } from '@/repositories/discountCodeRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
@@ -292,6 +293,7 @@ async function cleanCollections() {
     // the door-delivery fallback suite exists precisely to exercise the
     // case where no Tushop rate is configured.
     'deliveryZoneRules',
+    'discountCodes',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
@@ -750,6 +752,338 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
     // Nothing was written on the way to that rejection.
     const orders = await adminFirestore.collection('orders').get();
     expect(orders.size).toBe(0);
+  });
+
+  /*
+   * The business's own new-order alert (§ admin order alert).
+   *
+   * Worth an end-to-end test rather than a unit one because the thing
+   * that was broken was never the sending — it was that
+   * `adminWhatsappPhone` pointed at a channel nobody had enabled, so
+   * the alert this replaces had never once fired in production.
+   */
+  it('texts the business for a new order, and nobody at all when no number is set', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .update({ adminOrderSmsPhone: '254759209705' });
+    // This suite wipes `notificationTemplates` between tests, so the
+    // catalogue entry has to exist for the send to render at all.
+    await notificationTemplateRepository.upsert({
+      templateCode: 'admin_new_order_sms',
+      channel: 'sms',
+      subject: null,
+      heading: null,
+      bodyTemplate:
+        'Snack Quest: NEW ORDER {{orderRef}} — KES {{totalKes}}. {{summary}}. {{deliverySummary}}. {{customerName}} {{customerPhone}}.',
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: [
+        'orderRef',
+        'totalKes',
+        'summary',
+        'deliverySummary',
+        'customerName',
+        'customerPhone',
+      ],
+      version: 1,
+      isActive: true,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Fredrick Nyanjwa',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kensington Court, Valley Road',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    await service.handlePaymentResult(callback);
+
+    const messages = await adminFirestore
+      .collection('outboundMessages')
+      .where('recipientRef', '==', '254759209705')
+      .get();
+    expect(messages.size).toBe(1);
+    const alert = messages.docs[0].data();
+    expect(alert.templateCode).toBe('admin_new_order_sms');
+    expect(alert.channel).toBe('sms');
+    // The details that decide whether this needs acting on now.
+    expect(alert.renderedBody).toContain('NEW ORDER');
+    expect(alert.renderedBody).toContain(String(checkout.pricing.totalKes));
+    expect(alert.renderedBody).toContain('Kensington Court');
+  });
+
+  /*
+   * The influencer PR box (§ discount codes).
+   *
+   * A 100% code is not a bigger discount, it is a different kind of
+   * order: nothing is charged, so there is no M-Pesa prompt to send and
+   * no callback to wait for. Daraja rejects a zero-shilling push, so
+   * getting this wrong does not produce a free order — it produces a
+   * failed one.
+   */
+  it('completes a 100% discounted order with no payment prompt at all', async () => {
+    const fetchMock = mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    await discountCodeRepository.create({
+      businessId: SNACK_QUEST.businessId,
+      code: 'PRBOX',
+      kind: 'percentage',
+      value: 100,
+      // Without this the box is free and delivery is not, which is not
+      // what anybody means by a PR box.
+      waivesDelivery: true,
+      maxRedemptions: 1,
+      startsAt: null,
+      expiresAt: null,
+      isActive: true,
+      note: 'Influencer PR',
+      createdBy: 'admin-uid',
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Amina Wanjiru',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kilimani',
+      discountCode: 'prbox',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    expect(checkout.pricing.totalKes).toBe(0);
+    expect(checkout.pricing.discountKes).toBe(box.data.priceKes);
+    // The whole point: no prompt was sent, and none should have been.
+    expect(checkout.stkPushSent).toBe(false);
+    const stkCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes('stkpush'),
+    );
+    expect(stkCalls).toHaveLength(0);
+
+    // And yet it is a real order, through the same path every paid
+    // order takes.
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(1);
+    expect(orders.docs[0].data().pricing.totalKes).toBe(0);
+    const shipments = await adminFirestore.collection('shipments').get();
+    expect(shipments.size).toBe(1);
+
+    // The single use is spent, so the code cannot furnish a second box.
+    const after = await discountCodeRepository.findByCode(SNACK_QUEST.businessId, 'PRBOX');
+    expect(after?.redemptionCount).toBe(1);
+    const second = await discountCodeRepository.claimRedemption(SNACK_QUEST.businessId, 'PRBOX');
+    expect(second.claimed).toBe(false);
+  });
+
+  /*
+   * A creator — an affiliate — checking out for a free PR box.
+   *
+   * Worth its own test because it is the case the feature was asked
+   * for and because the creator path has extra machinery around it: a
+   * creator checkout carries its own automatic discount, and the
+   * self-referral guard exists to stop creators earning commission on
+   * their own orders. None of that should stand between an affiliate
+   * and a box the business meant to give them.
+   */
+  it('lets an affiliate check out for a free box, earning no commission on it', async () => {
+    const fetchMock = mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    await discountCodeRepository.create({
+      businessId: SNACK_QUEST.businessId,
+      code: 'PRBOX',
+      kind: 'percentage',
+      value: 100,
+      waivesDelivery: true,
+      maxRedemptions: 1,
+      startsAt: null,
+      expiresAt: null,
+      isActive: true,
+      note: 'Influencer PR',
+      createdBy: 'admin-uid',
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Amina Wanjiru',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kilimani',
+      discountCode: 'PRBOX',
+      // Server-verified in the real route; the creator discount stacks
+      // and is capped at the subtotal, so it cannot push the order
+      // below zero.
+      isCreatorCheckout: true,
+      creatorUid: 'creator-uid',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    expect(checkout.pricing.totalKes).toBe(0);
+    expect(checkout.stkPushSent).toBe(false);
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).includes('stkpush'))).toHaveLength(
+      0,
+    );
+
+    const orders = await adminFirestore.collection('orders').get();
+    expect(orders.size).toBe(1);
+    expect(orders.docs[0].data().pricing.totalKes).toBe(0);
+  });
+
+  /*
+   * Regression: the rescue offer zeroes the *automatic* discounts, and
+   * a discount code was being swept up with them. The influencer was
+   * told the box was free, was charged full price, and the code's
+   * single use was spent anyway.
+   */
+  it('honours a discount code on a rescue-offer box, which used to be charged in full', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    const rescueId = await packageRepository.create(
+      {
+        businessId: SNACK_QUEST.businessId,
+        name: 'Rescue Box',
+        description: 'One-time offer',
+        priceKes: 1500,
+        isActive: true,
+        isRescueOffer: true,
+        imageUrl: null,
+      },
+      'admin',
+    );
+    await discountCodeRepository.create({
+      businessId: SNACK_QUEST.businessId,
+      code: 'PRBOX',
+      kind: 'percentage',
+      value: 100,
+      waivesDelivery: true,
+      maxRedemptions: 1,
+      startsAt: null,
+      expiresAt: null,
+      isActive: true,
+      note: 'Influencer PR',
+      createdBy: 'admin-uid',
+    });
+
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: rescueId,
+      quantity: 1,
+      customerName: 'Amina Wanjiru',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kilimani',
+      discountCode: 'PRBOX',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+
+    // Before the fix this was 1500 + 250: full price, with the code's
+    // one use spent on nothing.
+    expect(checkout.pricing.discountKes).toBe(1500);
+    expect(checkout.pricing.totalKes).toBe(0);
+  });
+
+  /** An invalid code fails the checkout rather than quietly charging full price for an order the customer thought was discounted. */
+  it('refuses an exhausted code instead of silently charging full price', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    await discountCodeRepository.create({
+      businessId: SNACK_QUEST.businessId,
+      code: 'SPENT',
+      kind: 'percentage',
+      value: 50,
+      waivesDelivery: false,
+      maxRedemptions: 1,
+      startsAt: null,
+      expiresAt: null,
+      isActive: true,
+      note: null,
+      createdBy: 'admin-uid',
+    });
+    await discountCodeRepository.claimRedemption(SNACK_QUEST.businessId, 'SPENT');
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    await expect(
+      service.startWebCheckout(SNACK_QUEST.businessId, {
+        packageId: box.id,
+        quantity: 1,
+        customerName: 'Jane Doe',
+        phone: PHONE,
+        county: 'Nairobi',
+        deliveryMethod: 'door',
+        addressText: 'Kilimani',
+        discountCode: 'SPENT',
+        attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+      }),
+    ).rejects.toThrow(/isn't valid/i);
+
+    expect((await adminFirestore.collection('orders').get()).size).toBe(0);
   });
 
   it('attributes a web-originated order to the ad that drove it: Meta reports action_source "website", TikTok gets the ttclid (§ close the loop: ad-conversion attribution)', async () => {

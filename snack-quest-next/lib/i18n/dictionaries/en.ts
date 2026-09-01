@@ -58,6 +58,7 @@ export const en = {
       '/admin/referrals': 'Referrals',
       '/admin/withdrawals': 'Withdrawals',
       '/admin/reconciliation': 'Reconciliation',
+      '/admin/discount-codes': 'Discount codes',
       '/admin/faqs': 'FAQ',
       '/admin/marketing-emails': 'Marketing Emails',
       '/admin/marketing-sms': 'Marketing SMS',

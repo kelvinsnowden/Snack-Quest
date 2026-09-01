@@ -16,6 +16,15 @@ import { orderBoxSummary, type CheckoutLineItem } from '@/types/checkoutLine';
 import { formatDeliveryLabel } from '@/lib/delivery/format';
 import { normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { courierContactFor, GiftValidationError, parseGiftDetails } from '@/lib/checkout/gift';
+import { businessRepository } from '@/repositories/businessRepository';
+import { discountCodeRepository } from '@/repositories/discountCodeRepository';
+import {
+  customerMessageFor,
+  effectFor,
+  isFullyDiscounted,
+  rejectionFor,
+} from '@/lib/checkout/discountCode';
+import type { DiscountCodeEffect } from '@/types/discountCode';
 import type { GiftDetails } from '@/types/gift';
 import { normalizeEmail } from '@/lib/checkout/email';
 import { computeCheckoutTotals, redeemableCeilingKes, MAX_CHECKOUT_QUANTITY } from '@/lib/checkout/pricing';
@@ -360,6 +369,8 @@ export interface WebCheckoutInput {
   contactPhone?: string;
   /** Raw, unvalidated — `parseGiftDetails` normalizes and rejects (§ send a box as a gift). */
   gift?: { recipientName?: string; recipientPhone?: string; message?: string };
+  /** A business-issued discount code as the customer typed it (§ discount codes). Distinct from `referralCode`, which names a creator and pays commission. */
+  discountCode?: string;
   referralCode?: string;
   /**
    * Set by the route from a verified `sq_creator_session` cookie (§
@@ -428,6 +439,8 @@ export interface WebCheckoutQuoteInput {
   deliveryMethod: DeliveryMethod;
   /** Door delivery only. The quote has to show the speed the customer will actually be charged for. */
   serviceLevel?: FargoServiceLevel;
+  /** Checked and priced but never claimed (§ discount codes) — see the preview note in `quoteWebCheckout`. */
+  discountCode?: string;
   pickupStationId?: string;
   referralCode?: string;
   /** Optional — only used to look up wallet credit, and ignored when it isn't yet a valid number. */
@@ -843,6 +856,25 @@ class ConversationService {
       );
     }
 
+    /*
+     * Claimed before the snapshot is frozen, and the claim is what
+     * enforces a usage limit. A read-then-write would let two
+     * simultaneous checkouts both see a one-use PR code as unused.
+     *
+     * The claim is released again if this checkout does not end in a
+     * paid order, so an abandoned M-Pesa prompt does not permanently
+     * burn a code that was only ever meant for one person.
+     */
+    let claimedDiscount: DiscountCodeEffect | null = null;
+    const typedDiscountCode = input.discountCode?.trim();
+    if (typedDiscountCode) {
+      const claim = await discountCodeRepository.claimRedemption(businessId, typedDiscountCode);
+      if (!claim.claimed) {
+        throw new WebCheckoutValidationError(customerMessageFor(claim.reason));
+      }
+      claimedDiscount = effectFor(claim.discount, 0);
+    }
+
     const { delivery, stateBlob } = await this.buildWebDeliveryDetails(businessId, county, input);
 
     const conversationId =
@@ -1002,6 +1034,11 @@ class ConversationService {
           creatorUid: input.creatorUid,
           guaranteedPicks: pickResult.picks,
           gift,
+          discount: claimedDiscount,
+          // A code that waives delivery makes the fee zero rather than
+          // leaving it to be collected: a PR box whose contents are
+          // free but whose delivery is not is not a free box.
+          ...(claimedDiscount?.waivesDelivery ? { deliveryFeeCollection: 'waived' as const } : {}),
         },
         delivery,
       );
@@ -1085,6 +1122,66 @@ class ConversationService {
      * the intent the door prompt will be pushed against, and no money
      * has been collected against it yet.
      */
+    /*
+     * Nothing to charge (§ discount codes).
+     *
+     * A 100% code, or a fixed one that covers the box with delivery
+     * waived, leaves a total of zero. Daraja rejects a zero-shilling
+     * STK push, so a free order is not a normal order with a small
+     * amount — it is an order with no payment step at all, and the
+     * checkout has to settle it here rather than wait for a callback
+     * that will never come.
+     *
+     * Handed to the same `completeOrder` every other order goes
+     * through, for the same reason the pay-on-delivery branch below
+     * does: stock, shipment, notifications and bookkeeping cannot
+     * silently differ from a paid order when there is no second
+     * implementation for them to differ in. `complimentary` marks the
+     * one real difference, which is that no money arrived and none
+     * ever will.
+     */
+    if (isFullyDiscounted(totalKes)) {
+      await this.completeOrder(
+        businessId,
+        {
+          status: 'succeeded',
+          intentId,
+          conversationId,
+          snapshotId,
+          amountKes: 0,
+          // Never a fabricated receipt: no M-Pesa transaction happened.
+          mpesaReceiptNumber: '',
+        },
+        phoneNumber,
+        (input.attribution as ConversionAttribution | null | undefined) ?? null,
+        { complimentary: true },
+      );
+
+      await publishEvent(businessId, 'ComplimentaryOrderPlaced', 'conversation', conversationId, {
+        phoneNumber,
+        packageId: input.packageId,
+        quantity,
+        discountCode: claimedDiscount?.code ?? null,
+      });
+
+      return {
+        checkoutSessionId: conversationId,
+        payingPhone: phoneNumber,
+        stkPushSent: false,
+        pricing: {
+          packageLabel: box.name,
+          quantity,
+          unitPriceKes: box.priceKes,
+          subtotalKes,
+          discountKes,
+          walletCreditAppliedKes,
+          deliveryFeeKes: delivery.feeKes,
+          totalKes,
+          serviceLevel: delivery.method === 'door' ? (stateBlob.serviceLevel ?? 'next-day') : null,
+        },
+      };
+    }
+
     if (input.collectOnDelivery && input.initiatedBy) {
       await this.completeOrder(
         businessId,
@@ -1517,10 +1614,64 @@ class ConversationService {
     // lockstep with the same rule `freezeSnapshot` applies at charge
     // time, so this preview can never promise a discount the actual
     // payment won't honor.
+    const quoteLines: { unitPriceKes: number; quantity: number }[] = [
+      { unitPriceKes: box.priceKes, quantity },
+    ];
+    if (input.items?.length) {
+      const seen = new Set([input.packageId]);
+      for (const item of input.items) {
+        if (item.packageId === input.packageId || seen.has(item.packageId)) continue;
+        const count = Math.trunc(item.quantity);
+        if (!Number.isFinite(count) || count < 1 || count > MAX_WEB_CHECKOUT_QUANTITY) continue;
+        const extra = await packageRepository.findById(businessId, item.packageId);
+        if (!extra || !extra.isActive) continue;
+        seen.add(item.packageId);
+        quoteLines.push({ unitPriceKes: extra.priceKes, quantity: count });
+      }
+    }
+
     const creatorDiscountKes = input.isCreatorCheckout ? CREATOR_PACKAGE_DISCOUNT_KES : 0;
-    const rawDiscountKes = box.isRescueOffer
-      ? 0
-      : (referral?.discountKes ?? 0) + creatorDiscountKes;
+
+    /*
+     * Previewed, not claimed (§ discount codes).
+     *
+     * A customer should see "code applied, KES 3,500 off" before they
+     * press pay rather than discovering it at the M-Pesa prompt. But a
+     * preview must not spend a redemption: a one-use PR code would
+     * otherwise be burned by whoever typed it into the box while still
+     * filling in their address, and the person it was issued to would
+     * find it dead.
+     *
+     * So this reads the code and applies exactly the same rules the
+     * charge will, and the charge claims it. The two can only disagree
+     * if somebody else redeems the last use in between, which is the
+     * one honest race here and is what the checkout's own error says.
+     */
+    const quoteSubtotalKes = quoteLines.reduce(
+      (sum, line) => sum + line.unitPriceKes * line.quantity,
+      0,
+    );
+    let previewDiscount: DiscountCodeEffect | null = null;
+    let discountCodeRejected = false;
+    if (input.discountCode?.trim()) {
+      const found = await discountCodeRepository.findByCode(businessId, input.discountCode);
+      if (found && rejectionFor(found) === null) {
+        previewDiscount = effectFor(found, quoteSubtotalKes);
+      } else {
+        discountCodeRejected = true;
+      }
+    }
+
+    /*
+     * Same rule as the charge applies: the rescue offer suppresses the
+     * automatic discounts and never a code the business deliberately
+     * issued. If these two ever disagree, the customer is shown a
+     * price they cannot pay.
+     */
+    const rawDiscountKes =
+      (box.isRescueOffer ? 0 : (referral?.discountKes ?? 0) + creatorDiscountKes) +
+      (previewDiscount?.discountKes ?? 0);
+
     if (input.phone) {
       try {
         availableWalletCreditKes = await walletService.redeemableAmount(
@@ -1541,22 +1692,6 @@ class ConversationService {
      * something the charge will reject is a number the customer can
      * never actually pay.
      */
-    const quoteLines: { unitPriceKes: number; quantity: number }[] = [
-      { unitPriceKes: box.priceKes, quantity },
-    ];
-    if (input.items?.length) {
-      const seen = new Set([input.packageId]);
-      for (const item of input.items) {
-        if (item.packageId === input.packageId || seen.has(item.packageId)) continue;
-        const count = Math.trunc(item.quantity);
-        if (!Number.isFinite(count) || count < 1 || count > MAX_WEB_CHECKOUT_QUANTITY) continue;
-        const extra = await packageRepository.findById(businessId, item.packageId);
-        if (!extra || !extra.isActive) continue;
-        seen.add(item.packageId);
-        quoteLines.push({ unitPriceKes: extra.priceKes, quantity: count });
-      }
-    }
-
     const totals = computeCheckoutTotals({
       unitPriceKes: box.priceKes,
       quantity,
@@ -1564,6 +1699,9 @@ class ConversationService {
       discountKes: rawDiscountKes,
       walletCreditAppliedKes: availableWalletCreditKes,
       deliveryFeeKes,
+      // A code that waives delivery has to show that here too, or the
+      // quote promises a fee the charge will not collect.
+      ...(previewDiscount?.waivesDelivery ? { deliveryFeeCollection: 'waived' as const } : {}),
     });
 
     return {
@@ -1578,6 +1716,10 @@ class ConversationService {
       // whole point of showing them a quote.
       referralCodeApplied: Boolean(referral),
       referralCodeRejected: Boolean(input.referralCode) && !referral,
+      discountCodeApplied: Boolean(previewDiscount),
+      discountCodeRejected,
+      discountCodeWaivesDelivery: previewDiscount?.waivesDelivery === true,
+      discountCodeKes: previewDiscount?.discountKes ?? 0,
     };
   }
 
@@ -1789,6 +1931,8 @@ class ConversationService {
       creatorUid?: string | null;
       /** Already validated and normalized by the caller; this only freezes it (§ send a box as a gift). */
       gift?: GiftDetails | null;
+      /** Already claimed by the caller; this only prices and freezes it (§ discount codes). */
+      discount?: DiscountCodeEffect | null;
     },
     delivery: DeliveryDetails,
   ): Promise<{ snapshotId: string; totalKes: number; walletCreditAppliedKes: number; subtotalKes: number; discountKes: number }> {
@@ -1814,15 +1958,45 @@ class ConversationService {
     // `completeOrder()`, once payment for this reduced amount has
     // actually succeeded.
     const creatorDiscountKes = common.isCreatorCheckout ? CREATOR_PACKAGE_DISCOUNT_KES : 0;
-    const rawDiscountKes = common.isRescueOffer
-      ? 0
-      : (referral?.discountKes ?? 0) + creatorDiscountKes;
     // The whole order, not just its first line — a wallet ceiling
     // computed from one box of a two-box order would under-redeem the
     // customer's own credit.
     const linesSubtotalKes = common.items?.length
       ? common.items.reduce((sum, line) => sum + line.unitPriceKes * line.quantity, 0)
       : common.priceKes * quantity;
+    /*
+     * Resolved against the real subtotal, which is why it happens here
+     * and not where the code was claimed: a percentage is meaningless
+     * until there is an amount to take it off, and the claim runs
+     * before the lines are priced.
+     *
+     * Stacked with a referral rather than replacing it, and capped by
+     * `computeCheckoutTotals` at the subtotal, so the two together can
+     * make an order free but never negative.
+     */
+    const discountCodeKes = common.discount
+      ? effectFor(common.discount, linesSubtotalKes).discountKes
+      : 0;
+    /*
+     * The rescue offer suppresses the *automatic* discounts and not a
+     * discount code, and the difference is who chose it.
+     *
+     * A referral discount and the creator discount apply themselves:
+     * stacking either on a box that is already a one-time discounted
+     * price would undercut a margin nobody priced for. A discount code
+     * is the business deliberately issuing that reduction — most
+     * pointedly a 100% PR code, which exists precisely to give a box
+     * away.
+     *
+     * Suppressing it here silently charged full price for a box the
+     * influencer had been told was free, while still spending the
+     * code's single use. That is the same failure this checkout
+     * refuses an exhausted code to avoid, arrived at from the other
+     * direction.
+     */
+    const rawDiscountKes =
+      (common.isRescueOffer ? 0 : (referral?.discountKes ?? 0) + creatorDiscountKes) +
+      discountCodeKes;
     const availableWalletCreditKes = await walletService.redeemableAmount(
       businessId,
       phoneNumber,
@@ -1867,6 +2041,9 @@ class ConversationService {
       // Absent key rather than null for an ordinary order, same
       // Firestore reason as the fields above.
       ...(common.gift ? { gift: common.gift } : {}),
+      // The code itself, so a failed payment can hand its redemption
+      // back and an admin can see which code an order came from.
+      ...(common.discount ? { discountCode: common.discount.code } : {}),
       county: common.county,
       /*
        * The courier's own cost is stamped on here, beside the fee the
@@ -2668,6 +2845,32 @@ class ConversationService {
       currentStep: 'awaiting_customer_payment_confirmation',
     });
 
+    /*
+     * Hand the discount code's redemption back (§ discount codes).
+     *
+     * The claim is taken when the price is frozen, which is what makes
+     * a usage limit hold against two simultaneous checkouts. The cost
+     * of claiming that early is that a customer who never enters their
+     * PIN would otherwise have spent it — and for a code issued to one
+     * influencer, spending it once without a box leaving the warehouse
+     * makes it useless to the person it was meant for.
+     *
+     * Best-effort: a release that fails must not stop the customer
+     * being told their payment did not go through.
+     */
+    try {
+      const failedSnapshot = await conversationCheckoutSnapshotRepository.findById(
+        result.snapshotId,
+      );
+      if (failedSnapshot?.discountCode) {
+        await discountCodeRepository.releaseRedemption(businessId, failedSnapshot.discountCode);
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'DiscountCodeReleaseFailed', 'conversation', result.conversationId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
     // Released above regardless, so the customer can order again. The
     // message is what gets held back on a stale failure: recovery may
     // be settling an attempt abandoned yesterday, and the nightly
@@ -2709,9 +2912,21 @@ class ConversationService {
      * reusing this path — and only the parts that are true because
      * money arrived are held back until it does.
      */
-    options?: { dueOnDelivery?: boolean },
+    options?: { dueOnDelivery?: boolean; complimentary?: boolean },
   ): Promise<void> {
     const dueOnDelivery = options?.dueOnDelivery === true;
+    /*
+     * Nothing was charged and nothing ever will be (§ discount codes).
+     *
+     * Gated with the same switch as pay-on-delivery wherever the
+     * question is "did money arrive", because for both the answer is
+     * no. The difference is that pay-on-delivery settles later and
+     * runs those effects then; a free order never does, which is
+     * correct — there is no revenue to pay a referral commission out
+     * of and no spend to award loyalty against.
+     */
+    const complimentary = options?.complimentary === true;
+    const noMoneyArrived = dueOnDelivery || complimentary;
     const snapshot = await conversationCheckoutSnapshotRepository.findById(
       result.snapshotId,
     );
@@ -2774,7 +2989,7 @@ class ConversationService {
      * customer actually pays at the door, so it happens exactly once
      * either way.
      */
-    const milestoneAwardKes = dueOnDelivery
+    const milestoneAwardKes = noMoneyArrived
       ? 0
       : await this.applyMoneyReceivedEffects({
           businessId,
@@ -2861,7 +3076,9 @@ class ConversationService {
       // A pay-on-delivery order has not been paid, so the
       // payment-received template would be a lie. Its customer is told
       // what they owe in the plain message further down instead.
-      if (!result.manualPayment && !dueOnDelivery) {
+      // A free order has no payment to confirm; the plain message
+      // further down tells that customer what is coming instead.
+      if (!result.manualPayment && !noMoneyArrived) {
         await this.notifications.send(businessId, {
           channel: 'sms',
           templateCode: 'order_confirmed_sms',
@@ -2878,6 +3095,54 @@ class ConversationService {
       }
     } catch (error) {
       await publishEvent(businessId, 'OrderConfirmationSmsFailed', 'order', orderId, {
+        reason: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
+    /*
+     * The business's own alert (§ admin order alert).
+     *
+     * Sent for every order including the ones the customer text is
+     * deliberately withheld from — a pay-on-delivery order and a
+     * manually recorded one are exactly the orders somebody needs to
+     * know about, and the reasons for staying quiet toward the
+     * customer do not apply to the person packing the box.
+     *
+     * Best-effort and last, like every other call past order creation:
+     * an alert that fails must never unmake an order that is already
+     * paid for.
+     */
+    try {
+      const business = await businessRepository.findById(businessId);
+      const alertPhone = business?.adminOrderSmsPhone;
+      if (alertPhone) {
+        const delivery = snapshot.delivery;
+        const deliverySummary =
+          delivery.method === 'pickup'
+            ? `Pickup: ${delivery.pickupStationName ?? delivery.county}`
+            : `Door ${snapshot.gift ? '(GIFT)' : ''} ${delivery.addressText ?? delivery.county}`.trim();
+        await this.notifications.send(businessId, {
+          channel: 'sms',
+          templateCode: 'admin_new_order_sms',
+          recipientType: 'staff',
+          recipientId: orderId,
+          recipientRef: alertPhone,
+          params: {
+            orderRef,
+            totalKes: String(snapshot.totalKes),
+            summary: `${snapshot.quantity ?? 1}x ${snapshot.packageLabel}`,
+            deliverySummary,
+            // Who to call if something is wrong with the order. On a
+            // gift that is still the buyer: the recipient did not ask
+            // for any of this and must not be phoned about it.
+            customerName: snapshot.customerName,
+            customerPhone: phoneNumber,
+          },
+          dedupeKey: `admin-new-order:${orderId}`,
+        });
+      }
+    } catch (error) {
+      await publishEvent(businessId, 'AdminOrderAlertSmsFailed', 'order', orderId, {
         reason: error instanceof Error ? error.message : 'unknown error',
       });
     }

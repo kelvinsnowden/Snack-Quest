@@ -55,6 +55,7 @@ export const zhCN: Dictionary = {
       '/admin/referrals': '推荐',
       '/admin/withdrawals': '提现',
       '/admin/reconciliation': '对账',
+      '/admin/discount-codes': '优惠码',
       '/admin/faqs': '常见问题',
       '/admin/marketing-emails': '营销邮件',
       '/admin/marketing-sms': '营销短信',

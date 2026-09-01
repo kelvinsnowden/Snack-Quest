@@ -1,3 +1,4 @@
+import { discountCodeRepository } from '@/repositories/discountCodeRepository';
 import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
@@ -2335,5 +2336,141 @@ describe('settling an order paid for at the door', () => {
     const after = gateway.sent.map((message) => message.text).join('\n');
     expect(after).toMatch(/payment received/i);
     expect(after).toMatch(/NLJ7RT61SV/);
+  });
+});
+
+/**
+ * The quote confirms a discount code before the customer pays, without
+ * spending one of its uses (§ discount codes).
+ *
+ * Both halves matter. Showing the verdict only at the M-Pesa prompt
+ * means a customer commits without knowing what they will be charged;
+ * claiming it here means a one-use PR code is burned by whoever typed
+ * it and then abandoned the form, leaving it dead for the influencer
+ * it was issued to.
+ */
+describe('quoting a discount code', () => {
+  // Local, because the identically-named helper above is scoped to its
+  // own describe block.
+  async function seedDoorRate(feeKes: number) {
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: BUSINESS_ID,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes,
+    });
+  }
+
+  beforeEach(async () => {
+    await adminFirestore.recursiveDelete(adminFirestore.collection('discountCodes'));
+  });
+
+  async function seedCode(overrides: Record<string, unknown> = {}) {
+    await discountCodeRepository.create({
+      businessId: BUSINESS_ID,
+      code: 'PRBOX',
+      kind: 'percentage',
+      value: 100,
+      waivesDelivery: true,
+      maxRedemptions: 1,
+      startsAt: null,
+      expiresAt: null,
+      isActive: true,
+      note: 'Influencer PR',
+      createdBy: 'admin-uid',
+      ...overrides,
+    });
+  }
+
+  it('confirms a valid code and prices it, before anything is charged', async () => {
+    await seedDoorRate(250);
+    await seedCode();
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      discountCode: 'prbox',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.discountCodeApplied).toBe(true);
+    expect(quote?.discountCodeRejected).toBe(false);
+    expect(quote?.discountCodeWaivesDelivery).toBe(true);
+    expect(quote?.pricing.totalKes).toBe(0);
+  });
+
+  /* The whole reason this is a preview and not a claim. */
+  it('does not spend a use, so the code still works at checkout', async () => {
+    await seedDoorRate(250);
+    await seedCode();
+
+    for (let i = 0; i < 3; i += 1) {
+      await service().quoteWebCheckout(BUSINESS_ID, {
+        packageId,
+        quantity: 1,
+        deliveryMethod: 'door',
+        discountCode: 'PRBOX',
+        phone: PHONE_TYPED,
+      });
+    }
+
+    const stored = await discountCodeRepository.findByCode(BUSINESS_ID, 'PRBOX');
+    expect(stored?.redemptionCount).toBe(0);
+    expect((await discountCodeRepository.claimRedemption(BUSINESS_ID, 'PRBOX')).claimed).toBe(true);
+  });
+
+  it('says so when the code is not usable, rather than silently ignoring it', async () => {
+    await seedDoorRate(250);
+    await seedCode({ isActive: false });
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      discountCode: 'PRBOX',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.discountCodeApplied).toBe(false);
+    expect(quote?.discountCodeRejected).toBe(true);
+    expect(quote?.pricing.totalKes).toBeGreaterThan(0);
+  });
+
+  /*
+   * The code's own contribution, not the combined discount. Crediting a
+   * code with a referral's reduction would overstate what it is worth
+   * to whoever is holding it.
+   */
+  it('reports what the code alone took off', async () => {
+    await seedDoorRate(250);
+    await seedCode({ kind: 'fixed', value: 500, waivesDelivery: false });
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      discountCode: 'PRBOX',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.discountCodeKes).toBe(500);
+  });
+
+  /** No code typed is not a rejected code; the field must not light up an error on an ordinary checkout. */
+  it('reports neither applied nor rejected when no code was typed', async () => {
+    await seedDoorRate(250);
+
+    const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+      packageId,
+      quantity: 1,
+      deliveryMethod: 'door',
+      phone: PHONE_TYPED,
+    });
+
+    expect(quote?.discountCodeApplied).toBe(false);
+    expect(quote?.discountCodeRejected).toBe(false);
   });
 });
