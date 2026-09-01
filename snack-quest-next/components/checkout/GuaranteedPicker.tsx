@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Check, ChevronDown, Loader2, Lock, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,94 @@ export interface SelectableSnack {
  * The moment this reads as "build your own box" the product stops
  * being Snack Quest.
  */
-export function GuaranteedPicker({
+/**
+ * One snack in the grid, memoized (§ picker responsiveness).
+ *
+ * The grid is 62 cards, each with an image, and it lives inside a
+ * 1,400-line form holding 23 pieces of state. Without this, every
+ * keystroke in the address field and every tap on any snack re-rendered
+ * all 62 — which is what a customer felt as lag.
+ *
+ * The props are deliberately primitives. Handing each card the whole
+ * `selectedIds` array would change every card's props whenever any one
+ * of them was tapped, and `memo` would compare unequal every time.
+ */
+const SnackCard = memo(function SnackCard({
+  snack,
+  selected,
+  blocked,
+  onToggle,
+}: {
+  snack: SelectableSnack;
+  selected: boolean;
+  blocked: boolean;
+  /** Stable for the life of the picker; see `toggle`. */
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onToggle(snack.id)}
+        disabled={blocked}
+        aria-pressed={selected}
+        // The name lives here rather than on screen: a screen-reader
+        // user has no packet in a photo to read it off, and "Japan"
+        // four times over would be four indistinguishable buttons.
+        aria-label={snack.name}
+        className={cn(
+          'flex h-full w-full flex-col overflow-hidden rounded-lg border text-left transition',
+          selected ? 'border-primary ring-primary/30 ring-2' : 'border-border hover:border-foreground/30',
+          blocked && 'cursor-not-allowed opacity-40',
+        )}
+      >
+        <span className="bg-border/40 relative block aspect-square w-full overflow-hidden">
+          {snack.imageUrl ? (
+            <Image
+              src={snack.imageUrl}
+              alt=""
+              fill
+              sizes="(min-width: 640px) 140px, 30vw"
+              className="object-cover"
+            />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center text-2xl">🍬</span>
+          )}
+          {selected ? (
+            <span className="bg-primary text-primary-foreground absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded-full">
+              <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+            </span>
+          ) : (
+            <span className="text-foreground/70 absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded-full bg-white/90">
+              <Plus className="size-3" strokeWidth={3} aria-hidden="true" />
+            </span>
+          )}
+        </span>
+
+        {/* Origin only — the packet in the photo already carries the name. */}
+        {snack.origin ? (
+          <span
+            className={cn(
+              'block px-2 py-1.5 text-center text-caption font-medium',
+              selected ? 'text-primary' : 'text-muted-foreground',
+            )}
+          >
+            {snack.origin}
+          </span>
+        ) : null}
+      </button>
+    </li>
+  );
+});
+
+/**
+ * Memoized as a whole, on top of the per-card memo.
+ *
+ * The picker sits in a form holding 23 pieces of state, so without
+ * this every keystroke in the name, phone or address field re-rendered
+ * the entire grid. Typing an address should not cost 62 image cards.
+ */
+export const GuaranteedPicker = memo(function GuaranteedPicker({
   required,
   selectedIds,
   onChange,
@@ -63,18 +150,43 @@ export function GuaranteedPicker({
 
   const chosen = selectedIds.length;
   const full = chosen >= required;
-  const selected = (snacks ?? []).filter((snack) => selectedIds.includes(snack.id));
+  // O(1) per card instead of a linear scan. Small on its own, but it
+  // runs 62 times per render and the whole point here is that a tap
+  // costs as little as possible.
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selected = useMemo(
+    () => (snacks ?? []).filter((snack) => selectedSet.has(snack.id)),
+    [snacks, selectedSet],
+  );
 
-  function toggle(id: string) {
-    if (selectedIds.includes(id)) {
-      onChange(selectedIds.filter((current) => current !== id));
+  /*
+   * Read through refs so `toggle` can be stable for the life of the
+   * picker.
+   *
+   * This is the part that makes the memo above actually work. A
+   * `useCallback` depending on `selectedIds` and `full` would get a new
+   * identity on every tap, every card's `onToggle` prop would compare
+   * unequal, and all 62 would re-render again — exactly the cost the
+   * memo was added to remove.
+   */
+  const stateRef = useRef({ selectedIds, full, onChange });
+  // In an effect, not during render, for the same reason: a ref write
+  // mid-render is forbidden, and an effect has flushed before any tap.
+  useEffect(() => {
+    stateRef.current = { selectedIds, full, onChange };
+  });
+
+  const toggle = useCallback((id: string) => {
+    const { selectedIds: current, full: isFull, onChange: notify } = stateRef.current;
+    if (current.includes(id)) {
+      notify(current.filter((existing) => existing !== id));
       return;
     }
-    if (full) {
+    if (isFull) {
       return;
     }
-    onChange([...selectedIds, id]);
-  }
+    notify([...current, id]);
+  }, []);
 
   if (failed) {
     return (
@@ -183,72 +295,19 @@ export function GuaranteedPicker({
       {open ? (
         <div className="border-border flex flex-col gap-4 border-t p-4">
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {snacks.map((snack) => {
-              const isSelected = selectedIds.includes(snack.id);
-              // Full and not this one: it cannot be added until
-              // something is removed, and the card says so rather than
-              // going dead under a tap.
-              const blocked = full && !isSelected;
-
-              return (
-                <li key={snack.id}>
-                  <button
-                    type="button"
-                    onClick={() => toggle(snack.id)}
-                    disabled={blocked}
-                    aria-pressed={isSelected}
-                    // The name lives here rather than on screen: a
-                    // screen-reader user has no packet in a photo to
-                    // read it off, and "Japan" four times over would be
-                    // four indistinguishable buttons.
-                    aria-label={snack.name}
-                    className={cn(
-                      'flex h-full w-full flex-col overflow-hidden rounded-lg border text-left transition',
-                      isSelected
-                        ? 'border-primary ring-primary/30 ring-2'
-                        : 'border-border hover:border-foreground/30',
-                      blocked && 'cursor-not-allowed opacity-40',
-                    )}
-                  >
-                    <span className="bg-border/40 relative block aspect-square w-full overflow-hidden">
-                      {snack.imageUrl ? (
-                        <Image
-                          src={snack.imageUrl}
-                          alt=""
-                          fill
-                          sizes="(min-width: 640px) 140px, 30vw"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-2xl">🍬</span>
-                      )}
-                      {isSelected ? (
-                        <span className="bg-primary text-primary-foreground absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded-full">
-                          <Check className="size-3" strokeWidth={3} aria-hidden="true" />
-                        </span>
-                      ) : (
-                        <span className="text-foreground/70 absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded-full bg-white/90">
-                          <Plus className="size-3" strokeWidth={3} aria-hidden="true" />
-                        </span>
-                      )}
-                    </span>
-
-                    {/* Origin only — the packet in the photo already
-                        carries the name. */}
-                    {snack.origin ? (
-                      <span
-                        className={cn(
-                          'block px-2 py-1.5 text-center text-caption font-medium',
-                          isSelected ? 'text-primary' : 'text-muted-foreground',
-                        )}
-                      >
-                        {snack.origin}
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
+            {snacks.map((snack) => (
+              <SnackCard
+                key={snack.id}
+                snack={snack}
+                // Primitives, so a card re-renders only when its own
+                // state changes. Passing `selectedIds` down instead
+                // would change every card's props on every tap and
+                // defeat the memo entirely.
+                selected={selectedSet.has(snack.id)}
+                blocked={full && !selectedSet.has(snack.id)}
+                onToggle={toggle}
+              />
+            ))}
           </ul>
 
           <Button
@@ -263,4 +322,4 @@ export function GuaranteedPicker({
       ) : null}
     </div>
   );
-}
+});

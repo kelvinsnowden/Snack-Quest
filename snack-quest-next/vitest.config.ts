@@ -4,7 +4,7 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     // The whole suite only ever runs via `firebase emulators:exec` (see
     // package.json `test` script) — safe to default every test to
     // emulator mode so Admin SDK-backed repository tests don't each

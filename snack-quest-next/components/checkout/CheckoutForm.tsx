@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback} from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Check, Minus, Plus, Star, Store, Truck } from 'lucide-react';
@@ -225,6 +225,30 @@ export function CheckoutForm({
       deliveryMethod,
     });
   }
+  /*
+   * `markFormStarted` closes over `boxId` and `deliveryMethod`, so it
+   * is a new function every render. Held in a ref so a stable callback
+   * can still call the current one.
+   */
+  const markFormStartedRef = useRef(markFormStarted);
+  // Updated in an effect rather than during render: writing a ref
+  // mid-render is what the compiler forbids, and effects have flushed
+  // long before anyone can tap a snack.
+  useEffect(() => {
+    markFormStartedRef.current = markFormStarted;
+  });
+
+  /*
+   * Defined with an empty dependency list on purpose: `markFormStarted`
+   * only reads refs, and `setGuaranteedSnackIds` is a setter React
+   * guarantees is stable. A dependency here would change the callback's
+   * identity and re-render the grid for unrelated reasons, which is the
+   * problem this exists to solve.
+   */
+  const handlePicksChange = useCallback((ids: string[]) => {
+    markFormStartedRef.current();
+    setGuaranteedSnackIds(ids);
+  }, []);
 
   const quote = useCheckoutQuote({
     packageId: boxId,
@@ -693,10 +717,10 @@ export function CheckoutForm({
           <GuaranteedPicker
             required={requiredPicks}
             selectedIds={guaranteedSnackIds}
-            onChange={(ids) => {
-              markFormStarted();
-              setGuaranteedSnackIds(ids);
-            }}
+            // Stable, so the memo on the picker holds. An inline arrow
+            // would be a new prop on every keystroke elsewhere in this
+            // form and the grid would re-render regardless.
+            onChange={handlePicksChange}
           />
         </section>
       ) : null}
