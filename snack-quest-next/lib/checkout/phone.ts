@@ -90,3 +90,19 @@ export function formatKenyanPhoneInput(raw: string): string {
   const local = digits.slice(0, 10);
   return [local.slice(0, 4), local.slice(4, 7), local.slice(7, 10)].filter(Boolean).join(' ');
 }
+
+/**
+ * The number as a hint rather than a fact: `2547•••••678`.
+ *
+ * Shown on the payment screen so a customer waiting on a prompt can
+ * check it went to the right phone — the first thing they ask when it
+ * has not arrived. Masked because that URL is shareable, and
+ * recognising your own number needs far less than all of it.
+ */
+export function maskPhone(normalized: string): string {
+  const digits = (normalized ?? '').replace(/\D/g, '');
+  if (digits.length < 7) {
+    return '';
+  }
+  return `${digits.slice(0, 4)}•••••${digits.slice(-3)}`;
+}

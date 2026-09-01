@@ -127,7 +127,14 @@ export const GuaranteedPicker = memo(function GuaranteedPicker({
 }: {
   required: number;
   selectedIds: string[];
-  onChange: (ids: string[]) => void;
+  /**
+   * Reports the chosen snacks, not only their ids.
+   *
+   * The names are already loaded here and nowhere else, and the order
+   * summary needs them so a customer can check their five picks
+   * without scrolling back up to this grid.
+   */
+  onChange: (ids: string[], snacks: SelectableSnack[]) => void;
 }) {
   const [snacks, setSnacks] = useState<SelectableSnack[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -169,23 +176,30 @@ export const GuaranteedPicker = memo(function GuaranteedPicker({
    * unequal, and all 62 would re-render again — exactly the cost the
    * memo was added to remove.
    */
-  const stateRef = useRef({ selectedIds, full, onChange });
+  const stateRef = useRef({ selectedIds, full, onChange, snacks });
   // In an effect, not during render, for the same reason: a ref write
   // mid-render is forbidden, and an effect has flushed before any tap.
   useEffect(() => {
-    stateRef.current = { selectedIds, full, onChange };
+    stateRef.current = { selectedIds, full, onChange, snacks };
   });
 
   const toggle = useCallback((id: string) => {
-    const { selectedIds: current, full: isFull, onChange: notify } = stateRef.current;
+    const { selectedIds: current, full: isFull, onChange: notify, snacks: loaded } = stateRef.current;
+    const resolve = (ids: string[]) =>
+      ids
+        .map((wanted) => (loaded ?? []).find((snack) => snack.id === wanted))
+        .filter((snack): snack is SelectableSnack => Boolean(snack));
+
     if (current.includes(id)) {
-      notify(current.filter((existing) => existing !== id));
+      const next = current.filter((existing) => existing !== id);
+      notify(next, resolve(next));
       return;
     }
     if (isFull) {
       return;
     }
-    notify([...current, id]);
+    const next = [...current, id];
+    notify(next, resolve(next));
   }, []);
 
   if (failed) {

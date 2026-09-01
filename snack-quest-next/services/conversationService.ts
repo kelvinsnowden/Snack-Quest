@@ -67,6 +67,7 @@ import { featureFlagService } from './featureFlagService';
 import { NotificationService } from './notificationService';
 import { publishEvent } from '@/lib/events/eventBus';
 import { classifyStkFailure } from '@/lib/payments/stkFailureReason';
+import { maskPhone } from '@/lib/checkout/phone';
 import {
   bootstrapFromCatalogSelection,
   formatFinalOrderSummaryMessage,
@@ -1813,6 +1814,8 @@ class ConversationService {
       guaranteedPicks,
       paidAt,
       giftRecipientName,
+      // Enough to recognise, not enough to be worth leaking.
+      payingPhoneMasked: conversation?.phoneNumber ? maskPhone(conversation.phoneNumber) : null,
       paymentFailure,
     };
   }

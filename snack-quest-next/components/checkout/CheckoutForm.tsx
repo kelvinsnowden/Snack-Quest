@@ -138,6 +138,13 @@ export function CheckoutForm({
   const expressWindow = expressWindowStateAt();
   const expressOpen = expressWindow === 'open';
   const [guaranteedSnackIds, setGuaranteedSnackIds] = useState<string[]>([]);
+  /*
+   * The names behind those ids, so the summary can list what was
+   * chosen. Held here rather than re-fetched: the picker has the
+   * catalogue loaded already, and asking for it twice to print five
+   * names would be a second network round trip for nothing.
+   */
+  const [guaranteedSnackNames, setGuaranteedSnackNames] = useState<string[]>([]);
   const [station, setStation] = useState<SelectedStation | null>(null);
   /*
    * A gift is off unless asked for. The recipient fields only exist
@@ -247,9 +254,10 @@ export function CheckoutForm({
    * identity and re-render the grid for unrelated reasons, which is the
    * problem this exists to solve.
    */
-  const handlePicksChange = useCallback((ids: string[]) => {
+  const handlePicksChange = useCallback((ids: string[], snacks: { name: string }[]) => {
     markFormStartedRef.current();
     setGuaranteedSnackIds(ids);
+    setGuaranteedSnackNames(snacks.map((snack) => snack.name));
   }, []);
 
   const quote = useCheckoutQuote({
@@ -556,7 +564,24 @@ export function CheckoutForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-9 sm:gap-12">
+    <form onSubmit={onSubmit}>
+      {/*
+        Two columns on a large screen, one everywhere else.
+
+        The summary and the pay button sat at the very bottom of a long
+        form, so a desktop customer filled in every field with no sight
+        of what they were buying or what it cost — the two facts the
+        page exists to settle. As a sticky rail they stay in view while
+        the form is worked through.
+
+        `items-start` so the rail sticks rather than being stretched to
+        the row height, and its own max height and scroll so a long
+        order can never grow past the viewport and strand the button
+        off-screen. Below `lg` none of it applies: the summary sits
+        where it always did and the fixed bar carries the action.
+      */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-10">
+        <div className="flex flex-col gap-9 sm:gap-12">
       <section className="flex flex-col gap-4">
         <SectionHeading title="Your box" />
         <div id="checkout-box" tabIndex={-1} className="outline-none">
@@ -616,6 +641,7 @@ export function CheckoutForm({
                     // server rejects, leaving the customer with an
                     // error they cannot act on.
                     setGuaranteedSnackIds([]);
+                    setGuaranteedSnackNames([]);
                     // Changing the box here is the same intent as
                     // clicking "buy this box" elsewhere, so it reports
                     // as the same event with its own source.
@@ -1283,8 +1309,12 @@ export function CheckoutForm({
         </div>
       </section>
 
-      <div className="border-border flex flex-col gap-4 border-t pt-8">
+        </div>
+
+        <div className="mt-9 lg:sticky lg:top-24 lg:mt-0 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pb-2">
+      <div className="border-border flex flex-col gap-4 border-t pt-8 lg:border-t-0 lg:pt-0">
         <OrderSummary
+          snackNames={guaranteedSnackNames}
           quote={quote}
           stationChosen={deliveryMethod === 'pickup' ? Boolean(station) : true}
           fallbackLabel={box ? `${quantity} × ${box.name}` : 'Your order'}
@@ -1442,6 +1472,9 @@ export function CheckoutForm({
         </div>
       </div>
 
+        </div>
+      </div>
+
       {/*
         The phone's checkout bar. The total and the way to pay it were
         at the very bottom of a page roughly five screens tall — a
@@ -1514,7 +1547,9 @@ function OrderSummary({
   fallbackLabel,
   lines,
   fallbackTotalKes,
+  snackNames,
 }: {
+  snackNames: string[];
   quote: WebCheckoutQuote | null;
   /** Whether a real pickup station has been selected — distinguishes "no fee yet" from "a fee of zero". Always true for door delivery, which has no station. */
   stationChosen: boolean;
@@ -1542,6 +1577,7 @@ function OrderSummary({
             {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
           </span>
         </div>
+        <ChosenSnacks names={snackNames} />
         <p className="text-muted-foreground text-sm">
           Delivery is added once you choose where it&rsquo;s going. You&rsquo;ll see the exact
           total here before you pay.
@@ -1570,6 +1606,8 @@ function OrderSummary({
           <dd className="text-foreground text-sm tabular-nums">{formatKes(pricing.subtotalKes)}</dd>
         </div>
       )}
+
+      <ChosenSnacks names={snackNames} />
 
       {pricing.discountKes > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
@@ -1655,6 +1693,43 @@ function FieldError({ id, message }: { id: string; message: string | null }) {
  * no step 4 to reach. Names say where you are without implying an
  * order you must follow.
  */
+/**
+ * The snacks the customer chose, where they can check them.
+ *
+ * They were visible only inside the picker, so verifying five choices
+ * before paying meant scrolling back past every other section — and on
+ * the desktop sticky rail the picker is not on screen at all.
+ *
+ * Rendered in both states of the summary on purpose. The picks are a
+ * fact this browser already knows; making them wait for a server quote
+ * would hide them for the first seconds of every checkout, and for the
+ * whole of one where the quote never lands.
+ *
+ * Names only. The photographs did their work at the moment of
+ * choosing, and repeating them here would compete with the total for
+ * the same glance.
+ */
+function ChosenSnacks({ names }: { names: string[] }) {
+  if (names.length === 0) {
+    return null;
+  }
+  return (
+    <div className="border-border flex flex-col gap-1 border-b pb-3">
+      <p className="text-muted-foreground text-sm">Your snacks</p>
+      <ul className="text-foreground flex flex-col gap-0.5 text-sm">
+        {names.map((name) => (
+          <li key={name} className="flex items-baseline gap-1.5">
+            <span aria-hidden="true" className="text-primary">
+              ·
+            </span>
+            {name}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SectionHeading({ title, optional }: { title: string; optional?: boolean }) {
   return (
     <div className="flex items-baseline gap-2">

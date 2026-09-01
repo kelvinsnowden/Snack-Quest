@@ -166,6 +166,16 @@ export function PaymentWaiting({
             <DetailRow label="Order ID">
               <span className="font-mono">{reference}</span>
             </DetailRow>
+            {/*
+              The first thing a customer asks when the prompt has not
+              arrived: did it go to the right phone. The screen could
+              not answer it.
+            */}
+            {status.payingPhoneMasked ? (
+              <DetailRow label="Prompt sent to">
+                <span className="font-mono tabular-nums">{status.payingPhoneMasked}</span>
+              </DetailRow>
+            ) : null}
             <DetailRow label="Payment Method">
               <MpesaMark />
             </DetailRow>
@@ -185,6 +195,16 @@ export function PaymentWaiting({
           <span className="relative inline-flex size-2 rounded-full bg-home-lime" />
         </span>
         Confirming with M-Pesa
+      </p>
+      {/*
+        For the customer thirty seconds in. The pulsing dot says
+        something is happening; this says what, and that pressing
+        anything again is not the answer — the one instinct that
+        actually makes it worse, because a second prompt confuses which
+        one to approve.
+      */}
+      <p className="mt-1 text-sm text-white/50">
+        This can take up to a minute. There&rsquo;s nothing to press.
       </p>
       {/*
         Answers the two questions a waiting customer actually has, in

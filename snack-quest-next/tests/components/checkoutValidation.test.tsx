@@ -281,3 +281,48 @@ describe('section headings', () => {
     expect(screen.queryByText(/^Step \d/)).toBeNull();
   });
 });
+
+describe('the order summary', () => {
+  /*
+   * The picks were visible only inside the picker, so checking five
+   * choices before paying meant scrolling back past every other
+   * section — and on the desktop sticky rail the picker is not even on
+   * screen.
+   */
+  it('lists the chosen snacks once there are some', async () => {
+    // A box that asks for picks, and a catalogue to pick from.
+    cleanup();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        snacks: [
+          { id: 's1', name: 'Pocky Chocolate', origin: 'Japan', imageUrl: null },
+          { id: 's2', name: 'Buldak Ramen', origin: 'Korea', imageUrl: null },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    render(
+      <CheckoutForm
+        boxes={[{ ...boxes[0], guaranteedPickCount: 2 }]}
+        initialBoxId="box-1"
+        initialReferralCode={null}
+        deliveryFromKes={250}
+      />,
+    );
+
+    const toggle = await screen.findByRole('button', { expanded: false });
+    fireEvent.click(toggle);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pocky Chocolate' }));
+
+    // Named in the summary, not only inside the grid.
+    expect(screen.getAllByText('Pocky Chocolate').length).toBeGreaterThan(0);
+    expect(screen.getByText('Your snacks')).toBeTruthy();
+  });
+
+  /** Nothing to verify yet means nothing to show — an empty "Your snacks" heading is noise. */
+  it('says nothing about snacks on a box that has none to pick', () => {
+    renderCheckout();
+    expect(screen.queryByText('Your snacks')).toBeNull();
+  });
+});

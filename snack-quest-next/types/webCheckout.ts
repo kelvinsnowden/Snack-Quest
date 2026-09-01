@@ -220,6 +220,17 @@ export interface WebCheckoutStatusResponse {
    * somebody who did not visit this page.
    */
   giftRecipientName: string | null;
+  /**
+   * The number the M-Pesa prompt went to, masked (§ checkout second
+   * pass).
+   *
+   * A customer waiting on a prompt that has not arrived asks one
+   * question first: did it go to the right phone. The screen could not
+   * answer it. Masked rather than whole because this URL is shareable
+   * and the answer only needs to be recognisable to the person who
+   * typed it.
+   */
+  payingPhoneMasked: string | null;
   paymentFailure: {
     resultCode: number;
     category: StkFailureCategory;
