@@ -84,7 +84,7 @@ export function PickYourBox({
             Pick your box
           </p>
           <h2 className="font-display mt-4 text-4xl leading-[1.05] font-normal text-balance uppercase md:text-6xl">
-            Choose your <span className="text-primary">mystery.</span>
+            Choose your <span className="text-primary">flavours.</span>
           </h2>
           {/*
             Was a weekly-batch scarcity line ("when this week's batch is

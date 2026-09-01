@@ -59,7 +59,7 @@ export function FinalCta({ packageId }: { packageId?: string } = {}) {
           </div>
 
           <p className="text-small mt-8 tracking-[0.3em] text-white/60 uppercase">
-            Mystery · Curiosity · Adventure · Delivered
+            Explore · Taste · Discover · Delivered
           </p>
         </Reveal>
       </div>

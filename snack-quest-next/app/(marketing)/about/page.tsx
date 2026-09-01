@@ -94,7 +94,7 @@ export default async function AboutPage() {
           eyebrow="About Snack Quest"
           eyebrowIcon={Compass}
           title="A Kenya-based"
-          accent="mystery snack company."
+          accent="snack discovery company."
           subtitle={BRAND_DESCRIPTION_LONG}
         />
       </div>

@@ -66,10 +66,10 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
 
         <Reveal delayMs={120}>
           <h1 className="font-display mt-6 text-[clamp(2.75rem,8vw,5.5rem)] leading-[0.9] font-normal tracking-tight text-balance uppercase">
-            <span className="text-foreground">Kenya&apos;s </span>
-            <span className="text-secondary">mystery</span>
-            <span className="text-foreground"> snack </span>
-            <span className="text-primary">adventure.</span>
+            <span className="text-foreground">Explore the </span>
+            <span className="text-secondary">flavours</span>
+            <span className="text-foreground"> of the </span>
+            <span className="text-primary">world.</span>
           </h1>
         </Reveal>
 
@@ -86,10 +86,9 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
             would promise a range the box doesn't contain.
           */}
           <p className="text-subtitle text-foreground/75 mx-auto mt-6 max-w-xl">
-            Hand-picked mystery snacks from around the world. First stop: Asia.{' '}
+            Hand-picked snacks from around the world. First stop: Asia.{' '}
             <span className="text-foreground font-semibold">
-              You&apos;re about to take the first step into a very delicious
-              adventure.
+              Pick the flavours you want, and discover the ones you haven&apos;t met yet.
             </span>
           </p>
         </Reveal>

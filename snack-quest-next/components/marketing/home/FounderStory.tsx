@@ -57,7 +57,7 @@ export function FounderStory({ founderImageUrl }: { founderImageUrl: string | nu
                 {founderImageUrl ? (
                   <Image
                     src={founderImageUrl}
-                    alt="Kelvin, founder of Snack Quest, holding a mystery box."
+                    alt="Kelvin, founder of Snack Quest, holding a snack box."
                     fill
                     sizes="(min-width: 768px) 400px, 200px"
                     className="object-cover"
