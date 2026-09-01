@@ -143,6 +143,15 @@ export function PaymentWaiting({
               {formatKes(status.totalKes)}
             </DetailRow>
             {status.packageLabel ? <DetailRow label="Order">{status.packageLabel}</DetailRow> : null}
+            {/*
+              The reference, while it is still useful. It was on the
+              failure screen and not this one, so a customer messaging
+              support mid-wait — the likeliest moment to need it — had
+              nothing to quote.
+            */}
+            <DetailRow label="Order ID">
+              <span className="font-mono">{reference}</span>
+            </DetailRow>
             <DetailRow label="Payment Method">
               <MpesaMark />
             </DetailRow>

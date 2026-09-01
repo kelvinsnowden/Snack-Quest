@@ -156,6 +156,8 @@ export function CheckoutForm({
   const [referralOpen, setReferralOpen] = useState(Boolean(initialReferralCode));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Focused and scrolled to on failure; see `surfaceError`.
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
   const box = useMemo(() => boxes.find((candidate) => candidate.id === boxId) ?? null, [boxes, boxId]);
   const requiredPicks = box?.guaranteedPickCount ?? 0;
@@ -296,36 +298,141 @@ export function CheckoutForm({
   const maxQuantity = Math.min(MAX_QUANTITY, box?.stockCount ?? MAX_QUANTITY);
   const outOfStock = box?.stockCount === 0;
 
-  const problems: string[] = [];
-  if (!box) problems.push('Choose a box');
-  if (customerName.trim().length < 2) problems.push('Enter your name');
-  if (!isValidKenyanPhone(phone)) problems.push('Enter a valid Kenyan mobile number');
+  /*
+   * Validation, addressed to a field rather than to a list.
+   *
+   * This was a flat `string[]` joined into one sentence under the pay
+   * button. It read as a scolding before the customer had typed
+   * anything, it was hidden entirely on mobile (the list lived in a
+   * `hidden sm:flex` block), and it never told anyone *which* field to
+   * fix — a customer four sections down had to map "Enter a valid
+   * Kenyan mobile number" back to a field they had scrolled past.
+   *
+   * Keying each problem to its input id fixes all three: the message
+   * can sit under its own field, the first one can be focused when
+   * somebody presses Pay, and the fields still add up to one `ready`.
+   */
+  type FieldProblem = { field: string; message: string };
+  const problemList: FieldProblem[] = [];
+  const flag = (field: string, message: string) => problemList.push({ field, message });
+
+  if (!box) flag('checkout-box', 'Choose a box to continue.');
+  if (customerName.trim().length < 2) flag('checkout-name', 'Enter your name.');
+  if (!isValidKenyanPhone(phone)) {
+    // Names the shape rather than saying "invalid": the customer
+    // cannot act on a verdict, only on an example.
+    flag('checkout-phone', 'Use a Kenyan mobile number, like 0712 345 678.');
+  }
   // Blank passes: the field is optional. Only something typed that
   // cannot be an address is worth stopping for, and only because the
   // customer can still fix it while they are looking at it.
-  if (!isAcceptableEmailInput(email)) problems.push('Check your email address');
+  if (!isAcceptableEmailInput(email)) flag('checkout-email', 'That email address looks incomplete.');
   if (requiredPicks > 0 && guaranteedSnackIds.length !== requiredPicks) {
-    problems.push(`Choose ${requiredPicks} snacks to continue`);
+    const remaining = requiredPicks - guaranteedSnackIds.length;
+    flag(
+      'checkout-picks',
+      remaining > 0
+        ? `Choose ${remaining} more snack${remaining === 1 ? '' : 's'}.`
+        : `Choose exactly ${requiredPicks} snacks.`,
+    );
   }
-  if (deliveryMethod === 'pickup' && !station) problems.push('Choose a pickup station');
-  if (deliveryMethod === 'door' && addressText.trim().length < 5) problems.push('Enter your delivery address');
+  if (deliveryMethod === 'pickup' && !station) {
+    flag('checkout-pickup', 'Choose where to collect your box.');
+  }
+  if (deliveryMethod === 'door' && addressText.trim().length < 5) {
+    flag('checkout-address', 'Enter the address we should deliver to.');
+  }
   /*
    * Checked here as well as on the server, for the ordinary reason: a
    * buyer can fix a typo while it is still on screen, and the server's
    * copy is what actually guarantees a gift is deliverable.
    */
-  if (isGift && giftRecipientName.trim().length === 0) problems.push('Enter who the gift is for');
+  if (isGift && giftRecipientName.trim().length === 0) {
+    flag('checkout-gift-name', 'Tell us who the gift is for.');
+  }
   if (isGift && !isValidKenyanPhone(giftRecipientPhone)) {
-    problems.push("Enter the recipient's Kenyan mobile number");
+    flag('checkout-gift-phone', "Use the recipient's Kenyan number, like 0712 345 678.");
   }
   if (isGift && giftMessage.trim().length > GIFT_MESSAGE_MAX_LENGTH) {
-    problems.push(`Gift note must be ${GIFT_MESSAGE_MAX_LENGTH} characters or fewer`);
+    flag('checkout-gift-message', `Keep the note to ${GIFT_MESSAGE_MAX_LENGTH} characters.`);
   }
-  const ready = problems.length === 0 && !outOfStock;
+
+  const problems = problemList.map((problem) => problem.message);
+  const ready = problemList.length === 0 && !outOfStock;
+
+  /*
+   * A field's message appears once the customer has left it, or once
+   * they have tried to pay — never while they are still typing their
+   * first character into it. Before this the whole list rendered from
+   * the very first paint, so an untouched checkout greeted a
+   * first-time customer with four things they had done wrong.
+   */
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const markTouched = useCallback((field: string) => {
+    setTouched((current) => (current[field] ? current : { ...current, [field]: true }));
+  }, []);
+  function errorFor(field: string): string | null {
+    if (!submitAttempted && !touched[field]) {
+      return null;
+    }
+    return problemList.find((problem) => problem.field === field)?.message ?? null;
+  }
+
+  /**
+   * Moves the customer to the first thing that needs them.
+   *
+   * The pay button used to be `disabled` until the form was valid,
+   * which meant tapping the one control they came to press did
+   * nothing at all and taught them nothing. Pressing it now always
+   * does something: either it pays, or it shows every outstanding
+   * message and takes them to the first one.
+   */
+  /**
+   * Shows a submit failure where the customer is actually looking.
+   *
+   * On a phone the pay button is the fixed bar at the bottom of the
+   * viewport, while this message renders in the page flow beside the
+   * desktop button — after a long form, well above the fold. Setting
+   * it alone meant tapping Pay could look like it had done nothing,
+   * and the natural next move is to tap again, on a payment form.
+   */
+  function surfaceError(message: string) {
+    setError(message);
+    window.setTimeout(() => {
+      errorRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      errorRef.current?.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  function focusFirstProblem() {
+    const first = problemList[0];
+    if (!first) {
+      return;
+    }
+    const element = document.getElementById(first.field);
+    if (!element) {
+      return;
+    }
+    /*
+     * Optional-called on purpose. Scrolling is a courtesy; focusing is
+     * the part that matters. Where `scrollIntoView` is unavailable an
+     * unguarded call throws straight out of the submit handler, and
+     * the customer presses Pay and gets nothing — the exact failure
+     * this function exists to prevent.
+     */
+    element.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    // Focus after the scroll is under way; focusing first makes the
+    // browser jump instantly and undoes the smooth scroll.
+    window.setTimeout(() => element.focus({ preventScroll: true }), 250);
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!ready || !box) {
+      // Reveals every message at once, not just the touched ones.
+      setSubmitAttempted(true);
+      focusFirstProblem();
       return;
     }
     setSubmitting(true);
@@ -402,7 +509,7 @@ export function CheckoutForm({
         | null;
 
       if (!response.ok) {
-        setError(
+        surfaceError(
           payload && 'error' in payload
             ? payload.error
             : 'Something went wrong on our end — no payment was taken. Please try again in a moment.',
@@ -410,7 +517,7 @@ export function CheckoutForm({
         return;
       }
       if (!payload) {
-        setError('Something went wrong on our end — no payment was taken. Please try again in a moment.');
+        surfaceError('Something went wrong on our end — no payment was taken. Please try again in a moment.');
         return;
       }
 
@@ -420,7 +527,7 @@ export function CheckoutForm({
       router.push(`/checkout/${(payload as WebCheckoutResponse).checkoutSessionId}`);
     } catch {
       // Genuinely never reached us — fetch itself rejected.
-      setError("We couldn't reach Snack Quest. No payment was taken. Check your connection and try again.");
+      surfaceError("We couldn't reach Snack Quest. No payment was taken. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -438,6 +545,9 @@ export function CheckoutForm({
     <form onSubmit={onSubmit} className="flex flex-col gap-9 sm:gap-12">
       <section className="flex flex-col gap-4">
         <SectionHeading step={1} title="Your box" />
+        <div id="checkout-box" tabIndex={-1} className="outline-none">
+          <FieldError id="checkout-box" message={errorFor('checkout-box')} />
+        </div>
         {/*
           The delivery floor, stated before the box is even chosen
           (§ show delivery before the last step).
@@ -714,6 +824,15 @@ export function CheckoutForm({
               ? `Your box has ${box.snackCountLabel}. Pick ${requiredPicks} of them yourself — we choose the rest as your surprise.`
               : `Pick any ${requiredPicks} snacks from the current selection. These are guaranteed to be in your box — we'll fill the rest with surprises.`}
           </p>
+          {/*
+            An anchor `focusFirstProblem` can land on. The picker's own
+            controls are a disclosure and 62 cards; sending the
+            customer to the section is more useful than to any one of
+            them.
+          */}
+          <div id="checkout-picks" tabIndex={-1} className="outline-none">
+            <FieldError id="checkout-picks" message={errorFor('checkout-picks')} />
+          </div>
           <GuaranteedPicker
             required={requiredPicks}
             selectedIds={guaranteedSnackIds}
@@ -739,8 +858,12 @@ export function CheckoutForm({
               }}
               autoComplete="name"
               placeholder="Wanjiru Kamau"
+              onBlur={() => markTouched('checkout-name')}
+              aria-invalid={Boolean(errorFor('checkout-name'))}
+              aria-describedby={errorFor('checkout-name') ? 'checkout-name-error' : undefined}
               required
             />
+            <FieldError id="checkout-name" message={errorFor('checkout-name')} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="checkout-phone">M-Pesa number</Label>
@@ -754,9 +877,12 @@ export function CheckoutForm({
               inputMode="tel"
               autoComplete="tel"
               placeholder="0712 345 678"
-              aria-invalid={phone.length > 0 && !isValidKenyanPhone(phone)}
+              onBlur={() => markTouched('checkout-phone')}
+              aria-invalid={Boolean(errorFor('checkout-phone'))}
+              aria-describedby={errorFor('checkout-phone') ? 'checkout-phone-error' : undefined}
               required
             />
+            <FieldError id="checkout-phone" message={errorFor('checkout-phone')} />
             <p className="text-muted-foreground text-sm">The payment prompt comes to this number.</p>
           </div>
           {/*
@@ -781,8 +907,11 @@ export function CheckoutForm({
               inputMode="email"
               autoComplete="email"
               placeholder="you@example.com"
-              aria-invalid={!isAcceptableEmailInput(email)}
+              onBlur={() => markTouched('checkout-email')}
+              aria-invalid={Boolean(errorFor('checkout-email'))}
+              aria-describedby={errorFor('checkout-email') ? 'checkout-email-error' : undefined}
             />
+            <FieldError id="checkout-email" message={errorFor('checkout-email')} />
             <p className="text-muted-foreground text-sm">
               For your receipt. We&apos;ll text your order updates to the number above either way.
             </p>
@@ -818,6 +947,10 @@ export function CheckoutForm({
         </div>
 
         {deliveryMethod === 'pickup' ? (
+          <>
+          <div id="checkout-pickup" tabIndex={-1} className="outline-none">
+            <FieldError id="checkout-pickup" message={errorFor('checkout-pickup')} />
+          </div>
           <PickupStationPicker
             selected={station}
             onSelect={setStation}
@@ -826,6 +959,7 @@ export function CheckoutForm({
               setDeliveryMethod('door');
             }}
           />
+          </>
         ) : (
           <div className="flex flex-col gap-4">
             <fieldset className="flex flex-col gap-2">
@@ -896,8 +1030,12 @@ export function CheckoutForm({
                 onChange={(event) => setAddressText(event.target.value)}
                 autoComplete="street-address"
                 placeholder="Kilimani, Argwings Kodhek Rd"
+                onBlur={() => markTouched('checkout-address')}
+                aria-invalid={Boolean(errorFor('checkout-address'))}
+                aria-describedby={errorFor('checkout-address') ? 'checkout-address-error' : undefined}
                 required
               />
+              <FieldError id="checkout-address" message={errorFor('checkout-address')} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
@@ -959,7 +1097,10 @@ export function CheckoutForm({
                     onChange={(event) => setGiftRecipientName(event.target.value)}
                     placeholder="Amina Wanjiru"
                     autoComplete="off"
+                    onBlur={() => markTouched('checkout-gift-name')}
+                    aria-invalid={Boolean(errorFor('checkout-gift-name'))}
                   />
+                  <FieldError id="checkout-gift-name" message={errorFor('checkout-gift-name')} />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="checkout-gift-phone">Their phone number</Label>
@@ -970,7 +1111,10 @@ export function CheckoutForm({
                     placeholder="07XX XXX XXX"
                     inputMode="tel"
                     autoComplete="off"
+                    onBlur={() => markTouched('checkout-gift-phone')}
+                    aria-invalid={Boolean(errorFor('checkout-gift-phone'))}
                   />
+                  <FieldError id="checkout-gift-phone" message={errorFor('checkout-gift-phone')} />
                   {/*
                     Says what the number is for, because handing over
                     someone else's number deserves a reason. It goes to
@@ -1158,7 +1302,14 @@ export function CheckoutForm({
             : 'You’ll be prompted for exactly this amount on M-Pesa.'}
         </p>
         {error ? (
-          <p className="text-danger text-sm" role="alert">
+          <p
+            ref={errorRef}
+            // `tabIndex={-1}` so it can be focused programmatically
+            // without becoming a tab stop for everyone else.
+            tabIndex={-1}
+            className="border-danger/30 bg-danger/5 text-danger rounded-lg border p-3 text-sm"
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
@@ -1169,13 +1320,34 @@ export function CheckoutForm({
           below carries the real call to action, so this is hidden
           there rather than duplicated into two live buttons.
         */}
-        <div className="hidden sm:flex sm:flex-col sm:gap-4">
-          <Button type="submit" size="lg" loading={submitting} disabled={!ready}>
+        <div className="hidden sm:flex sm:flex-col sm:gap-3">
+          {/*
+            Not disabled. A disabled button is silent under a tap, and
+            silence is the one thing a payment CTA must never be: the
+            press now either pays or shows the customer exactly what is
+            missing and takes them to it.
+          */}
+          <Button type="submit" size="lg" loading={submitting}>
             {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
           </Button>
-          {!ready && problems.length > 0 ? (
-            <p className="text-muted-foreground text-sm">Still needed: {problems.join(' · ')}</p>
+          {submitAttempted && problems.length > 0 ? (
+            <p className="text-muted-foreground text-sm">
+              {problems.length === 1
+                ? 'One thing left: '
+                : `${problems.length} things left: `}
+              {problems.join(' · ')}
+            </p>
           ) : null}
+          {/*
+            What happens after the money leaves, said before it does.
+            The PIN line is the one piece of reassurance here that is
+            both true and specific — the prompt is Safaricom's, and no
+            page on this site ever asks for a PIN.
+          */}
+          <p className="text-muted-foreground text-sm">
+            You&rsquo;ll enter your PIN on the M-Pesa prompt, never on this page. We&rsquo;ll text
+            your order number as soon as it&rsquo;s paid, and again when your box is on its way.
+          </p>
         </div>
 
         {/*
@@ -1224,17 +1396,40 @@ export function CheckoutForm({
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-2 px-5 pt-3">
+          {/*
+            The submit failure, repeated where the tap happened.
+            Mobile presses this bar, and the message in the page flow
+            can be a screen and a half above it — so it looked like
+            nothing had happened, and the next move is to press again.
+          */}
+          {error ? (
+            <p className="text-danger text-sm" role="alert">
+              {error}
+            </p>
+          ) : null}
           <div className="flex items-baseline justify-between gap-3">
+            {/*
+              Always the price. This label used to become the first
+              validation problem, which put "Enter your name" directly
+              above a large number where it read as a caption for it —
+              and made the one place showing the total unreliable.
+            */}
             <span className="text-muted-foreground text-sm">
-              {ready ? 'Total to pay now' : (problems[0] ?? 'Your order')}
+              {quote ? 'Total to pay now' : 'Your order'}
             </span>
             <span className="text-foreground text-lg font-semibold tabular-nums">
               {quote ? formatKes(quote.pricing.totalKes) : box ? formatKes(box.priceKes * quantity) : '—'}
             </span>
           </div>
-          <Button type="submit" size="lg" loading={submitting} disabled={!ready} className="w-full">
+          <Button type="submit" size="lg" loading={submitting} className="w-full">
             {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
           </Button>
+          {submitAttempted && problems.length > 0 ? (
+            <p className="text-muted-foreground text-caption">
+              {problems.length === 1 ? 'One thing left: ' : `${problems.length} things left: `}
+              {problems[0]}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -1266,12 +1461,28 @@ function OrderSummary({
   fallbackTotalKes: number | null;
 }) {
   if (!quote) {
+    /*
+     * The moment before the first quote lands, which is also the whole
+     * of the server-rendered page. This used to be one unlabelled
+     * figure, so a checkout's first paint carried no line saying what
+     * that number was or that delivery was still to come — the two
+     * questions a customer has before anything else.
+     *
+     * Named as the box price and openly incomplete, rather than
+     * dressed up as a total it is not yet.
+     */
     return (
-      <div className="flex items-baseline justify-between gap-4">
-        <span className="text-muted-foreground text-sm">{fallbackLabel}</span>
-        <span className="text-foreground text-lg font-semibold">
-          {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
-        </span>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-4">
+          <span className="text-muted-foreground text-sm">{fallbackLabel}</span>
+          <span className="text-foreground text-lg font-semibold tabular-nums">
+            {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
+          </span>
+        </div>
+        <p className="text-muted-foreground text-sm">
+          Delivery is added once you choose where it&rsquo;s going. You&rsquo;ll see the exact
+          total here before you pay.
+        </p>
       </div>
     );
   }
@@ -1349,6 +1560,24 @@ function OrderSummary({
         </dd>
       </div>
     </dl>
+  );
+}
+
+/**
+ * The message under a field, or nothing.
+ *
+ * `role="alert"` so it is announced when it appears, and the id lines
+ * up with the input's `aria-describedby` so a screen reader reads the
+ * reason along with the field rather than as a loose announcement.
+ */
+function FieldError({ id, message }: { id: string; message: string | null }) {
+  if (!message) {
+    return null;
+  }
+  return (
+    <p id={`${id}-error`} role="alert" className="text-danger text-sm">
+      {message}
+    </p>
   );
 }
 
