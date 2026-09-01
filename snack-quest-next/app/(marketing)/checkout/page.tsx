@@ -7,6 +7,7 @@ import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepos
 import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { CheckoutForm, type CheckoutBox } from '@/components/checkout/CheckoutForm';
+import { ResumePaymentBanner } from '@/components/checkout/ResumePaymentBanner';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
 /**
@@ -117,6 +118,7 @@ export default async function CheckoutPage({
       </header>
 
       <div className="mt-7 sm:mt-10">
+        <ResumePaymentBanner />
         <CheckoutForm
           boxes={boxes}
           initialBoxId={requestedBoxId ?? null}

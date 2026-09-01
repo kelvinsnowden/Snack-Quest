@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { PickupStationPicker, type SelectedStation } from './PickupStationPicker';
 import { GuaranteedPicker } from './GuaranteedPicker';
 import { useCheckoutQuote } from './useCheckoutQuote';
-import { isValidKenyanPhone } from '@/lib/checkout/phone';
+import { formatKenyanPhoneInput, isValidKenyanPhone } from '@/lib/checkout/phone';
+import { rememberPendingCheckout } from '@/lib/checkout/resumeSession';
 import { GIFT_MESSAGE_MAX_LENGTH } from '@/types/gift';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
 import {
@@ -163,7 +164,6 @@ export function CheckoutForm({
   const requiredPicks = box?.guaranteedPickCount ?? 0;
   // The picker takes step 2 when it is shown, so everything below it
   // shifts by one rather than leaving a hole in the numbering.
-  const stepAfterPicks = requiredPicks > 0 ? 3 : 2;
 
   // Fires once, only when checkout actually loaded with the rescue
   // offer as the box in play — i.e. the visitor arrived via its own
@@ -521,10 +521,24 @@ export function CheckoutForm({
         return;
       }
 
+      /*
+       * Remembered before navigating, so a customer who closes the tab
+       * on the payment screen can be offered their way back
+       * (§ checkout second pass). Written here rather than on that
+       * screen because this is the last moment we know what they were
+       * buying and what it cost.
+       */
+      const session = (payload as WebCheckoutResponse).checkoutSessionId;
+      rememberPendingCheckout({
+        sessionId: session,
+        label: box.name,
+        totalKes: quote?.pricing.totalKes ?? box.priceKes * quantity,
+      });
+
       // The STK prompt is already on its way — the payment screen owns
       // everything from here, including telling the customer if the
       // prompt never arrived.
-      router.push(`/checkout/${(payload as WebCheckoutResponse).checkoutSessionId}`);
+      router.push(`/checkout/${session}`);
     } catch {
       // Genuinely never reached us — fetch itself rejected.
       surfaceError("We couldn't reach Snack Quest. No payment was taken. Check your connection and try again.");
@@ -544,7 +558,7 @@ export function CheckoutForm({
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-9 sm:gap-12">
       <section className="flex flex-col gap-4">
-        <SectionHeading step={1} title="Your box" />
+        <SectionHeading title="Your box" />
         <div id="checkout-box" tabIndex={-1} className="outline-none">
           <FieldError id="checkout-box" message={errorFor('checkout-box')} />
         </div>
@@ -813,7 +827,7 @@ export function CheckoutForm({
       */}
       {requiredPicks > 0 ? (
         <section className="flex flex-col gap-4">
-          <SectionHeading step={2} title={`Choose your ${requiredPicks} guaranteed picks`} />
+          <SectionHeading title={`Choose your ${requiredPicks} snacks`} />
           {/*
             Names the total, not just the five. "Choose 5" without it
             left customers assuming the picks were on top of the box's
@@ -845,7 +859,7 @@ export function CheckoutForm({
       ) : null}
 
       <section className="flex flex-col gap-4">
-        <SectionHeading step={stepAfterPicks} title="Your details" />
+        <SectionHeading title="Your details" />
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="checkout-name">Full name</Label>
@@ -872,9 +886,13 @@ export function CheckoutForm({
               value={phone}
               onChange={(event) => {
                 markFormStarted();
-                setPhone(event.target.value);
+                // Grouped as they type, so the shape is visible at the
+                // digit where a mistake was made rather than after
+                // leaving the field. Only the display changes — the
+                // number sent for payment is normalized server-side.
+                setPhone(formatKenyanPhoneInput(event.target.value));
               }}
-              inputMode="tel"
+              inputMode="numeric"
               autoComplete="tel"
               placeholder="0712 345 678"
               onBlur={() => markTouched('checkout-phone')}
@@ -883,7 +901,9 @@ export function CheckoutForm({
               required
             />
             <FieldError id="checkout-phone" message={errorFor('checkout-phone')} />
-            <p className="text-muted-foreground text-sm">The payment prompt comes to this number.</p>
+            <p className="text-muted-foreground text-sm">
+              e.g. 0712 345 678. The M-Pesa prompt comes to this number.
+            </p>
           </div>
           {/*
             Optional, and labelled as optional rather than merely
@@ -920,7 +940,7 @@ export function CheckoutForm({
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeading step={stepAfterPicks + 1} title="Delivery" />
+        <SectionHeading title="Where it's going" />
         <div className="grid gap-3 sm:grid-cols-2">
           {/*
             Both titles name their area, and that is the fix for a real
@@ -1320,6 +1340,33 @@ export function CheckoutForm({
           below carries the real call to action, so this is hidden
           there rather than duplicated into two live buttons.
         */}
+        {/*
+          The decision, in one place, immediately before the control
+          that acts on it. These three facts were each on screen
+          somewhere — the amount in the summary, the method in a
+          sentence, the number four sections up — and the customer had
+          to assemble them from memory at the moment of committing
+          money.
+        */}
+        {ready && quote ? (
+          <div className="border-border bg-surface flex flex-col gap-2 rounded-lg border p-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-muted-foreground text-sm">You&rsquo;re paying</span>
+              <span className="text-foreground text-xl font-semibold tabular-nums">
+                {formatKes(quote.pricing.totalKes)}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-muted-foreground text-sm">With</span>
+              <span className="text-foreground text-sm font-medium">M-Pesa</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-muted-foreground text-sm">Prompt goes to</span>
+              <span className="text-foreground text-sm font-medium tabular-nums">{phone.trim()}</span>
+            </div>
+          </div>
+        ) : null}
+
         <div className="hidden sm:flex sm:flex-col sm:gap-3">
           {/*
             Not disabled. A disabled button is silent under a tap, and
@@ -1328,7 +1375,11 @@ export function CheckoutForm({
             missing and takes them to it.
           */}
           <Button type="submit" size="lg" loading={submitting}>
-            {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
+            {submitting
+              ? 'Sending M-Pesa request…'
+              : ready && quote
+                ? `Pay ${formatKes(quote.pricing.totalKes)} with M-Pesa`
+                : 'Pay with M-Pesa'}
           </Button>
           {submitAttempted && problems.length > 0 ? (
             <p className="text-muted-foreground text-sm">
@@ -1344,10 +1395,18 @@ export function CheckoutForm({
             both true and specific — the prompt is Safaricom's, and no
             page on this site ever asks for a PIN.
           */}
-          <p className="text-muted-foreground text-sm">
-            You&rsquo;ll enter your PIN on the M-Pesa prompt, never on this page. We&rsquo;ll text
-            your order number as soon as it&rsquo;s paid, and again when your box is on its way.
-          </p>
+          {/*
+            What happens after the money leaves, said before it does.
+            Every line is a step this system actually performs — the
+            STK push, `order_confirmed_sms`, and `order_dispatched_sms`
+            — rather than a reassuring sequence invented for the page.
+          */}
+          <ol className="text-muted-foreground flex flex-col gap-1.5 text-sm">
+            <li>1. An M-Pesa prompt arrives on your phone. Enter your PIN there, never on this page.</li>
+            <li>2. This page confirms your payment by itself and shows your order number.</li>
+            <li>3. We text that order number to you.</li>
+            <li>4. We text you again the moment your box is on its way.</li>
+          </ol>
         </div>
 
         {/*
@@ -1422,7 +1481,11 @@ export function CheckoutForm({
             </span>
           </div>
           <Button type="submit" size="lg" loading={submitting} className="w-full">
-            {submitting ? 'Starting payment…' : 'Pay with M-Pesa'}
+            {submitting
+              ? 'Sending M-Pesa request…'
+              : ready && quote
+                ? `Pay ${formatKes(quote.pricing.totalKes)}`
+                : 'Pay with M-Pesa'}
           </Button>
           {submitAttempted && problems.length > 0 ? (
             <p className="text-muted-foreground text-caption">
@@ -1581,17 +1644,28 @@ function FieldError({ id, message }: { id: string; message: string | null }) {
   );
 }
 
-function SectionHeading({ step, title, optional }: { step: number; title: string; optional?: boolean }) {
+/**
+ * A section's name, not its number.
+ *
+ * These were numbered, and the numbers moved: a box offering picks
+ * made "Your details" step 3, a box without them made it step 2. So
+ * the count was unstable across the very comparison a customer makes
+ * when switching boxes, and it promised a progress meter the form does
+ * not have — nothing is gated, everything is on one page, and there is
+ * no step 4 to reach. Names say where you are without implying an
+ * order you must follow.
+ */
+function SectionHeading({ title, optional }: { title: string; optional?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="bg-primary text-primary-foreground flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-        {step}
-      </span>
-      <h2 className="text-foreground text-base font-semibold sm:text-[length:var(--text-card-title)]">{title}</h2>
-      {optional ? <span className="text-muted-foreground text-sm">Optional</span> : null}
+    <div className="flex items-baseline gap-2">
+      <h2 className="text-foreground text-base font-semibold sm:text-[length:var(--text-card-title)]">
+        {title}
+      </h2>
+      {optional ? <span className="text-muted-foreground text-sm">(optional)</span> : null}
     </div>
   );
 }
+
 
 function SpeedOption({
   selected,

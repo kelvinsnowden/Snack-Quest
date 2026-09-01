@@ -111,7 +111,11 @@ describe('leaving a field', () => {
     fireEvent.change(phone, { target: { value: '12345' } });
     fireEvent.blur(phone);
 
-    expect(screen.getByText(/0712 345 678/)).toBeTruthy();
+    // Matches more than once now: the helper text carries the same
+    // example, which is the point — the shape is shown before it is
+    // ever needed as a correction.
+    expect(screen.getAllByText(/0712 345 678/).length).toBeGreaterThan(0);
+    expect(document.getElementById('checkout-phone-error')?.textContent).toMatch(/0712 345 678/);
   });
 
   it('clears the message once the field is right', () => {
@@ -181,11 +185,10 @@ describe('what the customer is told before paying', () => {
    * Safaricom's and no page on this site ever asks for a PIN, which is
    * worth saying at the exact moment somebody is about to type one.
    */
-  it('says where the PIN is entered and what happens after', () => {
+  it('says where the PIN is entered', () => {
     renderCheckout();
 
     expect(screen.getByText(/never on this page/i)).toBeTruthy();
-    expect(screen.getByText(/text your order number/i)).toBeTruthy();
   });
 
   /** The first paint has no quote yet, and used to show a bare figure with nothing saying what it was. */
@@ -193,5 +196,88 @@ describe('what the customer is told before paying', () => {
     renderCheckout();
 
     expect(screen.getByText(/Delivery is added once you choose/i)).toBeTruthy();
+  });
+});
+
+describe('the payment decision', () => {
+  /*
+   * The three facts a customer needs at the moment of committing money
+   * were each on screen somewhere — amount in the summary, method in a
+   * sentence, number four sections up — and had to be assembled from
+   * memory. Absent until the form is actually payable, because a
+   * "you're paying" block on an incomplete order states a total that
+   * is not yet true.
+   */
+  it('stays hidden while the order is incomplete', () => {
+    renderCheckout();
+    expect(screen.queryByText(/You're paying/i)).toBeNull();
+  });
+
+  /** Every step named is one this system performs, not a reassuring sequence invented for the page. */
+  it('lists what happens after payment, before payment', () => {
+    renderCheckout();
+
+    expect(screen.getByText(/Enter your PIN there, never on this page/i)).toBeTruthy();
+    expect(screen.getByText(/shows your order number/i)).toBeTruthy();
+    expect(screen.getByText(/We text that order number to you/i)).toBeTruthy();
+    expect(screen.getByText(/your box is on its way/i)).toBeTruthy();
+  });
+});
+
+describe('the phone field', () => {
+  /*
+   * Grouped as it is typed, so the shape is visible at the digit where
+   * a mistake was made rather than after leaving the field. Only the
+   * display changes — what reaches Daraja is normalized server-side,
+   * because that number decides who gets charged.
+   */
+  it('groups a local number as the customer types', () => {
+    renderCheckout();
+
+    const phone = screen.getByLabelText(/m-pesa number/i) as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: '0712345678' } });
+
+    expect(phone.value).toBe('0712 345 678');
+  });
+
+  it('keeps an international number in the form the customer chose', () => {
+    renderCheckout();
+
+    const phone = screen.getByLabelText(/m-pesa number/i) as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: '+254712345678' } });
+
+    expect(phone.value).toBe('+254 712 345 678');
+  });
+
+  /** A pasted number with its own spacing still lands in one shape. */
+  it('re-groups a number pasted with other spacing', () => {
+    renderCheckout();
+
+    const phone = screen.getByLabelText(/m-pesa number/i) as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: '07 12 345 678' } });
+
+    expect(phone.value).toBe('0712 345 678');
+  });
+
+  it('shows the expected shape as helper text, not only on error', () => {
+    renderCheckout();
+    expect(screen.getByText(/e\.g\. 0712 345 678/i)).toBeTruthy();
+  });
+});
+
+describe('section headings', () => {
+  /*
+   * These were numbered, and the numbers moved: a box offering picks
+   * made "Your details" step 3, one without them made it step 2. The
+   * count was unstable across the exact comparison a customer makes
+   * when switching boxes.
+   */
+  it('names sections rather than numbering them', () => {
+    renderCheckout();
+
+    expect(screen.getByRole('heading', { name: 'Your box' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Your details' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: "Where it's going" })).toBeTruthy();
+    expect(screen.queryByText(/^Step \d/)).toBeNull();
   });
 });
