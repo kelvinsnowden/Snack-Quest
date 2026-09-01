@@ -36,6 +36,7 @@ export interface QuoteSelection {
   serviceLevel?: FargoServiceLevel;
   pickupStationId?: string;
   referralCode: string;
+  discountCode: string;
   phone: string;
 }
 
@@ -96,6 +97,7 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
           ...(current.serviceLevel ? { serviceLevel: current.serviceLevel } : {}),
           pickupStationId: current.pickupStationId,
           referralCode: current.referralCode || undefined,
+          discountCode: current.discountCode || undefined,
           phone: current.phone || undefined,
         }),
       })

@@ -22,6 +22,7 @@ import {
   customerMessageFor,
   effectFor,
   isFullyDiscounted,
+  rejectionFor,
 } from '@/lib/checkout/discountCode';
 import type { DiscountCodeEffect } from '@/types/discountCode';
 import type { GiftDetails } from '@/types/gift';
@@ -438,6 +439,8 @@ export interface WebCheckoutQuoteInput {
   deliveryMethod: DeliveryMethod;
   /** Door delivery only. The quote has to show the speed the customer will actually be charged for. */
   serviceLevel?: FargoServiceLevel;
+  /** Checked and priced but never claimed (§ discount codes) — see the preview note in `quoteWebCheckout`. */
+  discountCode?: string;
   pickupStationId?: string;
   referralCode?: string;
   /** Optional — only used to look up wallet credit, and ignored when it isn't yet a valid number. */
@@ -1611,10 +1614,64 @@ class ConversationService {
     // lockstep with the same rule `freezeSnapshot` applies at charge
     // time, so this preview can never promise a discount the actual
     // payment won't honor.
+    const quoteLines: { unitPriceKes: number; quantity: number }[] = [
+      { unitPriceKes: box.priceKes, quantity },
+    ];
+    if (input.items?.length) {
+      const seen = new Set([input.packageId]);
+      for (const item of input.items) {
+        if (item.packageId === input.packageId || seen.has(item.packageId)) continue;
+        const count = Math.trunc(item.quantity);
+        if (!Number.isFinite(count) || count < 1 || count > MAX_WEB_CHECKOUT_QUANTITY) continue;
+        const extra = await packageRepository.findById(businessId, item.packageId);
+        if (!extra || !extra.isActive) continue;
+        seen.add(item.packageId);
+        quoteLines.push({ unitPriceKes: extra.priceKes, quantity: count });
+      }
+    }
+
     const creatorDiscountKes = input.isCreatorCheckout ? CREATOR_PACKAGE_DISCOUNT_KES : 0;
-    const rawDiscountKes = box.isRescueOffer
-      ? 0
-      : (referral?.discountKes ?? 0) + creatorDiscountKes;
+
+    /*
+     * Previewed, not claimed (§ discount codes).
+     *
+     * A customer should see "code applied, KES 3,500 off" before they
+     * press pay rather than discovering it at the M-Pesa prompt. But a
+     * preview must not spend a redemption: a one-use PR code would
+     * otherwise be burned by whoever typed it into the box while still
+     * filling in their address, and the person it was issued to would
+     * find it dead.
+     *
+     * So this reads the code and applies exactly the same rules the
+     * charge will, and the charge claims it. The two can only disagree
+     * if somebody else redeems the last use in between, which is the
+     * one honest race here and is what the checkout's own error says.
+     */
+    const quoteSubtotalKes = quoteLines.reduce(
+      (sum, line) => sum + line.unitPriceKes * line.quantity,
+      0,
+    );
+    let previewDiscount: DiscountCodeEffect | null = null;
+    let discountCodeRejected = false;
+    if (input.discountCode?.trim()) {
+      const found = await discountCodeRepository.findByCode(businessId, input.discountCode);
+      if (found && rejectionFor(found) === null) {
+        previewDiscount = effectFor(found, quoteSubtotalKes);
+      } else {
+        discountCodeRejected = true;
+      }
+    }
+
+    /*
+     * Same rule as the charge applies: the rescue offer suppresses the
+     * automatic discounts and never a code the business deliberately
+     * issued. If these two ever disagree, the customer is shown a
+     * price they cannot pay.
+     */
+    const rawDiscountKes =
+      (box.isRescueOffer ? 0 : (referral?.discountKes ?? 0) + creatorDiscountKes) +
+      (previewDiscount?.discountKes ?? 0);
+
     if (input.phone) {
       try {
         availableWalletCreditKes = await walletService.redeemableAmount(
@@ -1635,22 +1692,6 @@ class ConversationService {
      * something the charge will reject is a number the customer can
      * never actually pay.
      */
-    const quoteLines: { unitPriceKes: number; quantity: number }[] = [
-      { unitPriceKes: box.priceKes, quantity },
-    ];
-    if (input.items?.length) {
-      const seen = new Set([input.packageId]);
-      for (const item of input.items) {
-        if (item.packageId === input.packageId || seen.has(item.packageId)) continue;
-        const count = Math.trunc(item.quantity);
-        if (!Number.isFinite(count) || count < 1 || count > MAX_WEB_CHECKOUT_QUANTITY) continue;
-        const extra = await packageRepository.findById(businessId, item.packageId);
-        if (!extra || !extra.isActive) continue;
-        seen.add(item.packageId);
-        quoteLines.push({ unitPriceKes: extra.priceKes, quantity: count });
-      }
-    }
-
     const totals = computeCheckoutTotals({
       unitPriceKes: box.priceKes,
       quantity,
@@ -1658,6 +1699,9 @@ class ConversationService {
       discountKes: rawDiscountKes,
       walletCreditAppliedKes: availableWalletCreditKes,
       deliveryFeeKes,
+      // A code that waives delivery has to show that here too, or the
+      // quote promises a fee the charge will not collect.
+      ...(previewDiscount?.waivesDelivery ? { deliveryFeeCollection: 'waived' as const } : {}),
     });
 
     return {
@@ -1672,6 +1716,10 @@ class ConversationService {
       // whole point of showing them a quote.
       referralCodeApplied: Boolean(referral),
       referralCodeRejected: Boolean(input.referralCode) && !referral,
+      discountCodeApplied: Boolean(previewDiscount),
+      discountCodeRejected,
+      discountCodeWaivesDelivery: previewDiscount?.waivesDelivery === true,
+      discountCodeKes: previewDiscount?.discountKes ?? 0,
     };
   }
 

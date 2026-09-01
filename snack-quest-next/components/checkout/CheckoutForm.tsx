@@ -235,6 +235,7 @@ export function CheckoutForm({
     deliveryMethod,
     pickupStationId: station?.id,
     referralCode: referralCode.trim(),
+    discountCode: discountCode.trim(),
     phone,
     serviceLevel: deliveryMethod === 'door' ? serviceLevel : undefined,
   });
@@ -1067,15 +1068,27 @@ export function CheckoutForm({
               autoCapitalize="characters"
             />
             {/*
-              Checked when the order is placed rather than as you type.
-              A code with a usage limit is claimed at that moment, so
-              validating early would either be a promise this checkout
-              cannot keep or would spend a limited code on someone still
-              filling in their address.
+              Confirmed before paying, without spending a use.
+              The quote checks the code against the same rules the
+              charge applies; the charge is what claims it. So a
+              one-use PR code is not burned by somebody who typed it
+              and then abandoned the form, and the customer still sees
+              what it is worth before pressing pay.
             */}
-            <p className="text-muted-foreground text-sm">
-              Applied to your total before you&apos;re charged.
-            </p>
+            {discountCode.trim() && quote?.discountCodeApplied ? (
+              <p className="text-success text-sm">
+                Code applied: {formatKes(quote.discountCodeKes)} off
+                {quote.discountCodeWaivesDelivery ? ', delivery free' : ''}.
+              </p>
+            ) : discountCode.trim() && quote?.discountCodeRejected ? (
+              <p className="text-warning text-sm">
+                That code isn&apos;t valid. You can still order without it.
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Applied to your total before you&apos;re charged.
+              </p>
+            )}
           </div>
         </div>
         )}

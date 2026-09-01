@@ -134,6 +134,27 @@ export interface WebCheckoutQuote {
   referralCodeApplied: boolean;
   /** True when they typed something that isn't a working code — worth telling them before they pay, not after. */
   referralCodeRejected: boolean;
+  /**
+   * Whether the typed discount code is currently usable, checked
+   * without spending a redemption (§ discount codes).
+   *
+   * A preview rather than a claim: a one-use PR code must not be burned
+   * by somebody who typed it and then abandoned the form. The charge
+   * claims it, so these can disagree only if the last use goes to
+   * somebody else in between — the one honest race, and what the
+   * checkout's own error covers.
+   */
+  discountCodeApplied: boolean;
+  discountCodeRejected: boolean;
+  /** So the quote does not show a delivery fee the charge will not collect. */
+  discountCodeWaivesDelivery: boolean;
+  /**
+   * What the code alone takes off, which is not `pricing.discountKes`
+   * when a referral or creator discount is also in play. Saying "code
+   * applied, KES 3,500 off" while a referral supplied part of that
+   * would credit the code with someone else's discount.
+   */
+  discountCodeKes: number;
 }
 
 export interface WebCheckoutResponse {
