@@ -4,6 +4,7 @@ import { ArrowRight, Globe, Hand, MapPin, PackageOpen, ShieldCheck, Sparkles, Tr
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Button } from '@/components/ui/button';
 import { MpesaBadge } from '@/components/icons/MpesaBadge';
+import { BOX_HERO_SRC } from '@/components/checkout/payment/SnackBoxHero';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
 
@@ -15,11 +16,20 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  * photograph explains it faster than any sentence, so it earns a place
  * next to the first thing anybody reads.
  *
+ * The picture is the cutout the payment screens already use, imported
+ * from there rather than copied, so the box a customer sees on the way
+ * in is the same one that greets them when they have paid. The
+ * previous asset was a photograph on its own off-white ground: a hard
+ * rectangle with a pale background baked into it, which no amount of
+ * layout can make sit on a page. A cutout has no edges to fight.
+ *
  * That makes it the LCP element on every visit, so it is priced
- * accordingly: `priority`, explicit `sizes` so a phone never fetches
- * the desktop rendition, and WebP rather than the 2.3MB PNG it arrived
- * as. The mobile LCP work this page has had is easy to undo with one
- * careless image.
+ * accordingly: `priority`, and explicit `sizes` so a phone never
+ * fetches the desktop rendition. Optimized rather than `unoptimized`
+ * as the payment screens have it — they show it at one fixed size
+ * where the optimizer earns nothing, whereas here a phone should get
+ * a ~300px rendition of a 1214px source. Alpha survives, because the
+ * optimizer emits WebP and AVIF.
  *
  * On a phone the picture is positioned rather than stacked: it sits
  * top-right, the headline is held to the column beside it, and the
@@ -86,15 +96,25 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
           allowed past the right edge: the box reads as arriving rather
           than as a product shot pinned inside a frame.
         */}
-        <div className="pointer-events-none absolute -top-2 -right-10 w-[52%] max-w-[280px] sm:-right-4 sm:w-[46%] sm:max-w-[360px] lg:pointer-events-auto lg:static lg:order-2 lg:w-full lg:max-w-none">
+        <div className="pointer-events-none absolute -top-1 -right-8 w-[56%] max-w-[290px] sm:-right-6 sm:w-[50%] sm:max-w-[400px] lg:pointer-events-auto lg:static lg:order-2 lg:w-full lg:max-w-none">
+          {/*
+            A cutout needs its own light to sit on. Without this the
+            box floats on flat page colour and reads as pasted on;
+            with it there is something behind the burst for it to
+            come out of.
+          */}
+          <div
+            aria-hidden="true"
+            className="bg-primary/20 absolute inset-x-[12%] top-[28%] h-1/3 rounded-full blur-3xl"
+          />
           <Image
-            src="/hero-box.webp"
-            alt="A Snack Quest box packed with imported snacks and instant noodles."
-            width={1200}
-            height={960}
+            src={BOX_HERO_SRC}
+            alt="A Snack Quest box with Japanese, Korean and Thai snacks bursting out of it."
+            width={1214}
+            height={1295}
             priority
-            sizes="(min-width: 1024px) 560px, 55vw"
-            className="h-auto w-full drop-shadow-2xl"
+            sizes="(min-width: 1024px) 620px, 60vw"
+            className="relative h-auto w-full"
           />
         </div>
 
@@ -112,7 +132,7 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
             column of its own.
           */}
           <Reveal delayMs={100}>
-            <h1 className="font-display mt-5 max-w-[62%] text-[clamp(2.5rem,10vw,4.5rem)] leading-[0.88] font-normal tracking-tight uppercase sm:max-w-[58%] lg:max-w-none">
+            <h1 className="font-display mt-5 max-w-[60%] text-[clamp(2.15rem,8.6vw,4.5rem)] leading-[0.88] font-normal tracking-tight uppercase sm:max-w-[58%] lg:max-w-none">
               <span className="text-foreground block">Explore the</span>
               <span className="text-secondary block">flavours</span>
               <span className="text-foreground block">of the</span>
