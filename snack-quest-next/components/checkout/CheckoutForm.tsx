@@ -1049,49 +1049,50 @@ export function CheckoutForm({
             </p>
           )}
 
-          {/*
-            A second, separate field rather than one box accepting
-            either. They are different things: a creator's code names a
-            person and pays them commission, a discount code is issued
-            by Snack Quest and pays nobody. Sharing one input would mean
-            guessing which a customer meant, and guessing wrong on a
-            promo code would quietly credit commission to whichever
-            creator happened to own a code of the same name.
-          */}
-          <div className="mt-4 flex flex-col gap-2">
-            <Label htmlFor="checkout-discount">Discount code</Label>
-            <Input
-              id="checkout-discount"
-              value={discountCode}
-              onChange={(event) => setDiscountCode(event.target.value)}
-              placeholder="PRBOX"
-              autoCapitalize="characters"
-            />
-            {/*
-              Confirmed before paying, without spending a use.
-              The quote checks the code against the same rules the
-              charge applies; the charge is what claims it. So a
-              one-use PR code is not burned by somebody who typed it
-              and then abandoned the form, and the customer still sees
-              what it is worth before pressing pay.
-            */}
-            {discountCode.trim() && quote?.discountCodeApplied ? (
-              <p className="text-success text-sm">
-                Code applied: {formatKes(quote.discountCodeKes)} off
-                {quote.discountCodeWaivesDelivery ? ', delivery free' : ''}.
-              </p>
-            ) : discountCode.trim() && quote?.discountCodeRejected ? (
-              <p className="text-warning text-sm">
-                That code isn&apos;t valid. You can still order without it.
-              </p>
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                Applied to your total before you&apos;re charged.
-              </p>
-            )}
-          </div>
         </div>
         )}
+
+        {/*
+          A second, separate field rather than one box accepting
+          either. They are different things: a creator's code names a
+          person and pays them commission, a discount code is issued
+          by Snack Quest and pays nobody. Sharing one input would mean
+          guessing which a customer meant, and guessing wrong on a
+          promo code would quietly credit commission to whichever
+          creator happened to own a code of the same name.
+        */}
+        <div className="mt-4 flex flex-col gap-2">
+          <Label htmlFor="checkout-discount">Discount code</Label>
+          <Input
+            id="checkout-discount"
+            value={discountCode}
+            onChange={(event) => setDiscountCode(event.target.value)}
+            placeholder="PRBOX"
+            autoCapitalize="characters"
+          />
+          {/*
+            Confirmed before paying, without spending a use.
+            The quote checks the code against the same rules the
+            charge applies; the charge is what claims it. So a
+            one-use PR code is not burned by somebody who typed it
+            and then abandoned the form, and the customer still sees
+            what it is worth before pressing pay.
+          */}
+          {discountCode.trim() && quote?.discountCodeApplied ? (
+            <p className="text-success text-sm">
+              Code applied: {formatKes(quote.discountCodeKes)} off
+              {quote.discountCodeWaivesDelivery ? ', delivery free' : ''}.
+            </p>
+          ) : discountCode.trim() && quote?.discountCodeRejected ? (
+            <p className="text-warning text-sm">
+              That code isn&apos;t valid. You can still order without it.
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Applied to your total before you&apos;re charged.
+            </p>
+          )}
+        </div>
       </section>
 
       <div className="border-border flex flex-col gap-4 border-t pt-8">
