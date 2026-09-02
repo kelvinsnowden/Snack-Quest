@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, Globe, Hand, MapPin, PackageOpen, ShieldCheck, Sparkles, Truck } from 'lucide-react';
+import { ArrowRight, Globe, Hand, MapPin, PackageOpen, ShieldCheck, Sparkles } from 'lucide-react';
 import { BuyNowButton } from '@/components/marketing/BuyNowButton';
 import { Button } from '@/components/ui/button';
-import { MpesaBadge } from '@/components/icons/MpesaBadge';
 import { BOX_HERO_SRC } from '@/components/checkout/payment/SnackBoxHero';
 import { Reveal } from '../design/Reveal';
 import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
@@ -36,6 +35,14 @@ import { PRIMARY_CTA_CLASS, GHOST_CTA_CLASS } from '../design/ctaStyles';
  * body copy runs full width underneath. Stacking it above the buttons
  * pushed "Start your quest" off the first screen, which is the one
  * thing a hero cannot afford.
+ *
+ * It ends at the buttons. A stats panel (8+ / 100+ / 2 hrs) and an
+ * M-Pesa reassurance strip used to sit below them; on a phone the
+ * three-column grid collapsed to a stacked list, so the hero finished
+ * with two tall cards a customer had to scroll past to reach the
+ * actual page. Nothing was lost that is said nowhere else: delivery
+ * and payment are both in the trust row above, and the express promise
+ * belongs to the checkout, which is the only place it can be honoured.
  */
 
 const TRUST = [
@@ -51,13 +58,6 @@ const PROMISES = [
   { icon: Globe, lead: 'Global', rest: 'variety' },
   { icon: Hand, lead: 'Pick your', rest: 'favourites' },
   { icon: PackageOpen, lead: 'We surprise', rest: 'you with the rest' },
-] as const;
-
-/** Stated by the business. The express figure is deliberately conservative against the 90-minute promise the checkout makes. */
-const STATS = [
-  { icon: PackageOpen, value: '8+', label: 'First-time experiences', tone: 'bg-secondary/10 text-secondary' },
-  { icon: Sparkles, value: '100+', label: 'Happy snackers', tone: 'bg-primary/10 text-primary' },
-  { icon: Truck, value: '2 hrs', label: 'Guaranteed express available', tone: 'bg-success/10 text-success' },
 ] as const;
 
 export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {}) {
@@ -201,52 +201,6 @@ export function HomeHero({ primaryPackageId }: { primaryPackageId?: string } = {
           </Reveal>
         </div>
       </div>
-
-      <Reveal delayMs={360}>
-        <ul className="border-border bg-surface relative mx-auto mt-10 grid max-w-6xl gap-4 rounded-2xl border p-5 sm:grid-cols-3">
-          {STATS.map((stat) => (
-            <li key={stat.value} className="flex items-center gap-3">
-              <span
-                className={`flex size-11 shrink-0 items-center justify-center rounded-full ${stat.tone}`}
-              >
-                <stat.icon className="size-5" aria-hidden="true" />
-              </span>
-              <span className="min-w-0">
-                <span className="text-foreground block text-lg font-bold tabular-nums">
-                  {stat.value}
-                </span>
-                <span className="text-muted-foreground block text-sm leading-tight">
-                  {stat.label}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Reveal>
-
-      {/*
-        The one payment reassurance worth making here, and it is true:
-        the PIN is entered on Safaricom's own prompt, and no page on
-        this site ever asks for one.
-      */}
-      <Reveal delayMs={400}>
-        <div className="border-secondary/20 bg-secondary/5 relative mx-auto mt-4 flex max-w-6xl items-center justify-between gap-4 rounded-2xl border p-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="bg-surface flex size-11 shrink-0 items-center justify-center rounded-full">
-              <ShieldCheck className="text-secondary size-5" aria-hidden="true" />
-            </span>
-            <span className="min-w-0">
-              <span className="text-foreground block text-sm font-semibold">
-                Pay safely with <span className="text-secondary">M-Pesa</span>
-              </span>
-              <span className="text-muted-foreground block text-sm">
-                Your PIN is never shared with us.
-              </span>
-            </span>
-          </div>
-          <MpesaBadge />
-        </div>
-      </Reveal>
     </section>
   );
 }
