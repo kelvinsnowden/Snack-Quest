@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { REFERRAL_COOKIE_NAME, resolveReferralCode } from '@/lib/creators/referralCookie';
 import { packageRepository } from '@/repositories/packageRepository';
-import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
+import { getDeliveryFloorKes } from '@/lib/delivery/deliveryFloor';
 import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { CheckoutForm, type CheckoutBox } from '@/components/checkout/CheckoutForm';
@@ -42,35 +42,31 @@ export default async function CheckoutPage({
   const cookieStore = await cookies();
   const referralCode = resolveReferralCode(refParam, cookieStore.get(REFERRAL_COOKIE_NAME)?.value);
 
-  const active = await packageRepository.listActive(businessId);
-
   /*
-   * The cheapest delivery on offer, so the box step can say what the
-   * real total starts at (§ show delivery before the last step).
+   * Together, because they have nothing to say to each other
+   * (§ checkout load time).
+   *
+   * These were two sequential `await`s, so every checkout render waited
+   * out one Firestore round trip and then a second one — on a page
+   * whose whole job is to be reached in a hurry from a "Buy now" tap.
+   * Nothing in the second read depends on the first.
+   *
+   * The boxes stay live on every render: stock is the one thing here
+   * that must never be stale, because a customer choosing a box that
+   * has just sold out only finds out when the payment is refused. The
+   * delivery floor is cached across requests instead — it is a rate
+   * card, not stock. See `lib/delivery/deliveryFloor.ts`.
    *
    * The advertised price excludes delivery, so a customer committed to
    * "KES 2,500" and then watched it become 2,750 once they picked a
    * station — the single moment 214 checkout visits produced almost no
    * completed delivery selections. Naming the floor up front turns a
    * late increase into something they already knew.
-   *
-   * Read from `deliveryZoneRules`, the same collection the charge is
-   * priced from, never from `FARGO_SEED_FEES_KES` — that constant
-   * documents itself as seed data and not the figure charged. Failing
-   * softly to null hides the line rather than risking a wrong price.
    */
-  const deliveryFromKes = await deliveryZoneRuleRepository
-    .listByBusiness(businessId)
-    .then((rules) => {
-      // `feeKes` is nullable on purpose — a zone with no rate card
-      // entered yet has no fee, and this codebase refuses to invent
-      // one. Those zones simply do not participate in the minimum.
-      const fees = rules
-        .map(({ data }) => data.feeKes)
-        .filter((fee): fee is number => typeof fee === 'number' && fee > 0);
-      return fees.length > 0 ? Math.min(...fees) : null;
-    })
-    .catch(() => null);
+  const [active, deliveryFromKes] = await Promise.all([
+    packageRepository.listActive(businessId),
+    getDeliveryFloorKes(businessId),
+  ]);
 
   // `listActive()` deliberately excludes the exit-intent rescue offer
   // (§ exit-intent rescue offer) — it must never appear in this
