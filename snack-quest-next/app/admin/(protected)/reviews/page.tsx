@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { CopyLinkButton } from '@/components/creator/CopyLinkButton';
 import { ReviewModerationCard, type ModeratableReview } from '@/components/admin/ReviewModerationCard';
+import { AddWhatsAppReviewForm } from '@/components/admin/AddWhatsAppReviewForm';
 import { ReviewRequestList } from '@/components/admin/ReviewRequestList';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { toMillis } from '@/lib/firestoreTimestamp';
@@ -111,6 +112,13 @@ export default async function AdminReviewsPage({
           </a>
         </div>
       </Card>
+
+      {/*
+        Under the link, above the queue. The link is for reviews you
+        are still waiting on; this is for the ones that already
+        arrived somewhere else.
+      */}
+      <AddWhatsAppReviewForm />
 
       <div className="border-border flex flex-wrap gap-2 border-b pb-3">
         {TABS.map((tab) => (

@@ -26,6 +26,38 @@ class ReviewRepository {
     return ref.id;
   }
 
+  /**
+   * A review a staff member entered themselves, already moderated
+   * (§ reviews that arrive on WhatsApp).
+   *
+   * Separate from `create` rather than an optional argument on it,
+   * because the two differ in every field that matters: who is
+   * recorded as the author, and whether the review arrives moderated.
+   * A public submission must never be able to reach this path and
+   * arrive pre-approved, and keeping them apart is what guarantees
+   * that structurally rather than by remembering to pass the right
+   * flag.
+   *
+   * The actor is the staff member's identity, on both the audit fields
+   * and the moderation fields: a review that appears on the site
+   * without passing through the queue still has someone's name against
+   * the decision to publish it.
+   */
+  async createModerated(input: ReviewInput, actor: string): Promise<string> {
+    const now = FieldValue.serverTimestamp();
+    const ref = await adminFirestore.collection(COLLECTION).add({
+      ...input,
+      moderatedBy: actor,
+      moderatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: actor,
+      updatedBy: actor,
+      deletedAt: null,
+    });
+    return ref.id;
+  }
+
   async findById(businessId: string, reviewId: string): Promise<Review | null> {
     const snapshot = await adminFirestore.collection(COLLECTION).doc(reviewId).get();
     if (!snapshot.exists) {
