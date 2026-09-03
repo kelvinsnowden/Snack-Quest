@@ -238,11 +238,26 @@ async function main() {
 
   await assertAvailable(db, code, target.uid);
 
-  const oldCodes = [
+  /*
+   * Codes that are genuinely going away — which is not simply "every
+   * code this creator had". A creator whose link already carries the
+   * target code and whose profile does not is being *repaired*, not
+   * renamed, and the working code survives untouched. Listing it as
+   * about to stop attributing is the opposite of true, and this
+   * warning exists to be believed: an operator who reads it and backs
+   * out has been talked out of a fix by a message that was wrong.
+   */
+  const retiredCodes = [
     ...new Set([target.referralCode, ...links.docs.map((d) => d.data().code)].filter(Boolean)),
-  ];
-  console.log(`\nAfter this, ${oldCodes.join(' and ')} stop attributing. Anything already shared`);
-  console.log('with the old code will no longer pay commission.');
+  ].filter((existing) => existing !== code);
+
+  /*
+   * Never empty by the time this runs: the only way nothing is retired
+   * is if the profile and every link already carry the target code,
+   * and that is the idempotent case which returned above.
+   */
+  console.log(`\nAfter this, ${retiredCodes.join(' and ')} stop attributing. Anything already`);
+  console.log('shared with the old code will no longer pay commission.');
 
   if (DRY_RUN) {
     console.log('\nDRY RUN — no writes made.');
