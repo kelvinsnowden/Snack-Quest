@@ -71,7 +71,25 @@ export interface Review extends AuditFields {
   /** Who approved or rejected it, and when — null while pending. */
   moderatedBy: string | null;
   moderatedAt: Date | null;
+  /**
+   * How this review reached the site (§ reviews that arrive on
+   * WhatsApp).
+   *
+   * Most arrive through the public form. Some arrive as a WhatsApp
+   * message and are entered by a staff member from a screenshot, which
+   * is a different kind of record and worth being able to tell apart:
+   * for auditing who typed it, and so "reviews we were sent" can be
+   * counted separately from "reviews people submitted" if that is ever
+   * asked.
+   *
+   * Absent on every review written before this existed, which reads as
+   * `public_form` — those all came through the form, because it was the
+   * only way in.
+   */
+  source?: ReviewSource;
 }
+
+export type ReviewSource = 'public_form' | 'admin';
 
 /** The shape the public homepage and review page render — deliberately without `contactPhone` or any moderation metadata. */
 export interface PublicReview {

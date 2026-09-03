@@ -73,6 +73,24 @@ export interface SubmitReviewInput {
   videoUrl?: string | null;
 }
 
+/**
+ * A review a staff member is entering on a customer's behalf
+ * (§ reviews that arrive on WhatsApp).
+ *
+ * No `videoUrl`: that field exists because a customer's video is too
+ * big to travel with the form and goes to Blob storage from the
+ * browser first. A screenshot pasted out of WhatsApp is a still, and
+ * adding a second upload path for a case nobody has would be surface
+ * for its own sake.
+ */
+export interface StaffReviewInput {
+  customerName: string;
+  rating: number;
+  body: string;
+  contactPhone?: string;
+  photos: { filename: string; contentType: string; data: Buffer }[];
+}
+
 export interface PublishedReviewSummary {
   reviews: PublicReview[];
   /** How many published reviews exist in total, which is not the same as how many are shown. */
@@ -151,6 +169,51 @@ export interface ReviewRequestCandidate {
   placedAtIso: string;
 }
 
+/**
+ * The checks every review has to pass, whoever is entering it
+ * (§ reviews that arrive on WhatsApp).
+ *
+ * Shared rather than duplicated, because a staff member typing up a
+ * WhatsApp message can get a rating wrong or paste something enormous
+ * exactly as a customer can, and a second copy of these rules would
+ * drift from the first. What differs between the two paths is who is
+ * trusted and what happens afterwards — not what counts as a valid
+ * review.
+ */
+function validateReviewFields(input: {
+  customerName: string;
+  body: string;
+  rating: number;
+  photos: unknown[];
+}): { customerName: string; body: string; rating: number } {
+  const customerName = input.customerName.trim();
+  if (customerName.length < 2) {
+    throw new ReviewValidationError('Please tell us your name.');
+  }
+  if (customerName.length > MAX_REVIEW_NAME_LENGTH) {
+    throw new ReviewValidationError('That name is too long.');
+  }
+
+  const body = input.body.trim();
+  if (body.length < 10) {
+    throw new ReviewValidationError('Tell us a little more — at least a sentence.');
+  }
+  if (body.length > MAX_REVIEW_BODY_LENGTH) {
+    throw new ReviewValidationError('That review is a bit long — please shorten it.');
+  }
+
+  const rating = Math.trunc(input.rating);
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    throw new ReviewValidationError('Please pick a rating from 1 to 5 stars.');
+  }
+
+  if (input.photos.length > MAX_REVIEW_PHOTOS) {
+    throw new ReviewValidationError(`You can add up to ${MAX_REVIEW_PHOTOS} photos.`);
+  }
+
+  return { customerName, body, rating };
+}
+
 class ReviewService {
   /**
    * Accepts a public submission. Everything is validated before a
@@ -160,30 +223,7 @@ class ReviewService {
    * that really exist.
    */
   async submitReview(businessId: string, input: SubmitReviewInput): Promise<{ reviewId: string }> {
-    const customerName = input.customerName.trim();
-    if (customerName.length < 2) {
-      throw new ReviewValidationError('Please tell us your name.');
-    }
-    if (customerName.length > MAX_REVIEW_NAME_LENGTH) {
-      throw new ReviewValidationError('That name is too long.');
-    }
-
-    const body = input.body.trim();
-    if (body.length < 10) {
-      throw new ReviewValidationError('Tell us a little more — at least a sentence.');
-    }
-    if (body.length > MAX_REVIEW_BODY_LENGTH) {
-      throw new ReviewValidationError('That review is a bit long — please shorten it.');
-    }
-
-    const rating = Math.trunc(input.rating);
-    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
-      throw new ReviewValidationError('Please pick a rating from 1 to 5 stars.');
-    }
-
-    if (input.photos.length > MAX_REVIEW_PHOTOS) {
-      throw new ReviewValidationError(`You can add up to ${MAX_REVIEW_PHOTOS} photos.`);
-    }
+    const { customerName, body, rating } = validateReviewFields(input);
 
     // The phone number is optional; when given it's normalized so the
     // per-number rate limit can't be walked around by writing the same
@@ -266,6 +306,7 @@ class ReviewService {
       verifiedOrderId,
       // Never published on arrival — see types/review.ts.
       status: 'pending',
+      source: 'public_form',
     });
 
     await publishEvent(businessId, 'ReviewSubmitted', 'review', reviewId, {
@@ -273,6 +314,113 @@ class ReviewService {
       photoCount: photos.length,
       hasVideo: video !== null,
       isVerifiedPurchase: verifiedOrderId !== null,
+    });
+
+    return { reviewId };
+  }
+
+  /**
+   * A review that arrived as a WhatsApp message, entered by a staff
+   * member with the screenshot attached (§ reviews that arrive on
+   * WhatsApp).
+   *
+   * Most customers who say something nice say it in the chat they
+   * already have open, not through a link. Those reviews were real and
+   * unusable: the only way onto the site was a form the customer would
+   * have to be persuaded to fill in a second time.
+   *
+   * Published immediately rather than queued. The moderation queue
+   * exists because the public form takes photos from unauthenticated
+   * strangers; a signed-in staff member typing up a message they were
+   * sent is the moderation, and asking them to approve their own entry
+   * on the next tab would be ceremony, not a check. `createModerated`
+   * records their identity against the decision either way.
+   *
+   * The screenshot goes in as a photo, which is the point: a
+   * transcribed review is one person's word for another's, and the
+   * screenshot is what makes it evidence. It also means it is public,
+   * so whoever crops it decides what of the customer's chat the world
+   * sees — the form says so at the moment of choosing the file, which
+   * is the only place a warning would be read.
+   *
+   * The "verified purchase" badge is earned exactly as it is on the
+   * public form: by matching a phone number against a paid order.
+   * Never granted because a staff member was the one typing.
+   */
+  async addFromStaff(
+    businessId: string,
+    input: StaffReviewInput,
+    actor: string,
+  ): Promise<{ reviewId: string }> {
+    const { customerName, body, rating } = validateReviewFields(input);
+
+    /*
+     * Normalized but not rate-limited. The per-number daily cap on the
+     * public form is there to stop a stranger flooding the queue; a
+     * staff member entering three messages from the same delighted
+     * customer is not abuse, and refusing them would be the check
+     * misfiring on the one person it was never aimed at.
+     */
+    let contactPhone: string | null = null;
+    if (input.contactPhone?.trim()) {
+      try {
+        contactPhone = normalizeKenyanPhone(input.contactPhone);
+      } catch {
+        throw new ReviewValidationError('That phone number doesn’t look right — or leave it blank.');
+      }
+    }
+
+    const photos: ReviewPhoto[] = [];
+    for (const photo of input.photos) {
+      // The same `reviews` storage policy the public form uses: images
+      // only, size-capped, magic-byte checked against the declared
+      // type. Being signed in does not make a file safe to serve.
+      const uploaded = await storageService.uploadFile({
+        businessId,
+        directory: 'reviews',
+        filename: photo.filename,
+        data: photo.data,
+        contentType: photo.contentType,
+      });
+      photos.push({ url: uploaded.url, pathname: uploaded.pathname });
+    }
+
+    let verifiedOrderId: string | null = null;
+    if (contactPhone) {
+      try {
+        const order = await orderRepository.findPaidOrderForPhone(
+          businessId,
+          contactPhone,
+          VERIFIED_PURCHASE_STATUSES,
+        );
+        verifiedOrderId = order?.id ?? null;
+      } catch {
+        verifiedOrderId = null;
+      }
+    }
+
+    const reviewId = await reviewRepository.createModerated(
+      {
+        businessId,
+        customerName,
+        rating,
+        body,
+        photos,
+        video: null,
+        contactPhone,
+        isVerifiedPurchase: verifiedOrderId !== null,
+        verifiedOrderId,
+        status: 'published',
+        source: 'admin',
+      },
+      actor,
+    );
+
+    await publishEvent(businessId, 'ReviewAddedByStaff', 'review', reviewId, {
+      rating,
+      photoCount: photos.length,
+      isVerifiedPurchase: verifiedOrderId !== null,
+      actor,
     });
 
     return { reviewId };

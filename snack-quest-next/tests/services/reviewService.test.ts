@@ -380,3 +380,121 @@ describe('listPublished', () => {
     expect(published.ratingCounts).toEqual({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   });
 });
+
+/**
+ * Reviews that arrive on WhatsApp, entered by a staff member with the
+ * screenshot attached (§ reviews that arrive on WhatsApp).
+ *
+ * The interesting property is what this path does NOT inherit from the
+ * public one: it publishes immediately, and it skips the per-number
+ * daily cap. Everything else — the validation, the storage policy, the
+ * verified-purchase rule — has to stay exactly the same, because a
+ * review is a review however it was typed.
+ */
+describe('a review added by staff', () => {
+  const STAFF = 'staff-uid-1';
+
+  function whatsAppReview(overrides: Record<string, unknown> = {}) {
+    return {
+      customerName: 'Amina W.',
+      rating: 5,
+      body: 'Sent this on WhatsApp: the Buldak noodles were unreal, ordering again.',
+      photos: [],
+      ...overrides,
+    };
+  }
+
+  /*
+   * Straight onto the site. The queue exists because the public form
+   * takes photos from strangers; a signed-in staff member typing up a
+   * message they were sent is the moderation, and making them approve
+   * their own entry on the next tab would be ceremony, not a check.
+   */
+  it('publishes immediately, with the staff member recorded against the decision', async () => {
+    const { reviewId } = await reviewService.addFromStaff(BUSINESS_ID, whatsAppReview(), STAFF);
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.status).toBe('published');
+    expect(stored?.moderatedBy).toBe(STAFF);
+    expect(stored?.moderatedAt).toBeTruthy();
+  });
+
+  /** So "reviews we were sent" can be told apart from "reviews people submitted". */
+  it('records how it arrived', async () => {
+    const { reviewId } = await reviewService.addFromStaff(BUSINESS_ID, whatsAppReview(), STAFF);
+    expect((await reviewRepository.findById(BUSINESS_ID, reviewId))?.source).toBe('admin');
+
+    const { reviewId: publicId } = await reviewService.submitReview(BUSINESS_ID, validReview());
+    expect((await reviewRepository.findById(BUSINESS_ID, publicId))?.source).toBe('public_form');
+  });
+
+  it('stores the screenshot through the same storage policy', async () => {
+    const { reviewId } = await reviewService.addFromStaff(
+      BUSINESS_ID,
+      whatsAppReview({ photos: [photo({ filename: 'whatsapp.png' })] }),
+      STAFF,
+    );
+
+    const stored = await reviewRepository.findById(BUSINESS_ID, reviewId);
+    expect(stored?.photos).toHaveLength(1);
+    expect(stored?.photos[0].url).toContain('reviews/');
+    expect(uploadFileMock).toHaveBeenCalledOnce();
+  });
+
+  /*
+   * A staff member cannot hand out the badge by typing. It is earned
+   * the same way it always is — by a phone number matching a paid
+   * order — or not at all.
+   */
+  it('earns the verified badge only from a real order, exactly as the public form does', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed' });
+
+    const matched = await reviewService.addFromStaff(
+      BUSINESS_ID,
+      whatsAppReview({ contactPhone: '0712345678' }),
+      STAFF,
+    );
+    expect((await reviewRepository.findById(BUSINESS_ID, matched.reviewId))?.isVerifiedPurchase).toBe(true);
+
+    const unmatched = await reviewService.addFromStaff(
+      BUSINESS_ID,
+      whatsAppReview({ contactPhone: '0799999999' }),
+      STAFF,
+    );
+    expect((await reviewRepository.findById(BUSINESS_ID, unmatched.reviewId))?.isVerifiedPurchase).toBe(false);
+  });
+
+  /*
+   * The daily per-number cap is aimed at a stranger flooding the
+   * queue. A staff member entering several messages from the same
+   * delighted customer is not that, and refusing them would be the
+   * check misfiring on the one person it was never aimed at.
+   */
+  it('is not subject to the public form’s per-number daily limit', async () => {
+    for (let i = 0; i < MAX_REVIEWS_PER_PHONE_PER_DAY + 2; i += 1) {
+      await reviewService.addFromStaff(
+        BUSINESS_ID,
+        whatsAppReview({ contactPhone: '0712345678' }),
+        STAFF,
+      );
+    }
+
+    const published = await reviewRepository.listByStatus(BUSINESS_ID, 'published');
+    expect(published.length).toBe(MAX_REVIEWS_PER_PHONE_PER_DAY + 2);
+  });
+
+  /** Being signed in does not make a one-word review a review. */
+  it('applies the same field validation as a public submission', async () => {
+    await expect(
+      reviewService.addFromStaff(BUSINESS_ID, whatsAppReview({ body: 'Nice' }), STAFF),
+    ).rejects.toBeInstanceOf(ReviewValidationError);
+
+    await expect(
+      reviewService.addFromStaff(BUSINESS_ID, whatsAppReview({ rating: 9 }), STAFF),
+    ).rejects.toBeInstanceOf(ReviewValidationError);
+
+    await expect(
+      reviewService.addFromStaff(BUSINESS_ID, whatsAppReview({ contactPhone: 'not-a-number' }), STAFF),
+    ).rejects.toBeInstanceOf(ReviewValidationError);
+  });
+});
