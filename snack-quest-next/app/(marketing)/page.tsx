@@ -21,7 +21,12 @@ import { FloatingWhatsAppBubble } from '@/components/marketing/home/FloatingWhat
 import { HomeBodyFallback } from '@/components/marketing/home/HomeBodyFallback';
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Snack Quest, Explore World Snack Flavours in Kenya",
+  // No brand name here: the root layout's title template already
+  // appends "| Snack Quest", so naming it again rendered "Snack Quest,
+  // Explore World Snack Flavours in Kenya | Snack Quest" in search
+  // results — the brand twice in one line, on the one result that
+  // matters most.
+  title: 'Explore World Snack Flavours in Kenya',
   description:
     'Explore hand-picked snack flavours from Japan, Korea, China & Thailand. Choose the snacks you want, discover the rest. Delivered across Kenya in 24–48 hours, paid by M-Pesa.',
   path: '/',
