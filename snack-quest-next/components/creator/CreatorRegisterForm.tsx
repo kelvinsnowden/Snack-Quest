@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PasswordInput } from '@/components/creator/PasswordInput';
+import { ReferralCodeField } from './ReferralCodeField';
 import { rememberCreator } from '@/lib/creator/rememberedIdentity';
 
 const FIREBASE_AUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -58,6 +59,7 @@ export function CreatorRegisterForm() {
   const email = emailInput || searchParams.get('email') || '';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -91,7 +93,7 @@ export function CreatorRegisterForm() {
       const response = await fetch('/api/creator/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ idToken, displayName }),
+        body: JSON.stringify({ idToken, displayName, referralCode }),
       });
 
       if (!response.ok) {
@@ -190,6 +192,13 @@ export function CreatorRegisterForm() {
           disabled={submitting}
         />
       </div>
+
+      {/*
+        Last, and optional. Name, email and password are what an
+        account needs; a code is a branding decision, and putting it
+        above the password would make choosing one feel required.
+      */}
+      <ReferralCodeField value={referralCode} onChange={setReferralCode} disabled={submitting} />
 
       {error ? (
         <p role="alert" className="flex items-start gap-2 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">

@@ -20,7 +20,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { idToken, displayName } = (body ?? {}) as { idToken?: unknown; displayName?: unknown };
+  const { idToken, displayName, referralCode } = (body ?? {}) as {
+    idToken?: unknown;
+    displayName?: unknown;
+    referralCode?: unknown;
+  };
   if (typeof idToken !== 'string' || !idToken) {
     return Response.json({ error: 'body must include a non-empty string idToken' }, { status: 400 });
   }
@@ -29,7 +33,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const { cookie, maxAgeMs, session } = await creatorAuthService.register(idToken, displayName);
+    const { cookie, maxAgeMs, session } = await creatorAuthService.register(
+      idToken,
+      displayName,
+      // Optional: blank means "generate one for me", which is what
+      // every registration did before creators could choose.
+      typeof referralCode === 'string' ? referralCode : undefined,
+    );
 
     const response = Response.json({ session });
     response.headers.append(

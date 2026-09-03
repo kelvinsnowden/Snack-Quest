@@ -40,6 +40,13 @@ async function cleanCollections() {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
   await clearCreatorMemberships(BUSINESS_ID, OTHER_BUSINESS_ID);
+  // Code reservations (§ creators choose their own code) — left behind,
+  // every test after the first would find its chosen code taken.
+  for (const businessId of [BUSINESS_ID, OTHER_BUSINESS_ID]) {
+    await adminFirestore.recursiveDelete(
+      adminFirestore.collection('businesses').doc(businessId).collection('referralCodes'),
+    );
+  }
   // The registration-order counter (§ referral system overhaul) — cleared so each
   // test's first registration deterministically claims registration #1.
   await adminFirestore.recursiveDelete(
@@ -339,5 +346,95 @@ describe('CreatorAuthService.verifySessionCookie', () => {
     await expect(
       creatorAuthService.verifySessionCookie('not-a-real-cookie'),
     ).resolves.toBeNull();
+  });
+});
+
+/**
+ * A creator picking their own referral code (§ creators choose their
+ * own code).
+ *
+ * The property worth proving here is the race. Generated codes carry
+ * four random digits, so two registrations colliding is a lottery win
+ * and "check then write" was good enough. A code somebody *chose* is
+ * the opposite: two creators both wanting SNACKS is the likely case,
+ * and the failure mode is silent and about money — two live links
+ * sharing a code, commission going to whichever `findByCode` returns.
+ */
+describe('a creator choosing their own code', () => {
+  it('uses the code they asked for, normalized the way checkout matches it', async () => {
+    const uid = await createAuthUser(`chooses-${Date.now()}@example.com`);
+    const idToken = await getIdTokenForUid(uid);
+
+    await creatorAuthService.register(idToken, 'Amina Yusuf', ' snack quest ');
+
+    const profile = await creatorRepository.findById(BUSINESS_ID, uid);
+    expect(profile?.referralCode).toBe('SNACKQUEST');
+
+    // The link is what a purchase is actually checked against, so the
+    // two must agree or the creator reads out a code that pays nothing.
+    const link = await referralLinkRepository.findByCode(BUSINESS_ID, 'SNACKQUEST');
+    expect(link?.data.ownerId).toBe(uid);
+  });
+
+  /** No opinion at eleven at night is not a reason to be unable to sign up. */
+  it('still generates one when no code is given', async () => {
+    const uid = await createAuthUser(`nocode-${Date.now()}@example.com`);
+    const idToken = await getIdTokenForUid(uid);
+
+    await creatorAuthService.register(idToken, 'Amina Yusuf');
+
+    const profile = await creatorRepository.findById(BUSINESS_ID, uid);
+    expect(profile?.referralCode).toMatch(/^[A-Z]+\d{4}$/);
+  });
+
+  it('refuses a code somebody already holds, before creating anything', async () => {
+    const first = await createAuthUser(`first-${Date.now()}@example.com`);
+    await creatorAuthService.register(await getIdTokenForUid(first), 'First Creator', 'SNACKS');
+
+    const second = await createAuthUser(`second-${Date.now()}@example.com`);
+    await expect(
+      creatorAuthService.register(await getIdTokenForUid(second), 'Second Creator', 'snacks'),
+    ).rejects.toBeInstanceOf(InvalidCreatorRegistrationError);
+
+    // Nothing half-written: the loser of the race is not a creator.
+    expect(await creatorRepository.findById(BUSINESS_ID, second)).toBeNull();
+  });
+
+  it('refuses a code that could never work, with a reason', async () => {
+    const uid = await createAuthUser(`badcode-${Date.now()}@example.com`);
+    const idToken = await getIdTokenForUid(uid);
+
+    await expect(creatorAuthService.register(idToken, 'Amina Yusuf', 'AB')).rejects.toThrow(
+      /at least 3/i,
+    );
+  });
+
+  /*
+   * The actual race, run concurrently rather than described. Both
+   * registrations ask for the same code at the same moment; the
+   * reservation document's `create` is what decides, and exactly one
+   * may win. Before reservations existed this was a read that hoped
+   * nothing changed underneath it, and both could have won.
+   */
+  it('lets exactly one of two simultaneous claims win', async () => {
+    const a = await createAuthUser(`race-a-${Date.now()}@example.com`);
+    const b = await createAuthUser(`race-b-${Date.now()}@example.com`);
+    const [tokenA, tokenB] = await Promise.all([getIdTokenForUid(a), getIdTokenForUid(b)]);
+
+    const results = await Promise.allSettled([
+      creatorAuthService.register(tokenA, 'Racer A', 'RACECODE'),
+      creatorAuthService.register(tokenB, 'Racer B', 'RACECODE'),
+    ]);
+
+    const won = results.filter((r) => r.status === 'fulfilled');
+    expect(won).toHaveLength(1);
+
+    // And the code resolves to exactly one creator, not two.
+    const link = await referralLinkRepository.findByCode(BUSINESS_ID, 'RACECODE');
+    expect(link).not.toBeNull();
+    const owners = await Promise.all(
+      [a, b].map(async (uid) => (await creatorRepository.findById(BUSINESS_ID, uid))?.referralCode),
+    );
+    expect(owners.filter((code) => code === 'RACECODE')).toHaveLength(1);
   });
 });
