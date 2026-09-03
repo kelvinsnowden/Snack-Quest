@@ -16,14 +16,24 @@
  *
  * THE CODE LIVES IN TWO PLACES and they have to move together:
  *
- *   creatorProfiles/{uid}.referralCode  what the creator is shown
- *   referralLinks/{id}.code             what a purchase is checked
- *                                       against (ReferralService
- *                                       .validateCode reads this one)
+ *   businesses/{businessId}/creatorMemberships/{uid}.referralCode
+ *       what the creator is shown
+ *   referralLinks/{id}.code
+ *       what a purchase is checked against — ReferralService
+ *       .validateCode reads this one
  *
  * Change only the first and the creator reads out a code that pays
  * them nothing. Both are written in a single transaction here, so
  * there is no moment where they disagree.
+ *
+ * The membership path, not the flat `creatorProfiles/{uid}` this
+ * script first shipped against. That collection was superseded by the
+ * nested one and is kept only as a pre-migration snapshot to roll back
+ * to; it is stale, it holds a fraction of the creators, and every
+ * repository method in `creatorRepository.ts` reads the nested path.
+ * Writing to it would have quietly changed nothing a customer or a
+ * creator could see — and worse, it would have corrupted the snapshot
+ * a rollback depends on, so this deliberately leaves it alone.
  *
  * Past orders are NOT touched. `orders.referralCode` records the code
  * a customer actually typed, and rewriting history to match a new
@@ -107,12 +117,19 @@ function boot() {
   return getFirestore();
 }
 
-/** Every creator in this business, with the display name that identifies them. */
+/** The one collection the app actually reads a creator's profile from. */
+function memberships(db) {
+  return db.collection('businesses').doc(BUSINESS_ID).collection('creatorMemberships');
+}
+
+/**
+ * Every creator in this business, with the display name that
+ * identifies them. The name lives on `users/{uid}`, not on the
+ * membership, so each row needs its own read — fine at this scale, and
+ * the alternative is asking an operator to know a Firebase uid.
+ */
 async function loadCreators(db) {
-  const profiles = await db
-    .collection('creatorProfiles')
-    .where('businessId', '==', BUSINESS_ID)
-    .get();
+  const profiles = await memberships(db).get();
 
   return Promise.all(
     profiles.docs.map(async (doc) => {
@@ -164,11 +181,7 @@ function findTarget(creators, { uid, name }) {
  */
 async function assertAvailable(db, code, uid) {
   const [profiles, links] = await Promise.all([
-    db
-      .collection('creatorProfiles')
-      .where('businessId', '==', BUSINESS_ID)
-      .where('referralCode', '==', code)
-      .get(),
+    memberships(db).where('referralCode', '==', code).get(),
     db
       .collection('referralLinks')
       .where('businessId', '==', BUSINESS_ID)
@@ -250,7 +263,7 @@ async function main() {
     }
 
     const now = FieldValue.serverTimestamp();
-    tx.update(db.collection('creatorProfiles').doc(target.uid), {
+    tx.update(memberships(db).doc(target.uid), {
       referralCode: code,
       updatedAt: now,
       updatedBy: ACTOR,
@@ -264,7 +277,7 @@ async function main() {
   // script here: a rename that half-applied is the one outcome worth
   // catching immediately.
   const [profileAfter, linksAfter] = await Promise.all([
-    db.collection('creatorProfiles').doc(target.uid).get(),
+    memberships(db).doc(target.uid).get(),
     db
       .collection('referralLinks')
       .where('businessId', '==', BUSINESS_ID)
