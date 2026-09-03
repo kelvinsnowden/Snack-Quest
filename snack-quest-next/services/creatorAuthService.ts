@@ -9,6 +9,8 @@ import {
 } from '@/repositories/creatorRepository';
 import { createInTransaction as createReferralLinkInTransaction } from '@/repositories/referralLinkRepository';
 import { generateUniqueReferralCode } from '@/lib/creators/referralCode';
+import { claimReferralCodeInTransaction } from '@/repositories/referralCodeReservationRepository';
+import { referralCodeService } from '@/services/referralCodeService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
@@ -101,6 +103,13 @@ class CreatorAuthService {
   async register(
     idToken: string,
     displayName: string,
+    /**
+     * The code the creator asked for, if they typed one
+     * (§ creators choose their own code). Blank falls back to the
+     * generated one, so somebody who has no opinion is not made to
+     * invent a brand before they can sign up.
+     */
+    desiredReferralCode?: string,
   ): Promise<{ cookie: string; maxAgeMs: number; session: CreatorSession }> {
     const trimmedName = displayName.trim();
     if (!trimmedName) {
@@ -143,10 +152,27 @@ class CreatorAuthService {
     // permanent referral link created inside the transaction below —
     // every creator gets exactly one, auto-generated, never creator-
     // or admin-editable (§ referral system overhaul).
-    const referralCode = await generateUniqueReferralCode(
-      businessId,
-      trimmedName,
-    );
+    /*
+     * Checked before the transaction so the creator gets a sentence
+     * about their code rather than a failed sign-up, and claimed
+     * inside it so the check being stale cannot cost anyone a code.
+     * Two creators who both ask for SNACKS at the same moment: the
+     * first commits, the second's `tx.create` fails and the whole
+     * registration rolls back with nothing half-written.
+     */
+    let referralCode: string;
+    if (desiredReferralCode?.trim()) {
+      const availability = await referralCodeService.checkAvailability(
+        businessId,
+        desiredReferralCode,
+      );
+      if (!availability.available) {
+        throw new InvalidCreatorRegistrationError(availability.message);
+      }
+      referralCode = availability.code;
+    } else {
+      referralCode = await generateUniqueReferralCode(businessId, trimmedName);
+    }
 
     await adminFirestore.runTransaction(async (tx) => {
       // Still claimed, though the commission no longer depends on it:
@@ -154,6 +180,12 @@ class CreatorAuthService {
       // joined in, and a monotonic sequence can't be reconstructed
       // after the fact from timestamps alone.
       await claimNextRegistrationNumberInTransaction(tx, businessId);
+      /*
+       * First write in the transaction, so a code somebody else took
+       * in the meantime fails here rather than after a profile and a
+       * link have been built around it.
+       */
+      claimReferralCodeInTransaction(tx, businessId, referralCode, decoded.uid);
       const commissionRateKes = resolveCommissionRateKes();
 
       createCreatorProfileInTransaction(tx, decoded.uid, {

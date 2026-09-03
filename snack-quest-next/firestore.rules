@@ -417,6 +417,22 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      // referralCodes: one document per claimed referral code, whose
+      // ID *is* the code (§ creators choose their own code). It exists
+      // only so `tx.create` can make claiming a code atomic, and it is
+      // written exclusively by `CreatorAuthService.register` through
+      // the Admin SDK, which bypasses rules.
+      //
+      // Read is denied too, which is the point worth stating: this
+      // collection is a list of every code in use, so a readable copy
+      // would be a directory of other creators' codes for anyone who
+      // could open a Firestore console. Availability is answered by
+      // `GET /api/creator/referral-code`, which says taken or free and
+      // nothing about who holds it.
+      match /referralCodes/{code} {
+        allow read, write: if false;
+      }
+
       // featureFlags: tenant-scoped runtime switches (§ Phase 6).
       // Not secret, so admin-readable — still server/Admin SDK-only to
       // write, same as every other business-config mutation in this
