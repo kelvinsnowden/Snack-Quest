@@ -72,6 +72,19 @@ const displayFont = Bagel_Fat_One({
 // this line's job is to match what someone types.
 const TITLE_DEFAULT = `${BRAND_NAME} — Explore snack flavours from Japan, Korea & beyond`;
 
+/*
+ * Icons are files, not entries here: `app/favicon.ico`, `app/icon.png`,
+ * `app/icon1.png` and `app/apple-icon.png`, which Next turns into the
+ * `<link rel="icon">` tags itself (§ favicon in search results).
+ *
+ * `icon1.png` is 192px and exists for Google. Search will not use an
+ * icon it is told is smaller than 48px square, and until it was added
+ * this page advertised exactly two: a 32px PNG, and a `.ico` that does
+ * contain a 48px frame but which Next labels `sizes="16x16"` from its
+ * first frame alone. So every icon on offer looked too small and the
+ * result rendered with the default globe. The 32px one stays — it is
+ * the one a browser tab actually wants.
+ */
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: { default: TITLE_DEFAULT, template: `%s | ${BRAND_NAME}` },
