@@ -101,9 +101,20 @@ const FAQ_ITEMS = [
     q: 'Can I use my creator link in WhatsApp?',
     a: 'Yes — WhatsApp is one of the most common places creators share their link, and it tracks exactly the same as anywhere else.',
   },
+  /*
+   * Asked before sign-up, which is the only moment it can be acted on:
+   * the code is chosen on the registration form and is permanent
+   * afterwards. Creators were reading "your unique code" below as a
+   * code being issued to them, and taking the generated one without
+   * realising the field above it was theirs to fill in.
+   */
+  {
+    q: 'Do I get to choose my code?',
+    a: "Yes. There's a box for it on the sign-up form, and whatever you type there is your code — your name, your handle, whatever you already say on camera. We check it as you type and tell you straight away if somebody has taken it. Leave it blank and we'll make one up for you instead, but it's worth picking your own: it's the word your audience has to remember and spell at checkout.",
+  },
   {
     q: 'How are sales tracked?',
-    a: `Your link carries your unique code. When someone clicks it, we remember it for ${attributionDays} days, so you're still credited even if they come back to order later. If a customer types your code in at checkout directly, that works too.`,
+    a: `Your link carries your code. When someone clicks it, we remember it for ${attributionDays} days, so you're still credited even if they come back to order later. If a customer types your code in at checkout directly, that works too.`,
   },
   {
     q: 'What happens if someone clicks my link but buys later?',
