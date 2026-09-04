@@ -337,6 +337,25 @@ body {
   .animate-slide-up {
     animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
+
+  /*
+   * A bottom sheet travels its own height, not the 12px nudge
+   * `slideUp` gives an element already in place. Distinct name rather
+   * than a longer `slideUp`, because the two are used together: a
+   * sheet rising while its contents settle.
+   */
+  @keyframes sheetUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .animate-sheet-up {
+    animation: sheetUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
 }
 
 /*
