@@ -48,7 +48,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
           <Image src="/logo.png" alt="Snack Quest" width={32} height={32} className="size-8 rounded-lg object-cover" />
           <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Agent</span>
         </div>
-        <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'agent'} />
+        <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'agent'} roles={session.roles} />
       </header>
       <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
     </div>

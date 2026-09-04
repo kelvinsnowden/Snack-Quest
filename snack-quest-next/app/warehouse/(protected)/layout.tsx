@@ -66,7 +66,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
             ))}
           </nav>
         </div>
-        <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'warehouse'} />
+        <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'warehouse'} roles={session.roles} />
       </header>
       <main className="flex-1 overflow-y-auto p-4 pb-20 sm:pb-4 md:p-8">{children}</main>
       {/*

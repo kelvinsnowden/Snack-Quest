@@ -4,6 +4,8 @@ import {
   forbiddenResponse,
 } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
+import { revalidateTag } from 'next/cache';
+import { REVIEWS_CACHE_TAG } from '@/lib/marketing/publishedReviews';
 import { reviewService, ReviewNotFoundError } from '@/services/reviewService';
 
 /**
@@ -51,6 +53,25 @@ export async function PATCH(
       status,
       session.uid,
     );
+    /*
+     * Publish means publish (§ site load time).
+     *
+     * The public pages read reviews through a cross-request cache, so
+     * without this a review approved here would sit invisible for up
+     * to five minutes while an admin refreshed the homepage wondering
+     * what they had done wrong. Rejection purges for the same reason
+     * in reverse: a review taken down should be gone the moment it is
+     * taken down.
+     *
+     * `{ expire: 0 }` rather than the recommended `'max'`, which is
+     * stale-while-revalidate: that serves the old set once more while
+     * refreshing behind it, so the admin who just approved a review
+     * and went to look would still not see it. Expiring outright
+     * makes the next request pay one blocking read, which is the
+     * right trade for an action somebody took deliberately and is
+     * waiting on.
+     */
+    revalidateTag(REVIEWS_CACHE_TAG, { expire: 0 });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof ReviewNotFoundError) {

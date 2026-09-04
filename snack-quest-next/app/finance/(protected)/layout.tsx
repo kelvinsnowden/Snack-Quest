@@ -77,7 +77,7 @@ export default async function FinanceLayout({ children }: { children: React.Reac
             ))}
           </nav>
         </div>
-        <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'finance'} />
+        <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'finance'} roles={session.roles} />
       </header>
       <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
     </div>
