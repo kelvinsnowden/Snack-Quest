@@ -5,6 +5,7 @@ import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RevenueChart } from '@/components/admin/RevenueChart';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
+import { ComplimentaryBoxesNote } from '@/components/admin/ComplimentaryBoxesNote';
 import { formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 
@@ -54,6 +55,12 @@ export default async function FinanceRevenuePage() {
           trend={computePeriodTrend(revenue.averageOrderValueKes, previousAverageOrderValueKes, 'vs previous 30 days')}
         />
       </div>
+
+      <ComplimentaryBoxesNote
+        orderCount={revenue.complimentary.orderCount}
+        goodsAtListKes={revenue.complimentary.goodsAtListKes}
+        days={30}
+      />
 
       <Card>
         <CardHeader>

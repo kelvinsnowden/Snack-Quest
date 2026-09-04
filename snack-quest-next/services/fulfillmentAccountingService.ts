@@ -3,6 +3,7 @@ import 'server-only';
 import { orderRepository } from '@/repositories/orderRepository';
 import { fulfillmentBatchRepository } from '@/repositories/fulfillmentBatchRepository';
 import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
+import { isComplimentaryBox } from '@/lib/analytics/complimentaryOrder';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import { orderLines } from '@/types/checkoutLine';
 import type { FulfillmentBatch, Order } from '@/types';
@@ -122,7 +123,24 @@ class FulfillmentAccountingService {
       fulfillmentBatchRepository.listByBusiness(businessId, { limit: BATCH_SCAN_LIMIT }),
     ]);
 
-    const inWindow = orders.filter((order) => toMillis(order.data.createdAt) >= cutoff);
+    /*
+     * Giveaways are left out entirely (§ separate PR boxes from
+     * revenue and averages).
+     *
+     * A comped box carries a real cost against no revenue, so counting
+     * it here does damage twice: in `costed` it drags the margin down
+     * with stock that was never sold, and in `uncosted` it appears as
+     * a bookkeeping gap even though `uncosted` is documented as
+     * revenue awaiting a cost — and there is no revenue to await one.
+     *
+     * Not hidden: they are reported on their own, with the stock they
+     * carried, by `getRevenueOverview().complimentary`. Seeding is a
+     * marketing cost, and reading it as cost of goods sold makes the
+     * boxes that were sold look less profitable than they are.
+     */
+    const inWindow = orders.filter(
+      (order) => toMillis(order.data.createdAt) >= cutoff && !isComplimentaryBox(order.data),
+    );
 
     const costed = emptyTotals();
     const uncosted = { orderCount: 0, revenueKes: 0 };

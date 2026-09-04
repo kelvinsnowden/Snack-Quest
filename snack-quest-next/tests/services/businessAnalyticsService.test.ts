@@ -174,6 +174,124 @@ describe('BusinessAnalyticsService.getRevenueOverview', () => {
   });
 });
 
+/**
+ * PR boxes, kept out of the averages (§ separate PR boxes from revenue
+ * and averages).
+ *
+ * These are real orders — picked, packed and dispatched — that
+ * collected nothing, because a 100% code cut for one influencer takes
+ * the total to zero. They add nothing to revenue but one to every
+ * denominator, which is the damaging half: in production seven of them
+ * pulled the average order value from KSh 4,259 down to KSh 2,603 and
+ * put seven payments at the bottom of the checkout funnel that nobody
+ * made.
+ */
+describe('complimentary boxes are separated from revenue and averages', () => {
+  const compedPricing = { subtotalKes: 3500, discountKes: 3500, deliveryFeeKes: 250, creditsUsedKes: 0, totalKes: 0 };
+  const paidPricing = { subtotalKes: 5000, discountKes: 0, deliveryFeeKes: 0, creditsUsedKes: 0, totalKes: 5000 };
+
+  it('leaves them out of the order count and the average order value', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', createdAt: daysAgo(1), pricing: paidPricing });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', createdAt: daysAgo(1), pricing: compedPricing });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', createdAt: daysAgo(2), pricing: compedPricing });
+
+    const overview = await businessAnalyticsService.getRevenueOverview(BUSINESS_ID, 30);
+
+    expect(overview.totalRevenueKes).toBe(5000);
+    expect(overview.orderCount).toBe(1);
+    // 5000, not 5000/3 = 1667.
+    expect(overview.averageOrderValueKes).toBe(5000);
+  });
+
+  /* Separated, not erased — the stock going out the door is a real cost. */
+  it('reports them on their own, with the stock they carried at list price', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', createdAt: daysAgo(1), pricing: compedPricing });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', createdAt: daysAgo(2), pricing: compedPricing });
+
+    const overview = await businessAnalyticsService.getRevenueOverview(BUSINESS_ID, 30);
+
+    expect(overview.complimentary).toEqual({ orderCount: 2, goodsAtListKes: 7000 });
+  });
+
+  /** A cancelled giveaway was never sent, so it is not stock that left. */
+  it('does not count a cancelled comped box as given away', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'cancelled', createdAt: daysAgo(1), pricing: compedPricing });
+
+    const overview = await businessAnalyticsService.getRevenueOverview(BUSINESS_ID, 30);
+
+    expect(overview.complimentary.orderCount).toBe(0);
+  });
+
+  it('says nothing was given away when nothing was', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', createdAt: daysAgo(1), pricing: paidPricing });
+
+    const overview = await businessAnalyticsService.getRevenueOverview(BUSINESS_ID, 30);
+
+    expect(overview.complimentary).toEqual({ orderCount: 0, goodsAtListKes: 0 });
+  });
+
+  /*
+   * Receiving a free box does not make somebody a customer worth
+   * nothing — it makes them not a customer yet. Counted, they halve
+   * the average revenue per customer.
+   */
+  it('does not count a comped recipient as a zero-revenue customer', async () => {
+    const buyer = { customerId: null, phoneNumber: '254700000051', customerName: 'Buyer', county: 'Nairobi' };
+    const influencer = { customerId: null, phoneNumber: '254700000052', customerName: 'Influencer', county: 'Nairobi' };
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', customer: buyer, pricing: paidPricing });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', customer: influencer, pricing: compedPricing });
+
+    const ltv = await businessAnalyticsService.getLtv(BUSINESS_ID);
+
+    expect(ltv.customerCount).toBe(1);
+    expect(ltv.averageRevenueKes).toBe(5000);
+  });
+
+  /** One paid box and one free one is not a repeat purchase. */
+  it('does not let a free box make someone a repeat customer', async () => {
+    const customer = { customerId: null, phoneNumber: '254700000053', customerName: 'Seeded then bought', county: 'Nairobi' };
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', customer, pricing: compedPricing });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', customer, pricing: paidPricing });
+
+    const result = await businessAnalyticsService.getRepeatPurchaseRate(BUSINESS_ID, 30);
+
+    expect(result.customerCount).toBe(1);
+    expect(result.repeatCustomerCount).toBe(0);
+    expect(result.repeatRatePct).toBe(0);
+  });
+
+  /** The bottom of the funnel is payments, and nobody paid for these. */
+  it('does not count them as payments in the web funnel', async () => {
+    await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', createdAt: daysAgo(1), pricing: paidPricing });
+    await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', createdAt: daysAgo(1), pricing: compedPricing });
+
+    const funnel = await businessAnalyticsService.getWebFunnel(BUSINESS_ID, 30);
+
+    expect(funnel.stages.find((s) => s.step === 'Paid')?.count).toBe(1);
+  });
+
+  /** And a creator is not charged with an order that earned nothing. */
+  it('leaves a comped order out of a creator’s return', async () => {
+    await userRepository.create('creator-1', { email: 'a@example.com', roles: ['creator'], displayName: 'Alice', photoURL: null }, 'system');
+    const paid = await seedOrder({ businessId: BUSINESS_ID, status: 'confirmed', pricing: paidPricing });
+    const comped = await seedOrder({ businessId: BUSINESS_ID, status: 'dispatched', pricing: compedPricing });
+
+    await adminFirestore.runTransaction(async (tx) => {
+      createAttributionInTransaction(tx, { businessId: BUSINESS_ID, referralLinkId: 'l1', creatorId: 'creator-1', orderId: paid, conversationId: 'c1', discountKes: 0, commissionKes: 250 });
+    });
+    await adminFirestore.runTransaction(async (tx) => {
+      createAttributionInTransaction(tx, { businessId: BUSINESS_ID, referralLinkId: 'l1', creatorId: 'creator-1', orderId: comped, conversationId: 'c2', discountKes: 0, commissionKes: 250 });
+    });
+
+    const roi = await businessAnalyticsService.getCreatorRoi(BUSINESS_ID, 30);
+
+    expect(roi[0].orderCount).toBe(1);
+    expect(roi[0].revenueKes).toBe(5000);
+    expect(roi[0].commissionKes).toBe(250);
+    expect(roi[0].roi).toBe(20);
+  });
+});
+
 describe('BusinessAnalyticsService.getFunnel', () => {
   it('counts real milestones from conversation state', async () => {
     await adminFirestore.collection('conversations').add({
