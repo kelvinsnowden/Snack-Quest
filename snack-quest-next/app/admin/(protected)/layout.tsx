@@ -77,6 +77,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           displayName={session.displayName}
           email={session.email}
           role={session.roles[0] ?? 'staff'}
+          roles={session.roles}
           visibleSections={visibleSections}
         />
         {/*

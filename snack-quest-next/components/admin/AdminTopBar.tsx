@@ -10,12 +10,15 @@ export function AdminTopBar({
   displayName,
   email,
   role,
+  roles,
   visibleSections,
 }: {
   businessName: string;
   displayName: string;
   email: string;
   role: string;
+  /** Every role on the session — see `AdminUserMenu`, which uses it for the workspace switcher. */
+  roles?: readonly string[];
   /** Passed through to the mobile drawer so it hides the same sections the sidebar does (§ Admin mobile UX overhaul). */
   visibleSections: AdminSection[] | null;
 }) {
@@ -35,7 +38,7 @@ export function AdminTopBar({
         */}
         <LanguageToggle className="hidden sm:inline-flex" />
         <ThemeToggle />
-        <AdminUserMenu displayName={displayName} email={email} role={role} />
+        <AdminUserMenu displayName={displayName} email={email} role={role} roles={roles} />
       </div>
     </header>
   );
