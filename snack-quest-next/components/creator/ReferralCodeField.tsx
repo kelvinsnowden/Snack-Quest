@@ -120,12 +120,12 @@ export function ReferralCodeField({
       : state === 'taken'
         ? (current?.message ?? 'That code is already taken. Try another.')
         : state === 'available'
-          ? `${code} is available.`
+          ? `${code} is yours — nobody else is using it.`
           : state === 'checking'
-            ? 'Checking…'
+            ? 'Checking whether it’s free…'
             : state === 'unknown'
               ? 'Couldn’t check that just now — you can still continue.'
-              : 'Leave blank and we’ll make one for you.';
+              : 'Or leave it blank and we’ll make one up for you.';
 
   const tone =
     state === 'available'
@@ -137,8 +137,26 @@ export function ReferralCodeField({
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor="referralCode">
-        Your code <span className="text-muted-foreground font-normal">(optional)</span>
+        Choose your code <span className="text-muted-foreground font-normal">(optional)</span>
       </Label>
+
+      {/*
+        Says what the box is for, and stays put.
+        Before this, the only explanation lived in the status line
+        below — which is replaced by "Checking…" the moment anybody
+        types, so the one sentence describing the field disappeared
+        exactly when it was being used. Worse, that sentence was
+        "leave blank and we'll make one for you", which answers the
+        question nobody was asking: it told people how to opt out of a
+        choice they had not realised they were being offered.
+        The label said "Your code", which reads as a code being handed
+        to you rather than one you get to pick.
+      */}
+      <p id="referralCode-help" className="text-muted-foreground -mt-1 text-sm">
+        This is the code you say on camera, and the one your audience types at checkout. Pick
+        something short you can spell out loud — your name or your handle usually works.
+      </p>
+
       <div className="relative">
         <Input
           id="referralCode"
@@ -154,7 +172,9 @@ export function ReferralCodeField({
           maxLength={MAX_REFERRAL_CODE_LENGTH + 6}
           placeholder="SNACKS"
           disabled={disabled}
-          aria-describedby="referralCode-status"
+          // Both, in reading order: what the field is for, then how
+          // this particular code is doing.
+          aria-describedby="referralCode-help referralCode-status"
         />
         <span className="absolute inset-y-0 right-3 flex items-center">
           {state === 'checking' ? (
