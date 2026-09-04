@@ -13,6 +13,7 @@ import { FunnelChart } from '@/components/admin/FunnelChart';
 import { TrafficChart } from '@/components/admin/TrafficChart';
 import { MarketingSpendForm } from '@/components/admin/MarketingSpendForm';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
+import { ComplimentaryBoxesNote } from '@/components/admin/ComplimentaryBoxesNote';
 import { formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 import { resolveTrafficRange, type TrafficRangeKey } from '@/lib/analytics/trafficRange';
@@ -110,6 +111,12 @@ export default async function AdminAnalyticsPage({
           trend={computePeriodTrend(revenue.averageOrderValueKes, previousAverageOrderValueKes, 'vs previous 30 days')}
         />
       </div>
+
+      <ComplimentaryBoxesNote
+        orderCount={revenue.complimentary.orderCount}
+        goodsAtListKes={revenue.complimentary.goodsAtListKes}
+        days={30}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

@@ -96,6 +96,30 @@ describe('getOverview', () => {
     expect(overview.oldestUncosted).toEqual([]);
   });
 
+  /*
+   * A comped PR box (§ separate PR boxes from revenue and averages).
+   *
+   * It carries real stock against no revenue, so counting it here
+   * would either drag the margin down with something that was never
+   * sold, or — with no cost recorded yet — show up as a bookkeeping
+   * gap, which `uncosted` is documented not to be: there is no revenue
+   * waiting for a cost. The giveaway is reported instead by
+   * `getRevenueOverview().complimentary`.
+   */
+  it('leaves a comped box out of both the margin and the uncosted gap', async () => {
+    await seedOrder({
+      businessId: BUSINESS_ID,
+      status: 'dispatched',
+      pricing: { subtotalKes: 3500, discountKes: 3500, deliveryFeeKes: 250, creditsUsedKes: 0, totalKes: 0 },
+    });
+
+    const overview = await fulfillmentAccountingService.getOverview(BUSINESS_ID);
+
+    expect(overview.uncosted).toEqual({ orderCount: 0, revenueKes: 0 });
+    expect(overview.costed).toMatchObject({ orderCount: 0, revenueKes: 0, costKes: 0 });
+    expect(overview.oldestUncosted).toEqual([]);
+  });
+
   it('surfaces the longest-waiting uncosted orders first', async () => {
     const nowMs = Date.now();
     const { Timestamp } = await import('firebase-admin/firestore');

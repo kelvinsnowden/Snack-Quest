@@ -9,6 +9,7 @@ import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { pageViewRepository } from '@/repositories/pageViewRepository';
 import { analyticsEventRepository } from '@/repositories/analyticsEventRepository';
 import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
+import { isComplimentaryBox } from '@/lib/analytics/complimentaryOrder';
 import { refundRepository } from '@/repositories/refundRepository';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { toMillis } from '@/lib/firestoreTimestamp';
@@ -58,9 +59,34 @@ const REVENUE_STATUSES: Order['status'][] = ['confirmed', 'dispatched', 'deliver
  * `dueOnDelivery` is absent on every order that predates it and on
  * every order paid up front, which is why the test is for the flag
  * being set rather than for its absence.
+ *
+ * A comped PR box fails for the same reason and does more damage than
+ * a pay-on-delivery one, because it is not merely absent from the
+ * revenue total — it adds nothing to the numerator while adding one to
+ * every denominator. Seven of them dragged the average order value
+ * from KSh 4,259 down to KSh 2,603, made seven recipients look like
+ * customers worth nothing each in the LTV figure, and put seven
+ * payments in the bottom of the checkout funnel that nobody made.
  */
 function isRealisedRevenue(order: Order): boolean {
-  return REVENUE_STATUSES.includes(order.status) && order.payment?.dueOnDelivery !== true;
+  return (
+    REVENUE_STATUSES.includes(order.status) &&
+    order.payment?.dueOnDelivery !== true &&
+    !isComplimentaryBox(order)
+  );
+}
+
+/**
+ * A comped box that was really sent, so it is worth counting — just
+ * not as revenue.
+ *
+ * Excluded from every average and reported on its own instead. These
+ * cost real stock, and a giveaway that vanishes from the numbers is a
+ * cost nobody can see; the point is to separate them, not to lose
+ * them.
+ */
+function isCountedComplimentary(order: Order): boolean {
+  return REVENUE_STATUSES.includes(order.status) && isComplimentaryBox(order);
 }
 
 /**
@@ -169,6 +195,21 @@ export interface RevenueOverview {
   previousPeriod: {
     totalRevenueKes: number;
     orderCount: number;
+  };
+  /**
+   * Boxes given away in the window, kept out of every figure above and
+   * reported here instead (§ separate PR boxes from revenue and
+   * averages).
+   *
+   * Reported rather than dropped because they are a real cost: seven
+   * PR boxes went out on 1 September carrying about KSh 30,500 of
+   * stock at list price. Netting them out of revenue but leaving them
+   * invisible would trade one wrong number for another.
+   */
+  complimentary: {
+    orderCount: number;
+    /** What the boxes in them would have sold for, before the code took it to zero. Delivery is excluded, so this is the stock given away and not the total cost of giving it. */
+    goodsAtListKes: number;
   };
 }
 
@@ -337,6 +378,12 @@ class BusinessAnalyticsService {
 
     const previousTotalRevenueKes = inPreviousWindow.reduce((sum, o) => sum + o.data.pricing.totalKes, 0);
 
+    // Counted from the same scan and the same window as the revenue
+    // above, so the two always describe the same period.
+    const compedInWindow = orders.filter(
+      (o) => isCountedComplimentary(o.data) && toMillis(o.data.createdAt) >= cutoff,
+    );
+
     return {
       totalRevenueKes,
       orderCount: inWindow.length,
@@ -345,6 +392,10 @@ class BusinessAnalyticsService {
       previousPeriod: {
         totalRevenueKes: previousTotalRevenueKes,
         orderCount: inPreviousWindow.length,
+      },
+      complimentary: {
+        orderCount: compedInWindow.length,
+        goodsAtListKes: compedInWindow.reduce((sum, o) => sum + o.data.pricing.subtotalKes, 0),
       },
     };
   }
@@ -748,10 +799,21 @@ class BusinessAnalyticsService {
     ]);
 
     const revenueByOrderId = new Map(orders.map(({ id, data }) => [id, data.pricing.totalKes]));
+    /*
+     * A comped box attributed to a creator would otherwise read as an
+     * order that earned nothing, halving their return on a commission
+     * that was never paid out of it. Held as a set of ids rather than
+     * filtered out of `revenueByOrderId`, so an attribution whose
+     * order simply fell outside the bounded scan still behaves as it
+     * always has (counted, revenue unknown) instead of disappearing.
+     */
+    const compedOrderIds = new Set(
+      orders.filter(({ data }) => isComplimentaryBox(data)).map(({ id }) => id),
+    );
 
     const byCreator = new Map<string, { orderCount: number; revenueKes: number; commissionKes: number }>();
     for (const { data } of attributions) {
-      if (toMillis(data.createdAt) < cutoff) {
+      if (toMillis(data.createdAt) < cutoff || compedOrderIds.has(data.orderId)) {
         continue;
       }
       const revenueKes = revenueByOrderId.get(data.orderId) ?? 0;
