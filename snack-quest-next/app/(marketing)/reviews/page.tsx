@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { MessageSquareQuote, PenLine } from 'lucide-react';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { reviewService } from '@/services/reviewService';
+import { getPublishedReviews } from '@/lib/marketing/publishedReviews';
 import { Button } from '@/components/ui/button';
 import { RatingSummary } from '@/components/marketing/review/RatingSummary';
 import { ReviewFilterList } from '@/components/marketing/review/ReviewFilterList';
@@ -71,8 +71,7 @@ function buildReviewsJsonLd(
 export default async function ReviewsPage() {
   const businessId = getCurrentBusinessId();
   const [{ reviews, totalCount, averageRating, ratingCounts }, business] = await Promise.all([
-    reviewService
-      .listPublished(businessId, ALL_REVIEWS_LIMIT)
+    getPublishedReviews(businessId, ALL_REVIEWS_LIMIT)
       .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
     getCurrentBusiness(),
   ]);

@@ -5,7 +5,7 @@ import { getCurrentBusiness } from '@/lib/business/currentBusiness';
 import { packageRepository } from '@/repositories/packageRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { faqRepository } from '@/repositories/faqRepository';
-import { reviewService } from '@/services/reviewService';
+import { getPublishedReviews } from '@/lib/marketing/publishedReviews';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { HomeHero } from '@/components/marketing/home/HomeHero';
 import { FounderStory } from '@/components/marketing/home/FounderStory';
@@ -109,8 +109,7 @@ async function HomeBody() {
     // takes — `ReviewsSection` renders nothing for an empty list, so a
     // failed query degrades to exactly "no reviews yet" rather than a
     // broken page.
-    reviewService
-      .listPublished(businessId, HOMEPAGE_REVIEW_LIMIT)
+    getPublishedReviews(businessId, HOMEPAGE_REVIEW_LIMIT)
       .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
     // Same reasoning again: a failed snack query degrades the
     // "What's inside" section back to the single flat-lay rather than
