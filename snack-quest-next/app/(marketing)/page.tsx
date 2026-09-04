@@ -58,6 +58,19 @@ export const metadata: Metadata = buildPageMetadata({
  * caching layer to avoid it. A single boundary keeps the existing
  * parallel `Promise.all` exactly as it was.
  */
+/**
+ * How many published reviews the homepage carries.
+ *
+ * Was 9, when the section showed them in a swipe rail and the extras
+ * were only ever a gesture away. The "See all reviews" sheet now
+ * claims to hold every one, so the limit has to cover the real set or
+ * the claim is false — and a page of review text is small next to the
+ * photography already on this route. Past this the sheet says how many
+ * it is showing and links to /reviews for the rest, rather than
+ * quietly dropping the difference.
+ */
+const HOMEPAGE_REVIEW_LIMIT = 24;
+
 export default function MarketingHomePage() {
   return (
     <div className="flex flex-col overflow-x-hidden">
@@ -97,7 +110,7 @@ async function HomeBody() {
     // failed query degrades to exactly "no reviews yet" rather than a
     // broken page.
     reviewService
-      .listPublished(businessId, 9)
+      .listPublished(businessId, HOMEPAGE_REVIEW_LIMIT)
       .catch(() => ({ reviews: [], totalCount: 0, averageRating: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })),
     // Same reasoning again: a failed snack query degrades the
     // "What's inside" section back to the single flat-lay rather than

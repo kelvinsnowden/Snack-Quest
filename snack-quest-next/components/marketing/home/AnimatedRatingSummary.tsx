@@ -44,10 +44,13 @@ export function AnimatedRatingSummary({
   averageRating,
   totalCount,
   ratingCounts,
+  variant,
 }: {
   averageRating: number;
   totalCount: number;
   ratingCounts: Record<1 | 2 | 3 | 4 | 5, number>;
+  /** Passed straight through — see `RatingSummary`. */
+  variant?: 'default' | 'compact';
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const animated = useSyncExternalStore(subscribeNever, canAnimate, canAnimateOnServer);
@@ -92,6 +95,7 @@ export function AnimatedRatingSummary({
   return (
     <div ref={ref}>
       <RatingSummary
+        variant={variant}
         averageRating={averageRating * shown}
         totalCount={Math.round(totalCount * shown)}
         ratingCounts={{
