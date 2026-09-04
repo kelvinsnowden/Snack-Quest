@@ -16,6 +16,7 @@ import { advanceLabelFor, stageForField, stagesFor } from '@/lib/checkout/stages
 import { CheckoutProgress } from './CheckoutProgress';
 import { GIFT_MESSAGE_MAX_LENGTH } from '@/types/gift';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
+import { misplacedCreatorCodeMessage } from '@/lib/checkout/discountCode';
 import {
   EXPRESS_CUTOFF_HOUR,
   EXPRESS_DELIVERY_MINUTES,
@@ -1446,6 +1447,14 @@ export function CheckoutForm({
               Code applied: {formatKes(quote.discountCodeKes)} off
               {quote.discountCodeWaivesDelivery ? ', delivery free' : ''}.
             </p>
+          ) : discountCode.trim() && quote?.discountCodeIsCreatorCode ? (
+            /*
+              A creator's live code in the discount box. Saying "not
+              valid" here would be false and expensive: the customer
+              loses the discount and the creator loses the commission,
+              over which of two adjacent boxes they picked.
+            */
+            <p className="text-warning text-sm">{misplacedCreatorCodeMessage(discountCode)}</p>
           ) : discountCode.trim() && quote?.discountCodeRejected ? (
             <p className="text-warning text-sm">
               That code isn&apos;t valid. You can still order without it.

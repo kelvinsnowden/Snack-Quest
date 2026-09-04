@@ -146,6 +146,17 @@ export interface WebCheckoutQuote {
    */
   discountCodeApplied: boolean;
   discountCodeRejected: boolean;
+  /**
+   * The rejected discount code is a live creator's code, typed into the
+   * wrong one of two adjacent boxes.
+   *
+   * Worth its own flag rather than folding into `discountCodeRejected`,
+   * because the two need opposite advice: an unrecognised code means
+   * "order without it", a misplaced creator's code means "move it and
+   * keep the discount" — and telling the second customer to drop it
+   * costs them the discount and the creator the commission.
+   */
+  discountCodeIsCreatorCode: boolean;
   /** So the quote does not show a delivery fee the charge will not collect. */
   discountCodeWaivesDelivery: boolean;
   /**

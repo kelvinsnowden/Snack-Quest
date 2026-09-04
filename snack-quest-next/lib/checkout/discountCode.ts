@@ -74,6 +74,26 @@ export function customerMessageFor(rejection: DiscountCodeRejection): string {
 }
 
 /**
+ * What to say when the code in the discount box is really a creator's
+ * code.
+ *
+ * The two boxes sit next to each other and a creator says one word on
+ * camera, so the box a customer picks is a coin toss. Without this the
+ * checkout answers a creator's live code with "that discount code has
+ * expired" — true of a spent PR code that happens to share the name,
+ * meaningless to the person holding it, and a dead end because the
+ * only way forward is to clear a field nobody said was wrong.
+ *
+ * Named rather than guessed at. Moving the code across on the
+ * customer's behalf would pay commission on a word that was, a week
+ * ago, a Snack Quest promo — so the checkout says where the code goes
+ * and lets the customer put it there.
+ */
+export function misplacedCreatorCodeMessage(code: string): string {
+  return `${normalizeDiscountCode(code)} is a creator's code — move it to the Creator's code box above and we'll apply it.`;
+}
+
+/**
  * What the code takes off a given subtotal.
  *
  * Capped at the subtotal, so a KES 5,000 fixed code against a KES 3,500
