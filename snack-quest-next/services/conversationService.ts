@@ -22,6 +22,7 @@ import {
   customerMessageFor,
   effectFor,
   isFullyDiscounted,
+  misplacedCreatorCodeMessage,
   rejectionFor,
 } from '@/lib/checkout/discountCode';
 import type { DiscountCodeEffect } from '@/types/discountCode';
@@ -872,7 +873,19 @@ class ConversationService {
     if (typedDiscountCode) {
       const claim = await discountCodeRepository.claimRedemption(businessId, typedDiscountCode);
       if (!claim.claimed) {
-        throw new WebCheckoutValidationError(customerMessageFor(claim.reason));
+        /*
+         * Same question the quote asks, asked again here because the
+         * charge is what actually stops the order — and being stopped
+         * by "that discount code has expired" while holding a working
+         * creator's code is a dead end the customer cannot reason
+         * their way out of.
+         */
+        const asCreatorCode = await referralService.validateCode(businessId, typedDiscountCode);
+        throw new WebCheckoutValidationError(
+          asCreatorCode
+            ? misplacedCreatorCodeMessage(typedDiscountCode)
+            : customerMessageFor(claim.reason),
+        );
       }
       claimedDiscount = effectFor(claim.discount, 0);
     }
@@ -1661,12 +1674,24 @@ class ConversationService {
     );
     let previewDiscount: DiscountCodeEffect | null = null;
     let discountCodeRejected = false;
+    /*
+     * Only asked once the discount lookup has already failed, so a
+     * working promo code is never re-read as a creator's. It is asked
+     * at all because the two boxes sit together and a code that was
+     * once a comped PR code can also be a creator's live code — the
+     * customer holding it needs to be told which box it belongs in,
+     * not that it expired.
+     */
+    let discountCodeIsCreatorCode = false;
     if (input.discountCode?.trim()) {
       const found = await discountCodeRepository.findByCode(businessId, input.discountCode);
       if (found && rejectionFor(found) === null) {
         previewDiscount = effectFor(found, quoteSubtotalKes);
       } else {
         discountCodeRejected = true;
+        discountCodeIsCreatorCode = Boolean(
+          await referralService.validateCode(businessId, input.discountCode),
+        );
       }
     }
 
@@ -1726,6 +1751,7 @@ class ConversationService {
       referralCodeRejected: Boolean(input.referralCode) && !referral,
       discountCodeApplied: Boolean(previewDiscount),
       discountCodeRejected,
+      discountCodeIsCreatorCode,
       discountCodeWaivesDelivery: previewDiscount?.waivesDelivery === true,
       discountCodeKes: previewDiscount?.discountKes ?? 0,
     };

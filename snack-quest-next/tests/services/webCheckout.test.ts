@@ -2473,4 +2473,107 @@ describe('quoting a discount code', () => {
     expect(quote?.discountCodeApplied).toBe(false);
     expect(quote?.discountCodeRejected).toBe(false);
   });
+
+  /*
+   * A creator's code typed into the discount box.
+   *
+   * This is BABYSTEP, from production: the same word was first a
+   * one-use comped PR code and later became a creator's permanent
+   * referral code. Once the PR code was spent and past its expiry, a
+   * customer who put the creator's live code in the wrong box was told
+   * "that discount code has expired" — true of the dead PR code,
+   * useless to the person holding the live one, and a hard stop on the
+   * order.
+   *
+   * The two boxes stay separate, so this is not fixed by guessing.
+   * What is fixed is that the checkout names the box the code belongs
+   * in instead of reporting a fact about a different code.
+   */
+  describe('a creator’s code typed into the discount box', () => {
+    async function seedCollision() {
+      await referralLinkRepository.create(
+        {
+          businessId: BUSINESS_ID,
+          ownerId: 'creator-1',
+          code: 'BABYSTEP',
+          discountKes: 250,
+          commissionKes: 300,
+          isActive: true,
+          clickCount: 0,
+          conversionCount: 0,
+        },
+        'test',
+      );
+      // The comped code it used to be: spent, and past its expiry.
+      await seedCode({
+        code: 'BABYSTEP',
+        maxRedemptions: 1,
+        expiresAt: new Date(Date.now() - 86_400_000),
+      });
+      await discountCodeRepository.claimRedemption(BUSINESS_ID, 'BABYSTEP');
+    }
+
+    it('tells the customer which box it belongs in, rather than that it expired', async () => {
+      await seedDoorRate(250);
+      await seedCollision();
+
+      const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+        packageId,
+        quantity: 1,
+        deliveryMethod: 'door',
+        discountCode: 'babystep',
+        phone: PHONE_TYPED,
+      });
+
+      expect(quote?.discountCodeApplied).toBe(false);
+      expect(quote?.discountCodeRejected).toBe(true);
+      expect(quote?.discountCodeIsCreatorCode).toBe(true);
+    });
+
+    /* The message the customer actually hits, because the charge is what stops the order. */
+    it('says the same thing at the charge, not "expired"', async () => {
+      await seedDoorRate(250);
+      await seedCollision();
+
+      await expect(
+        service().startWebCheckout(
+          BUSINESS_ID,
+          pickupInput({ discountCode: 'BABYSTEP' }),
+        ),
+      ).rejects.toThrow(/creator's code/i);
+    });
+
+    /** And in the right box it is simply a working referral code. */
+    it('works when it is put in the creator field', async () => {
+      await seedDoorRate(250);
+      await seedCollision();
+
+      const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+        packageId,
+        quantity: 1,
+        deliveryMethod: 'door',
+        referralCode: 'BABYSTEP',
+        phone: PHONE_TYPED,
+      });
+
+      expect(quote?.referralCodeApplied).toBe(true);
+      expect(quote?.pricing.discountKes).toBe(250);
+    });
+
+    /** An ordinary unknown code is still an unknown code — no creator to point at. */
+    it('does not claim a plain wrong code belongs in the creator box', async () => {
+      await seedDoorRate(250);
+
+      const quote = await service().quoteWebCheckout(BUSINESS_ID, {
+        packageId,
+        quantity: 1,
+        deliveryMethod: 'door',
+        discountCode: 'NOTACODE',
+        phone: PHONE_TYPED,
+      });
+
+      expect(quote?.discountCodeRejected).toBe(true);
+      expect(quote?.discountCodeIsCreatorCode).toBe(false);
+    });
+  });
 });
