@@ -301,6 +301,99 @@ class WithdrawalService {
    * performs the refund closes that race the same way the
    * `pending → submitting` claim closes the double-approval one.
    */
+  /**
+   * Records a withdrawal an admin paid by hand
+   * (§ pay a withdrawal manually).
+   *
+   * Payouts are being sent from the M-Pesa app today rather than
+   * through B2C, and the system had no way to say so: the only route
+   * from `pending` was Approve, which fires a real B2C request. An
+   * admin who had already sent the money had a choice between paying
+   * twice and leaving the withdrawal open forever.
+   *
+   * ONLY FROM `pending`, and that restriction is the whole safety
+   * argument. `submitting` and `approved` mean a B2C request is
+   * already in flight with Safaricom; marking one of those paid by
+   * hand is how a creator gets paid twice, once by the admin and once
+   * by the callback that arrives a minute later. Those states have
+   * `resolveAmbiguousWithdrawal`, which exists precisely because
+   * "did the money move" is genuinely unknown there. `failed` and
+   * `rejected` already refunded the reserved balance, so paying one
+   * would hand over money the creator can also still withdraw.
+   *
+   * No balance write, deliberately. `requestWithdrawal` already moved
+   * the amount out of the creator's available balance when it reserved
+   * it; `paid` is the state where that reservation is simply never
+   * refunded. Crediting or debiting anything here would double-count —
+   * this is the same reason `resolveAmbiguousWithdrawal`'s
+   * `confirmed_paid` branch touches no balance either.
+   *
+   * Gated on the creator-financial freeze but NOT on
+   * `b2c_disbursements_frozen`. That flag exists to stop the next
+   * admin approval walking into the same Daraja misconfiguration that
+   * just failed — and when it is on, paying by hand is the only way
+   * anyone gets their money. Blocking the escape hatch with the alarm
+   * that made it necessary would be exactly backwards.
+   */
+  async payWithdrawalManually(
+    businessId: string,
+    withdrawalId: string,
+    actor: string,
+    actorName: string,
+    reference: string,
+    note: string,
+  ): Promise<void> {
+    await assertCreatorFinancialWritesNotFrozen(businessId);
+
+    await adminFirestore.runTransaction(async (tx) => {
+      const found = await withdrawalRepository.getInTransaction(tx, businessId, withdrawalId);
+      if (!found) {
+        throw new WithdrawalNotFoundError(withdrawalId);
+      }
+      /*
+       * Re-read inside the transaction, so an admin recording a manual
+       * payment at the same moment another one presses Approve cannot
+       * both succeed: whichever writes second sees a status that is no
+       * longer `pending` and throws.
+       */
+      if (found.data.status !== 'pending') {
+        throw new InvalidWithdrawalTransitionError(found.data.status, 'pay_manually');
+      }
+
+      const now = Timestamp.now() as unknown as Withdrawal['paidAt'];
+      withdrawalRepository.applyTransitionInTransaction(
+        tx,
+        withdrawalId,
+        {
+          status: 'paid',
+          paidAt: now,
+          // The person who authorised it is the person who sent it.
+          approvedBy: actor,
+          approvedAt: now,
+          manualPayment: {
+            reference,
+            note,
+            recordedBy: actor,
+            recordedByName: actorName,
+            recordedAt: Timestamp.now() as unknown as Withdrawal['createdAt'],
+          },
+        },
+        auditEntry('paid_manually', actor, `${reference} — ${note}`),
+        actor,
+      );
+    });
+
+    // `manual: true` so anything reading this stream can tell a payout
+    // somebody sent by hand from one Safaricom confirmed, which is the
+    // difference between a reconcilable record and an unexplained one.
+    await publishEvent(businessId, 'WithdrawalPaid', 'withdrawal', withdrawalId, {
+      actor,
+      reference,
+      note,
+      manual: true,
+    });
+  }
+
   async rejectWithdrawal(businessId: string, withdrawalId: string, actor: string, reason: string): Promise<void> {
     await assertCreatorFinancialWritesNotFrozen(businessId);
 

@@ -365,6 +365,129 @@ describe('WithdrawalService.approveWithdrawal', () => {
   });
 });
 
+describe('WithdrawalService.payWithdrawalManually', () => {
+  async function pendingWithdrawal(amountKes = 2000) {
+    await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
+    return withdrawalService.requestWithdrawal({
+      businessId: BUSINESS_ID,
+      ownerId: 'creator-1',
+      ownerType: 'creator',
+      amountKes,
+      phoneNumber: '254712345678',
+    });
+  }
+
+  it('marks it paid and records how it was settled', async () => {
+    const id = await pendingWithdrawal();
+
+    await withdrawalService.payWithdrawalManually(
+      BUSINESS_ID, id, 'staff-1', 'Kelvin Kimathi', 'UI4CP57HIJ', 'Sent from the M-Pesa app',
+    );
+
+    const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
+    expect(withdrawal?.status).toBe('paid');
+    expect(withdrawal?.paidAt).not.toBeNull();
+    expect(withdrawal?.manualPayment).toMatchObject({
+      reference: 'UI4CP57HIJ',
+      note: 'Sent from the M-Pesa app',
+      recordedBy: 'staff-1',
+      recordedByName: 'Kelvin Kimathi',
+    });
+  });
+
+  /*
+   * The balance question, and the one most likely to be got wrong.
+   * `requestWithdrawal` already moved the money out when it reserved
+   * it, so `paid` must leave the balance exactly where the reservation
+   * left it. Crediting or debiting here would double-count.
+   */
+  it('does not touch the balance, because the request already reserved it', async () => {
+    const id = await pendingWithdrawal(2000);
+    const before = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
+    expect(before?.availableCashKes).toBe(3000);
+
+    await withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'REF1', 'by hand');
+
+    const after = await creatorRepository.findById(BUSINESS_ID, 'creator-1');
+    expect(after?.availableCashKes).toBe(3000);
+  });
+
+  it('never sends anything to Daraja', async () => {
+    const id = await pendingWithdrawal();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'REF2', 'by hand');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  /*
+   * The double-payment guard. A withdrawal past `pending` either has a
+   * live B2C request against it — whose callback may still land and
+   * pay the creator a second time — or has already refunded the
+   * reserved balance, which the creator can now withdraw again.
+   */
+  it('refuses a withdrawal that has left pending', async () => {
+    const id = await pendingWithdrawal();
+    stubB2CSuccess('orig-manual-1', 'conv-manual-1');
+    await withdrawalService.approveWithdrawal(BUSINESS_ID, id, 'staff-1');
+
+    await expect(
+      withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'REF3', 'by hand'),
+    ).rejects.toBeInstanceOf(InvalidWithdrawalTransitionError);
+  });
+
+  it('refuses one that was already paid manually, so it cannot be recorded twice', async () => {
+    const id = await pendingWithdrawal();
+    await withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'REF4', 'by hand');
+
+    await expect(
+      withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-2', 'Other', 'REF5', 'again'),
+    ).rejects.toBeInstanceOf(InvalidWithdrawalTransitionError);
+  });
+
+  it('refuses a rejected withdrawal, whose balance is already back with the creator', async () => {
+    const id = await pendingWithdrawal();
+    await withdrawalService.rejectWithdrawal(BUSINESS_ID, id, 'staff-1', 'wrong number');
+
+    await expect(
+      withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'REF6', 'by hand'),
+    ).rejects.toBeInstanceOf(InvalidWithdrawalTransitionError);
+  });
+
+  it('throws for a withdrawal that does not exist', async () => {
+    await expect(
+      withdrawalService.payWithdrawalManually(BUSINESS_ID, 'nope', 'staff-1', 'Admin', 'REF7', 'by hand'),
+    ).rejects.toBeInstanceOf(WithdrawalNotFoundError);
+  });
+
+  /*
+   * The escape hatch has to work when the alarm is on. B2C freezing
+   * itself after a permanent-configuration failure is exactly the
+   * situation where paying by hand is the only way anyone gets paid,
+   * so this must not be gated on that flag.
+   */
+  it('still works while B2C disbursements are frozen', async () => {
+    const id = await pendingWithdrawal();
+    await featureFlagService.setEnabled(BUSINESS_ID, 'b2c_disbursements_frozen', true, 'test');
+
+    await withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'REF8', 'B2C is down');
+
+    expect((await withdrawalRepository.findById(BUSINESS_ID, id))?.status).toBe('paid');
+  });
+
+  it('leaves an audit entry naming the reference', async () => {
+    const id = await pendingWithdrawal();
+    await withdrawalService.payWithdrawalManually(BUSINESS_ID, id, 'staff-1', 'Admin', 'UI4CP57HIJ', 'by hand');
+
+    const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
+    const entry = withdrawal?.auditTrail.find((e) => e.action === 'paid_manually');
+    expect(entry?.actorId).toBe('staff-1');
+    expect(entry?.note).toContain('UI4CP57HIJ');
+  });
+});
+
 describe('WithdrawalService.rejectWithdrawal', () => {
   it('refunds the reserved balance and records the reason', async () => {
     await seedCreator('creator-1', { businessId: BUSINESS_ID, status: 'active', availableCashKes: 5000 });
