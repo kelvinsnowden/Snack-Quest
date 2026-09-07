@@ -1,0 +1,1078 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snack Quest — Investor Presentation</title>
+<meta name="description" content="Snack Quest is raising KSh 5,000,000 for 20% to open its first physical location in Nairobi. Ten slides.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/deck/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<style>
+/* ==========================================================================
+   Snack Quest — investor presentation, ten slides.
+
+   A separate document from /deck, not a re-skin of it. That one is a long
+   warm-cream scroll built to be read alone; this is a cool-paper, snap-
+   paginated deck built to be *presented* — one argument per screen, keyboard
+   driven, and printable to PDF as a leave-behind.
+
+   The type pairing is the argument in miniature: Fraunces for the editorial
+   voice, IBM Plex for the instrumented numbers underneath it.
+   ========================================================================== */
+
+:root {
+  /* Cool paper, deliberately not the warm cream of /deck. */
+  --paper:      #FBFAF8;
+  --paper-sunk: #F2F0EC;
+  --card:       #FFFFFF;
+  --ink:        #14161A;
+  --ink-soft:   #43474E;
+  --muted:      #6E7178;
+  --edge:       #DDDAD3;
+  --edge-soft:  #EAE7E1;
+
+  /* Structure is blue; measured figures are red. Nothing else is coloured. */
+  --structure:  #16255C;
+  --figure:     #C8320D;
+
+  /* Used only on the store slide, mirroring the shop's country walls. */
+  --korea:    #C8320D;
+  --japan:    #16255C;
+  --china:    #8A5D10;
+  --thailand: #0F6257;
+
+  --measure: 66ch;
+  --rail: 60px;
+  --pad-x: clamp(20px, 4.5vw, 72px);
+  --pad-y: clamp(22px, 3.2vh, 44px);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  font-feature-settings: "kern" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, video { max-width: 100%; display: block; }
+
+/* --- the deck ------------------------------------------------------------ */
+
+.deck {
+  scroll-snap-type: y proximity;
+  height: 100dvh;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.slide {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  min-height: 100dvh;
+  padding: var(--pad-y) var(--pad-x) var(--pad-y) calc(var(--pad-x) + var(--rail));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+/* The rail: slide number and eyebrow, turned on its side down the left edge.
+   It replaces a header band, so the content starts at the top of the page
+   rather than a third of the way down it. */
+.rail {
+  position: absolute;
+  left: var(--pad-x);
+  top: var(--pad-y);
+  bottom: var(--pad-y);
+  width: var(--rail);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  pointer-events: none;
+}
+.rail .n {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--paper);
+  background: var(--structure);
+  padding: 4px 7px;
+  border-radius: 3px;
+}
+.rail .tag {
+  writing-mode: vertical-rl;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.rail .stem { flex: 1; width: 1px; background: var(--edge); }
+
+/* --- type ---------------------------------------------------------------- */
+
+.claim {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-size: clamp(24px, 3.1vw, 39px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  margin: 0;
+  max-width: 21ch;
+}
+.claim em { font-style: normal; color: var(--figure); }
+
+.lede {
+  font-size: clamp(14.5px, 1.35vw, 17px);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+h3 {
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+p { margin: 0 0 8px; text-wrap: pretty; }
+p:last-child { margin-bottom: 0; }
+strong, b { font-weight: 600; color: var(--ink); }
+
+.body { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+
+.note {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 92ch;
+}
+.note strong { color: var(--ink-soft); }
+
+.rule { border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
+
+/* The status chip. Every slide declares whether what it shows was measured,
+   assumed, or is opportunity — the deck's central discipline, made visual. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--edge);
+  border-radius: 100px;
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 100%;
+}
+.chip.m { border-color: var(--figure); color: var(--figure); }
+.chip.a { border-color: var(--structure); color: var(--structure); }
+
+/* --- grids --------------------------------------------------------------- */
+
+.g2 { display: grid; gap: clamp(12px, 1.6vw, 22px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.g3 { display: grid; gap: clamp(12px, 1.6vw, 22px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.g4 { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); }
+
+.split { display: grid; gap: clamp(14px, 2vw, 32px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); align-items: start; }
+.split.lean { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.split.three { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
+
+/* --- metric cards -------------------------------------------------------- */
+
+.metric {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric .v {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: clamp(20px, 2.4vw, 30px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--figure);
+}
+.metric.a .v { color: var(--structure); }
+.metric .k {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* --- label / value / note rows ------------------------------------------
+   The value column is `auto` and never wraps, so only short values may sit
+   in it. Anything longer than a few words belongs in the note, which spans
+   the full row. This is enforced by shape, not by care. */
+
+.rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 0 clamp(18px, 3vw, 40px); }
+.rows.quad { grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 0 clamp(14px, 2vw, 26px); }
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-content: start;
+  gap: 0 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--edge-soft);
+}
+.row .k { font-size: 13.5px; font-weight: 600; }
+.row .v {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--figure);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.row .v.a { color: var(--structure); }
+.row .n { grid-column: 1 / -1; font-size: 12px; line-height: 1.45; color: var(--muted); margin-top: 2px; }
+.row .n strong { color: var(--ink-soft); }
+/* Two-part values (target · actual) are too long for the right-hand column. */
+.row.wide { grid-template-columns: 1fr; }
+.row.wide .v { text-align: left; white-space: normal; margin-top: 2px; }
+
+/* --- cards, lists, quotes ------------------------------------------------ */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 13px 15px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.card.sunk { background: var(--paper-sunk); border-color: var(--edge-soft); }
+.card.mark { border-left: 3px solid var(--structure); }
+.card.warn { border-left: 3px solid var(--figure); }
+.card p { font-size: 13px; color: var(--ink-soft); }
+.card h3 { font-size: 13px; }
+
+ul.ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+ul.ticks li { position: relative; padding-left: 15px; color: var(--ink-soft); line-height: 1.45; }
+ul.ticks li::before {
+  content: "";
+  position: absolute; left: 0; top: .55em;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--structure);
+}
+ul.ticks.red li::before { background: var(--figure); }
+
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 100px;
+  background: var(--card);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.quote {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.quote .who {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--figure);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The equation strip: measured input, operator, result. */
+.eq {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 11px 14px;
+  font-size: 13.5px;
+}
+.eq b { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; font-variant-numeric: tabular-nums; }
+.eq .op { color: var(--figure); font-weight: 600; font-size: 15px; }
+.eq .res b { color: var(--figure); }
+
+/* --- table --------------------------------------------------------------- */
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; min-width: 460px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--edge-soft); vertical-align: top; }
+th {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); border-bottom-color: var(--edge);
+}
+td.n { text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+tr.lead td { background: var(--paper-sunk); }
+tr.total td { border-top: 2px solid var(--ink); border-bottom: 0; font-weight: 600; }
+tr.total td.n { color: var(--figure); font-size: 14px; }
+
+/* --- figures ------------------------------------------------------------- */
+
+figure { margin: 0; display: flex; flex-direction: column; gap: 5px; }
+figure img { border: 1px solid var(--edge); border-radius: 4px; object-fit: cover; width: 100%; }
+figcaption { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+
+.shots { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.shots img { height: clamp(100px, 13vh, 155px); }
+
+/* --- covers -------------------------------------------------------------- */
+
+.cover { justify-content: center; padding-left: var(--pad-x); background: var(--ink); color: var(--paper); border-bottom: 0; }
+.cover .rail { display: none; }
+.cover .wordmark {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(13px, 1.5vw, 16px);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--figure);
+}
+.cover h1 {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(32px, 6.4vw, 84px);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  margin: 12px 0 0;
+  max-width: 16ch;
+  text-wrap: balance;
+}
+.cover .sub { color: #C9C6C0; max-width: 58ch; margin-top: 14px; font-size: clamp(14px, 1.4vw, 17px); }
+.cover .foot {
+  margin-top: 26px; padding-top: 16px; border-top: 1px solid #33363C;
+  display: flex; flex-wrap: wrap; gap: 8px 26px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px; color: #979490;
+}
+.cover .foot b { color: var(--paper); font-weight: 500; }
+.cover-grid { display: grid; gap: clamp(18px, 3vw, 44px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: center; }
+.cover figure img { border-color: #33363C; }
+.cover figcaption { color: #979490; }
+
+/* --- progress + help ----------------------------------------------------- */
+
+.progress {
+  position: fixed; left: 0; top: 0; height: 2px; width: 0;
+  background: var(--figure); z-index: 40; transition: width .15s linear;
+}
+.counter {
+  position: fixed; right: 14px; bottom: 12px; z-index: 40;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px; font-weight: 500; color: var(--muted);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  border: 1px solid var(--edge); border-radius: 100px; padding: 3px 10px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(6px);
+}
+
+/* --- small screens ------------------------------------------------------- */
+
+/* Short screens: a laptop at 900px or a 768px projector has ~300px less room
+   than the 1080p screen this was composed against. Trim the scale rather than
+   let the dense slides silently run past the bottom edge. */
+@media (min-width: 721px) and (max-height: 1000px) {
+  :root { --pad-y: clamp(18px, 2.6vh, 30px); }
+  body { font-size: 14px; }
+  .slide { gap: 11px; }
+  .body { gap: 10px; }
+  .claim { font-size: clamp(22px, 2.5vw, 31px); }
+  .lede { font-size: 14px; }
+  .metric { padding: 9px 11px; }
+  .metric .v { font-size: clamp(18px, 1.9vw, 24px); }
+  .card { padding: 10px 12px; font-size: 12.5px; }
+  .card p { font-size: 12.5px; }
+  .row { padding: 7px 0; }
+  .shots img { height: clamp(84px, 10vh, 118px); }
+  ul.ticks { gap: 4px; font-size: 12.5px; }
+}
+
+@media (max-width: 720px) {
+  :root { --rail: 0px; }
+  /* A chip long enough to overrun a phone must wrap rather than push the page. */
+  .chip { white-space: normal; }
+  .slide { padding-left: var(--pad-x); min-height: auto; padding-top: 30px; padding-bottom: 34px; }
+  .deck { scroll-snap-type: none; height: auto; overflow: visible; }
+  .rail { position: static; width: auto; flex-direction: row; align-items: center; gap: 9px; margin-bottom: 2px; }
+  .rail .tag { writing-mode: horizontal-tb; }
+  .rail .stem { flex: 0 0 auto; width: 22px; height: 1px; }
+  .cover { min-height: 92dvh; justify-content: center; }
+  .counter { display: none; }
+  table { min-width: 340px; }
+  .shots img { height: 140px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck { scroll-behavior: auto; }
+  .progress { transition: none; }
+}
+
+/* --- print: the leave-behind -------------------------------------------- */
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  html, body { background: #fff; }
+  /* An A4 landscape page is a good deal shorter than the screen these slides
+     were composed for, so the leave-behind is set a size down. Without this a
+     ten-slide deck prints as nineteen pages broken mid-argument. */
+  body { font-size: 11.5px; line-height: 1.45; }
+  .claim { font-size: 23px; }
+  .lede { font-size: 12px; }
+  h3 { font-size: 11.5px; margin-bottom: 4px; }
+  .slide { gap: 9px; }
+  .body { gap: 8px; }
+  .metric { padding: 7px 9px; }
+  .metric .v { font-size: 17px; }
+  .metric .k { font-size: 10px; }
+  .card { padding: 8px 10px; font-size: 11px; }
+  .card p, ul.ticks { font-size: 11px; }
+  .row { padding: 5px 0; }
+  .row .k { font-size: 11.5px; }
+  .row .n, .note, figcaption { font-size: 10px; }
+  table { font-size: 10.5px; }
+  th, td { padding: 5px 7px; }
+  .shots img { height: 88px; }
+  .quote { font-size: 10.5px; padding: 7px 9px; }
+  .eq { font-size: 11.5px; padding: 8px 10px; }
+  .deck { height: auto; overflow: visible; scroll-snap-type: none; }
+  .slide { min-height: auto; page-break-after: always; break-after: page; border: 0; padding: 0 0 0 54px; }
+  .slide:last-child { page-break-after: auto; break-after: auto; }
+  .progress, .counter { display: none; }
+  .cover { background: #fff; color: #000; padding-left: 0; }
+  .cover h1, .cover .sub, .cover .foot b { color: #000; }
+  .cover .foot { color: #444; border-top-color: #ccc; }
+  .cover figure img { border-color: #ccc; }
+  .card, .metric, .quote, .eq { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="counter" id="counter">01 / 10</div>
+
+<main class="deck" id="deck">
+
+<!-- ======================= COVER ======================= -->
+<section class="slide cover">
+  <div class="cover-grid">
+    <div>
+      <span class="wordmark">Snack Quest</span>
+      <h1>The home of global snack discovery in Africa.</h1>
+      <p class="sub">A consumer commerce and retail brand built around global snack discovery — live online today, opening its first physical location in Nairobi.</p>
+      <div class="foot">
+        <span><b>KSh&nbsp;5,000,000</b> for 20%</span>
+        <span><b>Nairobi</b>, Kenya</span>
+        <span><b>snackquests.shop</b></span>
+        <span>Ten slides</span>
+      </div>
+    </div>
+    <figure>
+      <img src="/deck/box.webp" alt="A Snack Quest box packed with snacks from Japan, Korea, China and Thailand." loading="eager">
+      <figcaption>The Snack Quest box: curated snacks from Japan, Korea, China and Thailand, in custom-printed packaging already in use on every delivery.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================= 01 — OPPORTUNITY ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">01</span><span class="tag">The opportunity</span><span class="stem"></span></div>
+  <h2 class="claim">Kenyans discover global snack culture online, and then can’t buy it.</h2>
+  <p class="lede">TikTok, Instagram and YouTube put Japanese, Korean, American, British and European snacks in front of Kenyan consumers every day. The demand is created online. The supply has not caught up.</p>
+  <div class="body">
+    <div class="split">
+      <div>
+        <h3>Why buying it today is hard</h3>
+        <ul class="ticks red">
+          <li><strong>Fragmented.</strong> A handful of specialty sellers scattered across platforms.</li>
+          <li><strong>Inconsistent.</strong> Stock appears and disappears without warning.</li>
+          <li><strong>Hard to discover.</strong> No single place to browse what exists.</li>
+          <li><strong>Badly suited to impulse.</strong> Social discovery is instant; buying is not.</li>
+          <li><strong>Opaque.</strong> Prices vary widely between informal sellers.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>What Snack Quest is</h3>
+        <p style="font-size:13px;color:var(--ink-soft);">Not a snack-box company. A consumer commerce and retail brand where the product is the experience — discovery, novelty, culture, gifting, and something worth filming.</p>
+        <div class="pills" style="margin-top:8px;">
+          <span class="pill">Physical retail</span>
+          <span class="pill">E-commerce, live</span>
+          <span class="pill">Curated boxes</span>
+          <span class="pill">Creator-led discovery</span>
+          <span class="pill">Gifting</span>
+          <span class="pill">Brand distribution (future)</span>
+        </div>
+      </div>
+    </div>
+    <div class="card mark">
+      <h3>The loop the whole business runs on</h3>
+      <p style="margin:0;"><strong>Discovery online → trust in store → repeat through the box → replicated location by location.</strong> The store acquires customers and removes the payment objection. The box is why they come back and what raises order value. The format is designed so location two is a build, not an experiment.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 02 — TRACTION ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">02</span><span class="tag">Traction</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip m">Measured</span><span class="chip">23 Aug – 3 Sep 2026</span></div>
+  <h2 class="claim">Not a concept. It runs, and every order is <em>instrumented</em>.</h2>
+  <p class="lede">Orders are placed on the site, paid by M-Pesa, packed into branded boxes and delivered across Nairobi today. Small scale — but goods cost, delivery cost and margin are recorded on every single order, which is why the numbers below are records rather than estimates.</p>
+  <div class="body">
+    <div class="g4">
+      <div class="metric"><span class="v">KSh 46,850</span><span class="k">Revenue, first twelve days</span></div>
+      <div class="metric"><span class="v">11</span><span class="k">Paid orders, from 11 customers</span></div>
+      <div class="metric"><span class="v">KSh 4,259</span><span class="k">Average paid order — ahead of the KSh 3,500 the store model assumes</span></div>
+      <div class="metric a"><span class="v">32</span><span class="k">Creators registered, each with a tracked link</span></div>
+    </div>
+
+    <div class="split three">
+      <div>
+        <h3>What already exists and works</h3>
+        <ul class="ticks">
+          <li><strong>Live storefront.</strong> snackquests.shop takes orders and M-Pesa payments end to end, including from paid ads.</li>
+          <li><strong>Branded packaging.</strong> Custom-printed boxes in production, used on every delivery.</li>
+          <li><strong>Delivery.</strong> Tushop across Nairobi — same-day, next-day, or 90-minute express.</li>
+          <li><strong>Back office.</strong> Staff portals for packing lists, dispatch, fulfilment-cost capture and per-order margin.</li>
+          <li><strong>Customer messaging.</strong> Automated SMS when payment lands and when an order goes out.</li>
+          <li><strong>Creator programme.</strong> 164 tracked clicks; boxes seeded 1 September, most videos still being edited. One attributed sale so far — KSh 3,800, against KSh 300 of commission.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="card warn">
+          <h3>Two numbers we are not leaving for you to find</h3>
+          <p><strong>Repeat purchase is zero.</strong> Eleven orders, eleven different customers, and the oldest of them is eleven days old. The box is our retention thesis and it has not been tested yet.</p>
+          <p style="margin-bottom:0;"><strong>Seven boxes went out free</strong> on 1 September — roughly KSh 30,500 of goods, seeded to creators. They are excluded from every figure on this slide. They carry real stock against no sale, and counting them would report a 45% loss on a business whose sold orders contribute 19.0%.</p>
+        </div>
+        <div class="card sunk" style="margin-top:10px;">
+          <h3>And the margin, as recorded</h3>
+          <p style="margin-bottom:0;"><strong>25.9% gross</strong> across the four orders with itemised goods cost, against a 45% target. <strong>19.0% contribution</strong> across all seven orders with any cost recorded — after delivery and packaging. Order-level contribution ranged from <strong>&minus;21% to +39%</strong>, and one early order sold below cost. It has moved the wrong way: contribution was 19.7% over the first four orders.</p>
+        </div>
+      </div>
+      <div class="shots" style="grid-template-columns:1fr;">
+        <figure><img src="/deck/shot-dispatch.webp" alt="Three packed Snack Quest boxes going out on one delivery run in Nairobi." loading="lazy"><figcaption>A real order going out. Three boxes on one run, Nairobi.</figcaption></figure>
+        <figure><img src="/deck/shot-rider.webp" alt="A Tushop rider collecting Snack Quest boxes for delivery." loading="lazy"><figcaption>Collected by Tushop and insured in transit. Both photographs are real orders, not mock-ups.</figcaption></figure>
+      </div>
+    </div>
+
+    <p class="note"><strong>Eleven orders is a small number and we are not going to dress it up.</strong> It is here because the shape matters more than the size: order value is ahead of plan, margin is behind it, and we can tell you which by exactly how much. That is the whole point of instrumenting every order. <em>The machine works. What it does not have is a front door.</em></p>
+  </div>
+</section>
+
+<!-- ======================= 03 — DEMAND ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">03</span><span class="tag">Demand signal</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip m">Measured · TikTok analytics</span><span class="chip">28 days to 25 Aug 2026</span><span class="chip">Approaches unpaid</span></div>
+  <h2 class="claim">Demand showed up before we spent anything on it.</h2>
+  <p class="lede">Under two weeks of organic posting plus three days of paid promotion. That is the entire window these numbers come from — no agency, no production budget, one founder with a phone.</p>
+  <div class="body">
+    <div class="g4">
+      <div class="metric"><span class="v">177.8K</span><span class="k">Post views in 28 days</span></div>
+      <div class="metric"><span class="v">74K</span><span class="k">Best single video</span></div>
+      <div class="metric"><span class="v">278</span><span class="k">Shares — people sending it to each other, not bought reach</span></div>
+      <div class="metric a"><span class="v">1.54M</span><span class="k">Combined followers across five inbound creators. KSh 0 spent</span></div>
+    </div>
+
+    <div class="split">
+      <div>
+        <h3>Six creators approached us. We approached none of them.</h3>
+        <div class="g2" style="gap:8px;">
+          <div class="quote"><span class="who">1.2M followers</span>“Hello can i get a chance to advertise snackquests on my page”</div>
+          <div class="quote"><span class="who">172.1K followers</span>“I’ve been thinking about SnackQuest and I’d actually love to explore a collaboration with you.”</div>
+          <div class="quote"><span class="who">113.3K followers</span>“Hey you good I think we can work right”</div>
+          <div class="quote"><span class="who">31.7K followers</span>“Hey kindly send me the prices I can promote you and also do an advertising video”</div>
+          <div class="quote"><span class="who">23.7K followers</span>“PR?”</div>
+          <div class="quote"><span class="who">Verified food-review account</span>“I’m intrigued by your product! Would you like to do a collab… I try to help promote small businesses and don’t charge for any marketing :)”</div>
+        </div>
+        <p class="note" style="margin-top:8px;">Names, handles and profile photographs are blacked out: these are private messages and the senders have not agreed to appear in a fundraising document. Follower counts and wording are untouched. Unredacted originals available on request.</p>
+      </div>
+      <div>
+        <figure><img src="/deck/shot-ttmetrics.webp" alt="TikTok analytics for @snackquests showing 177.8K post views over 28 days." loading="lazy"><figcaption>TikTok’s own analytics for @snackquests. Also 1,208 followers, 11.4K likes, 4.7K profile views and 144 comments in the same window.</figcaption></figure>
+        <div class="card warn" style="margin-top:10px;">
+          <h3>What this does not prove</h3>
+          <p style="margin-bottom:0;"><strong>Views are attention, not revenue.</strong> 177,800 people watched and ten bought. The audience is real and growing; converting it is throttled by the two constraints on the next slide. Creator inbound is early qualitative signal — not proven reach, and not proven conversion. Percentage growth figures are deliberately omitted: the prior period was near zero, so they read as thousands of per cent and mean very little.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 04 — CONSTRAINTS ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">04</span><span class="tag">The constraint</span><span class="stem"></span></div>
+  <h2 class="claim">Three constraints. Not one of them is demand.</h2>
+  <p class="lede">Two are solved by a location and one by having stock money on the table. None is a question of whether people want the product — which is exactly what makes them fixable with this raise rather than with a better idea.</p>
+  <div class="body">
+    <div class="g3">
+      <div class="card warn">
+        <h3>One — trust and payment friction</h3>
+        <p>We lose sales to customers who want to pay on delivery, or who simply will not pay online before they trust the brand. <strong>177,800 watched, ten bought.</strong></p>
+        <p style="margin-bottom:0;">A physical location is a place to hand over cash and take the box away. It removes the objection entirely, and the collection split measures whether that is true.</p>
+      </div>
+      <div class="card warn">
+        <h3>Two — margin, and where it leaks</h3>
+        <p>We record <strong>25.9% gross</strong> against a <strong>45%</strong> target. The gap is not pricing, and it is not delivery — delivery is a known formula under the Tushop terms.</p>
+        <p style="margin-bottom:0;">It is <strong>landed cost.</strong> We buy locally at close to retail and resell. Buying direct from Korea is the single lever, and it only works at volume.</p>
+      </div>
+      <div class="card warn">
+        <h3>Three — an open door, and nothing to trade</h3>
+        <p><strong>Exotic Snack Guys</strong> run this format in the United States: 100+ locations, 49,600 followers, features on FOX, WGN, Yahoo and the Chicago Tribune, and a bio that reads <em>DM for collabs</em>. We approached them, they asked how they could help, and a proposal for a joint first opening is with them now.</p>
+        <p style="margin-bottom:0;">Creators want product, not cash — and we have no space to host, shoot and broadcast at that volume.</p>
+      </div>
+    </div>
+    <div class="card mark">
+      <h3>The strategic point, stated plainly</h3>
+      <p style="margin-bottom:0;">Asking an established brand to put its name beside ours is asking them to <strong>take a risk.</strong> Asking them to supply us at volume, paid upfront, is asking them to <strong>do business.</strong> The second is the far smaller ask and the better first step — and stock money is what turns a favour into a transaction. That is true of Exotic Snack Guys and it is true of the Korean line. The opportunity already exists; what is missing is the infrastructure to serve it and the cash to be worth dealing with.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 05 — OPERATING SPINE ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">05</span><span class="tag">Operating spine</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip">Partners, not headcount</span></div>
+  <h2 class="claim">Product in, orders out — without building either.</h2>
+  <p class="lede">The two things that usually sink a small retail operation are getting stock and getting it to the customer. Both are handled by named partners rather than by hiring into them. The company is two people.</p>
+  <div class="body">
+    <div class="split">
+      <div class="card">
+        <h3>Supply — direct Korean sourcing</h3>
+        <p>A supplier relationship that will source any snack from Korea and ship it to Kenya on a <strong>two-to-three month lead time.</strong></p>
+        <p style="margin-bottom:0;">It changes what the catalogue can be: instead of selling whatever is already importable into Kenya, we can chase what customers are actually asking for on TikTok — including the products driving a trend before anyone else here stocks them. Stated as it stands: an <strong>established relationship, not an exclusive contract.</strong></p>
+      </div>
+      <div class="card">
+        <h3>Delivery — Tushop, and what its terms do</h3>
+        <p>Third-party logistics covering Nairobi and roughly 30km around it. Express in 90 minutes; same day if logged by 1pm; next day if logged by midnight.</p>
+        <p style="margin-bottom:0;">Today the company is two people. <strong>Tushop is the delivery team we would otherwise have to raise money to hire</strong> — no riders, no fleet, no capex, monthly invoicing.</p>
+      </div>
+    </div>
+
+    <div class="rows">
+      <div class="row">
+        <span class="k">Delivery is a formula, not a guess</span>
+        <span class="v">KSh 35/km + 3%</span>
+        <span class="n">KSh 35 per kilometre of optimised route, plus 3% of declared order value for goods insurance. That goes straight into the model rather than being estimated — and it means <strong>the cost of serving a customer is known before we accept the order.</strong></span>
+      </div>
+      <div class="row">
+        <span class="k">Batching rewards density</span>
+        <span class="v">3 drops, one fee</span>
+        <span class="n">Three same-day orders sharing one optimised 20km route cost the same <strong>KSh 700</strong> as a single drop on that route — not KSh 700 each. Delivery cost per order therefore <em>falls</em> as order density rises, so a store that concentrates demand in one part of Nairobi makes every delivery cheaper.</span>
+      </div>
+      <div class="row">
+        <span class="k">Insured in transit</span>
+        <span class="v">100% of value</span>
+        <span class="n">The full declared order value is covered while goods are in Tushop’s custody.</span>
+      </div>
+      <div class="row">
+        <span class="k">Live customer tracking</span>
+        <span class="v">Built in</span>
+        <span class="n">The customer gets a tracking link and the rider’s details, then a delivery confirmation and a review prompt — the review engine on a business with no reviews yet.</span>
+      </div>
+    </div>
+    <p class="note">Tushop’s terms and service levels are as set out above and the teams are aligning for kickoff. Both partner relationships are described exactly as they stand today, with no implied exclusivity.</p>
+  </div>
+</section>
+
+<!-- ======================= 06 — THE STORE ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">06</span><span class="tag">What the money buys</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip a">Specified format</span><span class="chip">KSh 80,000/month · an average unit</span><span class="chip">Images are concept visualisations</span></div>
+  <h2 class="claim">One space doing seven jobs — and a studio it broadcasts from all day.</h2>
+  <p class="lede">This raise opens one store. Not inventory in the abstract, not general marketing: a physical location that proves the model and becomes the blueprint for every location after it. It is specified, so a second location is a build rather than a redesign.</p>
+  <div class="body">
+    <div class="split">
+      <div>
+        <div class="g2" style="gap:8px;">
+          <div class="card sunk"><h3 style="color:var(--korea);">Discovery</h3><p style="margin:0;">Korea, Japan, China and Thailand each get their own wall. Browsing as the product.</p></div>
+          <div class="card sunk"><h3 style="color:var(--japan);">Build Your Quest</h3><p style="margin:0;">Pick 5 off the wall — the online mechanic customers already know, made physical.</p></div>
+          <div class="card sunk"><h3 style="color:var(--thailand);">Payment &amp; collection</h3><p style="margin:0;">Cash, card or M-Pesa, in person, with the product in hand. The trust lever.</p></div>
+          <div class="card sunk"><h3 style="color:var(--china);">Live-selling corner</h3><p style="margin:0;">Camera, key lighting, audio and a dedicated business fibre line.</p></div>
+        </div>
+        <div class="card mark" style="margin-top:10px;">
+          <h3>The live channel is somebody’s whole job</h3>
+          <p style="margin-bottom:0;">A <strong>full-time host broadcasts all day, every day the shop is open</strong>, across TikTok, Instagram and the rest. That is what makes it a channel rather than an occasional post. On the nights the shop is closed it is a studio selling to an audience that already watches us — not a shelf sitting dark.</p>
+        </div>
+      </div>
+      <div>
+        <div class="shots" style="grid-template-columns:1fr;">
+          <figure><img src="/deck/shot-aisles.webp" alt="Snack walls labelled Korea, Japan, China and Thailand with customers browsing." loading="lazy" style="height:clamp(140px,22vh,230px);"><figcaption><strong>Concept visualisation, not a photograph</strong> — this store has not been built. Country walls, with the Pick 5 wall to the right: discovery as the reason to visit.</figcaption></figure>
+        </div>
+        <h3 style="margin-top:12px;">Seven jobs, one lease</h3>
+        <div class="pills">
+          <span class="pill">Retail store</span>
+          <span class="pill">Discovery destination</span>
+          <span class="pill">Live-selling studio</span>
+          <span class="pill">Creator activation</span>
+          <span class="pill">Pickup &amp; payment point</span>
+          <span class="pill">Brand showroom</span>
+          <span class="pill">Franchise blueprint</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Why one store is the whole plan, not a small ambition</h3>
+      <p style="margin-bottom:0;">The first location exists to make the second one a template rather than an experiment — standardising layout, assortment, pricing, merchandising, staffing, the inventory model, creator activation and the unit economics. <strong>The commercial point of a franchise format rather than a chain is that every location after the first is built with somebody else’s capital.</strong> That is what makes it possible for this to be the only round we raise.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 07 — MARKET ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">07</span><span class="tag">Market size</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip m">Built from measured order value</span><span class="chip a">Occasions per year is an assumption</span></div>
+  <h2 class="claim">Counted in occasions and customers, not city population.</h2>
+  <p class="lede">We have deliberately not quoted a national snack-market figure. A number that large tells you nothing about whether we can sell a KSh 4,259 box. This is built from the order size we have actually measured, multiplied by the occasions a real customer has in a year.</p>
+  <div class="body">
+    <div class="eq">
+      <span><b>KSh 4,259</b> measured average order</span>
+      <span class="op">×</span>
+      <span><b>6</b> occasions a year</span>
+      <span class="op">=</span>
+      <span class="res"><b>~KSh 25,500</b> per customer, per year</span>
+    </div>
+    <div class="g3">
+      <div class="metric"><span class="v">~1,400</span><span class="k">Customers needed for KSh 36M a year — one store’s target</span></div>
+      <div class="metric"><span class="v">11</span><span class="k">Paying customers today. That is the distance, stated plainly</span></div>
+      <div class="metric a"><span class="v">~2,800</span><span class="k">Customers needed if it turns out to be 3 occasions a year, not 6 — the sensitivity to push on</span></div>
+    </div>
+    <div class="g4">
+      <div class="card sunk"><h3>Gifting is the engine</h3><p style="margin:0;">Somewhere in this city, today is somebody’s birthday — and tomorrow it is somebody else’s. Add Valentine’s, Christmas, anniversaries, apologies and the surprise sent for no reason. Gifting does not require the buyer to be a snack enthusiast, which makes it the widest door in. Our measured KSh 4,259 order is already gift-sized, not pocket money.</p></div>
+      <div class="card sunk"><h3>Campus, and the content with it</h3><p style="margin:0;">Students are the audience already watching us: dense, social, and the people who make the format spread. A series filmed across Nairobi’s universities — where the visit is the acquisition and the content at the same time, the same trick the TikTok account already pulls for free.</p></div>
+      <div class="card sunk"><h3>Children, and the parents who pay</h3><p style="margin:0;">Odd flavours from other countries are a child’s idea of an event. Children pull, parents pay, and the occasion repeats: birthdays, school holidays, rewards, treats. The least fashionable segment here and probably the most reliable.</p></div>
+      <div class="card sunk"><h3>What only a shop can sell</h3><p style="margin:0;">Today the smallest thing anybody can buy from us is a box. A walk-in buying one packet is a customer we currently turn away, because we have no product at that price and no way to hand it over. That is demand we cannot serve at all — at a frequency a box will never have.</p></div>
+    </div>
+    <p class="note"><strong>The honest reading.</strong> Six occasions a year is an assumption, not a result — repeat purchase is currently zero, and proving it is the whole point of Store #1. Single-packet trade is deliberately left out of the arithmetic entirely, so the walk-in trade described above is upside this slide does not count. Fourteen hundred people who come back six times is a target we can be held to.</p>
+  </div>
+</section>
+
+<!-- ======================= 08 — ECONOMICS ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">08</span><span class="tag">Unit economics</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip a">Base-case assumptions</span><span class="chip m">Three inputs now measured</span></div>
+  <h2 class="claim">Break-even sits below target. That moves where the risk is.</h2>
+  <p class="lede">Management planning assumptions for the first location. Average order value, gross margin and the delivery rate are now measured rather than assumed — and where the measurement disagrees with the target, both are shown.</p>
+  <div class="body">
+    <div class="eq">
+      <span><b>KSh 3,500</b> blended in-store AOV</span>
+      <span class="op">×</span>
+      <span><b>~860</b> transactions a month</span>
+      <span class="op">=</span>
+      <span class="res"><b>KSh 3.0M</b> monthly revenue — about 29 a day</span>
+    </div>
+
+    <div class="rows">
+      <div class="row wide">
+        <span class="k">Gross margin</span>
+        <span class="v">45% target · 25.9% actual</span>
+        <span class="n">The widest gap in this model. Those snacks were bought locally at close to retail; direct import is the identified lever. Closing this gap is the main commercial job of this raise, and it is why stock is the largest line in it.</span>
+      </div>
+      <div class="row wide">
+        <span class="k">Contribution margin</span>
+        <span class="v">~23% target · 19.0% actual</span>
+        <span class="n">After goods and variable selling and fulfilment costs, before financing and overhead. Measured across all seven orders with a cost recorded, having been 19.7% over the first four.</span>
+      </div>
+      <div class="row">
+        <span class="k">Monthly fixed costs</span>
+        <span class="v">KSh 330K</span>
+        <span class="n"><strong>KSh 295,000 of it is quoted:</strong> rent KSh 80,000, two salaries at KSh 30,000, baseline marketing KSh 120,000, technology KSh 30,000, business fibre KSh 5,000 for the live channel. The remaining KSh 35,000 is estimated — utilities, security, insurance and licensing amortised.</span>
+      </div>
+      <div class="row">
+        <span class="k">Marketing, as a daily rate</span>
+        <span class="v">KSh 4,000/day</span>
+        <span class="n">KSh 2,000 a day on TikTok and KSh 2,000 on Meta, thirty days a month — not a lump sum. At the KSh 3.0M target that is <strong>KSh 138 of ad spend per transaction</strong>, blended across organic and creator-driven sales, so paid acquisition costs more than that but sits well inside the target.</span>
+      </div>
+      <div class="row wide">
+        <span class="k">Break-even revenue</span>
+        <span class="v">KSh 1.4M target · KSh 1.7M today</span>
+        <span class="n">The revenue at which contribution covers KSh 330K of fixed cost. <strong>Both sit under the KSh 3.0M target, which moves the risk:</strong> it is no longer whether the margin can carry the store, it is whether a shop this size can do 29 transactions a day. Break-even needs roughly <strong>14 a day</strong> at today’s margin — a number you can judge from your own experience of a Nairobi shop.</span>
+      </div>
+      <div class="row wide">
+        <span class="k">Payback on the KSh 4.0M setup</span>
+        <span class="v">~11 months target · ~17 today</span>
+        <span class="n">Net of fixed costs, not out of contribution alone. At KSh 3.0M revenue and 23%, contribution is KSh 690K less KSh 330K of fixed cost — KSh 360K a month clears KSh 4.0M in about eleven. At today’s 19.0% it is KSh 240K a month, or about seventeen. That difference <em>is</em> the case for this raise.</span>
+      </div>
+    </div>
+
+    <hr class="rule">
+    <h3>The bar we are setting before we start</h3>
+    <p class="note" style="margin-bottom:2px;">Stated in advance so the next conversation is arithmetic rather than argument. Reported monthly from the same system that records every order today, without anyone being asked for them.</p>
+    <div class="rows quad">
+      <div class="row">
+        <span class="k">Gross margin</span><span class="v">above 35%</span>
+        <span class="n">A <strong>floor, not the plan</strong> — the model runs on 45%. Against the 25.9% recorded, this is the level at which the business works even if only part of the import gain lands.</span>
+      </div>
+      <div class="row">
+        <span class="k">Repeat purchase</span><span class="v">above 20%</span>
+        <span class="n">Within 60 days of first purchase. Zero today across eleven customers, because the oldest order is eleven days old.</span>
+      </div>
+      <div class="row">
+        <span class="k">Customer acquisition cost</span><span class="v">under KSh 1,500</span>
+        <span class="n">A <strong>ceiling</strong>; the model runs on KSh 500 blended, because creators paid in product cost no cash. At 35% gross a KSh 4,259 order carries about KSh 1,490 — so even at the ceiling the first order washes its face and the second earns. That is why repeat sits beside it.</span>
+      </div>
+      <div class="row">
+        <span class="k">Pay-on-collection share</span><span class="v">1 in 3</span>
+        <span class="n">Of customers offered it. The direct read on whether the store answers the trust problem.</span>
+      </div>
+    </div>
+    <p class="note">Illustrative base case. Actual economics will be validated after launch against real rent, product margins, traffic, AOV, acquisition cost and repeat-purchase behaviour. Repeat purchase is modelled at 30% and is currently zero.</p>
+  </div>
+</section>
+
+<!-- ======================= 09 — USE OF FUNDS ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">09</span><span class="tag">Use of funds</span><span class="stem"></span></div>
+  <div class="chips"><span class="chip a">One round, allocated in full</span></div>
+  <h2 class="claim">Four lines, no padding — and a plan for the second container.</h2>
+  <p class="lede">Seventy per cent of this raise buys inventory and a physical location. The rest is six months of runway to trade them and the marketing to fill the shop.</p>
+  <div class="body">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Allocation</th><th>What it covers</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody>
+          <tr class="lead"><td><strong>Imported stock</strong></td><td>Direct sourcing from Korea and the wider Asia range, landed. The lever that closes the margin gap: buying at import cost instead of local resale. Half the raise, on purpose.</td><td class="n">KSh 2,500,000</td></tr>
+          <tr class="lead"><td><strong>Store fit-out &amp; deposit</strong></td><td>Country walls, pick wall, shelving, lighting, signage and counter; the live-selling corner — camera, key lighting, audio and business fibre; plus lease deposit, county trade licence and food-handling permits.</td><td class="n">KSh 1,000,000</td></tr>
+          <tr class="lead"><td><strong>Working capital</strong></td><td>Six months of rent at KSh 80,000 (KSh 480,000) and two salaries at KSh 30,000 each for six months (KSh 360,000) — a store assistant and a full-time live host — leaving KSh 160,000 for utilities and the pay-on-delivery float.</td><td class="n">KSh 1,000,000</td></tr>
+          <tr><td><strong>Marketing</strong></td><td>Paid amplification of what already performs organically, the store opening, creator seeding boxes and the next branded-packaging run.</td><td class="n">KSh 500,000</td></tr>
+          <tr class="total"><td><strong>Total</strong></td><td></td><td class="n">KSh 5,000,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card warn">
+      <h3>How the second inventory cycle is funded — the question most decks skip</h3>
+      <div class="split lean" style="gap:12px;">
+        <div>
+          <p><strong>The arithmetic.</strong> KSh 2.5M of landed stock at the 45% target margin supports roughly <strong>KSh 4.55M of revenue</strong> — about <strong>1.5 months of stock</strong> at the KSh 3.0M target. The Korean lead time is <strong>two to three months.</strong></p>
+          <p style="margin-bottom:0;">So order two has to be placed close to opening, before sell-through data exists, and paid for when cash is tightest. Left unaddressed the shelves run thin around the end of month three with the second container still at sea — and <strong>the faster the store ramps, the sooner that happens.</strong> We would rather show you this than have you find it.</p>
+        </div>
+        <div>
+          <h3>Three mitigations, in order</h3>
+          <ul class="ticks red">
+            <li><strong>Stagger the first order.</strong> Split the KSh 2.5M across two sequenced shipments. Same capital, same total stock, smoothed arrivals — and the second tranche is committed knowing what actually sells.</li>
+            <li><strong>Seek terms on order two</strong> — 50% deposit, 50% on delivery — which halves the cash needed at the tightest moment. One clean prepaid first order is the track record that earns them.</li>
+            <li><strong>Local bridge stock</strong> if a gap still opens. Explicitly the fallback, not the plan, because it reopens the margin problem.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">The three inventory, build and working-capital lines are <strong>KSh 4.5M of the KSh 5M</strong>, and that shape is the argument: this is a shop being stocked, opened and given six months to trade — not a marketing budget with a shopfront attached. There is deliberately <strong>no contingency line:</strong> at this size a contingency is just a smaller stock order, and stock is the thing that fixes the margin.</p>
+  </div>
+</section>
+
+<!-- ======================= 10 — THE ASK ======================= -->
+<section class="slide">
+  <div class="rail"><span class="n">10</span><span class="tag">The ask</span><span class="stem"></span></div>
+  <h2 class="claim">KSh 5,000,000 for 20% — to stock the shelves and open the door.</h2>
+  <p class="lede">Straight equity. And the intention is that this is the only equity round Snack Quest raises: this money opens location one, and location one is what turns location two from a fundraise into a franchise built with franchisee capital rather than by selling more of the company.</p>
+  <div class="body">
+    <div class="split">
+      <div>
+        <div class="g4" style="gap:8px;">
+          <div class="metric"><span class="v">KSh 2.5M</span><span class="k">Imported stock — the margin lever</span></div>
+          <div class="metric"><span class="v">KSh 1M</span><span class="k">Store fit-out — the trust lever</span></div>
+          <div class="metric"><span class="v">KSh 1.5M</span><span class="k">Working capital and marketing</span></div>
+        </div>
+
+        <div class="card mark" style="margin-top:12px;">
+          <h3>Kelvin Kimathi — Founder</h3>
+          <p><strong>A marketing operator who builds.</strong> Marketing manager at a Kenyan betting operator that launched in January and part of its growth from launch, reporting to the Head of Marketing — running paid acquisition at scale in the most performance-driven advertising market in the country, where a campaign that does not pay back is switched off the same week.</p>
+          <p>The playbook there was <strong>affiliates first:</strong> use them to build trust, and the paid ads perform better on the back of it. That is the same order Snack Quest is being built in — 32 creators before the ad budget, not after it — and it is why the KSh 4,000 a day in this plan is a rate he has spent before rather than a line invented for a deck.</p>
+          <p style="margin-bottom:0;">Personally built the storefront, checkout and M-Pesa flow, the staff portals, the per-order margin capture, the customer SMS, the delivery integration and the creator programme. Negotiated the Korean sourcing line and the Tushop terms. <strong>Full-time on Snack Quest from close</strong> — today it is split with a day job, and this raise is what buys the founder’s whole week.</p>
+        </div>
+        <p class="note" style="margin-top:8px;">The company is two people: the founder and one employee packing orders. We are not going to present that as a finished team. This raise hires a store assistant and a full-time live host. Two risks we would rather name than be asked: one host is a single point of failure on the channel, and an assistant who both serves the floor and packs has a ceiling. Both are hires out of trading, not out of this raise.</p>
+      </div>
+
+      <div>
+        <h3>What happens with the money</h3>
+        <div class="card sunk">
+          <h3>First 90 days</h3>
+          <ul class="ticks">
+            <li>Place the first import order and land it — the two-to-three month lead time starts on day one</li>
+            <li>Secure the location and begin the fit-out</li>
+            <li>Seed the creators already asking, and publish the first wave</li>
+            <li>Record cost and margin on every order, as we do today, with no exceptions</li>
+          </ul>
+        </div>
+        <div class="card sunk" style="margin-top:8px;">
+          <h3>Months 4–12</h3>
+          <ul class="ticks">
+            <li>Open the store and run pay-on-collection beside online payment</li>
+            <li>Prove the margin on imported stock against the 35% bar</li>
+            <li>Count the collection split — the direct read on the trust problem</li>
+            <li>Drive repeat purchase through boxes and measure it at 60 days</li>
+            <li>Package the operating model so location two is a build, not an experiment</li>
+          </ul>
+        </div>
+        <h3 style="margin-top:12px;">The partner we are looking for</h3>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">Capital matters. So does knowing what to do next.</p>
+        <div class="pills">
+          <span class="pill">Consumer</span><span class="pill">Retail</span><span class="pill">FMCG relationships</span>
+          <span class="pill">Import &amp; logistics</span><span class="pill">Introductions</span><span class="pill">Brand building</span><span class="pill">Expansion</span>
+        </div>
+      </div>
+    </div>
+    <p class="note"><strong>That the franchise plan is a plan and not a promise.</strong> If the first store takes longer to work than modelled we would say so rather than pretend. But it is why we are asking for one round and not the first of three — and it is why the four numbers on slide 08 are fixed in advance and do not move.</p>
+  </div>
+</section>
+
+<!-- ======================= CLOSE ======================= -->
+<section class="slide cover">
+  <div>
+    <span class="wordmark">Snack Quest</span>
+    <h1>Discovery online. Trust in store. Repeat through the box.</h1>
+    <p class="sub">Replicated location by location — the first one built with this raise, and every one after it with somebody else’s capital.</p>
+    <div class="foot">
+      <span><b>Kelvin Kimathi</b>, Founder</span>
+      <span><b>0759 209 705</b></span>
+      <span><b>snackquests.shop</b></span>
+      <span><b>tiktok.com/@snackquests</b></span>
+      <span>Nairobi, Kenya</span>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* Keyboard-driven navigation, so this can be presented from a browser without
+   a slide tool. Arrow keys, space, Home and End move a whole slide at a time;
+   the counter and progress bar read the deck's scroll position rather than a
+   click count, so they stay honest if somebody scrolls or swipes instead. */
+(function () {
+  var deck = document.getElementById('deck');
+  var counter = document.getElementById('counter');
+  var progress = document.getElementById('progress');
+  var slides = Array.prototype.slice.call(deck.querySelectorAll('.slide'));
+
+  /* Which slide the reader is *inside* — the last one whose top is at or
+     above the current position. Nearest-start would answer "the next one"
+     for any position in the lower half of a slide taller than the screen,
+     which makes paging back through such a slide oscillate forever. */
+  function at(pos) {
+    for (var i = slides.length - 1; i >= 0; i--) {
+      if (slides[i].offsetTop <= pos + 2) return i;
+    }
+    return 0;
+  }
+
+  /* Where we have asked the deck to go. Smooth scrolling takes longer than a
+     presenter's finger, so decisions are made from the pending destination
+     rather than from a scrollTop still in mid-animation. */
+  var aim = null;
+
+  function base() { return aim === null ? deck.scrollTop : aim; }
+
+  function scrollTo(top) {
+    aim = Math.max(0, Math.min(top, deck.scrollHeight - deck.clientHeight));
+    deck.scrollTo({ top: aim, behavior: 'smooth' });
+  }
+
+  function current() { return at(deck.scrollTop); }
+
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+
+  function report() {
+    var i = current();
+    /* Covers are not numbered, so the counter reports content slides only. */
+    var n = Math.min(Math.max(i, 1), slides.length - 2);
+    counter.textContent = pad(n) + ' / 10';
+    var max = deck.scrollHeight - deck.clientHeight;
+    progress.style.width = (max > 0 ? (deck.scrollTop / max) * 100 : 0) + '%';
+  }
+
+  /* On a screen too short for a dense slide, stepping forward pages down
+     *within* that slide until its bottom is reached, and only then moves on.
+     Without this the keyboard would jump the reader straight past whatever
+     did not fit on the first screenful. */
+  function go(delta) {
+    var pos = base();
+    var i = at(pos);
+    var slide = slides[i];
+    var step = deck.clientHeight * 0.86;
+    var slideTop = slide.offsetTop;
+    /* The furthest useful position inside this slide; never above its top. */
+    var slideEnd = Math.max(slideTop, slideTop + slide.scrollHeight - deck.clientHeight);
+
+    /* Page within a slide too tall for the screen before leaving it. */
+    if (delta > 0 && pos < slideEnd - 4) { scrollTo(Math.min(pos + step, slideEnd)); return; }
+    if (delta < 0 && pos > slideTop + 4) { scrollTo(Math.max(pos - step, slideTop)); return; }
+
+    var next = i + delta;
+    if (next < 0 || next > slides.length - 1) return;
+    var target = slides[next].offsetTop;
+    /* Arriving backwards at a tall slide should land on its last screen. */
+    if (delta < 0) {
+      target = Math.max(target, target + slides[next].scrollHeight - deck.clientHeight);
+    }
+    scrollTo(target);
+  }
+
+  deck.addEventListener('scroll', function () {
+    /* A scroll that is not ours (wheel, swipe, trackpad) releases the aim. */
+    if (aim !== null && Math.abs(deck.scrollTop - aim) < 4) aim = null;
+    report();
+  }, { passive: true });
+  report();
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
+        e.preventDefault(); go(1); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+        e.preventDefault(); go(-1); break;
+      case 'Home':
+        e.preventDefault(); scrollTo(0); break;
+      case 'End':
+        e.preventDefault(); scrollTo(deck.scrollHeight); break;
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
