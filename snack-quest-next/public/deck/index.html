@@ -618,6 +618,10 @@
     gap: 0 14px;
     padding: 12px 0;
     border-bottom: 1px solid var(--edge);
+    /* Rows stretch to the tallest item in the grid row, so the note
+       would otherwise float in the middle of a short cell instead of
+       hanging under the label it belongs to. */
+    align-content: start;
   }
   .a-k { font-size: 15px; font-weight: 650; color: var(--ink); }
   .a-v {
@@ -634,6 +638,9 @@
      label into one word per line. Those stack instead. */
   .assumption.dual { grid-template-columns: 1fr; }
   .assumption.dual .a-v { text-align: left; white-space: normal; margin-top: 3px; }
+  /* Four items carrying a paragraph each want a 2x2, not three columns
+     and an orphan on the second row. */
+  .assumptions.wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
 
   .a-n {
     grid-column: 1 / -1;
@@ -1645,22 +1652,26 @@
 
       <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">The bar we are setting before we start</h3>
       <p class="note" style="margin-bottom:14px;">Stated in advance so the next conversation is arithmetic rather than argument. These are the four numbers this raise exists to produce.</p>
-      <div class="grid g2">
+      <div class="assumptions wide">
         <div class="assumption">
-          <span class="a-k">Gross margin above 35%</span>
-          <span class="a-v">Against the 25.9% measured so far. Direct import is the lever, and this is the number that proves it worked.</span>
+          <span class="a-k">Gross margin</span>
+          <span class="a-v">above 35%</span>
+          <span class="a-n">A floor, not the plan &mdash; the model on slide&nbsp;20 runs on <strong>45%</strong>. Against the 25.9% recorded so far, this is the level at which the business works even if only part of the import gain lands.</span>
         </div>
         <div class="assumption">
-          <span class="a-k">Repeat purchase above 20%</span>
-          <span class="a-v">Within 60 days of first purchase. Currently zero across eleven customers, because the oldest order is eleven days old.</span>
+          <span class="a-k">Repeat purchase</span>
+          <span class="a-v">above 20%</span>
+          <span class="a-n">Within 60 days of first purchase. Zero today across eleven customers, because the oldest order is eleven days old.</span>
         </div>
         <div class="assumption">
-          <span class="a-k">Customer acquisition cost under KSh&nbsp;1,500</span>
-          <span class="a-v">Against a KSh&nbsp;4,259 average order, that leaves the first order profitable on its own.</span>
+          <span class="a-k">Customer acquisition cost</span>
+          <span class="a-v">under KSh&nbsp;1,500</span>
+          <span class="a-n">A ceiling; the model runs on <strong>KSh&nbsp;500</strong> blended, because creators paid in product cost no cash. At 35% gross a KSh&nbsp;4,259 order carries about KSh&nbsp;1,490 &mdash; so even at the ceiling the first order washes its face and the second earns. That is why repeat sits beside it.</span>
         </div>
         <div class="assumption">
-          <span class="a-k">1 in 3 choose collection</span>
-          <span class="a-v">Of customers offered pay-on-collection. The direct read on whether the store is the right answer to the trust problem.</span>
+          <span class="a-k">Pay-on-collection share</span>
+          <span class="a-v">1 in 3</span>
+          <span class="a-n">Of customers offered it. The direct read on whether the store answers the trust problem.</span>
         </div>
       </div>
 
@@ -1786,7 +1797,7 @@
         <div class="assumption">
           <span class="a-k">Customer acquisition cost</span>
           <span class="a-v">KSh&nbsp;500</span>
-          <span class="a-n">A planning target. The creator strategy is what could pull the blended figure down, because many micro-creators will work for product rather than cash.</span>
+          <span class="a-n">A planning target, and the aggressive end of the range &mdash; the bar on slide&nbsp;18 commits to <strong>KSh&nbsp;1,500</strong> as the ceiling. The creator strategy is what pulls the blended figure down toward this, because many micro-creators will work for product rather than cash.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Repeat purchase rate</span>
@@ -1808,7 +1819,7 @@
           <span class="a-v">KSh&nbsp;1.4M target &middot; KSh&nbsp;1.7M today</span>
           <span class="a-n">The revenue at which contribution covers KSh&nbsp;330K of monthly fixed cost. At the 23% target margin that is KSh&nbsp;1.4M a month; at the 19.0% we have actually recorded, <strong>KSh&nbsp;1.7M</strong>. Both sit under the KSh&nbsp;3.0M revenue target, which moves the risk: it is no longer whether the margin can carry the store, it is whether a shop this size can do 29 transactions a day. Break-even needs roughly 14 a day at today&rsquo;s margin.</span>
         </div>
-        <div class="assumption">
+        <div class="assumption dual">
           <span class="a-k">Payback period</span>
           <span class="a-v">~11 months target &middot; ~17 today</span>
           <span class="a-n">On the KSh&nbsp;4.0M setup, net of fixed costs rather than out of contribution alone &mdash; the earlier ~6 months divided setup by contribution and quietly ignored rent and wages. At KSh&nbsp;3.0M of revenue and the 23% target, contribution is KSh&nbsp;690K less KSh&nbsp;330K of fixed cost, so KSh&nbsp;360K a month clears KSh&nbsp;4.0M in about eleven. At today&rsquo;s 19.0% it is KSh&nbsp;240K a month, or about seventeen &mdash; which is the clearest statement of why closing the margin gap is what this raise is for.</span>
