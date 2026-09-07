@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -18,7 +19,10 @@ export function WithdrawalActions({ withdrawalId, amountKes }: { withdrawalId: s
   const router = useRouter();
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const [reference, setReference] = useState('');
+  const [manualNote, setManualNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -72,8 +76,44 @@ export function WithdrawalActions({ withdrawalId, amountKes }: { withdrawalId: s
     }
   }
 
+  /*
+   * Recording a payout that already happened, rather than sending one.
+   * Both fields are required by the API and checked here too, so the
+   * dialog says which one is missing instead of the request coming
+   * back with an error about a form the person can still see.
+   */
+  async function payManually() {
+    if (!reference.trim()) {
+      setError('The M-Pesa code from the transfer is required.');
+      return;
+    }
+    if (!manualNote.trim()) {
+      setError('A note is required — why was this paid by hand?');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/withdrawals/${withdrawalId}/pay-manually`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reference: reference.trim(), note: manualNote.trim() }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Could not record this payment.');
+      }
+      setManualOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not record this payment.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <Dialog open={approveOpen} onOpenChange={(open) => { setApproveOpen(open); if (!open) { setError(null); setResult(null); } }}>
         <Button size="sm" onClick={() => setApproveOpen(true)}>
           Approve
@@ -100,6 +140,64 @@ export function WithdrawalActions({ withdrawalId, amountKes }: { withdrawalId: s
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={manualOpen}
+        onOpenChange={(open) => {
+          setManualOpen(open);
+          if (!open) { setError(null); setReference(''); setManualNote(''); }
+        }}
+      >
+        <Button size="sm" variant="outline" onClick={() => setManualOpen(true)}>
+          Paid manually
+        </Button>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record a payment you already sent</DialogTitle>
+            <DialogDescription>
+              For a payout sent from the M-Pesa app rather than through this system. Nothing is sent
+              to Safaricom — this marks the withdrawal paid and records how it was settled. The
+              creator&rsquo;s balance was already reduced when they requested it, so it does not
+              change again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="manual-reference">M-Pesa code</Label>
+              <Input
+                id="manual-reference"
+                value={reference}
+                onChange={(event) => setReference(event.target.value)}
+                placeholder="e.g. UI4CP57HIJ"
+                autoCapitalize="characters"
+                className="uppercase"
+              />
+              <p className="text-caption text-muted-foreground">
+                From the confirmation SMS. This is what ties the record to your statement.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="manual-note">Note</Label>
+              <Textarea
+                id="manual-note"
+                value={manualNote}
+                onChange={(event) => setManualNote(event.target.value)}
+                placeholder="e.g. Sent from the M-Pesa app while B2C is being set up"
+                aria-invalid={Boolean(error) || undefined}
+              />
+            </div>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setManualOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={payManually} loading={submitting}>
+              Mark as paid
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

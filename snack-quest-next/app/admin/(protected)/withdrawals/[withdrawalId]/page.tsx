@@ -73,6 +73,26 @@ export default async function AdminWithdrawalDetailPage({
             {withdrawal.approvedAt ? <DetailRow label="Approved" value={formatDateTime(withdrawal.approvedAt)} /> : null}
             {withdrawal.paidAt ? <DetailRow label="Paid" value={formatDateTime(withdrawal.paidAt)} /> : null}
             {withdrawal.rejectionReason ? <DetailRow label="Rejection reason" value={withdrawal.rejectionReason} /> : null}
+            {/*
+              How it was settled, when that was by hand. Shown here
+              rather than left to the audit trail below because "paid"
+              on its own does not say whether Safaricom confirmed it or
+              a person asserted it, and those are different amounts of
+              certainty about the same word.
+            */}
+            {withdrawal.manualPayment ? (
+              <>
+                <DetailRow
+                  label="Paid manually by"
+                  value={`${withdrawal.manualPayment.recordedByName} · ${formatDateTime(withdrawal.manualPayment.recordedAt)}`}
+                />
+                <DetailRow
+                  label="M-Pesa code"
+                  value={<span className="tabular-nums">{withdrawal.manualPayment.reference}</span>}
+                />
+                <DetailRow label="Why by hand" value={withdrawal.manualPayment.note} />
+              </>
+            ) : null}
           </CardContent>
         </Card>
 

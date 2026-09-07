@@ -47,6 +47,30 @@ export interface WithdrawalAuditEntry {
 }
 
 /**
+ * A payout an admin sent by hand and then recorded here
+ * (§ pay a withdrawal manually).
+ *
+ * Deliberately shaped like `ManualPaymentRecord` on `Order`, which
+ * already covers the mirror case of money arriving outside Daraja:
+ * who recorded it, when, and the reference that ties it to something
+ * checkable. The reference is what makes this auditable rather than
+ * merely asserted — a status somebody set with no way to reconcile it
+ * against a statement is a claim, not a record.
+ *
+ * Null on every withdrawal paid through B2C, and absent entirely on
+ * every withdrawal that predates this field.
+ */
+export interface ManualWithdrawalPayment {
+  /** The M-Pesa transaction code from the transfer that was actually sent. */
+  reference: string;
+  /** Why it was paid by hand rather than through B2C. */
+  note: string;
+  recordedBy: string;
+  recordedByName: string;
+  recordedAt: Timestamp;
+}
+
+/**
  * `withdrawals/{withdrawalId}` — the unified payout collection that
  * replaces the current system's three competing withdrawal
  * implementations (`CREATOR_PORTAL_TECH_DEBT.md` §1, TDD §8/§24).
@@ -77,4 +101,12 @@ export interface Withdrawal extends AuditFields {
   pendingStatusQueryOriginatorConversationId: string | null;
   /** How many times the reconciliation sweep has queried Daraja's Transaction Status API about this withdrawal — bounds its own retry budget, independent of how many sweep runs have happened. 0 until the first query. */
   statusQueryAttemptCount: number;
+  /**
+   * Set only when an admin paid this one by hand and recorded it
+   * (§ pay a withdrawal manually). Optional rather than nullable-
+   * required because every withdrawal written before this field
+   * existed genuinely has none, and a read must handle that rather
+   * than assume it.
+   */
+  manualPayment?: ManualWithdrawalPayment | null;
 }
