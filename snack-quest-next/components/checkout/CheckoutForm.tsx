@@ -817,7 +817,7 @@ export function CheckoutForm({
                     )}
                   </div>
 
-                  <div className="min-w-0 flex-1 sm:w-full sm:flex-none">
+                  <div className="min-w-0 flex-1 sm:flex sm:w-full sm:flex-1 sm:flex-col sm:items-start">
                     {/*
                       The badge and the pick line are what make this box
                       read as a better product rather than a bigger one,
@@ -843,7 +843,7 @@ export function CheckoutForm({
                     {/* On the grid the price sits under the name; in a
                         row it belongs on the right, where a reader
                         scanning prices expects to find it. */}
-                    <p className="text-foreground mt-1 hidden text-base font-semibold sm:block">
+                    <p className="text-foreground mt-1 hidden text-base font-semibold sm:mt-auto sm:block sm:pt-3">
                       {formatKes(candidate.priceKes)}
                     </p>
                   </div>
@@ -1470,7 +1470,18 @@ export function CheckoutForm({
         </div>
 
         <div className="mt-9 lg:sticky lg:top-24 lg:mt-0 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pb-2">
-      <div className="border-border flex flex-col gap-4 border-t pt-8 lg:border-t-0 lg:pt-0">
+      {/*
+        On a large screen this is a panel, not a run of loose text.
+
+        Everything in the left column sits on a bordered surface, and
+        the summary — the one part of the page asking to be trusted
+        with an amount of money — was the only thing floating directly
+        on the page background. It read as unfinished next to the boxes
+        it is summarising. Below `lg` it stays as it was: a section
+        separated by a rule, where a second box inside the page would
+        just be a box inside a box.
+      */}
+      <div className="border-border flex flex-col gap-4 border-t pt-8 lg:bg-surface lg:rounded-xl lg:border lg:p-5">
         <OrderSummary
           snackThumbs={guaranteedSnackThumbs}
           quote={quote}

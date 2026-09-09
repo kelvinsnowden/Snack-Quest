@@ -103,7 +103,7 @@ export default async function CheckoutPage({
   // first screen on a page whose entire job is to be filled in. The
   // full treatment returns at `sm`, where there's room for it.
   return (
-    <div className="mx-auto max-w-3xl px-5 py-7 sm:px-6 sm:py-16 lg:px-8">
+    <div className="mx-auto max-w-3xl px-5 py-7 sm:px-6 sm:py-16 lg:max-w-6xl lg:px-8">
       <header>
         <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-[length:var(--text-page-title)]">
           Checkout
