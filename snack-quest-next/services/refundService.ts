@@ -7,6 +7,8 @@ import { refundRepository, refundAuditEntry } from '@/repositories/refundReposit
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
+import { notificationService } from '@/services/notificationService';
+import { formatOrderNumber } from '@/lib/orders/format';
 import type { Refund, RefundStatus } from '@/types';
 
 export { OrderNotFoundError };
@@ -173,6 +175,37 @@ class RefundService {
         orderId: match.data.orderId,
         transactionId: result.transactionId,
       });
+      /*
+       * Tell the customer their money is back (§ creator SMS
+       * notifications). `refund_succeeded_sms` has been in the
+       * catalogue unsent, so until now a reversal was confirmed by
+       * Safaricom and never mentioned by us — the customer found out
+       * by checking their own balance, if they thought to.
+       *
+       * The number comes off the order rather than the refund, which
+       * does not carry one. Best-effort and last: the reversal is
+       * already confirmed and nothing here can unmake it.
+       */
+      try {
+        const order = await orderRepository.findById(match.data.orderId);
+        if (order?.customer?.phoneNumber) {
+          await notificationService.send(businessId, {
+            channel: 'sms',
+            templateCode: 'refund_succeeded_sms',
+            recipientType: 'customer',
+            recipientId: match.data.orderId,
+            recipientRef: order.customer.phoneNumber,
+            params: {
+              amountKes: String(match.data.amountKes),
+              // The reference the customer actually has, not the document id.
+              orderId: order.orderNumber ? formatOrderNumber(order.orderNumber) : match.data.orderId,
+            },
+            dedupeKey: `refund-succeeded-sms:${match.id}`,
+          });
+        }
+      } catch {
+        // Best-effort — the reversal itself already succeeded above.
+      }
     } else {
       await refundRepository.applyTransition(
         match.id,
