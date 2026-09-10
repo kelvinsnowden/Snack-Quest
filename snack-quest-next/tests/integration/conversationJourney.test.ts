@@ -836,6 +836,89 @@ describe('the full customer journey: Meta ad through Fargo shipment confirmation
   });
 
   /*
+   * Every number on the list, not just the first (§ order alert
+   * recipients).
+   *
+   * The trap this guards is the dedupe key: it becomes the outbound
+   * message's document id, so a key naming only the order would let
+   * the first recipient claim it and silently drop everybody else —
+   * a configured list that texts one person and looks like it worked.
+   */
+  it('texts every number on the order alert list', async () => {
+    mockAllProviders();
+    const gateway = new FakeWhatsAppGateway();
+    const service = new ConversationService(gateway, gateway);
+
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: SNACK_QUEST.businessId,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+    await adminFirestore
+      .collection('businesses')
+      .doc(SNACK_QUEST.businessId)
+      .update({
+        orderAlertRecipients: [
+          { phone: '254711111111', label: 'Kelvin' },
+          { phone: '254722222222', label: 'Packing station' },
+        ],
+        // Set, and must be ignored: the list is the control now.
+        adminOrderSmsPhone: '254759209705',
+      });
+    await notificationTemplateRepository.upsert({
+      templateCode: 'admin_new_order_sms',
+      channel: 'sms',
+      subject: null,
+      heading: null,
+      bodyTemplate:
+        'Snack Quest: NEW ORDER {{orderRef}} — KES {{totalKes}}. {{summary}}. {{deliverySummary}}. {{customerName}} {{customerPhone}}.',
+      ctaLabel: null,
+      ctaUrl: null,
+      htmlBodyTemplate: null,
+      requiredParams: [
+        'orderRef',
+        'totalKes',
+        'summary',
+        'deliverySummary',
+        'customerName',
+        'customerPhone',
+      ],
+      version: 1,
+      isActive: true,
+    });
+
+    const [box] = await packageRepository.listActive(SNACK_QUEST.businessId);
+    const checkout = await service.startWebCheckout(SNACK_QUEST.businessId, {
+      packageId: box.id,
+      quantity: 1,
+      customerName: 'Fredrick Nyanjwa',
+      phone: PHONE,
+      county: 'Nairobi',
+      deliveryMethod: 'door',
+      addressText: 'Kensington Court, Valley Road',
+      attribution: { channel: 'web', landingUrl: 'https://snackquests.shop/checkout' },
+    });
+    const callback = await paymentService.processCallback(
+      SNACK_QUEST.businessId,
+      darajaCallbackPayload(SNACK_QUEST.shortcode, checkout.pricing.totalKes),
+    );
+    await service.handlePaymentResult(callback);
+
+    const alerts = await adminFirestore
+      .collection('outboundMessages')
+      .where('templateCode', '==', 'admin_new_order_sms')
+      .get();
+    const texted = alerts.docs.map((doc) => doc.data().recipientRef).sort();
+
+    expect(texted).toEqual(['254711111111', '254722222222']);
+    // The legacy field is a fallback, never an addition.
+    expect(texted).not.toContain('254759209705');
+  });
+
+  /*
    * The influencer PR box (§ discount codes).
    *
    * A 100% code is not a bigger discount, it is a different kind of

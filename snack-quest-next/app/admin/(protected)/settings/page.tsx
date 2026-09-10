@@ -13,6 +13,7 @@ import {
   DEFAULT_LOYALTY_CONFIG,
 } from '@/components/admin/BusinessSettingsForm';
 import { Card } from '@/components/ui/card';
+import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
 
 export const metadata: Metadata = { title: 'Settings' };
 
@@ -103,7 +104,14 @@ export default async function AdminSettingsPage() {
           whatsappPhoneNumberId: business.whatsappPhoneNumberId,
           countyCoverage: business.countyCoverage,
           adminWhatsappPhone: business.adminWhatsappPhone,
-          adminOrderSmsPhone: business.adminOrderSmsPhone ?? null,
+          /*
+             The legacy single number shows up as the first row, so a
+             business configured before the list existed sees its
+             current setting rather than an empty list that looks like
+             nobody was ever being told. Saving migrates it.
+          */
+          orderAlertRecipients: orderAlertRecipientsFor(business),
+          whatsappCustomerNumber: business.whatsappCustomerNumber,
           status: business.status,
           loyaltyConfig: business.loyaltyConfig ?? DEFAULT_LOYALTY_CONFIG,
         }}

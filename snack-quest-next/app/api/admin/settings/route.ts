@@ -41,6 +41,16 @@ const EDITABLE_FIELDS = [
   'whatsappPhoneNumberId',
   'countyCoverage',
   'adminWhatsappPhone',
+  /*
+   * Both of these were missing, and the settings form has been
+   * rendering a field for the first of them the whole time: an admin
+   * typed an SMS alert number, pressed save, and `pickPatch` dropped
+   * it on the floor. The field looked configured and no number was
+   * ever stored, which is why the order alert it describes never
+   * arrived.
+   */
+  'adminOrderSmsPhone',
+  'orderAlertRecipients',
   'whatsappCustomerNumber',
   'status',
   'loyaltyConfig',

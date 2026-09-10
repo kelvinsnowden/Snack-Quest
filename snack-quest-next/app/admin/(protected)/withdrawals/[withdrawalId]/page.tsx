@@ -8,6 +8,7 @@ import { userRepository } from '@/repositories/userRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { WithdrawalStatusBadge } from '@/components/admin/WithdrawalStatusBadge';
 import { WithdrawalActions } from '@/components/admin/WithdrawalActions';
+import { WithdrawalResolveActions } from '@/components/admin/WithdrawalResolveActions';
 import { formatDateTime, formatKes } from '@/lib/orders/format';
 
 export const metadata: Metadata = { title: 'Withdrawal detail' };
@@ -57,6 +58,15 @@ export default async function AdminWithdrawalDetailPage({
         </div>
         {withdrawal.status === 'pending' ? (
           <WithdrawalActions withdrawalId={withdrawalId} amountKes={withdrawal.amountKes} />
+        ) : null}
+        {/*
+          The two states where Safaricom has been asked and has not
+          answered. These are the withdrawals a reconciliation sweep
+          escalates, and until now the admin had no control for them at
+          all — the endpoint existed, nothing called it.
+        */}
+        {withdrawal.status === 'submitting' || withdrawal.status === 'approved' ? (
+          <WithdrawalResolveActions withdrawalId={withdrawalId} amountKes={withdrawal.amountKes} />
         ) : null}
       </div>
 
