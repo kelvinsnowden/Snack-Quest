@@ -332,6 +332,124 @@ describe('WithdrawalService.approveWithdrawal', () => {
     expect(outbound?.renderedBody).toBe('Hi Cool Creator, KES 2000 approved. http://localhost:3000/creator/withdrawals');
   });
 
+  /*
+   * The withdrawal SMS catalogue (§ creator SMS notifications).
+   *
+   * All four of these templates existed from the start and none was
+   * ever sent — a creator got one email on approval and silence
+   * through payment, failure and rejection alike. These pin the wiring
+   * to the transition, and the last one pins the property that makes
+   * several code paths marking one withdrawal paid still send one text.
+   */
+  describe('creator SMS', () => {
+    async function seedSmsTemplates() {
+      for (const [templateCode, bodyTemplate, requiredParams] of [
+        ['withdrawal_approved_sms', 'Approved: KES {{amountKes}}', ['amountKes']],
+        ['withdrawal_paid_sms', 'Paid: KES {{amountKes}}', ['amountKes']],
+        ['withdrawal_failed_sms', 'Failed: KES {{amountKes}}', ['amountKes']],
+        ['withdrawal_rejected_sms', 'Rejected: KES {{amountKes}} — {{reason}}', ['amountKes', 'reason']],
+      ] as const) {
+        await notificationTemplateRepository.upsert({
+          templateCode,
+          channel: 'sms',
+          subject: null,
+          heading: null,
+          bodyTemplate,
+          ctaLabel: null,
+          ctaUrl: null,
+          htmlBodyTemplate: null,
+          requiredParams: [...requiredParams],
+          version: 1,
+          isActive: true,
+        });
+      }
+    }
+
+    async function pendingWithdrawal(amountKes = 2000) {
+      await seedCreator('creator-1', {
+        businessId: BUSINESS_ID,
+        status: 'active',
+        availableCashKes: 5000,
+      });
+      return withdrawalService.requestWithdrawal({
+        businessId: BUSINESS_ID,
+        ownerId: 'creator-1',
+        ownerType: 'creator',
+        amountKes,
+        phoneNumber: '254712345678',
+      });
+    }
+
+    it('texts the creator when their withdrawal is approved', async () => {
+      await seedSmsTemplates();
+      const id = await pendingWithdrawal();
+      stubB2CSuccess();
+
+      await withdrawalService.approveWithdrawal(BUSINESS_ID, id, 'staff-1');
+
+      const sms = await outboundMessageRepository.findById(`sms:withdrawal-approved:${id}`);
+      expect(sms?.recipientRef).toBe('254712345678');
+      expect(sms?.renderedBody).toBe('Approved: KES 2000');
+    });
+
+    it('texts the creator when the payout fails, after refunding them', async () => {
+      await seedSmsTemplates();
+      const id = await pendingWithdrawal();
+      stubB2CFailure();
+
+      await withdrawalService.approveWithdrawal(BUSINESS_ID, id, 'staff-1');
+
+      const sms = await outboundMessageRepository.findById(`sms:withdrawal-failed:${id}`);
+      expect(sms?.renderedBody).toBe('Failed: KES 2000');
+    });
+
+    it('texts the creator when it is rejected, with the reason', async () => {
+      await seedSmsTemplates();
+      const id = await pendingWithdrawal();
+
+      await withdrawalService.rejectWithdrawal(BUSINESS_ID, id, 'staff-1', 'Phone number unverified');
+
+      const sms = await outboundMessageRepository.findById(`sms:withdrawal-rejected:${id}`);
+      expect(sms?.renderedBody).toBe('Rejected: KES 2000 — Phone number unverified');
+    });
+
+    it('texts the creator when an admin records paying them by hand', async () => {
+      await seedSmsTemplates();
+      const id = await pendingWithdrawal();
+
+      await withdrawalService.payWithdrawalManually(
+        BUSINESS_ID,
+        id,
+        'staff-1',
+        'Kelvin',
+        'UI4CP57HIJ',
+        'Sent from the M-Pesa app',
+      );
+
+      const sms = await outboundMessageRepository.findById(`sms:withdrawal-paid:${id}`);
+      expect(sms?.renderedBody).toBe('Paid: KES 2000');
+    });
+
+    /* Silence beats a crash: no template, no text, withdrawal still paid. */
+    it('still pays when the template is missing', async () => {
+      const id = await pendingWithdrawal();
+
+      await expect(
+        withdrawalService.payWithdrawalManually(
+          BUSINESS_ID,
+          id,
+          'staff-1',
+          'Kelvin',
+          'UI4CP57HIJ',
+          'Sent from the M-Pesa app',
+        ),
+      ).resolves.toBeUndefined();
+
+      const withdrawal = await withdrawalRepository.findById(BUSINESS_ID, id);
+      expect(withdrawal?.status).toBe('paid');
+    });
+  });
+
   it('throws WithdrawalNotFoundError for a withdrawal in a different business', async () => {
     await seedCreator('creator-1', { businessId: OTHER_BUSINESS_ID, status: 'active', availableCashKes: 5000 });
     const id = await withdrawalService.requestWithdrawal({

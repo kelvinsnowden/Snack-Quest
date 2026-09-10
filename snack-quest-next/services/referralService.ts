@@ -137,6 +137,29 @@ class ReferralService {
     );
 
     const creator = await userRepository.findById(input.ownerId);
+    /*
+     * Texted as well as emailed (§ creator SMS notifications).
+     *
+     * `referral_commission_earned_sms` has sat unsent in the catalogue
+     * since the referral programme shipped. Commission arriving is the
+     * single most motivating message this system sends a creator, and
+     * it was going only to an inbox.
+     */
+    if (creator?.phoneNumber) {
+      try {
+        await notificationService.send(input.businessId, {
+          channel: 'sms',
+          templateCode: 'referral_commission_earned_sms',
+          recipientType: 'creator',
+          recipientId: input.ownerId,
+          recipientRef: creator.phoneNumber,
+          params: { commissionKes: String(input.commissionKes) },
+          dedupeKey: `commission-sms:${input.orderId}:${input.ownerId}`,
+        });
+      } catch {
+        // Best-effort — the commission credit itself already succeeded above.
+      }
+    }
     if (creator?.email) {
       try {
         await notificationService.send(input.businessId, {

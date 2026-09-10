@@ -142,6 +142,40 @@ class CreatorAdminService {
       actor,
     });
 
+    /*
+     * Approval by text as well as email (§ creator SMS notifications).
+     *
+     * `creator_status_approved_sms` has been in the catalogue since the
+     * creator programme shipped and was never sent — a creator got an
+     * email and nothing else. Email is the weaker channel for these
+     * people: they are recruited through TikTok, on phones.
+     *
+     * There is deliberately no rejection text here. The catalogue
+     * carries `creator_status_rejected_sms`, but `CreatorStatus` has
+     * no rejected state — it is pending, active or suspended — so
+     * there is no moment at which that message would be true. Sending
+     * it on suspension would tell an approved creator their
+     * application had been turned down.
+     */
+    if (next === 'active') {
+      const user = await userRepository.findById(uid);
+      if (user?.phoneNumber) {
+        try {
+          await notificationService.send(businessId, {
+            channel: 'sms',
+            templateCode: 'creator_status_approved_sms',
+            recipientType: 'creator',
+            recipientId: uid,
+            recipientRef: user.phoneNumber,
+            params: {},
+            dedupeKey: `creator-approved-sms:${uid}`,
+          });
+        } catch {
+          // Best-effort — the status change itself already succeeded above.
+        }
+      }
+    }
+
     if (next === 'active') {
       const user = await userRepository.findById(uid);
       if (user?.email) {

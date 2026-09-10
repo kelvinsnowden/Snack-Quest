@@ -248,6 +248,7 @@ class WithdrawalService {
         actor,
         originatorConversationId,
       });
+      await this.textOwner(businessId, withdrawalId, claimed, 'approved');
 
       const owner = await userRepository.findById(claimed.ownerId);
       if (owner?.email) {
@@ -285,6 +286,7 @@ class WithdrawalService {
         );
       });
       await publishEvent(businessId, 'WithdrawalFailed', 'withdrawal', withdrawalId, { actor, reason: message, category });
+      await this.textOwner(businessId, withdrawalId, claimed, 'failed');
       await this.reactToFailureCategory(businessId, category, `B2C payout initiation for withdrawal ${withdrawalId} failed (${explanation}): ${message}`);
       return 'failed';
     }
@@ -345,6 +347,9 @@ class WithdrawalService {
   ): Promise<void> {
     await assertCreatorFinancialWritesNotFrozen(businessId);
 
+    // Read inside the transaction, used after it commits: the SMS needs the
+    // amount and the number, and re-reading afterwards would race another writer.
+    let paidWithdrawal: Withdrawal | null = null;
     await adminFirestore.runTransaction(async (tx) => {
       const found = await withdrawalRepository.getInTransaction(tx, businessId, withdrawalId);
       if (!found) {
@@ -360,6 +365,7 @@ class WithdrawalService {
         throw new InvalidWithdrawalTransitionError(found.data.status, 'pay_manually');
       }
 
+      paidWithdrawal = found.data;
       const now = Timestamp.now() as unknown as Withdrawal['paidAt'];
       withdrawalRepository.applyTransitionInTransaction(
         tx,
@@ -392,11 +398,21 @@ class WithdrawalService {
       note,
       manual: true,
     });
+    /*
+     * Worth sending on this path in particular. A real B2C payout also
+     * produces Safaricom's own confirmation to the recipient; a payout
+     * sent by hand produces one from whoever's personal M-Pesa sent it,
+     * which is not obviously Snack Quest paying a commission.
+     */
+    if (paidWithdrawal) {
+      await this.textOwner(businessId, withdrawalId, paidWithdrawal, 'paid');
+    }
   }
 
   async rejectWithdrawal(businessId: string, withdrawalId: string, actor: string, reason: string): Promise<void> {
     await assertCreatorFinancialWritesNotFrozen(businessId);
 
+    let rejectedWithdrawal: Withdrawal | null = null;
     await adminFirestore.runTransaction(async (tx) => {
       const found = await withdrawalRepository.getInTransaction(tx, businessId, withdrawalId);
       if (!found) {
@@ -406,6 +422,7 @@ class WithdrawalService {
         throw new InvalidWithdrawalTransitionError(found.data.status, 'reject');
       }
       refundBalanceInTransaction(tx, businessId, found.data.ownerId, found.data.amountKes);
+      rejectedWithdrawal = found.data;
       withdrawalRepository.applyTransitionInTransaction(
         tx,
         withdrawalId,
@@ -415,6 +432,9 @@ class WithdrawalService {
       );
     });
     await publishEvent(businessId, 'WithdrawalRejected', 'withdrawal', withdrawalId, { actor, reason });
+    if (rejectedWithdrawal) {
+      await this.textOwner(businessId, withdrawalId, rejectedWithdrawal, 'rejected', reason);
+    }
   }
 
   /**
@@ -484,6 +504,7 @@ class WithdrawalService {
       await publishEvent(businessId, 'WithdrawalPaid', 'withdrawal', match.id, {
         transactionId: result.transactionId,
       });
+      await this.textOwner(businessId, match.id, match.data, 'paid');
     } else {
       const { category, explanation } = classifyB2CResultCode(result.resultCode);
       await adminFirestore.runTransaction(async (tx) => {
@@ -497,6 +518,7 @@ class WithdrawalService {
         );
       });
       await publishEvent(businessId, 'WithdrawalFailed', 'withdrawal', match.id, { reason: result.resultDesc, category });
+      await this.textOwner(businessId, match.id, match.data, 'failed');
       await this.reactToFailureCategory(businessId, category, `B2C payout for withdrawal ${match.id} failed (${explanation}): ${result.resultDesc}`);
     }
 
@@ -564,6 +586,7 @@ class WithdrawalService {
         transactionId: result.transactionId,
         source: 'transaction_status_query',
       });
+      await this.textOwner(businessId, match.id, match.data, 'paid');
     } else {
       // Deliberately does NOT refund or change status — an inconclusive
       // status-query result is not proof of failure, only proof that
@@ -692,6 +715,7 @@ class WithdrawalService {
     resolution: 'confirmed_paid' | 'confirmed_failed',
     note: string,
   ): Promise<void> {
+    let resolved: Withdrawal | null = null;
     await adminFirestore.runTransaction(async (tx) => {
       const found = await withdrawalRepository.getInTransaction(tx, businessId, withdrawalId);
       if (!found) {
@@ -700,6 +724,7 @@ class WithdrawalService {
       if (found.data.status !== 'submitting' && found.data.status !== 'approved') {
         throw new InvalidWithdrawalTransitionError(found.data.status, 'resolve');
       }
+      resolved = found.data;
 
       if (resolution === 'confirmed_paid') {
         withdrawalRepository.applyTransitionInTransaction(
@@ -728,6 +753,14 @@ class WithdrawalService {
       withdrawalId,
       { actor, note, manual: true },
     );
+    if (resolved) {
+      await this.textOwner(
+        businessId,
+        withdrawalId,
+        resolved,
+        resolution === 'confirmed_paid' ? 'paid' : 'failed',
+      );
+    }
   }
 
   async listWithdrawals(
@@ -756,6 +789,67 @@ class WithdrawalService {
    * alert except `recipient` (routine — the creator's own account is
    * the constraint, not something an operator needs to act on).
    */
+  /**
+   * What the creator is actually told, in one place
+   * (§ creator SMS notifications).
+   *
+   * Every one of these templates has existed in the catalogue since
+   * the withdrawal work and none of them was ever sent — a creator got
+   * one email on approval and silence through approval, payment,
+   * failure and rejection alike. The money moved and nobody told them.
+   *
+   * Keyed off the status rather than called with a template code so
+   * that the four states and the four messages cannot drift apart, and
+   * so a new terminal state is a compile error here rather than a
+   * creator who is quietly never notified.
+   *
+   * The dedupe key is the status and the withdrawal, so the several
+   * paths that can mark one withdrawal paid — the B2C callback, a
+   * reconciliation sweep, a human resolving an ambiguous one — text
+   * the creator exactly once between them.
+   *
+   * Best-effort, and last. Every caller has already committed the
+   * transition and moved the balance; a gateway that is down must not
+   * unmake that.
+   */
+  private async textOwner(
+    businessId: string,
+    withdrawalId: string,
+    withdrawal: Pick<Withdrawal, 'phoneNumber' | 'amountKes' | 'ownerId'>,
+    status: 'approved' | 'paid' | 'failed' | 'rejected',
+    reason?: string,
+  ): Promise<void> {
+    if (!withdrawal.phoneNumber) {
+      return;
+    }
+    const templateCode = {
+      approved: 'withdrawal_approved_sms',
+      paid: 'withdrawal_paid_sms',
+      failed: 'withdrawal_failed_sms',
+      rejected: 'withdrawal_rejected_sms',
+    }[status];
+
+    try {
+      await notificationService.send(businessId, {
+        channel: 'sms',
+        templateCode,
+        recipientType: 'creator',
+        recipientId: withdrawal.ownerId,
+        recipientRef: withdrawal.phoneNumber,
+        params: {
+          amountKes: String(withdrawal.amountKes),
+          // Only `withdrawal_rejected_sms` declares this, and passing
+          // an extra param a template never asked for is harmless —
+          // `assertRequiredParams` checks for missing ones, not spare.
+          ...(reason ? { reason } : {}),
+        },
+        dedupeKey: `withdrawal-${status}:${withdrawalId}`,
+      });
+    } catch {
+      // Best-effort: the transition and the balance are already durable.
+    }
+  }
+
   private async reactToFailureCategory(businessId: string, category: B2CFailureCategory, detail: string): Promise<void> {
     if (category === 'permanent_configuration') {
       await featureFlagService.setEnabled(businessId, 'b2c_disbursements_frozen', true, 'system');
