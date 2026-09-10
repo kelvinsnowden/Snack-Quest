@@ -11,6 +11,14 @@ import type { AuditFields } from './common';
  */
 export type BusinessStatus = 'active' | 'suspended';
 
+/** One person texted when an order comes in (§ order alert recipients). */
+export interface OrderAlertRecipient {
+  /** E.164 without the leading "+", e.g. "254712345678". */
+  phone: string;
+  /** Who this is — "Kelvin", "Packing station". Shown only in admin. */
+  label: string;
+}
+
 export interface Business extends AuditFields {
   name: string;
   currency: string;
@@ -42,6 +50,26 @@ export interface Business extends AuditFields {
    * neither needs a backfill to read correctly.
    */
   adminOrderSmsPhone?: string | null;
+  /**
+   * Everyone texted when an order comes in (§ order alert recipients).
+   *
+   * A list rather than the single `adminOrderSmsPhone` above because
+   * the people who need to know are rarely one person: the owner wants
+   * the sale, and whoever is packing wants the box. Making that a list
+   * is the difference between a feature one person uses and one a
+   * small team runs on.
+   *
+   * Each entry carries a label as well as a number. A bare list of
+   * digits is unreadable a month later, and an admin removing the
+   * wrong row from an order-alert list is a silent failure — nobody
+   * notices until an order goes unpacked.
+   *
+   * Absent or empty falls back to `adminOrderSmsPhone`, so a business
+   * configured before this existed keeps working untouched and needs
+   * no backfill. See `orderAlertRecipientsFor`, which is the only
+   * thing that should read either field.
+   */
+  orderAlertRecipients?: OrderAlertRecipient[];
   /**
    * The customer-facing WhatsApp number (E.164, no leading "+") behind
    * `whatsappPhoneNumberId` above — distinct from it, since that's the

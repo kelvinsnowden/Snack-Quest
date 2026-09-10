@@ -56,6 +56,7 @@ import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { CREATOR_PACKAGE_DISCOUNT_KES } from '@/lib/creators/creatorCheckoutDiscount';
 import { isSelfReferral } from '@/lib/creators/selfReferralGuard';
+import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
 import { formatOrderNumber } from '@/lib/orders/format';
 import { paymentService, type ProcessCallbackResult } from './paymentService';
 import { orderService } from './orderService';
@@ -3154,8 +3155,8 @@ class ConversationService {
      */
     try {
       const business = await businessRepository.findById(businessId);
-      const alertPhone = business?.adminOrderSmsPhone;
-      if (alertPhone) {
+      const alertRecipients = orderAlertRecipientsFor(business);
+      if (alertRecipients.length > 0) {
         const delivery = snapshot.delivery;
         /*
          * The speed leads on a door order, because it is the part that
@@ -3175,12 +3176,27 @@ class ConversationService {
               ]
                 .filter(Boolean)
                 .join(' ');
+        /*
+         * One send per recipient, each with its own dedupe key.
+         *
+         * The key is what `outboundMessageRepository.create` turns
+         * into the document id, so a key that named only the order
+         * would let the first recipient's message claim it and every
+         * other recipient would be silently deduped away — a list that
+         * looks configured and texts one person.
+         *
+         * Sequential rather than concurrent: this is a handful of
+         * numbers on the tail of an order that is already paid for,
+         * and one recipient's gateway failure must not reject the
+         * others' sends along with it.
+         */
+        for (const recipient of alertRecipients) {
         await this.notifications.send(businessId, {
           channel: 'sms',
           templateCode: 'admin_new_order_sms',
           recipientType: 'staff',
           recipientId: orderId,
-          recipientRef: alertPhone,
+          recipientRef: recipient.phone,
           params: {
             orderRef,
             totalKes: String(snapshot.totalKes),
@@ -3192,8 +3208,9 @@ class ConversationService {
             customerName: snapshot.customerName,
             customerPhone: phoneNumber,
           },
-          dedupeKey: `admin-new-order:${orderId}`,
+          dedupeKey: `admin-new-order:${orderId}:${recipient.phone}`,
         });
+        }
       }
     } catch (error) {
       await publishEvent(businessId, 'AdminOrderAlertSmsFailed', 'order', orderId, {

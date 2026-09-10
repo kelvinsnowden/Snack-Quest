@@ -26,6 +26,8 @@ export class BusinessSettingsValidationError extends Error {
 }
 
 const PHONE_PATTERN = /^254\d{9}$/;
+/** A shop, not a broadcast list — a cap keeps one bad paste from texting fifty people per order. */
+const MAX_ORDER_ALERT_RECIPIENTS = 10;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const STATUSES: BusinessStatus[] = ['active', 'suspended'];
 
@@ -38,6 +40,7 @@ export type BusinessSettingsPatch = Partial<
     | 'countyCoverage'
     | 'adminWhatsappPhone'
     | 'adminOrderSmsPhone'
+    | 'orderAlertRecipients'
     | 'whatsappCustomerNumber'
     | 'status'
     | 'loyaltyConfig'
@@ -126,6 +129,48 @@ class BusinessSettingsService {
       throw new BusinessSettingsValidationError(
         '"adminOrderSmsPhone" must be E.164 without the leading "+", e.g. "254759209705".',
       );
+    }
+    /*
+     * Validated as a whole list, not per row as it is typed. A save
+     * that accepted the good rows and dropped the bad ones would leave
+     * an admin looking at a list that is not the list they submitted —
+     * on a control whose whole job is deciding who gets told about
+     * money arriving.
+     */
+    if (patch.orderAlertRecipients !== undefined) {
+      const recipients = patch.orderAlertRecipients ?? [];
+      if (!Array.isArray(recipients)) {
+        throw new BusinessSettingsValidationError('"orderAlertRecipients" must be a list.');
+      }
+      if (recipients.length > MAX_ORDER_ALERT_RECIPIENTS) {
+        throw new BusinessSettingsValidationError(
+          `"orderAlertRecipients" cannot hold more than ${MAX_ORDER_ALERT_RECIPIENTS} numbers.`,
+        );
+      }
+      const seen = new Set<string>();
+      for (const recipient of recipients) {
+        if (!recipient || typeof recipient !== 'object') {
+          throw new BusinessSettingsValidationError(
+            'Each order alert recipient needs a phone number and a label.',
+          );
+        }
+        if (!PHONE_PATTERN.test(recipient.phone ?? '')) {
+          throw new BusinessSettingsValidationError(
+            `"${recipient.phone ?? ''}" is not a valid number — use E.164 without the leading "+", e.g. "254712345678".`,
+          );
+        }
+        if (!recipient.label || recipient.label.trim().length === 0) {
+          throw new BusinessSettingsValidationError(
+            `Give ${recipient.phone} a label, so the list is readable later.`,
+          );
+        }
+        if (seen.has(recipient.phone)) {
+          throw new BusinessSettingsValidationError(
+            `${recipient.phone} is listed twice — one number, one alert.`,
+          );
+        }
+        seen.add(recipient.phone);
+      }
     }
     if (
       patch.whatsappCustomerNumber !== undefined &&

@@ -15,13 +15,19 @@ export interface LoyaltyConfigFormValues {
   repeatOrderBonusKes: number;
 }
 
+export interface OrderAlertRecipientFormValue {
+  phone: string;
+  label: string;
+}
+
 export interface BusinessSettingsFormValues {
   name: string;
   currency: string;
   whatsappPhoneNumberId: string;
   countyCoverage: string[];
   adminWhatsappPhone: string | null;
-  adminOrderSmsPhone: string | null;
+  orderAlertRecipients: OrderAlertRecipientFormValue[];
+  whatsappCustomerNumber: string | null;
   status: 'active' | 'suspended';
   loyaltyConfig: LoyaltyConfigFormValues;
 }
@@ -81,9 +87,38 @@ export function BusinessSettingsForm({
       );
       return;
     }
-    const trimmedSmsPhone = values.adminOrderSmsPhone?.trim() ?? '';
-    if (trimmedSmsPhone && !/^254\d{9}$/.test(trimmedSmsPhone)) {
-      setError('Admin SMS phone must be E.164 without "+", e.g. 254759209705.');
+    /*
+     * Blank rows are dropped rather than rejected: pressing "Add
+     * number" and then changing your mind should not be an error you
+     * have to clear before you can save anything else on the page.
+     */
+    const orderAlertRecipients = values.orderAlertRecipients
+      .map((recipient) => ({ phone: recipient.phone.trim(), label: recipient.label.trim() }))
+      .filter((recipient) => recipient.phone.length > 0 || recipient.label.length > 0);
+    for (const recipient of orderAlertRecipients) {
+      if (!/^254\d{9}$/.test(recipient.phone)) {
+        setError(
+          `"${recipient.phone}" is not a valid number — use E.164 without "+", e.g. 254712345678.`,
+        );
+        return;
+      }
+      if (!recipient.label) {
+        setError(`Give ${recipient.phone} a label, so you can tell the list apart later.`);
+        return;
+      }
+    }
+    const duplicate = orderAlertRecipients.find(
+      (recipient, index) =>
+        orderAlertRecipients.findIndex((other) => other.phone === recipient.phone) !== index,
+    );
+    if (duplicate) {
+      setError(`${duplicate.phone} is listed twice — one number, one alert.`);
+      return;
+    }
+
+    const trimmedCustomerNumber = values.whatsappCustomerNumber?.trim() ?? '';
+    if (trimmedCustomerNumber && !/^254\d{9}$/.test(trimmedCustomerNumber)) {
+      setError('WhatsApp customer number must be E.164 without "+", e.g. 254712345678.');
       return;
     }
     if (
@@ -106,7 +141,15 @@ export function BusinessSettingsForm({
           whatsappPhoneNumberId: values.whatsappPhoneNumberId.trim(),
           countyCoverage,
           adminWhatsappPhone: trimmedPhone || null,
-          adminOrderSmsPhone: trimmedSmsPhone || null,
+          orderAlertRecipients,
+          /*
+           * Cleared as the list takes over. Leaving the legacy single
+           * number set would keep texting somebody an admin has just
+           * removed from the list, because the send path falls back to
+           * it whenever the list is empty.
+           */
+          adminOrderSmsPhone: null,
+          whatsappCustomerNumber: trimmedCustomerNumber || null,
           status: values.status,
           loyaltyConfig: values.loyaltyConfig,
         }),
@@ -119,7 +162,7 @@ export function BusinessSettingsForm({
         throw new Error(body?.error ?? 'Could not save settings.');
       }
 
-      setValues((v) => ({ ...v, countyCoverage }));
+      setValues((v) => ({ ...v, countyCoverage, orderAlertRecipients }));
       setSaved(true);
       router.refresh();
     } catch (err) {
@@ -184,28 +227,131 @@ export function BusinessSettingsForm({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="adminOrderSmsPhone">Admin alert SMS number</Label>
+              <Label htmlFor="whatsappCustomerNumber">Customer-facing WhatsApp number</Label>
               <Input
-                id="adminOrderSmsPhone"
-                value={values.adminOrderSmsPhone ?? ''}
+                id="whatsappCustomerNumber"
+                value={values.whatsappCustomerNumber ?? ''}
                 onChange={(event) =>
                   setValues((v) => ({
                     ...v,
-                    adminOrderSmsPhone: event.target.value,
+                    whatsappCustomerNumber: event.target.value,
                   }))
                 }
-                placeholder="254759209705"
+                placeholder="254712345678"
               />
               {/*
-                Named as the separate channel it is. The WhatsApp field
-                above depends on the WhatsApp integration being enabled;
-                this one only needs SMS, which is what is actually
-                connected today.
+                Not the same thing as the phone_number_id below, and the
+                distinction matters: that one is the Cloud API's internal
+                identifier, this is the number a wa.me link can actually
+                open. Creator referral links and every "Order on WhatsApp"
+                button on the site read this, and fail closed without it.
               */}
               <p className="text-caption text-muted-foreground">
-                Texted for every new order, including pay-on-delivery and orders staff record by
-                hand. Leave blank to disable.
+                The number behind every &ldquo;Order on WhatsApp&rdquo; button and creator referral
+                link. Those fail closed while this is blank.
               </p>
+            </div>
+          </div>
+
+          {/*
+            Who gets told when an order comes in (§ order alert recipients).
+
+            A list rather than one number, because the owner wants the
+            sale and whoever is packing wants the box, and those are
+            rarely the same phone. Each row carries a label: a column of
+            bare digits is unreadable a month later, and removing the
+            wrong row here is a silent failure — nobody finds out until
+            an order goes unpacked.
+          */}
+          <div className="border-border flex flex-col gap-3 rounded-lg border p-4">
+            <div className="flex flex-col gap-1">
+              <Label>Order alert numbers</Label>
+              <p className="text-caption text-muted-foreground">
+                Everyone here is texted the moment an order comes in — including pay-on-delivery
+                orders and ones staff record by hand. Empty means nobody is texted.
+              </p>
+            </div>
+
+            {values.orderAlertRecipients.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No numbers yet. Nobody is told when an order arrives.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {values.orderAlertRecipients.map((recipient, index) => (
+                  <li key={index} className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                    <div className="flex flex-1 flex-col gap-1.5">
+                      <Label htmlFor={`alert-label-${index}`} className="sr-only">
+                        Name for this number
+                      </Label>
+                      <Input
+                        id={`alert-label-${index}`}
+                        value={recipient.label}
+                        onChange={(event) =>
+                          setValues((v) => ({
+                            ...v,
+                            orderAlertRecipients: v.orderAlertRecipients.map((entry, i) =>
+                              i === index ? { ...entry, label: event.target.value } : entry,
+                            ),
+                          }))
+                        }
+                        placeholder="Who is this? e.g. Kelvin"
+                      />
+                    </div>
+                    <div className="flex flex-1 flex-col gap-1.5">
+                      <Label htmlFor={`alert-phone-${index}`} className="sr-only">
+                        Phone number
+                      </Label>
+                      <Input
+                        id={`alert-phone-${index}`}
+                        value={recipient.phone}
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          setValues((v) => ({
+                            ...v,
+                            orderAlertRecipients: v.orderAlertRecipients.map((entry, i) =>
+                              i === index ? { ...entry, phone: event.target.value } : entry,
+                            ),
+                          }))
+                        }
+                        placeholder="254712345678"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="sm:mt-0"
+                      onClick={() =>
+                        setValues((v) => ({
+                          ...v,
+                          orderAlertRecipients: v.orderAlertRecipients.filter(
+                            (_, i) => i !== index,
+                          ),
+                        }))
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setValues((v) => ({
+                    ...v,
+                    orderAlertRecipients: [...v.orderAlertRecipients, { phone: '', label: '' }],
+                  }))
+                }
+              >
+                Add a number
+              </Button>
             </div>
           </div>
 
