@@ -28,6 +28,7 @@ import { refundRepository } from '@/repositories/refundRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
+import { OrderPackingList } from '@/components/warehouse/OrderPackingList';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { OrderStatusActions } from '@/components/admin/OrderStatusActions';
 import { RefundActions } from '@/components/admin/RefundActions';
@@ -130,25 +131,14 @@ export default async function AdminOrderDetailPage({
   const { customer, delivery, payment, pricing, product, gift } = order;
 
   /*
-   * Which boxes on this order had snacks chosen for them. Per line
-   * now, since an order can hold two pick-offering boxes; an order
-   * written before that carries its picks at the top of `product`, so
-   * it falls back to the first line and renders as it always did.
+   * Whether this order had any snacks chosen for it at all. Which
+   * snacks, and which box each belongs to, is `OrderPackingList`'s
+   * problem — including the order written before picks moved onto the
+   * line, which carries them at the top of `product`.
    */
-  const pickedLines = orderLines(product)
-    .map((line) => ({
-      packageId: line.packageId,
-      packageLabel: line.packageLabel,
-      picks: line.guaranteedPicks ?? [],
-    }))
-    .filter((line) => line.picks.length > 0);
-  if (pickedLines.length === 0 && product.guaranteedPicks?.length) {
-    pickedLines.push({
-      packageId: product.packageId,
-      packageLabel: product.packageLabel,
-      picks: product.guaranteedPicks,
-    });
-  }
+  const hasPicks =
+    orderLines(product).some((line) => line.guaranteedPicks?.length) ||
+    Boolean(product.guaranteedPicks?.length);
   const canInitiateRefund =
     order.status === 'refund_requested' &&
     !refunds.some(({ data }) => data.status === 'processing' || data.status === 'succeeded');
@@ -518,33 +508,18 @@ export default async function AdminOrderDetailPage({
         that predates per-line picks has none on its lines, so its own
         list is used and it renders exactly as it always did.
       */}
-      {pickedLines.map((line, lineIndex) => (
-        <Card key={`${line.packageId}-${lineIndex}`}>
-          <CardHeader>
-            <CardTitle>
-              {pickedLines.length > 1
-                ? `Guaranteed picks — ${line.packageLabel}`
-                : 'Guaranteed picks — must be in this box'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ol className="divide-border divide-y">
-              {line.picks.map((pick, index) => (
-                <li key={pick.snackItemId} className="flex items-baseline gap-3 py-2 text-sm">
-                  <span className="text-muted-foreground w-4 shrink-0 tabular-nums">{index + 1}.</span>
-                  <span className="text-foreground font-medium">{pick.name}</span>
-                  {pick.origin ? (
-                    <span className="text-muted-foreground ml-auto">{pick.origin}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-            <p className="text-muted-foreground mt-3 text-sm">
-              The rest of the box is curated by Snack Quest as usual.
-            </p>
-          </CardContent>
-        </Card>
-      ))}
+      {/*
+        The packing list's whole point (§ Premium: choose 5, discover
+        the rest), and the same component the warehouse packs from.
+
+        It used to be a list of names here. That is close to useless
+        for this catalogue: it is imported, so a snack's name in the
+        system is whatever shorthand the buyer typed — "D 2", "SK 12",
+        "N17" — and nobody can identify a packet from that. The photo
+        is the thing that says which snack this is, so admin now sees
+        exactly what the packer sees rather than a worse version of it.
+      */}
+      {hasPicks ? <OrderPackingList product={product} size="large" /> : null}
 
       {items.length > 0 ? (
         <Card>

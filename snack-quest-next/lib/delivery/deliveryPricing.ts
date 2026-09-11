@@ -21,7 +21,7 @@
  *                                 express   KES 500, collected and
  *                                           delivered within 90 minutes
  *
- *   Outside the radius          PICKUP at a Fargo branch, KES 450.
+ *   Outside the radius          PICKUP at a Fargo branch, KES 500.
  *                               Still handed to Tushop; Fargo is their
  *                               onward partner, not Snack Quest's.
  *
@@ -203,7 +203,7 @@ export const FARGO_SEED_FEES_KES: Record<FargoZone, number> = {
   'Nairobi Metro — Next Day': 250,
   'Nairobi Metro — Same Day': 300,
   'Nairobi Metro — Express': 500,
-  Upcountry: 450,
+  Upcountry: 500,
 };
 
 /**

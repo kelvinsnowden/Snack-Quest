@@ -46,6 +46,7 @@ const TARGET_FEES = {
   'Nairobi Metro — Next Day': 250,
   'Nairobi Metro — Same Day': 300,
   'Nairobi Metro — Express': 500,
+  Upcountry: 500,
 };
 
 function zoneRuleId(zone) {
