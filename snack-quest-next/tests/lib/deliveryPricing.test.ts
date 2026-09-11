@@ -34,7 +34,7 @@ describe('the rate card', () => {
       'Nairobi Metro — Next Day': 250,
       'Nairobi Metro — Same Day': 300,
       'Nairobi Metro — Express': 500,
-      Upcountry: 450,
+      Upcountry: 500,
     });
   });
 
