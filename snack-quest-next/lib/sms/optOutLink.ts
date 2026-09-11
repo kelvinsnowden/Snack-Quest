@@ -11,16 +11,30 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  * like a working choice. If the business later buys a real short code,
  * `SmsOptOutSource` already has `'inbound_reply'` waiting for it.
  *
- * The token is signed, not opaque, so there is no token→phone lookup
- * table to keep: the number travels in the token and the HMAC proves it
- * was issued by us. Without a signature, `?phone=` would let anyone
- * enumerate the register and opt out numbers that are not theirs.
+ * The number is encrypted into the token rather than printed in it.
+ * It used to be printed: `/s/712345678a1b2c3d4` carried the recipient's
+ * own phone number in the clear, which is a customer's number sitting
+ * in a URL that gets forwarded, screenshotted and pasted into group
+ * chats. It also looked like tracking, on the one message whose whole
+ * job is to be trusted.
+ *
+ * Still no token→phone lookup table, which is what the old design got
+ * right and this keeps: the number travels inside the token, enciphered
+ * with the same secret that signs it, so a visit is a decode rather
+ * than a database read. The cipher is a small Feistel network over the
+ * nine subscriber digits — a real permutation, so two numbers that
+ * differ by one digit produce unrelated tokens and nobody can work out
+ * the scheme by comparing their own token against a neighbour's.
+ *
+ * The MAC stays and is the part that matters for safety. Encryption
+ * alone would leave every possible token decoding to *some* number, so
+ * anyone could walk the keyspace and unsubscribe strangers; the MAC is
+ * what makes a token either ours or nothing.
  *
  * Length is a real cost here in a way it never is for email — every
- * character shares a 160-character SMS segment with the message itself,
- * so the encoding is kept as tight as it can be while staying
- * tamper-evident: the subscriber digits without the `254` prefix, plus
- * a 10-character signature.
+ * character shares a 160-character SMS segment with the message itself.
+ * The encoding is 55 bits in 11 base32 characters, which is six
+ * characters shorter than the digits-plus-signature it replaces.
  */
 
 /** Truncated deliberately. A full SHA-256 is 64 hex characters — most of an SMS segment spent proving a phone number that is already only nine digits. 8 characters is 32 bits: far beyond forging by hand, and the only thing a successful forgery buys is unsubscribing someone who can resubscribe by ordering again. */
@@ -66,10 +80,127 @@ function fromSubscriberDigits(subscriberDigits: string): string {
   return `254${subscriberDigits}`;
 }
 
-/** `712345678` + signature. Callers pass an already-normalised `254…` number — `normalizeKenyanPhone` is the single place that validation lives. */
+/**
+ * Base32 without the characters people mistype reading a token off a
+ * phone screen: no `l` against `1`, no `o` against `0`.
+ */
+const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
+
+/** Nine subscriber digits fit in 30 bits (999,999,999 < 2^30). */
+const PAYLOAD_CHARS = 6; // 30 bits of base32
+/** 25 bits: one guess in 33 million, against an action whose worst case is unsubscribing somebody who can resubscribe by ordering again. */
+const MAC_CHARS = 5; // 25 bits
+const TOKEN_CHARS = PAYLOAD_CHARS + MAC_CHARS;
+const FEISTEL_ROUNDS = 4;
+const HALF_MASK = 0x7fff; // 15 bits
+
+/*
+ * The two halves are encoded separately rather than as one 55-bit
+ * number, because 55 bits does not fit in a JavaScript number and this
+ * needs none of the weight of BigInt to avoid it.
+ */
+
+/** A round function, not a cipher on its own — keyed, and different every round. */
+function roundValue(secret: string, round: number, half: number): number {
+  const digest = createHmac('sha256', secret).update(`fe:${round}:${half}`).digest();
+  return digest.readUInt32BE(0) & HALF_MASK;
+}
+
+/**
+ * A balanced Feistel over 30 bits, which is a permutation for any round
+ * function at all — that is the property being used, and it is why the
+ * same construction runs forwards and backwards with only the round
+ * order reversed.
+ */
+function feistel(secret: string, value: number, reverse: boolean): number {
+  let left = (value >>> 15) & HALF_MASK;
+  let right = value & HALF_MASK;
+  const rounds = [...Array(FEISTEL_ROUNDS).keys()];
+  for (const round of reverse ? rounds.reverse() : rounds) {
+    const next = left ^ roundValue(secret, round, right);
+    left = right;
+    right = next;
+  }
+  // Swapped on the way out, which is what makes the same loop undo itself.
+  return ((right & HALF_MASK) * 0x8000 + (left & HALF_MASK)) % 0x40000000;
+}
+
+function macOf(secret: string, payload: number): number {
+  const digest = createHmac('sha256', secret).update(`mac:${payload}`).digest();
+  return digest.readUInt32BE(0) % 0x2000000; // 25 bits
+}
+
+function encodeBase32(value: number, characters: number): string {
+  let out = '';
+  let remaining = value;
+  for (let i = 0; i < characters; i += 1) {
+    out = ALPHABET[remaining % 32] + out;
+    remaining = Math.floor(remaining / 32);
+  }
+  return out;
+}
+
+function decodeBase32(token: string): number | null {
+  let value = 0;
+  for (const character of token) {
+    const index = ALPHABET.indexOf(character);
+    if (index < 0) {
+      return null;
+    }
+    value = value * 32 + index;
+  }
+  return value;
+}
+
+/**
+ * An 11-character token carrying the number without showing it.
+ * Callers pass an already-normalised `254…` number —
+ * `normalizeKenyanPhone` is the single place that validation lives.
+ */
 export function buildOptOutToken(phoneNumber: string): string {
+  const secret = getSecret();
   const digits = toSubscriberDigits(phoneNumber);
-  return `${digits}${sign(digits, getSecret())}`;
+  const payload = Number(digits);
+  /*
+   * The MAC is taken over the plaintext, never the ciphertext. Over the
+   * ciphertext it would prove only that somebody had produced a valid
+   * enciphering — which the cipher already guarantees for every input —
+   * and prove nothing about which number came out.
+   */
+  return (
+    encodeBase32(feistel(secret, payload, false), PAYLOAD_CHARS) +
+    encodeBase32(macOf(secret, payload), MAC_CHARS)
+  );
+}
+
+/**
+ * The tokens issued before the number was enciphered: nine digits and
+ * an eight-character hex signature, printed in the clear.
+ *
+ * Still honoured, and that is not politeness. These are live in
+ * customers' message histories, and an opt-out link that stops working
+ * is a person who tries to leave and cannot — the one failure this
+ * whole module exists to prevent. New links are never issued in this
+ * shape.
+ */
+function verifyLegacyToken(secret: string, token: string): string | null {
+  if (token.length <= SIGNATURE_LENGTH) {
+    return null;
+  }
+  const digits = token.slice(0, token.length - SIGNATURE_LENGTH);
+  const provided = token.slice(token.length - SIGNATURE_LENGTH);
+  if (!/^\d{9}$/.test(digits)) {
+    return null;
+  }
+  const providedBuffer = Buffer.from(provided.toLowerCase());
+  const expectedBuffer = Buffer.from(sign(digits, secret));
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return null;
+  }
+  if (!timingSafeEqual(providedBuffer, expectedBuffer)) {
+    return null;
+  }
+  return fromSubscriberDigits(digits);
 }
 
 /**
@@ -88,27 +219,32 @@ export function verifyOptOutToken(token: string): string | null {
     return null;
   }
 
-  const trimmed = (token ?? '').trim();
-  if (trimmed.length <= SIGNATURE_LENGTH) {
+  const trimmed = (token ?? '').trim().toLowerCase();
+
+  if (trimmed.length !== TOKEN_CHARS) {
+    return verifyLegacyToken(secret, trimmed);
+  }
+
+  const enciphered = decodeBase32(trimmed.slice(0, PAYLOAD_CHARS));
+  const provided = decodeBase32(trimmed.slice(PAYLOAD_CHARS));
+  if (enciphered === null || provided === null) {
     return null;
   }
 
-  const digits = trimmed.slice(0, trimmed.length - SIGNATURE_LENGTH);
-  const provided = trimmed.slice(trimmed.length - SIGNATURE_LENGTH);
-  if (!/^\d{9}$/.test(digits)) {
+  const payload = feistel(secret, enciphered, true);
+  if (macOf(secret, payload) !== provided) {
     return null;
   }
 
-  const expected = sign(digits, secret);
-  const providedBuffer = Buffer.from(provided.toLowerCase());
-  const expectedBuffer = Buffer.from(expected);
-  if (providedBuffer.length !== expectedBuffer.length) {
+  /*
+   * A token can decipher to 30 bits' worth of values, and only some of
+   * them are nine-digit numbers. Checked after the MAC rather than
+   * instead of it — this rejects nonsense, the MAC rejects forgeries.
+   */
+  const digits = payload.toString();
+  if (digits.length !== 9) {
     return null;
   }
-  if (!timingSafeEqual(providedBuffer, expectedBuffer)) {
-    return null;
-  }
-
   return fromSubscriberDigits(digits);
 }
 
