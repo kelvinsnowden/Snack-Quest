@@ -91,8 +91,20 @@ export function useCheckoutQuote(selection: QuoteSelection): WebCheckoutQuote | 
           packageId: current.packageId,
           quantity: current.quantity,
           deliveryMethod: current.deliveryMethod,
+          // Narrowed to what a price depends on. `extras` also carries
+          // each box's chosen snacks and the thumbnails the summary
+          // draws, and spreading it posted all of that to an endpoint
+          // that prices boxes — on every debounced keystroke.
           ...(current.extras?.length
-            ? { items: [{ packageId: current.packageId, quantity: current.quantity }, ...current.extras] }
+            ? {
+                items: [
+                  { packageId: current.packageId, quantity: current.quantity },
+                  ...current.extras.map((extra) => ({
+                    packageId: extra.packageId,
+                    quantity: extra.quantity,
+                  })),
+                ],
+              }
             : {}),
           ...(current.serviceLevel ? { serviceLevel: current.serviceLevel } : {}),
           pickupStationId: current.pickupStationId,

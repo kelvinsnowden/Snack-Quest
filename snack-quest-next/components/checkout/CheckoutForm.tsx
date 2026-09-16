@@ -1148,8 +1148,23 @@ export function CheckoutForm({
 
             {availableExtras.length > 0 ? (
               <details className="border-border rounded-lg border p-3">
+                {/*
+                  The price is on the label, not only behind it.
+                  Collapsed, this read "Add another box" and nothing
+                  else — so what the offer costs was a tap away, and a
+                  customer deciding whether to open it had nothing to
+                  decide on. Nobody arrives here knowing our prices.
+
+                  One box left to offer is named outright; several get
+                  the cheapest, which is the number that decides
+                  whether the row is worth opening at all.
+                */}
                 <summary className="text-foreground cursor-pointer text-sm font-medium">
-                  Add another box
+                  {availableExtras.length === 1
+                    ? `Add a ${availableExtras[0].name} — ${formatKes(availableExtras[0].priceKes)}`
+                    : `Add another box — from ${formatKes(
+                        Math.min(...availableExtras.map((candidate) => candidate.priceKes)),
+                      )}`}
                 </summary>
                 <ul className="mt-3 flex flex-col gap-2">
                   {availableExtras.map((candidate) => (
@@ -1159,8 +1174,29 @@ export function CheckoutForm({
                         onClick={() => addExtraBox(candidate.id)}
                         className="hover:bg-border/40 flex w-full items-center justify-between gap-3 rounded-md p-2 text-left"
                       >
-                        <span className="text-foreground text-sm">{candidate.name}</span>
-                        <span className="text-muted-foreground text-sm tabular-nums">
+                        {/*
+                          Name over count, the same pair the cards
+                          above carry. A price on its own answers "how
+                          much" without answering "for what", which is
+                          the question a customer comparing this row
+                          against the card they just read is asking.
+                        */}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="text-foreground text-sm font-medium">
+                            {candidate.name}
+                          </span>
+                          {candidate.snackCountLabel ? (
+                            <span className="text-muted-foreground text-caption">
+                              {candidate.snackCountLabel}
+                            </span>
+                          ) : null}
+                        </span>
+                        {/*
+                          As prominent as the price on the cards. It
+                          was muted grey, which read as a footnote to
+                          the name rather than the cost of pressing.
+                        */}
+                        <span className="text-foreground shrink-0 text-sm font-semibold tabular-nums">
                           {formatKes(candidate.priceKes)}
                         </span>
                       </button>
