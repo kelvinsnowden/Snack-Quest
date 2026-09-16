@@ -100,10 +100,12 @@ function renderCheckout() {
  * primary box rather than adding a second.
  */
 function addDeluxe() {
-  const disclosure = screen
-    .getByText(/add another box/i)
-    .closest('details') as HTMLDetailsElement;
-  fireEvent.click(within(disclosure).getByRole('button', { name: /deluxe box/i }));
+  fireEvent.click(within(addBoxDisclosure()).getByRole('button', { name: /deluxe box/i }));
+}
+
+/** The "add a box" disclosure, whose label names a price. */
+function addBoxDisclosure(): HTMLDetailsElement {
+  return screen.getByText(/^Add (a|another)/i).closest('details') as HTMLDetailsElement;
 }
 
 /** Advances a stage. The form is one `<form>`; submitting is how it moves. */
@@ -202,15 +204,18 @@ describe('a second box that also offers picks', () => {
     });
     submitForm();
 
+    /*
+     * Exactly this route, not a prefix of it: the live quote posts to
+     * `/api/checkout/web/quote`, which a substring match also claims —
+     * so the assertion could read the wrong request's body and pass or
+     * fail on debounce timing.
+     */
+    const isCheckoutPost = ([url]: unknown[]) => String(url).endsWith('/api/checkout/web');
     await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([url]) => String(url).includes('/api/checkout/web')),
-      ).toBe(true);
+      expect(fetchMock.mock.calls.some(isCheckoutPost)).toBe(true);
     });
 
-    const call = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes('/api/checkout/web'),
-    ) as [string, RequestInit];
+    const call = fetchMock.mock.calls.find(isCheckoutPost) as [string, RequestInit];
     const body = JSON.parse(String(call[1].body));
 
     expect(body.items).toEqual([
@@ -251,5 +256,55 @@ describe('a second box that also offers picks', () => {
     // carrying the whole order's money.
     expect(screen.getByText(/1 × Premium Box/)).toBeTruthy();
     expect(screen.getByText(/1 × Deluxe Box/)).toBeTruthy();
+  });
+
+});
+
+/**
+ * What a second box costs, before you have committed to opening
+ * anything (§ nobody arrives knowing our prices).
+ *
+ * The control offered "Add another box" and nothing else while
+ * collapsed, and the options behind it printed their price in muted
+ * grey with no indication of what the money bought.
+ */
+describe('the price of a second box', () => {
+  it('names the box and its price on the label itself', () => {
+    renderCheckout();
+
+    // One box left to offer, so it is named outright.
+    expect(screen.getByText('Add a Deluxe Box — KES 6,500')).toBeTruthy();
+  });
+
+  it('gives the cheapest when there is more than one to choose from', () => {
+    render(
+      <CheckoutForm
+        boxes={[
+          ...boxes,
+          {
+            ...boxes[0],
+            id: 'starter',
+            name: 'Starter Box',
+            priceKes: 2500,
+            guaranteedPickCount: 0,
+            snackCountLabel: '8 snacks',
+          },
+        ]}
+        initialBoxId="premium"
+        initialReferralCode={null}
+        deliveryFromKes={250}
+      />,
+    );
+
+    expect(screen.getByText('Add another box — from KES 2,500')).toBeTruthy();
+  });
+
+  it('shows each option its own price and what it holds', () => {
+    renderCheckout();
+    const option = within(addBoxDisclosure()).getByRole('button', { name: /deluxe box/i });
+
+    expect(within(option).getByText('KES 6,500')).toBeTruthy();
+    // A price with nothing attached answers "how much" but not "for what".
+    expect(within(option).getByText('18 snacks')).toBeTruthy();
   });
 });
