@@ -135,7 +135,37 @@ export async function POST(request: Request): Promise<Response> {
        * an unavailable box, or a bad count, so nothing here needs to
        * decide whether the contents are acceptable.
        */
-      ...(Array.isArray(items) ? { items: items as { packageId: string; quantity: number }[] } : {}),
+      ...(Array.isArray(items)
+        ? {
+            /*
+             * Each box carries its own chosen snacks (§ Premium: choose
+             * 5, discover the rest). The cast used to name only
+             * `packageId` and `quantity`, which silently dropped the
+             * picks off every box but the first — so a customer could
+             * choose five snacks for their second box and receive a
+             * fully-curated one. The service has always accepted them
+             * per line; nothing was passing them.
+             *
+             * Ids only, and only strings. The service re-reads every
+             * one against the catalogue and against the box that
+             * offered it, so nothing here decides whether they are
+             * acceptable.
+             */
+            items: (items as { packageId: string; quantity: number; guaranteedSnackIds?: unknown }[]).map(
+              (item) => ({
+                packageId: item.packageId,
+                quantity: item.quantity,
+                ...(Array.isArray(item.guaranteedSnackIds)
+                  ? {
+                      guaranteedSnackIds: item.guaranteedSnackIds.filter(
+                        (id): id is string => typeof id === 'string' && id.length > 0,
+                      ),
+                    }
+                  : {}),
+              }),
+            ),
+          }
+        : {}),
       customerName,
       phone,
       // Normalized (or dropped) in the Service, which is where every
