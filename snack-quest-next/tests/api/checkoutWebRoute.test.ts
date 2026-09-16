@@ -200,3 +200,69 @@ describe('POST /api/checkout/web attribution capture', () => {
     expect(Object.values(attribution).some((value) => value === undefined)).toBe(false);
   });
 });
+
+/**
+ * Two boxes, each with its own five snacks (§ more than one box per
+ * order).
+ *
+ * The service has resolved picks per line for a while; this route was
+ * the reason none of it reached the customer. It narrowed every
+ * incoming item to `{ packageId, quantity }`, so a second box's choices
+ * were dropped between the browser and the service that knew what to do
+ * with them — and both boxes went out as surprises.
+ */
+describe('POST /api/checkout/web picks per box', () => {
+  it('forwards each box its own snacks', async () => {
+    await checkoutWebRoute(
+      request({
+        ...VALID_BODY,
+        items: [
+          { packageId: 'pkg-1', quantity: 1, guaranteedSnackIds: ['a', 'b', 'c', 'd', 'e'] },
+          { packageId: 'pkg-2', quantity: 2, guaranteedSnackIds: ['f', 'g', 'h', 'i', 'j'] },
+        ],
+      }),
+    );
+
+    expect(startWebCheckoutMock).toHaveBeenCalledWith(
+      'biz-1',
+      expect.objectContaining({
+        items: [
+          { packageId: 'pkg-1', quantity: 1, guaranteedSnackIds: ['a', 'b', 'c', 'd', 'e'] },
+          { packageId: 'pkg-2', quantity: 2, guaranteedSnackIds: ['f', 'g', 'h', 'i', 'j'] },
+        ],
+      }),
+    );
+  });
+
+  /*
+   * A box that offers no choice sends no ids. The key has to be absent
+   * rather than undefined — this object is bound for Firestore.
+   */
+  it('omits the key for a box with nothing to choose', async () => {
+    await checkoutWebRoute(
+      request({
+        ...VALID_BODY,
+        items: [
+          { packageId: 'pkg-1', quantity: 1 },
+          { packageId: 'pkg-2', quantity: 1, guaranteedSnackIds: ['f'] },
+        ],
+      }),
+    );
+
+    const { items } = startWebCheckoutMock.mock.calls[0][1];
+    expect('guaranteedSnackIds' in items[0]).toBe(false);
+    expect(items[1].guaranteedSnackIds).toEqual(['f']);
+  });
+
+  it('drops anything in the list that is not an id', async () => {
+    await checkoutWebRoute(
+      request({
+        ...VALID_BODY,
+        items: [{ packageId: 'pkg-1', quantity: 1, guaranteedSnackIds: ['a', '', 7, null, 'b'] }],
+      }),
+    );
+
+    const { items } = startWebCheckoutMock.mock.calls[0][1];
+    expect(items[0].guaranteedSnackIds).toEqual(['a', 'b']);
+  });
+});

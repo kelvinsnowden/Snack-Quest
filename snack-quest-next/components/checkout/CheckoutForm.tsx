@@ -106,7 +106,20 @@ export function CheckoutForm({
    * the common path keeps its exact behaviour and a second box is an
    * explicit, separate act.
    */
-  const [extraBoxes, setExtraBoxes] = useState<{ packageId: string; quantity: number }[]>([]);
+  const [extraBoxes, setExtraBoxes] = useState<
+    {
+      packageId: string;
+      quantity: number;
+      /*
+       * The snacks chosen for *this* box (§ Premium: choose 5,
+       * discover the rest). A second pick-offering box used to be
+       * addable and then silently packed as a full surprise, because
+       * the only picks the form held belonged to the first box.
+       */
+      guaranteedSnackIds: string[];
+      thumbs: { id: string; imageUrl: string | null; origin: string | null }[];
+    }[]
+  >([]);
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -174,6 +187,109 @@ export function CheckoutForm({
 
   const box = useMemo(() => boxes.find((candidate) => candidate.id === boxId) ?? null, [boxes, boxId]);
   const requiredPicks = box?.guaranteedPickCount ?? 0;
+
+  /*
+   * Every box on this order that asks the customer to choose, primary
+   * and extras alike (§ Premium: choose 5, discover the rest).
+   *
+   * One list so the stage gate, the validation and the pickers cannot
+   * disagree about which boxes need choosing — the bug this replaces
+   * was exactly that disagreement: the form asked about the first box
+   * and submitted for all of them.
+   */
+  const pickingLines = useMemo(() => {
+    const lines: {
+      packageId: string;
+      /** The anchor an error message and `focusFirstProblem` land on. */
+      fieldId: string;
+      label: string;
+      required: number;
+      selectedIds: string[];
+      snackCountLabel: string | null;
+      isPrimary: boolean;
+    }[] = [];
+    if (box && box.guaranteedPickCount > 0) {
+      lines.push({
+        packageId: box.id,
+        // The id it has always had, so a one-box checkout keeps its
+        // anchor and the messages written against it.
+        fieldId: 'checkout-picks',
+        label: box.name,
+        required: box.guaranteedPickCount,
+        selectedIds: guaranteedSnackIds,
+        snackCountLabel: box.snackCountLabel,
+        isPrimary: true,
+      });
+    }
+    for (const extra of extraBoxes) {
+      const extraBox = boxes.find((candidate) => candidate.id === extra.packageId);
+      if (extraBox && extraBox.guaranteedPickCount > 0) {
+        lines.push({
+          packageId: extraBox.id,
+          fieldId: `checkout-picks-${extraBox.id}`,
+          label: extraBox.name,
+          required: extraBox.guaranteedPickCount,
+          selectedIds: extra.guaranteedSnackIds,
+          snackCountLabel: extraBox.snackCountLabel,
+          isPrimary: false,
+        });
+      }
+    }
+    return lines;
+  }, [box, boxes, extraBoxes, guaranteedSnackIds]);
+
+  const anyPicksNeeded = pickingLines.length > 0;
+
+  /*
+   * One row per box, shared by the summary panel and the fixed bar.
+   *
+   * Derived once rather than at each call site: the bar showed the
+   * first box's price while the panel beside it showed the whole
+   * order, which is two different numbers for the same thing on the
+   * same screen.
+   */
+  const summaryLines = useMemo(() => {
+    if (!box) {
+      return [] as { label: string; quantity: number; amountKes: number }[];
+    }
+    return [
+      { label: box.name, quantity, amountKes: box.priceKes * quantity },
+      ...extraBoxes.flatMap((extra) => {
+        const extraBox = boxes.find((candidate) => candidate.id === extra.packageId);
+        return extraBox
+          ? [
+              {
+                label: extraBox.name,
+                quantity: extra.quantity,
+                amountKes: extraBox.priceKes * extra.quantity,
+              },
+            ]
+          : [];
+      }),
+    ];
+  }, [box, boxes, extraBoxes, quantity]);
+
+  /** What the boxes cost before delivery — the figure shown until a quote lands. */
+  const boxesSubtotalKes = summaryLines.length
+    ? summaryLines.reduce((sum, line) => sum + line.amountKes, 0)
+    : null;
+
+  /*
+   * Every pick on the order, for the summary's row of pictures.
+   *
+   * Namespaced by box because the same snack can be chosen in both, and
+   * the list is keyed by this id — two boxes with one snack in common
+   * would otherwise render as a single picture.
+   */
+  const summaryThumbs = useMemo(
+    () => [
+      ...guaranteedSnackThumbs.map((thumb) => ({ ...thumb, id: `${boxId}:${thumb.id}` })),
+      ...extraBoxes.flatMap((extra) =>
+        extra.thumbs.map((thumb) => ({ ...thumb, id: `${extra.packageId}:${thumb.id}` })),
+      ),
+    ],
+    [boxId, extraBoxes, guaranteedSnackThumbs],
+  );
   // The picker takes step 2 when it is shown, so everything below it
   // shifts by one rather than leaving a hole in the numbering.
 
@@ -297,8 +413,56 @@ export function CheckoutForm({
   );
 
   function addExtraBox(packageId: string) {
-    setExtraBoxes((current) => [...current, { packageId, quantity: 1 }]);
+    setExtraBoxes((current) => [
+      ...current,
+      { packageId, quantity: 1, guaranteedSnackIds: [], thumbs: [] },
+    ]);
   }
+
+  /** One box's picks, replaced wholesale — the picker owns its own selection. */
+  const setExtraPicks = useCallback(
+    (
+      packageId: string,
+      ids: string[],
+      snacks: { id: string; imageUrl: string | null; origin: string | null }[],
+    ) => {
+      markFormStartedRef.current();
+      setExtraBoxes((current) =>
+        current.map((extra) =>
+          extra.packageId === packageId
+            ? {
+                ...extra,
+                guaranteedSnackIds: ids,
+                thumbs: snacks.map(({ id, imageUrl, origin }) => ({ id, imageUrl, origin })),
+              }
+            : extra,
+        ),
+      );
+    },
+    [],
+  );
+
+  /*
+   * One stable callback per extra box, so the memo on each picker
+   * holds — the same reason `handlePicksChange` exists rather than an
+   * inline arrow.
+   *
+   * Keyed on the package ids as a string, not on `extraBoxes`: that
+   * array gets a new identity on every single pick, so rebuilding the
+   * handlers from it would hand every picker a new prop on every tap
+   * and re-render all 62 cards — exactly the cost the memo removes.
+   */
+  const extraPickKey = extraBoxes.map((extra) => extra.packageId).join(',');
+  const extraPickHandlers = useMemo(() => {
+    const handlers: Record<
+      string,
+      (ids: string[], snacks: { id: string; imageUrl: string | null; origin: string | null }[]) => void
+    > = {};
+    for (const packageId of extraPickKey ? extraPickKey.split(',') : []) {
+      handlers[packageId] = (ids, snacks) => setExtraPicks(packageId, ids, snacks);
+    }
+    return handlers;
+  }, [extraPickKey, setExtraPicks]);
 
   /** Stepping the last one off removes the line, so an extra can never sit at zero. */
   function changeExtraQuantity(packageId: string, delta: number) {
@@ -336,7 +500,7 @@ export function CheckoutForm({
    * state, and splitting the stages across routes would mean carrying
    * that through a URL or rebuilding it per step.
    */
-  const stages = useMemo(() => stagesFor(requiredPicks > 0), [requiredPicks]);
+  const stages = useMemo(() => stagesFor(anyPicksNeeded), [anyPicksNeeded]);
   const [stageIndex, setStageIndex] = useState(0);
   // Clamped rather than reset: switching to a box without picks
   // shortens the journey, and a customer already past that point
@@ -371,13 +535,18 @@ export function CheckoutForm({
   // cannot be an address is worth stopping for, and only because the
   // customer can still fix it while they are looking at it.
   if (!isAcceptableEmailInput(email)) flag('checkout-email', 'That email address looks incomplete.');
-  if (requiredPicks > 0 && guaranteedSnackIds.length !== requiredPicks) {
-    const remaining = requiredPicks - guaranteedSnackIds.length;
+  for (const line of pickingLines) {
+    if (line.selectedIds.length === line.required) {
+      continue;
+    }
+    const remaining = line.required - line.selectedIds.length;
+    // Named only when there is more than one box to tell apart.
+    const which = pickingLines.length > 1 ? ` for your ${line.label}` : '';
     flag(
-      'checkout-picks',
+      line.fieldId,
       remaining > 0
-        ? `Choose ${remaining} more snack${remaining === 1 ? '' : 's'}.`
-        : `Choose exactly ${requiredPicks} snacks.`,
+        ? `Choose ${remaining} more snack${remaining === 1 ? '' : 's'}${which}.`
+        : `Choose exactly ${line.required} snacks${which}.`,
     );
   }
   if (deliveryMethod === 'pickup' && !station) {
@@ -572,7 +741,19 @@ export function CheckoutForm({
           // Only when there is genuinely more than one box, so a
           // single-box checkout sends the request it always sent.
           ...(extraBoxes.length > 0
-            ? { items: [{ packageId: box.id, quantity }, ...extraBoxes] }
+            ? {
+                items: [
+                  { packageId: box.id, quantity, guaranteedSnackIds },
+                  // Mapped rather than spread: `extraBoxes` also carries
+                  // the thumbnails the summary draws, which are of no
+                  // interest to the server.
+                  ...extraBoxes.map((extra) => ({
+                    packageId: extra.packageId,
+                    quantity: extra.quantity,
+                    guaranteedSnackIds: extra.guaranteedSnackIds,
+                  })),
+                ],
+              }
             : {}),
           customerName: customerName.trim(),
           phone: phone.trim(),
@@ -993,41 +1174,62 @@ export function CheckoutForm({
       </section>
 
       {/*
-        Only for a box that offers picks. Placed immediately after the
-        box because it is part of choosing the product, not part of
-        checking out — and the steps below renumber around it so a
-        Standard checkout never shows a gap where step 2 used to be.
+        One picker per box that offers picks — an order can carry two
+        different boxes, and each chooses its own snacks. Placed
+        immediately after the box because it is part of choosing the
+        product, not part of checking out — and the steps below
+        renumber around it so a Standard checkout never shows a gap
+        where step 2 used to be.
       */}
-      {requiredPicks > 0 ? (
+      {anyPicksNeeded ? (
         <section className="flex flex-col gap-4" hidden={currentStage.id !== 'snacks'}>
-          <SectionHeading title={`Choose your ${requiredPicks} snacks`} />
-          {/*
-            Names the total, not just the five. "Choose 5" without it
-            left customers assuming the picks were on top of the box's
-            advertised count rather than part of it.
-          */}
-          <p className="text-muted-foreground -mt-2 text-sm">
-            {box?.snackCountLabel
-              ? `Your box has ${box.snackCountLabel}. Pick ${requiredPicks} of them yourself — we choose the rest as your surprise.`
-              : `Pick any ${requiredPicks} snacks from the current selection. These are guaranteed to be in your box — we'll fill the rest with surprises.`}
-          </p>
-          {/*
-            An anchor `focusFirstProblem` can land on. The picker's own
-            controls are a disclosure and 62 cards; sending the
-            customer to the section is more useful than to any one of
-            them.
-          */}
-          <div id="checkout-picks" tabIndex={-1} className="outline-none">
-            <FieldError id="checkout-picks" message={errorFor('checkout-picks')} />
-          </div>
-          <GuaranteedPicker
-            required={requiredPicks}
-            selectedIds={guaranteedSnackIds}
-            // Stable, so the memo on the picker holds. An inline arrow
-            // would be a new prop on every keystroke elsewhere in this
-            // form and the grid would re-render regardless.
-            onChange={handlePicksChange}
-          />
+          {pickingLines.map((line) => (
+            <div key={line.packageId} className="flex flex-col gap-4">
+              <SectionHeading
+                /*
+                  Named by box only when there is more than one to tell
+                  apart. On the ordinary single-box checkout the heading
+                  stays the sentence it has always been.
+                */
+                title={
+                  pickingLines.length > 1
+                    ? `Choose ${line.required} snacks for your ${line.label}`
+                    : `Choose your ${line.required} snacks`
+                }
+              />
+              {/*
+                Names the total, not just the five. "Choose 5" without it
+                left customers assuming the picks were on top of the box's
+                advertised count rather than part of it.
+              */}
+              <p className="text-muted-foreground -mt-2 text-sm">
+                {line.snackCountLabel
+                  ? `Your box has ${line.snackCountLabel}. Pick ${line.required} of them yourself — we choose the rest as your surprise.`
+                  : `Pick any ${line.required} snacks from the current selection. These are guaranteed to be in your box — we'll fill the rest with surprises.`}
+              </p>
+              {/*
+                An anchor `focusFirstProblem` can land on. The picker's own
+                controls are a disclosure and 62 cards; sending the
+                customer to the section is more useful than to any one of
+                them.
+              */}
+              <div id={line.fieldId} tabIndex={-1} className="outline-none">
+                <FieldError id={line.fieldId} message={errorFor(line.fieldId)} />
+              </div>
+              <GuaranteedPicker
+                required={line.required}
+                selectedIds={line.selectedIds}
+                /*
+                  Each box keeps its own selection. Before this every
+                  picker on the page wrote to one list, so choosing for
+                  the second box overwrote the first box's five.
+                */
+                onChange={
+                  line.isPrimary ? handlePicksChange : extraPickHandlers[line.packageId]
+                }
+              />
+            </div>
+          ))}
         </section>
       ) : null}
 
@@ -1483,7 +1685,7 @@ export function CheckoutForm({
       */}
       <div className="border-border flex flex-col gap-4 border-t pt-8 lg:bg-surface lg:rounded-xl lg:border lg:p-5">
         <OrderSummary
-          snackThumbs={guaranteedSnackThumbs}
+          snackThumbs={summaryThumbs}
           quote={quote}
           stationChosen={deliveryMethod === 'pickup' ? Boolean(station) : true}
           fallbackLabel={box ? `${quantity} × ${box.name}` : 'Your order'}
@@ -1494,26 +1696,8 @@ export function CheckoutForm({
             for a Starter plus a Deluxe. A total a customer cannot
             reconcile is a total they do not trust.
           */
-          lines={
-            box
-              ? [
-                  { label: box.name, quantity, amountKes: box.priceKes * quantity },
-                  ...extraBoxes.flatMap((extra) => {
-                    const extraBox = boxes.find((candidate) => candidate.id === extra.packageId);
-                    return extraBox
-                      ? [
-                          {
-                            label: extraBox.name,
-                            quantity: extra.quantity,
-                            amountKes: extraBox.priceKes * extra.quantity,
-                          },
-                        ]
-                      : [];
-                  }),
-                ]
-              : []
-          }
-          fallbackTotalKes={box ? box.priceKes * quantity : null}
+          lines={summaryLines}
+          fallbackTotalKes={boxesSubtotalKes}
         />
         <p className="text-muted-foreground text-sm">
           {deliveryMethod === 'door'
@@ -1675,7 +1859,11 @@ export function CheckoutForm({
               {isLastStage ? (quote ? 'Total to pay' : 'Your order') : 'Your order so far'}
             </span>
             <span className="text-foreground text-lg font-semibold tabular-nums">
-              {quote ? formatKes(quote.pricing.totalKes) : box ? formatKes(box.priceKes * quantity) : '—'}
+              {quote
+                ? formatKes(quote.pricing.totalKes)
+                : boxesSubtotalKes === null
+                  ? '—'
+                  : formatKes(boxesSubtotalKes)}
             </span>
           </div>
           <Button type="submit" size="lg" loading={submitting} className="w-full">
@@ -1746,12 +1934,39 @@ function OrderSummary({
      */
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex items-baseline justify-between gap-4">
-          <span className="text-muted-foreground text-sm">{fallbackLabel}</span>
-          <span className="text-foreground text-lg font-semibold tabular-nums">
-            {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
-          </span>
-        </div>
+        {/*
+          One row per box once there is more than one. The single-line
+          form named the first box and showed only its price, so an
+          order with a second box understated itself — by the price of
+          that box — for as long as the quote took to land.
+        */}
+        {lines.length > 1 ? (
+          <>
+            {lines.map((line) => (
+              <div key={line.label} className="flex items-baseline justify-between gap-4">
+                <span className="text-muted-foreground text-sm">
+                  {line.quantity} × {line.label}
+                </span>
+                <span className="text-foreground text-sm tabular-nums">
+                  {formatKes(line.amountKes)}
+                </span>
+              </div>
+            ))}
+            <div className="border-border flex items-baseline justify-between gap-4 border-t pt-2">
+              <span className="text-muted-foreground text-sm">Boxes</span>
+              <span className="text-foreground text-lg font-semibold tabular-nums">
+                {formatKes(lines.reduce((sum, line) => sum + line.amountKes, 0))}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="text-muted-foreground text-sm">{fallbackLabel}</span>
+            <span className="text-foreground text-lg font-semibold tabular-nums">
+              {fallbackTotalKes === null ? '—' : formatKes(fallbackTotalKes)}
+            </span>
+          </div>
+        )}
         <ChosenSnacks picks={snackThumbs} />
         <p className="text-muted-foreground text-sm">
           Delivery is added once you choose where it&rsquo;s going. You&rsquo;ll see the exact

@@ -58,7 +58,10 @@ export function stagesFor(hasPicks: boolean): StageDefinition[] {
  */
 export function stageForField(field: string): CheckoutStage {
   if (field === 'checkout-box') return 'box';
-  if (field === 'checkout-picks') return 'snacks';
+  // Prefix, not equality: an order with two pick-offering boxes flags
+  // one field per box (`checkout-picks-<packageId>`), and each of them
+  // belongs to the same stage as the first.
+  if (field.startsWith('checkout-picks')) return 'snacks';
   if (field === 'checkout-name' || field === 'checkout-phone' || field === 'checkout-email') {
     return 'details';
   }
