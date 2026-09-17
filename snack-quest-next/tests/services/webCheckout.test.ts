@@ -1,6 +1,6 @@
 import { discountCodeRepository } from '@/repositories/discountCodeRepository';
 import type { FargoServiceLevel } from '@/lib/delivery/deliveryPricing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { STK_ATTEMPT_ABANDON_AFTER_MS } from '@/lib/checkout/stkTiming';
@@ -28,6 +28,7 @@ import { paymentIntentRepository } from '@/repositories/paymentIntentRepository'
 import { paymentService } from '@/services/paymentService';
 import { orderRepository } from '@/repositories/orderRepository';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
+import { featureFlagService } from '@/services/featureFlagService';
 import { referralLinkRepository } from '@/repositories/referralLinkRepository';
 import { FakeWhatsAppGateway } from '../helpers/fakeWhatsAppGateway';
 import { seedCreator } from '../helpers/creatorFixtures';
@@ -2575,5 +2576,126 @@ describe('quoting a discount code', () => {
       expect(quote?.discountCodeRejected).toBe(true);
       expect(quote?.discountCodeIsCreatorCode).toBe(false);
     });
+  });
+});
+
+/**
+ * Same-day and express switched off for the day (§ same-day switch).
+ *
+ * The cut-offs only know the hour. They cannot know that nobody is
+ * here to pack, which is exactly the case the switch exists for — and
+ * exactly the case where every clock-based rule says yes.
+ *
+ * The switch has to hold here, not only on the screen: the service
+ * level arrives in an HTTP body, so a checkout that merely hides the
+ * option still sells an 18:00 guarantee to anything that posts one.
+ */
+describe('a fast delivery switched off by an admin', () => {
+  /*
+   * `featureFlags` is a subcollection of `businesses`, which the
+   * file-wide reset above does not reach. Left alone, a flag switched
+   * off in one test here would stay off for every test that runs after
+   * it — including the independence check below, which would then be
+   * asserting the leak rather than the behaviour.
+   */
+  async function clearFlags() {
+    const stored = await adminFirestore
+      .collection('businesses')
+      .doc(BUSINESS_ID)
+      .collection('featureFlags')
+      .get();
+    await Promise.all(stored.docs.map((doc) => doc.ref.delete()));
+  }
+
+  afterEach(clearFlags);
+
+  beforeEach(async () => {
+    await clearFlags();
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: BUSINESS_ID,
+      zone: 'Nairobi Metro — Same Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 300,
+    });
+    await deliveryZoneRuleRepository.upsertIfMissing({
+      businessId: BUSINESS_ID,
+      zone: 'Nairobi Metro — Next Day',
+      shippingOrigin: 'Nairobi',
+      packageCategory: 'small',
+      courier: 'tushop',
+      feeKes: 250,
+    });
+  });
+
+  function doorOrder(serviceLevel: FargoServiceLevel) {
+    return pickupInput({
+      deliveryMethod: 'door',
+      pickupStationId: undefined,
+      addressText: 'Kilimani, Argwings Kodhek Rd',
+      serviceLevel,
+    });
+  }
+
+  it('refuses a same-day order once the flag is off', async () => {
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', false, 'staff-1');
+
+    await expect(service().startWebCheckout(BUSINESS_ID, doorOrder('same-day'))).rejects.toThrow(
+      /not available today/i,
+    );
+  });
+
+  /*
+   * Not "closes at 13:00". A customer told that at 09:00 comes back
+   * before a deadline that was never what stopped them, and finds the
+   * same refusal waiting.
+   */
+  it('gives the real reason rather than quoting the cut-off', async () => {
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', false, 'staff-1');
+
+    await expect(
+      service().startWebCheckout(BUSINESS_ID, doorOrder('same-day')),
+    ).rejects.toThrow(/Same-day delivery is not available today\. Choose next-day delivery instead\./);
+  });
+
+  /* Next-day is not switchable and must survive both flags being off. */
+  it('still takes a next-day order', async () => {
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', false, 'staff-1');
+    await featureFlagService.setEnabled(BUSINESS_ID, 'express_delivery', false, 'staff-1');
+
+    const result = await service().startWebCheckout(BUSINESS_ID, doorOrder('next-day'));
+    expect(result.pricing.deliveryFeeKes).toBe(250);
+  });
+
+  /*
+   * The two switches are independent: turning same-day off says
+   * nothing about whether a rider can be dispatched. Asserted through
+   * the flag the order does not depend on, since express has its own
+   * clock window this test cannot rely on being open.
+   */
+  it('leaves express untouched when only same-day is switched off', async () => {
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', false, 'staff-1');
+
+    expect(await featureFlagService.isEnabled(BUSINESS_ID, 'express_delivery')).toBe(true);
+  });
+
+  it('stops being the reason once the flag is switched back on', async () => {
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', false, 'staff-1');
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', true, 'staff-1');
+
+    /*
+     * Not asserted as an acceptance: this suite runs at whatever hour
+     * it runs, and after 13:00 Nairobi the clock refuses same-day on
+     * its own. What must be true either way is that the switch is no
+     * longer what refuses — an assertion that holds at every hour
+     * rather than one that passes until the CI schedule moves.
+     */
+    const outcome = await service()
+      .startWebCheckout(BUSINESS_ID, doorOrder('same-day'))
+      .then(() => 'accepted' as const)
+      .catch((error: Error) => error.message);
+
+    expect(outcome).not.toMatch(/not available today/i);
   });
 });

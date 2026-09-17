@@ -7,6 +7,7 @@ import { getDeliveryFloorKes } from '@/lib/delivery/deliveryFloor';
 import { guaranteedPickCountFor } from '@/lib/packages/guaranteedPicks';
 import { isOfferExpired } from '@/lib/packages/offerExpiry';
 import { CheckoutForm, type CheckoutBox } from '@/components/checkout/CheckoutForm';
+import { featureFlagService } from '@/services/featureFlagService';
 import { ResumePaymentBanner } from '@/components/checkout/ResumePaymentBanner';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 
@@ -63,9 +64,22 @@ export default async function CheckoutPage({
    * completed delivery selections. Naming the floor up front turns a
    * late increase into something they already knew.
    */
-  const [active, deliveryFromKes] = await Promise.all([
+  /*
+   * The fast-delivery switches come down with the boxes
+   * (§ same-day switch), in the same round trip rather than a
+   * client-side fetch after paint: a checkout that offers same-day for
+   * a moment and then withdraws it is worse than one that never
+   * offered it, because the customer has already chosen by then.
+   *
+   * The server re-checks both independently at quote and at checkout,
+   * so this only decides what to show — a page cached either side of a
+   * toggle can never sell something the switch has withdrawn.
+   */
+  const [active, deliveryFromKes, sameDayOn, expressOn] = await Promise.all([
     packageRepository.listActive(businessId),
     getDeliveryFloorKes(businessId),
+    featureFlagService.isEnabled(businessId, 'same_day_delivery'),
+    featureFlagService.isEnabled(businessId, 'express_delivery'),
   ]);
 
   // `listActive()` deliberately excludes the exit-intent rescue offer
@@ -120,6 +134,8 @@ export default async function CheckoutPage({
           initialBoxId={requestedBoxId ?? null}
           initialReferralCode={referralCode}
           deliveryFromKes={deliveryFromKes}
+          sameDayPaused={!sameDayOn}
+          expressPaused={!expressOn}
         />
       </div>
     </div>
