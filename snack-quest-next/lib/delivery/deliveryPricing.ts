@@ -358,8 +358,8 @@ export function isFastDeliveryDay(now: Date = new Date()): boolean {
  * whole window — opening express at 11:00 Nairobi and still selling it
  * at 14:00, an hour past the last dispatch.
  */
-export function isExpressAvailableAt(now: Date = new Date()): boolean {
-  return expressWindowStateAt(now) === 'open';
+export function isExpressAvailableAt(now: Date = new Date(), paused = false): boolean {
+  return expressWindowStateAt(now, paused) === 'open';
 }
 
 /**
@@ -374,7 +374,18 @@ export function isExpressAvailableAt(now: Date = new Date()): boolean {
  */
 export function expressWindowStateAt(
   now: Date = new Date(),
-): 'before' | 'open' | 'after' | 'closed_today' {
+  paused = false,
+): 'before' | 'open' | 'after' | 'closed_today' | 'paused' {
+  /*
+   * Switched off by hand, checked before anything the clock can say
+   * (§ same-day switch). An admin turning express off has made a
+   * statement about today that no hour overrides, and "opens at 10am"
+   * under it would be the screen promising what the switch just
+   * withdrew.
+   */
+  if (paused) {
+    return 'paused';
+  }
   // Checked before the clock: on a Sunday the hour is irrelevant, and
   // "opens at 10am" would be a promise for a service that is not
   // running at all today.
@@ -398,7 +409,19 @@ export function expressWindowStateAt(
  * 1pm", which would send someone away to try again before a deadline
  * that is not what stopped them.
  */
-export function sameDayWindowStateAt(now: Date = new Date()): 'open' | 'after' | 'closed_today' {
+export function sameDayWindowStateAt(
+  now: Date = new Date(),
+  paused = false,
+): 'open' | 'after' | 'closed_today' | 'paused' {
+  /*
+   * The switch wins over the clock (§ same-day switch). Its whole
+   * purpose is the hours when the cut-off would otherwise say yes:
+   * telling a customer at 09:00 to "order by 1pm" on a day we are not
+   * delivering sends them to a deadline that was never the problem.
+   */
+  if (paused) {
+    return 'paused';
+  }
   if (!isFastDeliveryDay(now)) {
     return 'closed_today';
   }
@@ -414,8 +437,8 @@ export function sameDayWindowStateAt(now: Date = new Date()): 'open' | 'after' |
  * Town today — and an hour's drift here means selling a 6pm guarantee
  * the courier will not accept.
  */
-export function isSameDayAvailableAt(now: Date = new Date()): boolean {
-  return sameDayWindowStateAt(now) === 'open';
+export function isSameDayAvailableAt(now: Date = new Date(), paused = false): boolean {
+  return sameDayWindowStateAt(now, paused) === 'open';
 }
 
 /**
@@ -425,16 +448,39 @@ export function isSameDayAvailableAt(now: Date = new Date()): boolean {
  * ladder. On a Sunday that ladder is one rung: next-day, which is the
  * one service whose promise a Sunday does not change.
  */
-export function availableServiceLevels(region: FargoRegion, now: Date = new Date()): FargoServiceLevel[] {
+export function availableServiceLevels(
+  region: FargoRegion,
+  now: Date = new Date(),
+  paused: FastDeliveryPauses = {},
+): FargoServiceLevel[] {
   if (region !== 'nairobi-metro') {
     return ['next-day'];
   }
   const levels: FargoServiceLevel[] = ['next-day'];
-  if (isSameDayAvailableAt(now)) {
+  if (isSameDayAvailableAt(now, paused.sameDay)) {
     levels.push('same-day');
   }
-  if (isExpressAvailableAt(now)) {
+  if (isExpressAvailableAt(now, paused.express)) {
     levels.push('express');
   }
   return levels;
+}
+
+/**
+ * Which fast services have been switched off by hand
+ * (§ same-day switch), read from the `same_day_delivery` and
+ * `express_delivery` flags.
+ *
+ * Phrased as "paused" rather than "enabled" so that the default —
+ * an omitted field, which is what every existing caller passes — means
+ * *not* paused. A shape whose empty value silently withdrew a service
+ * would be the wrong way round for a gate this many call sites read.
+ *
+ * Next-day never appears here. It is the one service on offer at every
+ * hour of every day, and a checkout with no delivery speed at all is
+ * not a state worth being able to reach by toggle.
+ */
+export interface FastDeliveryPauses {
+  sameDay?: boolean;
+  express?: boolean;
 }

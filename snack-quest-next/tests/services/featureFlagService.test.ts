@@ -59,3 +59,36 @@ describe('FeatureFlagService.setEnabled', () => {
     expect(await featureFlagService.isEnabled(BUSINESS_ID, 'global_search')).toBe(false);
   });
 });
+
+/**
+ * The delivery switches an admin uses on a day we cannot deliver
+ * (§ same-day switch).
+ *
+ * Their defaults are the load-bearing part. These gate a service that
+ * is on sale right now, so a default flipped to `false` — by a merge,
+ * a typo, a copy-paste from the frozen-maintenance flags above — would
+ * silently withdraw same-day from every business that has never
+ * touched the switch, and nothing else in the suite would notice.
+ */
+describe('the fast-delivery switches', () => {
+  it('are both offered to the admin, on by default', async () => {
+    const flags = await featureFlagService.listFlags(BUSINESS_ID);
+
+    for (const key of ['same_day_delivery', 'express_delivery']) {
+      const flag = flags.find((candidate) => candidate.key === key);
+      expect(flag, key).toBeDefined();
+      expect(flag!.enabled, key).toBe(true);
+      expect(flag!.isOverridden, key).toBe(false);
+    }
+  });
+
+  it('turn the service off only for the business that switched it', async () => {
+    await featureFlagService.setEnabled(BUSINESS_ID, 'same_day_delivery', false, 'staff-1');
+
+    expect(await featureFlagService.isEnabled(BUSINESS_ID, 'same_day_delivery')).toBe(false);
+    // Per-tenant config, so a second business is untouched.
+    expect(await featureFlagService.isEnabled('biz-somebody-else', 'same_day_delivery')).toBe(true);
+    // And the other speed is a separate decision.
+    expect(await featureFlagService.isEnabled(BUSINESS_ID, 'express_delivery')).toBe(true);
+  });
+});

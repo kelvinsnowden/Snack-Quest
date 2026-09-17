@@ -317,3 +317,81 @@ describe('Sundays run next-day only', () => {
     expect(availableServiceLevels('upcountry', nairobiSunday(11))).toEqual(['next-day']);
   });
 });
+
+/**
+ * The fast services switched off by hand (§ same-day switch).
+ *
+ * The clock knows the hour; it does not know whether anyone is here to
+ * pack. These cover the gap that motivated the switch — the hours
+ * before the cut-off, when every clock-based rule says yes.
+ */
+describe('a fast service switched off for the day', () => {
+  /** 09:00 Nairobi on a Thursday: inside same-day, before express opens. */
+  const morning = new Date(Date.UTC(2026, 7, 20, 6));
+  /** 11:00 Nairobi, inside both windows. */
+  const midMorning = new Date(Date.UTC(2026, 7, 20, 8));
+
+  it('withdraws same-day well before the cut-off', () => {
+    expect(isSameDayAvailableAt(morning)).toBe(true);
+    expect(isSameDayAvailableAt(morning, true)).toBe(false);
+  });
+
+  /*
+   * A distinct state, not just "after". The screen has to say "not
+   * available today" rather than "orders must be in by 1pm", which at
+   * 09:00 would send a customer back to a deadline that was never what
+   * stopped them — the same trap the Sunday state exists to avoid.
+   */
+  it('reports its own reason rather than the cut-off', () => {
+    expect(sameDayWindowStateAt(morning)).toBe('open');
+    expect(sameDayWindowStateAt(morning, true)).toBe('paused');
+    expect(expressWindowStateAt(midMorning, true)).toBe('paused');
+  });
+
+  /* The switch outranks the clock in both directions, including Sunday. */
+  it('stays paused at an hour that was closed anyway', () => {
+    const afterCutoff = new Date(Date.UTC(2026, 7, 20, 12));
+    expect(sameDayWindowStateAt(afterCutoff, true)).toBe('paused');
+    const sunday = new Date(Date.UTC(2026, 7, 30, 6));
+    expect(sameDayWindowStateAt(sunday, true)).toBe('paused');
+  });
+
+  it('takes same-day out of the offer and leaves express alone', () => {
+    expect(availableServiceLevels('nairobi-metro', midMorning, { sameDay: true })).toEqual([
+      'next-day',
+      'express',
+    ]);
+  });
+
+  /*
+   * Independent switches. A full same-day dispatch slot says nothing
+   * about whether a rider can be sent out now, so one must not imply
+   * the other.
+   */
+  it('takes express out of the offer and leaves same-day alone', () => {
+    expect(availableServiceLevels('nairobi-metro', midMorning, { express: true })).toEqual([
+      'next-day',
+      'same-day',
+    ]);
+  });
+
+  it('leaves next-day standing when both are off', () => {
+    expect(
+      availableServiceLevels('nairobi-metro', midMorning, { sameDay: true, express: true }),
+    ).toEqual(['next-day']);
+  });
+
+  /* Every existing caller passes nothing, and must be unaffected. */
+  it('changes nothing when no switch is passed', () => {
+    expect(availableServiceLevels('nairobi-metro', midMorning)).toEqual([
+      'next-day',
+      'same-day',
+      'express',
+    ]);
+    expect(availableServiceLevels('nairobi-metro', midMorning, {})).toEqual([
+      'next-day',
+      'same-day',
+      'express',
+    ]);
+  });
+});

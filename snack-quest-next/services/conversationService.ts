@@ -49,6 +49,7 @@ import {
   WHATSAPP_DOOR_SERVICE_LEVEL,
   type FargoServiceLevel,
 } from '@/lib/delivery/deliveryPricing';
+import type { FastDeliveryPauses } from '@/lib/delivery/deliveryPricing';
 import { deliveryZoneRuleRepository } from '@/repositories/deliveryZoneRuleRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { offersGuaranteedPicks, validateGuaranteedPicks } from '@/lib/packages/guaranteedPicks';
@@ -183,6 +184,31 @@ export function formatPaymentReference(
       // still gets a truthful confirmation rather than a blank.
       return 'payment received';
   }
+}
+
+/**
+ * Which fast services an admin has switched off (§ same-day switch).
+ *
+ * Reads nothing for a next-day request. That is not a micro-
+ * optimisation: next-day is what nearly every order asks for and no
+ * flag can withdraw it, so a lookup there would be two Firestore reads
+ * per quote — and the quote runs on a debounce, once per pause in
+ * typing — to answer a question with only one possible answer.
+ *
+ * Only the flag for the requested speed is read, for the same reason.
+ * A same-day order does not care whether express is running.
+ */
+async function fastDeliveryPauses(
+  businessId: string,
+  requested: FargoServiceLevel,
+): Promise<FastDeliveryPauses> {
+  if (requested === 'same-day') {
+    return { sameDay: !(await featureFlagService.isEnabled(businessId, 'same_day_delivery')) };
+  }
+  if (requested === 'express') {
+    return { express: !(await featureFlagService.isEnabled(businessId, 'express_delivery')) };
+  }
+  return {};
 }
 
 function isNairobiCounty(county: string | undefined): boolean {
@@ -1451,22 +1477,36 @@ class ConversationService {
     // earlier `=== 'same-day' ? … : 'next-day'` form silently swallowed
     // express into next-day the moment express existed.
     const requested = requestedServiceLevel(input.serviceLevel);
+    /*
+     * Whether the fast services are switched on at all
+     * (§ same-day switch). Read only for a request that needs the
+     * answer: next-day is on offer at every hour of every day, and it
+     * is the overwhelming majority of orders — charging each of them
+     * two Firestore reads to confirm something that cannot affect them
+     * would be paying for the exception on the common path.
+     */
+    const paused = await fastDeliveryPauses(businessId, requested);
     // One source of truth for both windows, so the server cannot come
     // to a different answer than the checkout that offered the option.
-    if (!availableServiceLevels('nairobi-metro').includes(requested)) {
+    if (!availableServiceLevels('nairobi-metro', new Date(), paused).includes(requested)) {
       /*
        * Why it was refused, not just that it was. On a Sunday neither
        * fast service runs at all, and quoting a cut-off would send
        * someone away to try again before a deadline that was never
-       * what stopped them.
+       * what stopped them. A service switched off for the day is the
+       * same trap one step further: the cut-off is not what stopped
+       * them either, and at 09:00 it would be plainly false.
        */
       const speed = requested === 'express' ? 'Express' : 'Same-day';
+      const switchedOff = requested === 'express' ? paused.express : paused.sameDay;
       throw new WebCheckoutValidationError(
-        !isFastDeliveryDay()
-          ? `${speed} delivery does not run on Sundays. Choose next-day delivery, which arrives Monday.`
-          : requested === 'express'
-            ? `Express delivery runs between ${EXPRESS_OPEN_HOUR}:00 and ${EXPRESS_CUTOFF_HOUR}:00. Choose same-day or next-day delivery instead.`
-            : `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00. Choose next-day delivery instead.`,
+        switchedOff
+          ? `${speed} delivery is not available today. Choose next-day delivery instead.`
+          : !isFastDeliveryDay()
+            ? `${speed} delivery does not run on Sundays. Choose next-day delivery, which arrives Monday.`
+            : requested === 'express'
+              ? `Express delivery runs between ${EXPRESS_OPEN_HOUR}:00 and ${EXPRESS_CUTOFF_HOUR}:00. Choose same-day or next-day delivery instead.`
+              : `Same-day delivery closes at ${SAME_DAY_CUTOFF_HOUR}:00. Choose next-day delivery instead.`,
       );
     }
 
