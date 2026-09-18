@@ -6,11 +6,7 @@ import { Play, ArrowDown } from 'lucide-react';
 import { trackEvent } from '@/lib/analytics/trackEvent';
 import { INVESTOR_EVENTS } from '@/lib/analytics/investorEvents';
 import { INVESTOR_VIDEO_URL, INVESTOR_VIDEO_POSTER } from '@/lib/invest/raise';
-
-/** A file we can drive ourselves, versus an embed we can only frame. */
-function isFileUrl(url: string): boolean {
-  return /\.(mp4|webm|mov)(\?|$)/i.test(url);
-}
+import { resolveVideoSource } from '@/lib/invest/videoSource';
 
 /**
  * The founder's recorded presentation, at the top of the page
@@ -32,11 +28,19 @@ export function InvestorVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
 
-  if (!INVESTOR_VIDEO_URL) {
+  /*
+   * Whatever link was pasted, normalised to one that can actually be
+   * played — a Google Drive or YouTube *share* URL cannot be framed as
+   * given, and fails as a blank rectangle rather than an error. See
+   * `resolveVideoSource`.
+   */
+  const source = resolveVideoSource(INVESTOR_VIDEO_URL);
+
+  if (source.kind === 'none') {
     return <VideoPending />;
   }
 
-  if (!isFileUrl(INVESTOR_VIDEO_URL)) {
+  if (source.kind === 'embed') {
     /*
      * An embed. We cannot observe playback inside a cross-origin
      * iframe without pulling in the provider's SDK, so `videoPlayed`
@@ -48,13 +52,13 @@ export function InvestorVideo() {
       <figure className="relative w-full overflow-hidden rounded-2xl bg-black shadow-[0_40px_120px_-30px_rgb(0_0_0/0.85)] sm:rounded-3xl">
         <div className="aspect-video w-full">
           <iframe
-            src={INVESTOR_VIDEO_URL}
+            src={source.url}
             title="Snack Quest — the founder's presentation"
             className="size-full"
             allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
             loading="lazy"
-            onLoad={() => trackEvent(INVESTOR_EVENTS.videoPlayed, { kind: 'embed' })}
+            onLoad={() => trackEvent(INVESTOR_EVENTS.videoPlayed, { kind: source.provider })}
           />
         </div>
       </figure>
@@ -79,7 +83,7 @@ export function InvestorVideo() {
         }}
         onEnded={() => trackEvent(INVESTOR_EVENTS.videoCompleted)}
       >
-        <source src={INVESTOR_VIDEO_URL} />
+        <source src={source.url} />
         Your browser can’t play this video. The written story is directly below.
       </video>
     </figure>

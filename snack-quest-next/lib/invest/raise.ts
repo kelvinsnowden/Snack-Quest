@@ -148,11 +148,18 @@ export const TIKTOK = {
  * yet", which the hero renders as a designed waiting state rather than
  * a broken player; see `InvestorVideo`.
  *
- * Accepts either a direct file URL (`.mp4`, served to a real `<video>`)
- * or an embed URL (YouTube/Vimeo, rendered in an iframe). Whichever it
- * is, it must never autoplay with sound.
+ * Paste whatever link is to hand: a Google Drive share URL, a YouTube
+ * or Vimeo link in any of their forms, or a direct `.mp4`.
+ * `resolveVideoSource` maps it to something a browser will actually
+ * play — the share URL Drive and YouTube give you cannot be framed as
+ * copied, and fails as a blank rectangle rather than an error.
+ *
+ * A direct file gets a real `<video>`, which is the only case where
+ * play and completion can be observed; everything else is an iframe.
+ * Whichever it is, it must never autoplay with sound.
  */
-export const INVESTOR_VIDEO_URL = '';
+export const INVESTOR_VIDEO_URL =
+  'https://drive.google.com/file/d/1_axgWZ4cGBYYiqW021ChzD9ODfR-SzGi/view?usp=drive_link';
 
 /** Shown under the player before the video plays. A real frame, not a black box. */
 export const INVESTOR_VIDEO_POSTER = '/deck/shot-founder.webp';
