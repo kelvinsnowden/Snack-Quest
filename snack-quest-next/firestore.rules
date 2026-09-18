@@ -258,6 +258,26 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /*
+     * investorInterests: expressions of interest from the public
+     * `/invest` page (§ investor interest page).
+     *
+     * Deny everything, in both directions, with no admin read either.
+     * Writes come from the Admin SDK behind `POST /api/invest/interest`,
+     * which bypasses these rules; reads happen through server code with
+     * the same SDK. Nothing in the client ever needs this collection.
+     *
+     * Stricter than `reviews`, which at least publishes its approved
+     * rows. This is a list of named people, their phone numbers and
+     * roughly what each might invest — there is no version of it that
+     * belongs in a browser, so the rule does not carve out a case that
+     * could later be widened by mistake.
+     */
+    match /investorInterests/{interestId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // inventoryMovements: the stock-adjustment audit trail (§ Admin:
     // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
     // is the sole writer, always inside the same transaction as the
