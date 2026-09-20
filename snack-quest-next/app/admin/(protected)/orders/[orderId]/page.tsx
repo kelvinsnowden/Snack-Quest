@@ -324,16 +324,28 @@ export default async function AdminOrderDetailPage({
               asserting it and amending it are the same privilege.
             */}
             {/*
-              Only for an order recorded by hand. Those do not text
-              automatically, so this is the send — and the one control
-              that would otherwise be missing entirely.
+              For any order whose automatic confirmation was withheld:
+              one recorded by hand, or one a staff member deliberately
+              recorded quietly (§ quiet manual orders). Those are
+              precisely the orders where this is the only way the
+              customer ever gets a confirmation, so the control has to
+              be here — and a muted order still gets it, because muting
+              suppresses the *automatic* messages, not a staff member
+              explicitly choosing to send one now.
             */}
-            {payment.manualPayment ? (
+            {payment.manualPayment || order.customerNotificationsMuted ? (
               <SendConfirmationSmsButton
                 orderId={orderId}
                 alreadySent={confirmationSms !== null}
                 phoneNumber={customer.phoneNumber}
               />
+            ) : null}
+            {order.customerNotificationsMuted ? (
+              <p className="border-border bg-surface text-muted-foreground rounded-lg border p-3 text-sm">
+                This order was recorded without telling the customer, so no confirmation and no
+                dispatch text have been sent. Use the button above to send the confirmation by
+                hand if they should get one after all.
+              </p>
             ) : null}
             {payment.manualPayment && isSuperAdmin(session) ? (
               <CorrectManualPaymentDialog

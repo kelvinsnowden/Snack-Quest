@@ -376,6 +376,19 @@ export interface WebCheckoutInput {
    * much*, so this can never become a discount mechanism.
    */
   manualPayment?: Omit<ManualPaymentRecord, 'recordedAt'>;
+  /**
+   * Record this order without texting the customer (§ quiet manual
+   * orders).
+   *
+   * Staff-only, like `initiatedBy` and `manualPayment` beside it, and
+   * ignored entirely unless the order is staff-initiated — a
+   * customer's own checkout must never be able to ask us not to
+   * confirm their purchase to them.
+   *
+   * `undefined` means notify, which is what every caller before this
+   * existed did. Only an explicit `false` goes quiet.
+   */
+  notifyCustomer?: boolean;
   packageId: string;
   quantity: number;
   customerName: string;
@@ -1056,6 +1069,15 @@ class ConversationService {
         phoneNumber,
         existing?.conversation.customerId ?? null,
         {
+          /*
+           * Staff-initiated only, and only on an explicit `false`
+           * (§ quiet manual orders). Gated on `initiatedBy` here
+           * rather than trusted from the body, because this input also
+           * backs the public checkout route — without the gate a
+           * customer could post `notifyCustomer: false` and silence
+           * the confirmation of their own purchase.
+           */
+          muteCustomerNotifications: Boolean(input.initiatedBy) && input.notifyCustomer === false,
           // The first line, so a one-box order freezes exactly the
           // snapshot it always did.
           packageId: lines[0].packageId,
@@ -1974,6 +1996,11 @@ class ConversationService {
       packageId: string;
       packageLabel: string;
       priceKes: number;
+      /**
+       * Record this order without texting the customer (§ quiet manual
+       * orders). Staff-set, and absent on every other path.
+       */
+      muteCustomerNotifications?: boolean;
       /** Unit count. Omitted by every WhatsApp path — a conversation can only ever buy one box. */
       quantity?: number;
       /**
@@ -2110,6 +2137,17 @@ class ConversationService {
       // Absent key rather than `undefined`: Firestore rejects a
       // document containing one outright.
       ...(common.items?.length ? { items: common.items } : {}),
+      /*
+       * Frozen here rather than passed along, because the two paths
+       * that matter confirm in a *later* request: an STK push is
+       * settled by a Daraja callback and a pay-on-delivery order by a
+       * prompt at the door, and neither has any access to the form a
+       * staff member filled in. The snapshot is what both of them read.
+       *
+       * Only written when genuinely muted, so an ordinary order's
+       * snapshot is byte-for-byte what it always was.
+       */
+      ...(common.muteCustomerNotifications ? { customerNotificationsMuted: true } : {}),
       customerName: common.customerName,
       // Absent key, never `undefined` — Firestore rejects a document
       // containing an undefined value outright, and this field is
@@ -3014,6 +3052,16 @@ class ConversationService {
     if (!snapshot) {
       return;
     }
+    /*
+     * Whether this order goes out quietly (§ quiet manual orders).
+     *
+     * Read off the snapshot rather than the call, because this method
+     * runs from a Daraja callback as often as from the staff form, and
+     * the callback knows nothing about the form. The snapshot is the
+     * one thing both paths hold.
+     */
+    const muted = snapshot.customerNotificationsMuted === true;
+
     if (snapshot.status === 'completed') {
       // Already turned into an order by an earlier success signal for
       // this same snapshot — a manual reconciliation
@@ -3159,7 +3207,7 @@ class ConversationService {
       // what they owe in the plain message further down instead.
       // A free order has no payment to confirm; the plain message
       // further down tells that customer what is coming instead.
-      if (!result.manualPayment && !noMoneyArrived) {
+      if (!result.manualPayment && !noMoneyArrived && !muted) {
         await this.notifications.send(businessId, {
           channel: 'sms',
           templateCode: 'order_confirmed_sms',
@@ -3324,7 +3372,17 @@ class ConversationService {
      * never opens WhatsApp again.
      */
     try {
-      await this.reply(businessId, result.conversationId, phoneNumber, `${confirmationMessage}${milestoneMessage}`);
+      /*
+       * Silent for a muted order (§ quiet manual orders). This is the
+       * message that most needed the switch: unlike the SMS above it
+       * was sent for *every* staff order including an already-paid
+       * one, and it says "we're preparing your box and Tushop will
+       * bring it to your door" — which is plainly false about a box
+       * the customer has already eaten.
+       */
+      if (!muted) {
+        await this.reply(businessId, result.conversationId, phoneNumber, `${confirmationMessage}${milestoneMessage}`);
+      }
     } catch (error) {
       await publishEvent(businessId, 'OrderConfirmationWhatsAppFailed', 'order', orderId, {
         reason: error instanceof Error ? error.message : 'unknown error',

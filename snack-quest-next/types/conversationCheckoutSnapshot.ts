@@ -55,6 +55,23 @@ export interface ConversationCheckoutSnapshot {
    */
   items?: CheckoutLineItem[];
   /**
+   * Staff recorded this order with the customer text switched off
+   * (§ quiet manual orders).
+   *
+   * Set only from the Admin order form, and only deliberately. It
+   * exists for the order that is entered *after* the fact — a box
+   * already handed over at a stand, or already delivered and being
+   * written up afterwards — where every automatic message is not just
+   * redundant but wrong: "we're preparing your box" about a box the
+   * customer finished eating yesterday.
+   *
+   * Absent means not muted, which is what every order before this
+   * existed and every customer's own checkout is. It is never inferred
+   * from anything else: an order being recorded by hand is not on its
+   * own a reason to go quiet, and plenty of them should still text.
+   */
+  customerNotificationsMuted?: boolean;
+  /**
    * The snacks the customer chose to be certain of (§ Premium: choose
    * 5, discover the rest). Frozen here alongside the price, and for
    * the same reason: this is what was promised at the moment of

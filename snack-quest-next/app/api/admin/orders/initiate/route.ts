@@ -97,6 +97,19 @@ export async function POST(request: Request): Promise<Response> {
   const deliveryFeeCollection =
     rawFeeCollection === 'on_delivery' || rawFeeCollection === 'waived' ? rawFeeCollection : null;
 
+  /*
+   * Whether the customer hears about this order at all
+   * (§ quiet manual orders). Read off the raw body for the same reason
+   * `deliveryFeeCollection` is: it is staff-only, and the service
+   * ignores it unless the order is staff-initiated.
+   *
+   * Only an explicit `false` mutes. Anything else — absent, null, a
+   * string, a stray truthy value — means notify, so the quiet path can
+   * never be reached by accident or by a malformed body.
+   */
+  const notifyCustomer =
+    (body as { notifyCustomer?: unknown } | null)?.notifyCustomer === false ? false : undefined;
+
   const rawManualPayment = (body as { manualPayment?: unknown } | null)?.manualPayment;
   let manualPayment:
     | { method: ManualPaymentMethod; reference: string | null; recordedByUid: string; recordedByName: string; note: string | null }
@@ -230,6 +243,7 @@ export async function POST(request: Request): Promise<Response> {
           staffName: session.displayName || session.email,
         },
         ...(manualPayment ? { manualPayment } : {}),
+        ...(notifyCustomer === false ? { notifyCustomer: false } : {}),
       },
     );
 
@@ -248,6 +262,10 @@ export async function POST(request: Request): Promise<Response> {
         quantity: result.pricing.quantity,
         totalKes: result.pricing.totalKes,
         stkPushSent: result.stkPushSent,
+        // Recorded because it is a decision about a real customer, and
+        // "why was this person never told" is a question that gets
+        // asked afterwards.
+        notifyCustomer: notifyCustomer !== false,
         ...(manualPayment
           ? {
               manualPaymentMethod: manualPayment.method,
