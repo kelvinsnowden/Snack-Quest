@@ -138,6 +138,9 @@ export function StaffInitiatedOrderDialog({
     setPicksByBox({});
     setFeeCollection('prepaid');
     setPaymentMode('request');
+    // Back to notifying: going quiet is a per-order decision, and a
+    // dialog that remembered it would silence the next customer too.
+    setNotifyCustomer(true);
     setManualMethod('cash');
     setManualReference('');
     setManualNote('');
@@ -200,6 +203,12 @@ export function StaffInitiatedOrderDialog({
    * back brings the operator's picks with it.
    */
   const alreadyPaid = paymentMode === 'already_paid';
+  /*
+   * Whether the customer hears about this order (§ quiet manual
+   * orders). Defaults to on, because the ordinary staff order is one
+   * being taken now and the customer should be told.
+   */
+  const [notifyCustomer, setNotifyCustomer] = useState(true);
   const payOnDelivery = paymentMode === 'on_delivery';
   // Cash is the only method with nothing to reference. The server
   // enforces this too — this is here so the button explains itself
@@ -250,6 +259,7 @@ export function StaffInitiatedOrderDialog({
             : {}),
           ...(feeCollection !== 'prepaid' ? { deliveryFeeCollection: feeCollection } : {}),
           ...(payOnDelivery ? { collectOnDelivery: true } : {}),
+          ...(notifyCustomer ? {} : { notifyCustomer: false }),
           ...(alreadyPaid
             ? {
                 manualPayment: {
@@ -665,6 +675,31 @@ export function StaffInitiatedOrderDialog({
                     </p>
                   ) : null}
                   </div>
+
+                {/*
+                  Whether to text the customer (§ quiet manual orders).
+                  Sits under Payment because the two are read together:
+                  an order that is already paid *and* already delivered
+                  is exactly the one nobody should be texted about.
+                */}
+                <label className="border-border bg-surface flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+                  <input
+                    type="checkbox"
+                    checked={notifyCustomer}
+                    onChange={(event) => setNotifyCustomer(event.target.checked)}
+                    className="accent-primary mt-0.5 size-4 shrink-0"
+                  />
+                  <span className="flex flex-col gap-1">
+                    <span className="text-foreground text-sm font-medium">
+                      Tell the customer about this order
+                    </span>
+                    <span className="text-muted-foreground text-sm">
+                      {notifyCustomer
+                        ? 'They get the usual confirmation, and the “on its way” text when you dispatch it.'
+                        : 'No confirmation and no dispatch text — for an order that already happened. You can still send the confirmation by hand from the order page.'}
+                    </span>
+                  </span>
+                </label>
 
                 {alreadyPaid ? (
                   <div className="border-warning/40 bg-warning/5 flex flex-col gap-4 rounded-lg border p-4">

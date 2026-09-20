@@ -176,6 +176,15 @@ class OrderService {
           },
           conversationId: snapshot.conversationId,
           conversationCheckoutSnapshotId: snapshotId,
+          /*
+           * Carried from the snapshot (§ quiet manual orders), because
+           * the dispatch text fires from `changeStatus` — a different
+           * request, often days later, which has only the order to
+           * read. Without this the switch would silence the
+           * confirmation and then text "your order is on its way"
+           * about a box that arrived last week.
+           */
+          ...(snapshot.customerNotificationsMuted ? { customerNotificationsMuted: true } : {}),
           referralLinkId: snapshot.referralLinkId,
           attribution: (attribution as Record<string, unknown> | null) ?? null,
           fulfillmentBatchId: null,
@@ -267,7 +276,19 @@ class OrderService {
      * `outboundMessages` for the retry sweep and must never roll back
      * or fail a dispatch a staff member just performed.
      */
-    if (next === 'dispatched') {
+    /*
+     * Not for an order recorded quietly (§ quiet manual orders).
+     *
+     * This is the second half of the switch and the half that is easy
+     * to miss: muting the confirmation but still sending this one
+     * would text "your order is on its way" about a box the customer
+     * already has — which is the exact confusion the switch exists to
+     * prevent, arriving a day later instead of immediately.
+     *
+     * An order still moves through `dispatched` normally; only the
+     * message is withheld.
+     */
+    if (next === 'dispatched' && !order.customerNotificationsMuted) {
       try {
         await notificationService.send(businessId, {
           channel: 'sms',
