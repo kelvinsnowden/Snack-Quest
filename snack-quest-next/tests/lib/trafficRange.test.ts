@@ -7,13 +7,27 @@ import { resolveTrafficRange } from '@/lib/analytics/trafficRange';
  * concrete window, no Firestore involved.
  */
 describe('resolveTrafficRange', () => {
-  it('defaults to the last 30 days when no range is given', () => {
+  /*
+   * `start` is midnight-aligned rather than an exact "now minus 30
+   * days" instant (§ analytics rollups): the traffic rollups this
+   * feeds are one document per calendar day, so the window has to
+   * cover exactly 30 calendar days — today and the 29 before it — or
+   * the analytics service would silently read one extra day's worth
+   * of rollups at the boundary.
+   */
+  it('defaults to the last 30 calendar days when no range is given', () => {
     const range = resolveTrafficRange({});
 
     expect(range.key).toBe('month');
     expect(range.end.getTime()).toBeGreaterThan(range.start.getTime());
-    const days = (range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000);
-    expect(days).toBeCloseTo(30, 1);
+    expect(range.start.getUTCHours()).toBe(0);
+    expect(range.start.getUTCMinutes()).toBe(0);
+    const days =
+      (range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000);
+    // 29 full days plus however much of today has elapsed — so it
+    // sits in (29, 30], never at exactly 30 and never below 29.
+    expect(days).toBeGreaterThan(29);
+    expect(days).toBeLessThanOrEqual(30);
   });
 
   it('resolves "day" to the start of today through now', () => {
@@ -25,12 +39,32 @@ describe('resolveTrafficRange', () => {
     expect(range.label).toBe('Today');
   });
 
-  it('resolves "week" to a rolling 7-day window', () => {
+  it('resolves "week" to exactly 7 calendar days, midnight-aligned', () => {
     const range = resolveTrafficRange({ range: 'week' });
 
-    const days = (range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000);
     expect(range.key).toBe('week');
-    expect(days).toBeCloseTo(7, 1);
+    expect(range.start.getUTCHours()).toBe(0);
+    expect(range.start.getUTCMinutes()).toBe(0);
+    const days = (range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000);
+    expect(days).toBeGreaterThan(6);
+    expect(days).toBeLessThanOrEqual(7);
+  });
+
+  /*
+   * The specific bug this guards: flooring an unaligned "now - 7 days"
+   * instant down to midnight adds a day rather than trimming one, so
+   * a window spans 8 calendar days instead of 7. Asserted directly in
+   * the unit this data actually gets consumed by — calendar-day keys —
+   * rather than only in elapsed milliseconds.
+   */
+  it('spans exactly 7 distinct calendar days', () => {
+    const range = resolveTrafficRange({ range: 'week' });
+    const dateKeys = new Set<string>();
+    for (let ms = range.start.getTime(); ms < range.end.getTime(); ms += 24 * 60 * 60 * 1000) {
+      dateKeys.add(new Date(ms).toISOString().slice(0, 10));
+    }
+    dateKeys.add(new Date(range.end.getTime() - 1).toISOString().slice(0, 10));
+    expect(dateKeys.size).toBe(7);
   });
 
   it('resolves a valid custom range inclusive of both dates', () => {

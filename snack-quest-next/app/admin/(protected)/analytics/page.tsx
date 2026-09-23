@@ -17,6 +17,7 @@ import { ComplimentaryBoxesNote } from '@/components/admin/ComplimentaryBoxesNot
 import { formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 import { resolveTrafficRange, type TrafficRangeKey } from '@/lib/analytics/trafficRange';
+import { AnalyticsRequestCache } from '@/lib/analytics/requestCache';
 
 export const metadata: Metadata = { title: 'Analytics' };
 
@@ -40,6 +41,17 @@ export default async function AdminAnalyticsPage({
   const trafficParams = await searchParams;
   const trafficRange = resolveTrafficRange(trafficParams);
 
+  /*
+   * One scope for this render, shared across every metric below that
+   * accepts it (§ analytics rollups, docs/FLEET_ARCHITECTURE_AUDIT.md
+   * finding 2). Six of these called `orderRepository.listByBusiness`
+   * independently — nine, counting `fulfillmentAccountingService`'s
+   * own copy and `getCreatorRoi`'s second read — every one of them
+   * asking for the same rows. Passing this cache in is what collapses
+   * that back down to one read.
+   */
+  const cache = new AnalyticsRequestCache();
+
   const [
     revenue,
     funnel,
@@ -56,23 +68,23 @@ export default async function AdminAnalyticsPage({
     abandonment,
     ltv,
   ] = await Promise.all([
-    businessAnalyticsService.getRevenueOverview(session.businessId, 30),
+    businessAnalyticsService.getRevenueOverview(session.businessId, 30, cache),
     businessAnalyticsService.getFunnel(session.businessId),
-    businessAnalyticsService.getWebFunnel(session.businessId, 30),
-    businessAnalyticsService.getCreatorRoi(session.businessId, 30),
-    businessAnalyticsService.getCac(session.businessId, month),
-    businessAnalyticsService.getCacByChannel(session.businessId, month),
+    businessAnalyticsService.getWebFunnel(session.businessId, 30, cache),
+    businessAnalyticsService.getCreatorRoi(session.businessId, 30, cache),
+    businessAnalyticsService.getCac(session.businessId, month, cache),
+    businessAnalyticsService.getCacByChannel(session.businessId, month, cache),
     businessAnalyticsService.getDeliveryPerformance(session.businessId),
     businessAnalyticsService.getTrafficForRange(session.businessId, {
       start: trafficRange.start,
       end: trafficRange.end,
     }),
-    businessAnalyticsService.getRevenueByChannel(session.businessId, 30),
-    fulfillmentAccountingService.getOverview(session.businessId, 30),
-    businessAnalyticsService.getRefundRate(session.businessId, 30),
-    businessAnalyticsService.getRepeatPurchaseRate(session.businessId, 30),
+    businessAnalyticsService.getRevenueByChannel(session.businessId, 30, cache),
+    fulfillmentAccountingService.getOverview(session.businessId, 30, cache),
+    businessAnalyticsService.getRefundRate(session.businessId, 30, cache),
+    businessAnalyticsService.getRepeatPurchaseRate(session.businessId, 30, cache),
     businessAnalyticsService.getCheckoutAbandonment(session.businessId, 30),
-    businessAnalyticsService.getLtv(session.businessId),
+    businessAnalyticsService.getLtv(session.businessId, cache),
   ]);
 
   const previousAverageOrderValueKes =

@@ -42,6 +42,8 @@ export * from './review';
 export * from './pageView';
 export * from './marketingEmail';
 export * from './analyticsEvent';
+export * from './customerLifetime';
+export * from './trafficDaily';
 export * from './smsOptOut';
 export * from './marketingSms';
 export * from './snackItem';

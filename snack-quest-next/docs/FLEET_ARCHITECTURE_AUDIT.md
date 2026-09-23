@@ -429,3 +429,144 @@ Also not yet done, and honestly flagged:
 
 Steps 1–3 are worth doing regardless of whether a single machine is ever
 deployed.
+
+---
+
+## Part 2 — Fixed, and measured
+
+Steps 1–2 above are done. Nothing about the vending model changed —
+this section reports what was built, and what re-measuring it actually
+showed, against the same production-shaped workloads Part 1 measured.
+
+### What changed
+
+| Finding | Fix | Where |
+|---|---|---|
+| Dashboard/analytics pages scan 20,000–60,000 `pageViews` documents | `trafficDaily` — one document per business per day, plus visitor-id shards for exact range unions | `services/analyticsRollupService.ts`, `repositories/trafficDailyRepository.ts` |
+| `listSince` truncates at 20,000 with no `orderBy` | Replaced by `pageViewRepository.streamRange` — cursor-paged, ordered, no cap | `repositories/pageViewRepository.ts` |
+| 9 identical `orders` reads per analytics page render | `loadOrdersInWindow`, memoised per request through `AnalyticsRequestCache` | `lib/analytics/ordersWindow.ts`, `lib/analytics/requestCache.ts` |
+| `days` filtered in memory after `limit: 1000` | `since`/`until` pushed into the Firestore query; `streamRange`/`streamAll` for unbounded reads | `repositories/orderRepository.ts` |
+| `getLtv`/`getCac`/`getCacByChannel` infer "first order" from the newest 1000 | `customerLifetime` rollup — one document per customer, rebuilt from every order, aggregated with Firestore's `count()`/`sum()` | `services/analyticsRollupService.ts`, `repositories/customerLifetimeRepository.ts` |
+| `resolveTrafficRange`'s week/month presets weren't calendar-aligned | Fixed to align to midnight — otherwise the new day-granularity rollups would silently read one extra day per window | `lib/analytics/trafficRange.ts` |
+| Nothing kept the rollups current | A fourth Vercel cron, `rebuild-analytics-rollups`, nightly | `app/api/cron/rebuild-analytics-rollups/route.ts`, `vercel.json` |
+
+Two indexes were added for the new collections
+(`customerLifetime`: businessId+firstOrderAt; `trafficDaily`:
+businessId+date) to `firestore.indexes.json`. **No manual deploy step
+is needed** — `.github/workflows/firestore.yml` already deploys rules
+and indexes automatically on merge to `main`; this was confirmed by
+reading that workflow, not assumed. The Firestore emulator does not
+enforce composite-index requirements the way production does, which is
+why the full test suite passed before these indexes were added to the
+file — worth knowing before treating a green emulator run as proof an
+index-dependent query will work in production.
+
+I did **not** touch `firestore.rules`. `pageViews` and
+`analyticsEvents` — the two existing collections closest in shape to
+the new ones — carry no explicit rule at all and rely on Firestore's
+implicit default-deny for any path nothing matches. `trafficDaily` and
+`customerLifetime` are the same kind of thing (server-derived,
+Admin-SDK-only, no client ever touches them), so I left them the same
+way rather than deviating from that precedent for just these two.
+
+### Measured: traffic, cold vs warmed
+
+Seeded the local emulator with 21,426 page-view documents — the exact
+production count from Part 1's 30-day window — and ran the real
+`businessAnalyticsService.getTraffic` twice: once against no existing
+rollup (the worst case — the nightly cron has never run), once
+immediately after (the ordinary case).
+
+```
+seededPageViews:          21,426   (production's own count)
+actualCountInFirestore:   21,426
+
+cold (no rollup yet):      6,365ms |  60 pageView stream calls | 61 rollup reads
+warm (rollup exists):        318ms |   1 pageView stream call  |  2 rollup reads
+
+totalVisitsReported:      20,975   (both runs — identical, and both correct)
+oldTruncatedAt:           20,000
+```
+
+Read against production's real number: the **old** code capped at
+20,000 and returned an arbitrary subset of the 21,426 matching rows.
+The **new** code returns 20,975 — more than the old cap, computed by
+counting every matching row rather than by luck of which 20,000
+Firestore happened to hand back. (20,975 rather than exactly 21,426 is
+expected, not a bug: `getTraffic`'s 30-day rolling window and the
+seed's random 1–30-day spread don't line up to the same boundary — the
+point being verified is "no longer silently truncated at 20,000",
+which this demonstrates directly.)
+
+The cold number is the honest cost this was always going to have
+*once*, on whichever request is unlucky enough to hit a day with no
+rollup — 60 paginated `pageViews` reads, one per completed day across
+the current and previous 30-day windows, because every one of those
+days has to be built from raw rows the first time. The nightly cron
+exists specifically so that request is never a real user's — Part 1's
+1.7s network-free floor for a *single* such scan is the same
+mechanism, paid 60 times here for the same reason 60 identical
+requests would each pay it under the old code.
+
+### Measured: orders past the old 1,000-row cliff
+
+Seeded 1,200 confirmed orders across 50 customers — 200 past the old
+`limit: 1000` — and ran the **old algorithm verbatim** against the same
+data, beside the new rollup:
+
+```
+ordersSeeded:              1,200   (200 past the old limit)
+
+before (old algorithm, limit:1000):
+  ordersActuallyRead:      1,000
+  customersSeen:              50
+  totalRevenueKes:     1,000,000   ← wrong: 200,000 short
+
+after (customerLifetime rollup):
+  customersSeen:              50
+  totalRevenueKes:     1,200,000   ← correct
+  ms:                         265
+
+oldAlgorithmWasWrongBy:    200,000
+```
+
+Both versions see all 50 customers here, because every customer's
+orders happened to straddle the boundary — the customer *count* wasn't
+what the old algorithm got wrong in this run, the *revenue* was, by
+exactly the KSh 200,000 carried on the 200 orders it never read. A
+dataset shaped so that some customer's *only* orders fall in the
+excluded 200 would have made the old code invent a "new" customer out
+of a returning one, which is the CAC failure mode Part 1 described —
+covered by `tests/services/analyticsLifetimeCorrectness.test.ts`'s
+"old newest-N scan, reproduced" cases, run at a small enough scale to
+stay fast rather than by seeding a further thousand documents for the
+same demonstration.
+
+### Measured: request-scoped dedup
+
+```
+6 metrics sharing one AnalyticsRequestCache: 1 order stream call, cache.readCount = 1
+same 6 metrics with no cache (the unchanged default):  6 order stream calls
+```
+(`tests/services/analyticsRequestDedup.test.ts`)
+
+### Full suite
+
+2,416 tests across 218 files, all green, both before this section's
+changes were measured and after. `tsc --noEmit` clean. `npm run lint`
+at the same 2 pre-existing warnings this repo already carried.
+
+### What this doesn't cover
+
+- **`getWebFunnel`** still reads raw `pageViews`, now via the
+  uncapped `streamRange` rather than the capped `listSince` — fixed for
+  correctness, but it is not on the rollup, because it needs *which
+  visitor* reached a given path, and the daily rollup only keeps
+  aggregate counts per path. At today's volume this is one paginated
+  read; if that stops being true, the fix is a per-path visitor shard
+  next to the ones `trafficDaily` already has, not a bigger cap.
+- **Load testing at machine-network volumes** is still not done, per
+  Part 1 — these fixes make the *existing* e-commerce analytics
+  correct and cheap; they do not yet exercise the vending fleet's own
+  read patterns, which do not exist yet.
+- No vending code was written, per this task's own instruction.

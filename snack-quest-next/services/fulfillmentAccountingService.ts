@@ -1,11 +1,12 @@
 import 'server-only';
 
-import { orderRepository } from '@/repositories/orderRepository';
 import { fulfillmentBatchRepository } from '@/repositories/fulfillmentBatchRepository';
 import { isOrderBatchable } from '@/lib/fulfillmentBatches/eligibility';
 import { isComplimentaryBox } from '@/lib/analytics/complimentaryOrder';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import { orderLines } from '@/types/checkoutLine';
+import { AnalyticsRequestCache, NoRequestCache } from '@/lib/analytics/requestCache';
+import { loadOrdersInWindow } from '@/lib/analytics/ordersWindow';
 import type { FulfillmentBatch, Order } from '@/types';
 
 /**
@@ -24,12 +25,15 @@ import type { FulfillmentBatch, Order } from '@/types';
  * and uncosted separately, never blended, and never silently drops the
  * uncosted ones.
  *
- * Bounded scans, same discipline and same honest limitation as
+ * Orders are read by date range (`loadOrdersInWindow`), not by a fixed
+ * count — the fixed-`limit(1000)` scan this used to run was correct
+ * only as long as the batch backlog stayed under a thousand orders,
+ * same class of cliff `getLtv`/`getCac` hit first. Batches are still a
+ * bounded scan, same honest limitation as the rest of
  * `BusinessAnalyticsService`: correct at today's volume, and the fix
  * when that changes is a real read-model, not a bigger limit here.
  */
 
-const ORDER_SCAN_LIMIT = 1000;
 const BATCH_SCAN_LIMIT = 500;
 
 export interface FulfillmentAccountingTotals {
@@ -115,11 +119,26 @@ function finalizeTotals(totals: FulfillmentAccountingTotals): FulfillmentAccount
 }
 
 class FulfillmentAccountingService {
-  async getOverview(businessId: string, days = 30): Promise<FulfillmentAccountingOverview> {
+  /**
+   * `cache`, optional, defaults to sharing nothing: this used to run
+   * its own `orderRepository.listByBusiness({ limit: 1000 })`, the
+   * same read `BusinessAnalyticsService` was independently issuing up
+   * to nine times on the same admin Analytics page render
+   * (§ analytics rollups, docs/FLEET_ARCHITECTURE_AUDIT.md finding 2).
+   * `loadOrdersInWindow` is the one place that read now lives; passing
+   * the page's shared cache here is what makes this the *tenth* call
+   * to collapse into the same single read as the other nine, rather
+   * than the one left over.
+   */
+  async getOverview(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<FulfillmentAccountingOverview> {
     const cutoff = Date.now() - days * DAY_MS;
 
-    const [{ orders }, { batches }] = await Promise.all([
-      orderRepository.listByBusiness(businessId, { limit: ORDER_SCAN_LIMIT }),
+    const [orders, { batches }] = await Promise.all([
+      loadOrdersInWindow(businessId, days, cache),
       fulfillmentBatchRepository.listByBusiness(businessId, { limit: BATCH_SCAN_LIMIT }),
     ]);
 

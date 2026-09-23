@@ -32,6 +32,25 @@ function parseDateParam(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * Midnight, `days` calendar days before `now` — including `now`'s own
+ * day, so this is "today and the `days - 1` days before it"
+ * (§ analytics rollups).
+ *
+ * Deliberately not `now - days * DAY_MS`: the traffic analytics this
+ * feeds are computed from one rollup document per calendar day, so a
+ * window has to end on a day boundary or it silently pulls in a whole
+ * extra day's traffic at the start — the fraction of "now"'s own day
+ * that a raw millisecond subtraction doesn't reach rounds down to the
+ * *previous* midnight, adding a day rather than trimming one. Anchoring
+ * to `days - 1` days back, at midnight, is what makes "last 7 days"
+ * mean exactly seven calendar days rather than eight.
+ */
+function daysAgoAtMidnight(now: Date, days: number): Date {
+  const anchor = new Date(now.getTime() - (days - 1) * DAY_MS);
+  return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate()));
+}
+
 export function resolveTrafficRange(params: TrafficRangeSearchParams): ResolvedTrafficRange {
   const now = new Date();
 
@@ -41,7 +60,7 @@ export function resolveTrafficRange(params: TrafficRangeSearchParams): ResolvedT
   }
 
   if (params.range === 'week') {
-    return { key: 'week', start: new Date(now.getTime() - 7 * DAY_MS), end: now, label: 'Last 7 days' };
+    return { key: 'week', start: daysAgoAtMidnight(now, 7), end: now, label: 'Last 7 days' };
   }
 
   if (params.range === 'custom' && params.from && params.to) {
@@ -58,5 +77,5 @@ export function resolveTrafficRange(params: TrafficRangeSearchParams): ResolvedT
     }
   }
 
-  return { key: 'month', start: new Date(now.getTime() - 30 * DAY_MS), end: now, label: 'Last 30 days' };
+  return { key: 'month', start: daysAgoAtMidnight(now, 30), end: now, label: 'Last 30 days' };
 }
