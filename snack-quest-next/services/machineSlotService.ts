@@ -101,10 +101,22 @@ class MachineSlotService {
     await restockTaskRepository.create({
       businessId: slot.businessId,
       machineId: slot.machineId,
-      items: [{ slotId: slot.slotCode, productId: slot.productId, quantityNeeded: slot.capacity - slot.currentQuantity }],
-      status: 'pending',
+      warehouseId: null,
+      items: [
+        {
+          slotId: slot.slotCode,
+          productId: slot.productId,
+          quantityNeeded: slot.capacity - slot.currentQuantity,
+          quantityDispatched: null,
+          quantityReceived: null,
+          discrepancyQuantity: null,
+          batchId: null,
+          expiresAt: null,
+        },
+      ],
+      status: 'draft',
       priority: slot.currentQuantity === 0 ? 'high' : 'normal',
-      assignedTo: null,
+      discrepancyNote: null,
       note: `auto: slot ${slot.slotCode} at ${slot.currentQuantity}/${slot.capacity}`,
       createdBy: actor,
     });

@@ -12,6 +12,8 @@ import { machineAssortmentService } from '@/services/machineAssortmentService';
 import { machineInventoryReserveService } from '@/services/machineInventoryReserveService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSettlementService } from '@/services/machineSettlementService';
+import { restockTaskService } from '@/services/restockTaskService';
+import { serializeRestockTask } from '@/lib/vending/serialize';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
@@ -24,6 +26,8 @@ import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivity
 import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransactionStatusBadge';
 import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
 import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
+import { RestockTaskStatusBadge } from '@/components/admin/RestockTaskStatusBadge';
+import { RestockTaskActions } from '@/components/admin/RestockTaskActions';
 import { formatDateTime } from '@/lib/orders/format';
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -100,17 +104,19 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements] = await Promise.all([
-    machineSlotService.listByMachine(session.businessId, machineId),
-    machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
-    machineTelemetryEventRepository.listByMachine(session.businessId, machineId, { limit: 15 }),
-    runDiagnostics(machine.manufacturer, machineId),
-    machineCommandService.listHistoryForMachine(session.businessId, machineId),
-    machineAssortmentService.listByMachine(session.businessId, machineId),
-    machineInventoryReserveService.getReserveStatus(session.businessId, machineId),
-    machineSubscriptionService.findActiveForMachine(session.businessId, machineId),
-    machineSettlementService.listByMachine(session.businessId, machineId),
-  ]);
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks] =
+    await Promise.all([
+      machineSlotService.listByMachine(session.businessId, machineId),
+      machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
+      machineTelemetryEventRepository.listByMachine(session.businessId, machineId, { limit: 15 }),
+      runDiagnostics(machine.manufacturer, machineId),
+      machineCommandService.listHistoryForMachine(session.businessId, machineId),
+      machineAssortmentService.listByMachine(session.businessId, machineId),
+      machineInventoryReserveService.getReserveStatus(session.businessId, machineId),
+      machineSubscriptionService.findActiveForMachine(session.businessId, machineId),
+      machineSettlementService.listByMachine(session.businessId, machineId),
+      restockTaskService.listByMachine(session.businessId, machineId),
+    ]);
 
   const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);
@@ -262,6 +268,59 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                       <td className="px-6 py-3 text-muted-foreground">{slot.enabled ? 'Yes' : 'No'}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Restock tasks</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {restockTasks.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">No restock tasks yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Status</th>
+                    <th className="px-6 py-3 font-medium">Items</th>
+                    <th className="px-6 py-3 font-medium">Priority</th>
+                    <th className="px-6 py-3 font-medium">Opened</th>
+                    <th className="px-6 py-3 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {restockTasks.map(({ id, data }) => {
+                    const serialized = serializeRestockTask(id, data);
+                    return (
+                      <tr key={id} className="border-b border-border last:border-0 align-top">
+                        <td className="px-6 py-3">
+                          <RestockTaskStatusBadge status={data.status} />
+                          {data.discrepancyNote ? <p className="mt-1 text-caption text-warning">{data.discrepancyNote}</p> : null}
+                        </td>
+                        <td className="px-6 py-3 text-muted-foreground">
+                          {data.items.map((item) => (
+                            <div key={item.slotId}>
+                              {item.slotId}: needed {item.quantityNeeded}
+                              {item.quantityDispatched !== null ? `, dispatched ${item.quantityDispatched}` : ''}
+                              {item.quantityReceived !== null ? `, received ${item.quantityReceived}` : ''}
+                              {item.discrepancyQuantity ? ` (short ${item.discrepancyQuantity})` : ''}
+                            </div>
+                          ))}
+                        </td>
+                        <td className="px-6 py-3 text-muted-foreground">{data.priority}</td>
+                        <td className="px-6 py-3 text-muted-foreground">{formatDateTime(data.createdAt)}</td>
+                        <td className="px-6 py-3">
+                          <RestockTaskActions taskId={id} task={serialized} />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

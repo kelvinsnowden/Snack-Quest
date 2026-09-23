@@ -123,17 +123,100 @@ current-at-cost/current-at-retail/variance/replenishment figures
 above, plus the unpriced-slot warning, all read live rather than
 cached.
 
-## 5. Restocking (§ 17 of the brief)
+## 5. Restocking (§ 17 of the brief — implemented, later pass)
 
-`RestockTask` already exists with a 5-state workflow
-(`pending → assigned → in_progress → completed`, or `cancelled`) that
-auto-opens on low stock (`machineSlotService.checkLowStock`). The
-brief's 8-stage workflow (`DRAFT → APPROVED → PICKING → DISPATCHED →
-IN_TRANSIT → RECEIVED → PARTIALLY_RECEIVED → CANCELLED`) is a real
-refinement — picker/dispatcher/receiver roles and partial-receipt
-discrepancy tracking aren't representable in the current 5 states —
-but expanding a working task's status enum mid-flight, with an admin
-UI and tests already built against the current 5, is exactly the kind
-of change that needs its own careful pass rather than a rider on this
-one. **Deliberately not touched this pass** — flagged here as the
-next real gap, not missed by oversight.
+Rebuilt from the flat 5-state model this section originally flagged as
+a gap (`pending → assigned → in_progress → completed`, or `cancelled`)
+into the brief's own 8-stage chain:
+
+```
+DRAFT → APPROVED → PICKING → DISPATCHED → IN_TRANSIT → RECEIVED
+                                                       ↘ PARTIALLY_RECEIVED
+(cancellable from DRAFT/APPROVED/PICKING/DISPATCHED only)
+```
+
+`RESTOCK_TASK_STATUS_TRANSITIONS` (`types/restockTask.ts`) is the one
+source of truth for which moves are legal;
+`restockTaskRepository.moveStatus[InTransaction]` checks it before
+every write, so a stage can never be skipped and a terminal task
+(`received`/`partially_received`/`cancelled`) can never be resurrected
+through this layer. `RestockTaskService` (`services/restockTaskService.ts`)
+is the new orchestration layer this workflow needed and never had
+before — each stage is its own method (`approve`/`startPicking`/
+`dispatch`/`markInTransit`/`receive`/`cancel`), recording the one real
+actor that stage adds (`pickedBy`/`dispatchedBy`/`receivedBy`) rather
+than one `assignedTo` field standing in for three different people.
+
+**Discrepancy, never silently absorbed.** `receive()` derives the
+terminal state from what actually happened, never from what the
+caller claims: if every item's `quantityReceived` matches what
+`dispatch()` recorded as `quantityDispatched`, the task lands on
+`received`; if any item came up short, it lands on
+`partially_received` with that item's exact `discrepancyQuantity`
+(`quantityDispatched - quantityReceived`) stored, plus an optional
+`discrepancyNote`. Both are terminal — a real shortfall becomes a new
+task once someone acts on it, not a reopened old one, the same
+"no half-finished-period bookkeeping" discipline
+`docs/MACHINE_COMMERCE.md`'s subscription model already commits to.
+
+**Completing creates real ledger movements, atomically with the task
+itself.** `receive()` runs as a single Firestore transaction spanning
+the task document *and* every slot document a received item touches —
+reading the task and every needed slot first, then writing the
+movements, the slot quantities, and the task's new status/items
+together (Firestore transactions require every read before any
+write). This was a deliberate design choice, not the obvious one:
+calling the existing `MachineInventoryMovementService.recordMovement`
+per item (its own transaction per call) would leave a real gap — a
+crash between "recorded received" and "added the stock" is exactly
+the ledger/cache disagreement that service's own doc comment exists to
+prevent, and receiving is not naturally idempotent (a retry would
+double-credit whatever succeeded the first time), so inlining the
+slot-quantity update into the same transaction as the task's own
+status write was the only way to make both true at once. Each written
+`MachineInventoryMovement` carries the new `restockTaskId`/`batchId`/
+`expiresAt` fields (§4 below) — a receipt is traceable back to the
+task and the lot it came from, not just an anonymous `+8`.
+
+**`warehouseId`/`batchId` are plain references, not a live draw
+against a real inventory ledger.** No `InventoryLocation`/generalized
+inventory model exists in code yet (§3 above designs it, doesn't build
+it) — building that integration (actually decrementing a warehouse's
+own stock when a restock task dispatches from it) is its own pass, not
+a rider on this one. What exists today is honest about that: a
+`warehouseId` is recorded, never validated against a real warehouse
+inventory balance.
+
+**API:** `GET /api/vending/restock` (list, unchanged shape), `POST`
+(create a draft manually — the same shape `checkLowStock` uses
+automatically), and one route per stage under
+`/api/vending/restock/{taskId}/{approve,start-picking,dispatch,mark-in-transit,receive,cancel}`
+— six distinct real-world actions, not a body-shape switch on one
+endpoint. All `ADMIN_OR_WAREHOUSE`, matching this domain's existing
+gate.
+
+**Admin UI:** a "Restock tasks" card on the machine detail page lists
+every task (status badge, items with needed/dispatched/received/
+discrepancy, priority, opened date) and renders the one action a
+task's current stage actually offers — never every button at once,
+and `dispatch`/`receive` require the operator to see and confirm the
+real per-item quantity before submitting, defaulted but never silently
+assumed.
+
+**Migration:** no production restock task predates this rebuild — the
+whole vending system is pre-launch, simulator-only, with zero real
+machines deployed — so there is no live data migrating an old `status`
+value would need to handle. Had real `pending`/`assigned`/
+`in_progress`/`completed` rows existed, the honest migration would
+have been a one-time backfill mapping `pending→draft`,
+`assigned`/`in_progress→picking` (with `pickedBy` set to the old
+`assignedTo`), `completed→received` (with every item's
+`quantityDispatched`/`quantityReceived` backfilled equal to
+`quantityNeeded`, since the old model never distinguished them) —
+recorded here in case it's ever needed, not built, since there is
+nothing to run it against.
+
+**Deliberately still not built:** route planning across many
+machines' tasks (docs/FLEET_ARCHITECTURE_AUDIT.md §23's own Phase-2
+framing, unchanged), and the real warehouse-inventory draw described
+above.

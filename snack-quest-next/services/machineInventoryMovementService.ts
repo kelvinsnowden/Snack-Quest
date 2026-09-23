@@ -1,10 +1,11 @@
 import 'server-only';
 
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
 import { machineSlotService } from '@/services/machineSlotService';
-import type { MachineInventoryMovementReason, MachineSlot } from '@/types';
+import type { MachineInventoryMovement, MachineInventoryMovementReason, MachineSlot } from '@/types';
 
 export class SlotNotFoundError extends Error {
   constructor(machineId: string, slotCode: string) {
@@ -39,6 +40,9 @@ class MachineInventoryMovementService {
     reason: MachineInventoryMovementReason;
     quantityDelta: number;
     sourceTransactionId?: string | null;
+    restockTaskId?: string | null;
+    batchId?: string | null;
+    expiresAt?: Date | null;
     note?: string | null;
     actor: string;
   }): Promise<{ afterQuantity: number }> {
@@ -64,6 +68,9 @@ class MachineInventoryMovementService {
         beforeQuantity,
         afterQuantity,
         sourceTransactionId: input.sourceTransactionId ?? null,
+        restockTaskId: input.restockTaskId ?? null,
+        batchId: input.batchId ?? null,
+        expiresAt: input.expiresAt ? (Timestamp.fromDate(input.expiresAt) as unknown as MachineInventoryMovement['expiresAt']) : null,
         note: input.note ?? null,
         actor: input.actor,
       });

@@ -142,13 +142,21 @@ export function serializeMachineCommand(id: string, data: MachineCommand): Seria
   };
 }
 
+export type SerializedRestockTaskItem = Omit<RestockTask['items'][number], 'expiresAt'> & { expiresAt: string | null };
+
 export interface SerializedRestockTask {
   id: string;
   machineId: string;
-  items: RestockTask['items'];
+  warehouseId: string | null;
+  items: SerializedRestockTaskItem[];
   status: RestockTask['status'];
   priority: RestockTask['priority'];
-  assignedTo: string | null;
+  pickedBy: string | null;
+  pickedAt: string | null;
+  dispatchedBy: string | null;
+  dispatchedAt: string | null;
+  receivedBy: string | null;
+  discrepancyNote: string | null;
   note: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -158,10 +166,16 @@ export function serializeRestockTask(id: string, data: RestockTask): SerializedR
   return {
     id,
     machineId: data.machineId,
-    items: data.items,
+    warehouseId: data.warehouseId,
+    items: data.items.map((item) => ({ ...item, expiresAt: item.expiresAt ? item.expiresAt.toDate().toISOString() : null })),
     status: data.status,
     priority: data.priority,
-    assignedTo: data.assignedTo,
+    pickedBy: data.pickedBy,
+    pickedAt: data.pickedAt ? data.pickedAt.toDate().toISOString() : null,
+    dispatchedBy: data.dispatchedBy,
+    dispatchedAt: data.dispatchedAt ? data.dispatchedAt.toDate().toISOString() : null,
+    receivedBy: data.receivedBy,
+    discrepancyNote: data.discrepancyNote,
     note: data.note,
     createdAt: data.createdAt.toDate().toISOString(),
     completedAt: data.completedAt ? data.completedAt.toDate().toISOString() : null,

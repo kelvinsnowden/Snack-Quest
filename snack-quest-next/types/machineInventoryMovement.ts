@@ -40,6 +40,11 @@ export interface MachineInventoryMovement {
   afterQuantity: number;
   /** Set only for `reason: 'sale'` — the transaction this movement is the inventory side of. Null for every other reason. */
   sourceTransactionId: string | null;
+  /** Set only for `reason: 'restock'` movements written by `RestockTaskService.receive()` — the task this movement's receipt closed out. Null for every other reason, and for a restock recorded outside the task workflow (the direct-restock path §5 of INVENTORY_ARCHITECTURE.md's history). */
+  restockTaskId: string | null;
+  /** Lot/batch reference, when known — descriptive, not a live draw against a batch-inventory ledger (see `RestockTaskItem.batchId`'s own doc comment). Null when not recorded. */
+  batchId: string | null;
+  expiresAt: Timestamp | null;
   note: string | null;
   actor: string;
   createdAt: Timestamp;

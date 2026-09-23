@@ -1,16 +1,20 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
-import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError } from '@/services/machineInventoryMovementService';
+import { restockTaskService, RestockTaskHasNoItemsError, RestockTaskQuantityError, SlotNotFoundError } from '@/services/restockTaskService';
+import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeRestockTask } from '@/lib/vending/serialize';
 
 /**
- * `GET` — a machine's restock tasks, the queue `machineSlotService.checkLowStock`
- * opens automatically (§ RESTOCKING SYSTEM). `POST` — the physical act
- * of refilling a slot: records the real inventory movement (never
- * touches `currentQuantity` directly — see `MachineInventoryMovementService`'s
- * own doc comment) and, when `taskId` is given, closes the task that
- * refill satisfies.
+ * A machine's restock tasks (§ RESTOCKING, docs/INVENTORY_ARCHITECTURE.md
+ * §5). `GET` — the queue, either every task or just the open
+ * (non-terminal) ones; the same list `machineSlotService.checkLowStock`
+ * opens into automatically and a staff member can also open into by
+ * hand via `POST`. Every subsequent stage — approve, start picking,
+ * dispatch, mark in transit, receive, cancel — is its own route under
+ * `/api/vending/restock/{taskId}/*`, not a body-shape switch on this
+ * one, because each is a genuinely different real-world action with
+ * its own actor and its own required data.
  */
 export async function GET(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -51,48 +55,49 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { machineId, slotId, quantityAdded, taskId, note } = (body ?? {}) as Record<string, unknown>;
+  const { machineId, items, warehouseId, priority, note } = (body ?? {}) as Record<string, unknown>;
   if (typeof machineId !== 'string' || !machineId) {
     return Response.json({ error: 'machineId is required' }, { status: 400 });
   }
-  if (typeof slotId !== 'string' || !slotId) {
-    return Response.json({ error: 'slotId is required' }, { status: 400 });
+  if (!Array.isArray(items) || items.length === 0) {
+    return Response.json({ error: 'items must be a non-empty array' }, { status: 400 });
   }
-  if (typeof quantityAdded !== 'number' || !Number.isInteger(quantityAdded) || quantityAdded <= 0) {
-    return Response.json({ error: 'quantityAdded must be a positive integer' }, { status: 400 });
+  for (const item of items) {
+    if (
+      typeof item !== 'object' ||
+      item === null ||
+      typeof (item as Record<string, unknown>).slotId !== 'string' ||
+      typeof (item as Record<string, unknown>).quantityNeeded !== 'number'
+    ) {
+      return Response.json({ error: 'each item needs a slotId (string) and quantityNeeded (number)' }, { status: 400 });
+    }
   }
-  if (taskId !== undefined && typeof taskId !== 'string') {
-    return Response.json({ error: 'taskId must be a string when provided' }, { status: 400 });
-  }
-  if (note !== undefined && typeof note !== 'string') {
-    return Response.json({ error: 'note must be a string when provided' }, { status: 400 });
+  if (priority !== undefined && !['low', 'normal', 'high'].includes(priority as string)) {
+    return Response.json({ error: 'priority must be one of: low, normal, high' }, { status: 400 });
   }
 
   try {
-    const { afterQuantity } = await machineInventoryMovementService.recordMovement({
+    const taskId = await restockTaskService.createDraft({
       businessId: session.businessId,
       machineId,
-      slotId,
-      reason: 'restock',
-      quantityDelta: quantityAdded,
-      note: (note as string | undefined) ?? null,
+      items: (items as Record<string, unknown>[]).map((item) => ({
+        slotId: item.slotId as string,
+        productId: typeof item.productId === 'string' ? item.productId : null,
+        quantityNeeded: item.quantityNeeded as number,
+      })),
+      warehouseId: typeof warehouseId === 'string' ? warehouseId : undefined,
+      priority: priority as 'low' | 'normal' | 'high' | undefined,
+      note: typeof note === 'string' ? note : undefined,
       actor: session.uid,
     });
-
-    let taskCompleted = false;
-    if (typeof taskId === 'string') {
-      await restockTaskRepository.updateStatus(session.businessId, taskId, 'completed', session.uid);
-      taskCompleted = true;
-    }
-
-    return Response.json({ afterQuantity, taskCompleted });
+    return Response.json({ taskId }, { status: 201 });
   } catch (error) {
-    if (error instanceof SlotNotFoundError) {
+    if (error instanceof MachineNotFoundError || error instanceof SlotNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
-    if (error instanceof InsufficientMachineStockError) {
-      return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof RestockTaskHasNoItemsError || error instanceof RestockTaskQuantityError) {
+      return Response.json({ error: error.message }, { status: 400 });
     }
-    return Response.json({ error: error instanceof Error ? error.message : 'could not record restock' }, { status: 400 });
+    throw error;
   }
 }

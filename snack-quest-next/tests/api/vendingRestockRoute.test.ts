@@ -1,28 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { recordMovementMock, listByMachineMock, listOpenByMachineMock, updateStatusMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({
-  recordMovementMock: vi.fn(),
+const { verifyStaffSessionFromRequestMock, listByMachineMock, listOpenByMachineMock, createDraftMock } = vi.hoisted(() => ({
+  verifyStaffSessionFromRequestMock: vi.fn(),
   listByMachineMock: vi.fn(),
   listOpenByMachineMock: vi.fn(),
-  updateStatusMock: vi.fn(),
-  verifyStaffSessionFromRequestMock: vi.fn(),
-}));
-
-vi.mock('@/services/machineInventoryMovementService', async () => {
-  const actual = await vi.importActual<typeof import('@/services/machineInventoryMovementService')>('@/services/machineInventoryMovementService');
-  return { ...actual, machineInventoryMovementService: { recordMovement: recordMovementMock } };
-});
-
-vi.mock('@/repositories/restockTaskRepository', () => ({
-  restockTaskRepository: { listByMachine: listByMachineMock, listOpenByMachine: listOpenByMachineMock, updateStatus: updateStatusMock },
+  createDraftMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/session', () => ({
   verifyStaffSessionFromRequest: verifyStaffSessionFromRequestMock,
 }));
 
+vi.mock('@/repositories/restockTaskRepository', async () => {
+  const actual = await vi.importActual<typeof import('@/repositories/restockTaskRepository')>('@/repositories/restockTaskRepository');
+  return { ...actual, restockTaskRepository: { listByMachine: listByMachineMock, listOpenByMachine: listOpenByMachineMock } };
+});
+
+vi.mock('@/services/restockTaskService', async () => {
+  const actual = await vi.importActual<typeof import('@/services/restockTaskService')>('@/services/restockTaskService');
+  return { ...actual, restockTaskService: { createDraft: createDraftMock } };
+});
+
 import { GET as restockGet, POST as restockPost } from '@/app/api/vending/restock/route';
-import { SlotNotFoundError, InsufficientMachineStockError } from '@/services/machineInventoryMovementService';
+import { MachineNotFoundError } from '@/repositories/machineRepository';
+import { RestockTaskHasNoItemsError, RestockTaskQuantityError, SlotNotFoundError } from '@/services/restockTaskService';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['warehouse'], businessId: 'biz-1' };
 const AGENT_SESSION = { ...STAFF_SESSION, roles: ['agent'] };
@@ -30,10 +31,16 @@ const AGENT_SESSION = { ...STAFF_SESSION, roles: ['agent'] };
 const TASK = {
   businessId: 'biz-1',
   machineId: 'm-1',
-  items: [{ slotId: 'A01', productId: 'pkg-1', quantityNeeded: 8 }],
-  status: 'pending',
+  warehouseId: null,
+  items: [{ slotId: 'A01', productId: 'pkg-1', quantityNeeded: 8, quantityDispatched: null, quantityReceived: null, discrepancyQuantity: null, batchId: null, expiresAt: null }],
+  status: 'draft',
   priority: 'normal',
-  assignedTo: null,
+  pickedBy: null,
+  pickedAt: null,
+  dispatchedBy: null,
+  dispatchedAt: null,
+  receivedBy: null,
+  discrepancyNote: null,
   note: null,
   createdAt: { toDate: () => new Date('2024-01-01T00:00:00.000Z') },
   completedAt: null,
@@ -79,6 +86,7 @@ describe('GET /api/vending/restock', () => {
     expect(listByMachineMock).not.toHaveBeenCalled();
     const body = await response.json();
     expect(body.tasks[0].id).toBe('task-1');
+    expect(body.tasks[0].status).toBe('draft');
   });
 
   it('lists every task by default', async () => {
@@ -93,60 +101,85 @@ describe('GET /api/vending/restock', () => {
 describe('POST /api/vending/restock', () => {
   it('401s without a staff session', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(null);
-    const response = await postReq({ machineId: 'm-1', slotId: 'A01', quantityAdded: 5 });
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }] });
     expect(response.status).toBe(401);
-    expect(recordMovementMock).not.toHaveBeenCalled();
+    expect(createDraftMock).not.toHaveBeenCalled();
   });
 
-  it('400s a zero quantityAdded', async () => {
+  it('403s an agent session', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }] });
+    expect(response.status).toBe(403);
+  });
+
+  it('400s a missing machineId', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    const response = await postReq({ machineId: 'm-1', slotId: 'A01', quantityAdded: 0 });
+    const response = await postReq({ items: [{ slotId: 'A01', quantityNeeded: 8 }] });
     expect(response.status).toBe(400);
-    expect(recordMovementMock).not.toHaveBeenCalled();
   });
 
-  it('400s a negative quantityAdded', async () => {
+  it('400s an empty items array', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    const response = await postReq({ machineId: 'm-1', slotId: 'A01', quantityAdded: -3 });
+    const response = await postReq({ machineId: 'm-1', items: [] });
+    expect(response.status).toBe(400);
+    expect(createDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('400s an item missing quantityNeeded', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01' }] });
     expect(response.status).toBe(400);
   });
 
-  it('records the movement, scoped to the session businessId and actor', async () => {
+  it('400s an invalid priority', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    recordMovementMock.mockResolvedValue({ afterQuantity: 12 });
-    const response = await postReq({ machineId: 'm-1', slotId: 'A01', quantityAdded: 8 });
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.afterQuantity).toBe(12);
-    expect(body.taskCompleted).toBe(false);
-    expect(recordMovementMock).toHaveBeenCalledWith(
-      expect.objectContaining({ businessId: 'biz-1', machineId: 'm-1', slotId: 'A01', reason: 'restock', quantityDelta: 8, actor: 'staff-1' }),
-    );
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }], priority: 'urgent' });
+    expect(response.status).toBe(400);
   });
 
-  it('completes the named restock task when taskId is given', async () => {
+  it('201s and creates a draft task, scoped to the session businessId and actor', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    recordMovementMock.mockResolvedValue({ afterQuantity: 12 });
-    updateStatusMock.mockResolvedValue(undefined);
-
-    const response = await postReq({ machineId: 'm-1', slotId: 'A01', quantityAdded: 8, taskId: 'task-1' });
-    expect(response.status).toBe(200);
+    createDraftMock.mockResolvedValue('task-1');
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }], warehouseId: 'wh-1', priority: 'high', note: 'manual top-up' });
+    expect(response.status).toBe(201);
     const body = await response.json();
-    expect(body.taskCompleted).toBe(true);
-    expect(updateStatusMock).toHaveBeenCalledWith('biz-1', 'task-1', 'completed', 'staff-1');
+    expect(body.taskId).toBe('task-1');
+    expect(createDraftMock).toHaveBeenCalledWith({
+      businessId: 'biz-1',
+      machineId: 'm-1',
+      items: [{ slotId: 'A01', productId: null, quantityNeeded: 8 }],
+      warehouseId: 'wh-1',
+      priority: 'high',
+      note: 'manual top-up',
+      actor: 'staff-1',
+    });
+  });
+
+  it('404s a machine that does not exist', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    createDraftMock.mockRejectedValue(new MachineNotFoundError('m-1'));
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }] });
+    expect(response.status).toBe(404);
   });
 
   it('404s a slot that does not exist', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    recordMovementMock.mockRejectedValue(new SlotNotFoundError('m-1', 'ghost'));
-    const response = await postReq({ machineId: 'm-1', slotId: 'ghost', quantityAdded: 5 });
+    createDraftMock.mockRejectedValue(new SlotNotFoundError('m-1', 'ghost'));
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'ghost', quantityNeeded: 8 }] });
     expect(response.status).toBe(404);
   });
 
-  it('409s an over-restock the service reports as inconsistent', async () => {
+  it('400s when the service reports no items or a bad quantity', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    recordMovementMock.mockRejectedValue(new InsufficientMachineStockError('m-1', 'A01', 5, 2));
-    const response = await postReq({ machineId: 'm-1', slotId: 'A01', quantityAdded: 5 });
-    expect(response.status).toBe(409);
+    createDraftMock.mockRejectedValue(new RestockTaskHasNoItemsError());
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }] });
+    expect(response.status).toBe(400);
+  });
+
+  it('propagates a RestockTaskQuantityError as 400', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    createDraftMock.mockRejectedValue(new RestockTaskQuantityError('bad quantity'));
+    const response = await postReq({ machineId: 'm-1', items: [{ slotId: 'A01', quantityNeeded: 8 }] });
+    expect(response.status).toBe(400);
   });
 });
