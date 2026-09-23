@@ -124,9 +124,24 @@ export const PROTOCOL_REGISTRY: readonly ProtocolRegistryEntry[] = [
       'door_status',
       'remote_price_update',
       'remote_enable_disable',
+      'remote_restart',
     ],
     transportRequirement: 'None — in-memory, used by every test and the vending machine simulator.',
     notes: 'The only fully-capable adapter today. See lib/vending/adapters/mockVendingAdapter.ts.',
+  },
+  {
+    key: 'mqtt',
+    label: 'MQTT (real-time cloud transport)',
+    tier: 2,
+    status: 'planned',
+    // The CloudTransport *abstraction* exists and is used
+    // (MachineCommandService.issueCommand calls notifyMachine on every
+    // issue) — what's planned, not implemented, is a real broker
+    // integration. See lib/vending/protocol/cloudTransport.ts.
+    supportedCapabilities: [],
+    transportRequirement: 'A chosen MQTT broker/service and its real connection details — not decided yet.',
+    notes:
+      'CloudTransport interface + NullCloudTransport (the real default) + MockCloudTransport (tests) are implemented; polling alone already delivers every command correctly. A real MqttCloudTransport is deliberately not built until a specific broker is chosen — guessing at one’s API now would be the same speculative-implementation mistake avoided for MDB.',
   },
 ];
 

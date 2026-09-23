@@ -52,6 +52,7 @@ export * from './shoppingRun';
 export * from './machine';
 export * from './machineSlot';
 export * from './machineTransaction';
+export * from './machineCommand';
 export * from './machineInventoryMovement';
 export * from './machineTelemetryEvent';
 export * from './machineLocationHistory';

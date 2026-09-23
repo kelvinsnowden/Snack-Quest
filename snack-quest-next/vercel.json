@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/reconcile-vending-transactions",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-vending-commands",
+      "schedule": "0 7 * * *"
     }
   ]
 }

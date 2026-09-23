@@ -4,10 +4,12 @@
  * discoverable").
  *
  * Deliberately limited to capabilities something in this codebase can
- * already act on. `ota`/`display_control`/`refrigeration_control`/
- * `remote_restart` are named as future capabilities in that doc, not
- * included here — adding a capability nothing reads yet is the same
- * overbuilding the brief warns against, one layer up.
+ * already act on. `ota`/`display_control`/`refrigeration_control` are
+ * named as future capabilities in that doc, not included here —
+ * adding a capability nothing reads yet is the same overbuilding the
+ * brief warns against, one layer up. `remote_restart` graduated out of
+ * that deferred list once the remote command center gave it a real
+ * reader (`machineCommandService.issueCommand`'s own capability gate).
  */
 export type HardwareCapability =
   | 'vend'
@@ -22,6 +24,7 @@ export type HardwareCapability =
   | 'door_status'
   | 'remote_price_update'
   | 'remote_enable_disable'
+  | 'remote_restart'
   | 'audit_export';
 
 export const ALL_HARDWARE_CAPABILITIES: readonly HardwareCapability[] = [
@@ -37,6 +40,7 @@ export const ALL_HARDWARE_CAPABILITIES: readonly HardwareCapability[] = [
   'door_status',
   'remote_price_update',
   'remote_enable_disable',
+  'remote_restart',
   'audit_export',
 ];
 

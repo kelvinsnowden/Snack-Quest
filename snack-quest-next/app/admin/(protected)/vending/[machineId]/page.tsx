@@ -7,6 +7,7 @@ import { machineService } from '@/services/machineService';
 import { machineSlotService } from '@/services/machineSlotService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
+import { machineCommandService } from '@/services/machineCommandService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
@@ -17,6 +18,8 @@ import { Badge } from '@/components/ui/badge';
 import { MachineStatusBadge } from '@/components/admin/MachineStatusBadge';
 import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivityBadge';
 import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransactionStatusBadge';
+import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
+import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
 import { formatDateTime } from '@/lib/orders/format';
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -32,6 +35,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   door_status: 'Door status',
   remote_price_update: 'Remote pricing',
   remote_enable_disable: 'Remote enable/disable',
+  remote_restart: 'Remote restart',
   audit_export: 'Audit export',
 };
 
@@ -92,11 +96,12 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics] = await Promise.all([
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory] = await Promise.all([
     machineSlotService.listByMachine(session.businessId, machineId),
     machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
     machineTelemetryEventRepository.listByMachine(session.businessId, machineId, { limit: 15 }),
     runDiagnostics(machine.manufacturer, machineId),
+    machineCommandService.listHistoryForMachine(session.businessId, machineId),
   ]);
 
   const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
@@ -168,6 +173,52 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                 <p className="text-sm text-warning">Live read unavailable — {diagnostics.live.reason}</p>
               )}
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Remote commands</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {diagnostics.registered && hasCapability(diagnostics.capabilities, 'remote_restart') ? (
+            <IssueMachineCommandAction machineId={machineId} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              This machine&apos;s adapter does not declare support for remote restart — no command can be issued yet.
+            </p>
+          )}
+
+          {commandHistory.commands.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No commands issued yet.</p>
+          ) : (
+            <div className="overflow-x-auto border-t border-border pt-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Reference</th>
+                    <th className="px-6 py-3 font-medium">Type</th>
+                    <th className="px-6 py-3 font-medium">Status</th>
+                    <th className="px-6 py-3 font-medium">Issued</th>
+                    <th className="px-6 py-3 font-medium">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commandHistory.commands.map(({ id, data }) => (
+                    <tr key={id} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 font-medium text-foreground">{data.commandRef}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{data.commandType}</td>
+                      <td className="px-6 py-3">
+                        <MachineCommandStatusBadge status={data.status} />
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">{formatDateTime(data.createdAt)}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{data.error ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>

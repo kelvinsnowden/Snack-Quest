@@ -469,3 +469,95 @@ overbuilding mistake as inventing protocol commands, just one layer up.
 - `npm run build` — exits 0; the machine detail page's new diagnostics panel compiles and renders as a Server Component with no new client bundle surface.
 - `npm test` (the real command — `firebase emulators:exec ... vitest run`) — **245 test files, 2,694 tests, all passing.**
 - One false alarm worth recording: running `vitest run` directly (bypassing `firebase emulators:exec`) makes every Firestore-backed test's `beforeEach(cleanCollections)` hang until a 10s hook timeout, because no emulator is listening — reproduced identically against the pre-Phase-1 code via `git stash`, confirming it as a pre-existing property of this environment's test setup, not a regression from anything in this phase. Recorded here so it isn't mistaken for one again.
+
+---
+
+## Phase 2 — implemented (remote commands + the CloudTransport abstraction)
+
+The two items named first in this doc's own §H "NEXT" list — the
+remote command center and a real-time cloud transport — built once
+there was a concrete reason to (the user asked to start NEXT-bucket
+work specifically on these two). Audited against Phase 1's own code
+first, same discipline as before: `VendingHardwareAdapter`'s
+synchronous methods (`setPrice`/`enableSlot`/`disableSlot`) only work
+today because the one adapter that exists is an in-process mock with
+nothing remote to be unreachable — a real command queue is what a
+manufacturer whose gateway only ever calls in (the actual shape MDB/DEX
+deployments take) structurally requires, so it was built as its own
+model rather than extending those methods' illusion of synchronous
+reach.
+
+**`MachineCommand`** (`types/machineCommand.ts`) — one command type so
+far, `restart`, chosen because it's the one action in the original
+brief's command sketch (`restart`/`lock`/`unlock`/
+`updateConfiguration`/`updateFirmware`/`cancelVend`) with no existing
+adapter concept, no OTA dependency, and a real caller (the admin UI,
+the simulator) ready to exercise it — everything else in that sketch
+stays out for the same "speculative surface with no caller" reason
+`docs/VENDING_OS_BENCHMARK.md` already gave for not extending the
+adapter interface itself. Status machine: `pending → acknowledged →
+completed|failed`, `pending|acknowledged → expired`, mirroring
+`MACHINE_TRANSACTION_STATUS_TRANSITIONS` exactly.
+
+**Delivery is polling, not a direct adapter call.** `POST
+/api/vending/machines/[id]/commands` (staff-issued, capability-gated
+against the machine's own resolved adapter) only ever writes a
+`pending` document — it never touches `VendingHardwareAdapter`. `GET
+/api/vending/commands` (device-authenticated) is what a real gateway
+would poll on a schedule; `POST .../ack` and `POST .../complete` are
+the device's own report of receipt and outcome. A
+`reconcile-vending-commands` cron (daily, mirroring
+`reconcile-vending-transactions`) expires anything stuck past its
+threshold, same pattern, same reasoning, third collection.
+
+**`CloudTransport`** (`lib/vending/protocol/cloudTransport.ts`) — the
+real-time nudge this doc's §H already named ("MQTT can become the
+real-time transport later"). `MachineCommandService.issueCommand`
+calls `transport.notifyMachine()` after every write, but the default
+(`NullCloudTransport`) is a no-op: polling alone already delivers
+every command correctly, so a missing or failing transport changes
+nothing about correctness, only latency. No real MQTT (or WebSocket)
+implementation exists — building one now would mean picking a specific
+broker/service and guessing at its API before that choice is made,
+the same "TODO: adapter interface, not fake integration" discipline
+already applied to MDB's peripheral commands and to `ShengmaAdapter`.
+`PROTOCOL_REGISTRY` gained an `mqtt` entry, `status: 'planned'`,
+explicit about exactly this: the abstraction is real and used; the
+broker integration is not.
+
+**Capability model:** `remote_restart` graduated from
+`capabilities.ts`'s own "deferred until something reads it" list —
+`issueCommand` is that reader. `MockVendingAdapter` (full capability)
+can be issued a restart; `ShengmaAdapter` (all capabilities false)
+cannot, and `issueCommand` refuses it before ever writing a command,
+rather than writing one a machine could never acknowledge.
+
+**Admin UI:** the machine detail page's "Remote commands" card shows
+an "Issue restart command" action only when the resolved adapter
+declares `remote_restart`, plus the full command history with status
+badges — reusing the same capability-gating pattern the diagnostics
+panel already established in Phase 1.
+
+**Simulator:** `SimulatedMachine.pollAndExecuteCommands()` — poll,
+acknowledge, then report an outcome, the same three-step discipline
+the purchase flow already holds for payment/vend. Proven against the
+real routes: a successful restart, a reported failure (never silently
+turned into a success), and an offline machine that never touches a
+command it was told about.
+
+**Measured:** `tsc --noEmit` clean. `npm run lint` at the same 2
+pre-existing warnings (0 new — two `react/no-unescaped-entities`
+errors were caught and fixed in the admin UI text before this count).
+`npm run build` exits 0. Full suite via `npm test`: **250 test files,
+2,734 tests, all green** (40 new, zero regressions from Phase 1's 245
+files / 2,694 tests).
+
+**Deliberately not built, and why:**
+- A real `MqttCloudTransport` — no broker chosen yet; see
+  `CloudTransport`'s own doc comment.
+- Any command type beyond `restart` — no adapter concept or caller
+  exists yet for the others in the original sketch.
+- A per-machine integration profile / manufacturer onboarding flow —
+  still blocked on the same "no second real transport to configure"
+  reason `docs/VENDING_OS_BENCHMARK.md` already gave.
+- MIRACLE/WEIMI/TCN adapters — still no manufacturer to build one for.

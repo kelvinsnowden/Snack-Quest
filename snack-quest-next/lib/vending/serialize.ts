@@ -1,5 +1,6 @@
 import type {
   Machine,
+  MachineCommand,
   MachineConnectivityStatus,
   MachineDailySummary,
   MachineSlot,
@@ -100,6 +101,38 @@ export function serializeMachineTransaction(id: string, data: MachineTransaction
     paidAt: data.paidAt ? data.paidAt.toDate().toISOString() : null,
     dispensedAt: data.dispensedAt ? data.dispensedAt.toDate().toISOString() : null,
     failureReason: data.failureReason,
+    createdAt: data.createdAt.toDate().toISOString(),
+  };
+}
+
+export interface SerializedMachineCommand {
+  id: string;
+  machineId: string;
+  commandRef: string;
+  commandType: MachineCommand['commandType'];
+  payload: MachineCommand['payload'];
+  status: MachineCommand['status'];
+  requestedBy: string;
+  expiresAt: string;
+  acknowledgedAt: string | null;
+  completedAt: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export function serializeMachineCommand(id: string, data: MachineCommand): SerializedMachineCommand {
+  return {
+    id,
+    machineId: data.machineId,
+    commandRef: data.commandRef,
+    commandType: data.commandType,
+    payload: data.payload,
+    status: data.status,
+    requestedBy: data.requestedBy,
+    expiresAt: data.expiresAt.toDate().toISOString(),
+    acknowledgedAt: data.acknowledgedAt ? data.acknowledgedAt.toDate().toISOString() : null,
+    completedAt: data.completedAt ? data.completedAt.toDate().toISOString() : null,
+    error: data.error,
     createdAt: data.createdAt.toDate().toISOString(),
   };
 }

@@ -14,6 +14,8 @@ import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
 import { MachineSlotService } from '@/services/machineSlotService';
 import { machineTransactionService } from '@/services/machineTransactionService';
+import { machineCommandService } from '@/services/machineCommandService';
+import { machineCommandRepository } from '@/repositories/machineCommandRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import type { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import { defaultVendingAdapterResolver } from '@/lib/vending/adapterRegistry';
@@ -52,7 +54,7 @@ const ORIGINAL_BUSINESS_ID = process.env.SNACK_QUEST_BUSINESS_ID;
 beforeEach(async () => {
   process.env.SNACK_QUEST_BUSINESS_ID = BUSINESS_ID;
   vi.clearAllMocks();
-  for (const collection of ['machines', 'machineSlots', 'machineTransactions', 'machineInventoryMovements', 'machineTelemetryEvents', 'deviceCredentials', 'restockTasks']) {
+  for (const collection of ['machines', 'machineSlots', 'machineTransactions', 'machineInventoryMovements', 'machineTelemetryEvents', 'machineCommands', 'deviceCredentials', 'restockTasks']) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
 });
@@ -236,5 +238,68 @@ describe('vendingSimulator', () => {
     const swept = await machineTransactionService.reconcileStuckTransactions(BUSINESS_ID, 15 * 60 * 1000);
     expect(swept.movedToManualReview).toBe(1);
     expect((await machineTransactionService.findById(BUSINESS_ID, initiated.transactionId!))?.status).toBe('manual_review');
+  });
+
+  it('polls a real issued command, acknowledges it, and reports completion', async () => {
+    const adapter = sharedAdapter;
+    const caller = new InProcessRouteCaller();
+    const { machineId, machine } = await provisionSimulatedMachine(adapter, caller);
+
+    const { commandId } = await machineCommandService.issueCommand({
+      businessId: BUSINESS_ID,
+      machineId,
+      commandType: 'restart',
+      requestedBy: 'staff-1',
+    });
+
+    const results = await machine.pollAndExecuteCommands({ outcome: 'success' });
+    expect(results).toEqual([{ commandId, commandType: 'restart', ackStatus: 200, completeStatus: 200 }]);
+
+    const command = await machineCommandRepository.findById(BUSINESS_ID, commandId);
+    expect(command?.status).toBe('completed');
+
+    // A second poll sees nothing new — the command is no longer pending.
+    const secondPoll = await machine.pollAndExecuteCommands();
+    expect(secondPoll).toEqual([]);
+  });
+
+  it('reports a failed command execution verbatim, never silently as success', async () => {
+    const adapter = sharedAdapter;
+    const caller = new InProcessRouteCaller();
+    const { machineId, machine } = await provisionSimulatedMachine(adapter, caller);
+
+    await machineCommandService.issueCommand({
+      businessId: BUSINESS_ID,
+      machineId,
+      commandType: 'restart',
+      requestedBy: 'staff-1',
+    });
+
+    const results = await machine.pollAndExecuteCommands({ outcome: 'failure', failureReason: 'watchdog reset failed' });
+    expect(results[0].completeStatus).toBe(200);
+
+    const command = await machineCommandRepository.findById(BUSINESS_ID, results[0].commandId);
+    expect(command?.status).toBe('failed');
+    expect(command?.error).toBe('watchdog reset failed');
+  });
+
+  it('an offline machine never polls, ackowledges, or executes a command', async () => {
+    const adapter = sharedAdapter;
+    const caller = new InProcessRouteCaller();
+    const { machineId, machine } = await provisionSimulatedMachine(adapter, caller);
+
+    const { commandId } = await machineCommandService.issueCommand({
+      businessId: BUSINESS_ID,
+      machineId,
+      commandType: 'restart',
+      requestedBy: 'staff-1',
+    });
+
+    machine.goOffline();
+    const results = await machine.pollAndExecuteCommands();
+    expect(results).toEqual([]);
+
+    const command = await machineCommandRepository.findById(BUSINESS_ID, commandId);
+    expect(command?.status).toBe('pending'); // untouched
   });
 });

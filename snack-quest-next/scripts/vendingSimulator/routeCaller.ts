@@ -26,6 +26,10 @@ export interface RouteCaller {
   postPayment(authHeader: string, body: unknown): Promise<{ status: number; body: unknown }>;
   getPaymentStatus(authHeader: string, transactionId: string): Promise<{ status: number; body: unknown }>;
   postTransactionResult(authHeader: string, payload: unknown): Promise<{ status: number; body: unknown }>;
+  /** The remote command center's own poll (§ types/machineCommand.ts) — what a real gateway would call on a schedule. */
+  getPendingCommands(authHeader: string): Promise<{ status: number; body: unknown }>;
+  ackCommand(authHeader: string, commandId: string): Promise<{ status: number; body: unknown }>;
+  completeCommand(authHeader: string, commandId: string, result: { success: boolean; error?: string }): Promise<{ status: number; body: unknown }>;
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -78,6 +82,34 @@ export class InProcessRouteCaller implements RouteCaller {
         headers: { authorization: authHeader, 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       }),
+    );
+    return { status: response.status, body: await readJson(response) };
+  }
+
+  async getPendingCommands(authHeader: string) {
+    const { GET } = await import('@/app/api/vending/commands/route');
+    const response = await GET(new Request('http://localhost/api/vending/commands', { headers: { authorization: authHeader } }));
+    return { status: response.status, body: await readJson(response) };
+  }
+
+  async ackCommand(authHeader: string, commandId: string) {
+    const { POST } = await import('@/app/api/vending/commands/[id]/ack/route');
+    const response = await POST(
+      new Request(`http://localhost/api/vending/commands/${commandId}/ack`, { method: 'POST', headers: { authorization: authHeader } }),
+      { params: Promise.resolve({ id: commandId }) },
+    );
+    return { status: response.status, body: await readJson(response) };
+  }
+
+  async completeCommand(authHeader: string, commandId: string, result: { success: boolean; error?: string }) {
+    const { POST } = await import('@/app/api/vending/commands/[id]/complete/route');
+    const response = await POST(
+      new Request(`http://localhost/api/vending/commands/${commandId}/complete`, {
+        method: 'POST',
+        headers: { authorization: authHeader, 'content-type': 'application/json' },
+        body: JSON.stringify(result),
+      }),
+      { params: Promise.resolve({ id: commandId }) },
     );
     return { status: response.status, body: await readJson(response) };
   }

@@ -16,11 +16,11 @@ import type { RouteCaller } from './routeCaller';
  * happened and leaves deciding whether that was correct to whoever
  * is driving it (a test, or a human watching a CLI's summary).
  *
- * Deliberately does not implement `machine restart` as a distinct
- * behavior — nothing in this codebase has a restart *command* to
- * receive yet (§ remote operations, NEXT-bucket); simulating a
- * restart a machine can't be told to do would be simulating a
- * capability that doesn't exist.
+ * `pollAndExecuteCommands` is the remote command center's own gateway
+ * behavior (§ types/machineCommand.ts): fetch pending commands,
+ * acknowledge each one before acting on it, then report what actually
+ * happened — the same discipline every other method here already
+ * holds for telemetry and vend results, applied to commands instead.
  */
 export class SimulatedMachine {
   private readonly authHeader: string;
@@ -177,5 +177,38 @@ export class SimulatedMachine {
     }
     const outcome = await this.waitForAuthorizationAndReport(initiate.transactionId, options);
     return { ...initiate, ...outcome };
+  }
+
+  /**
+   * Fetches this machine's own pending commands, acknowledges each
+   * one, then reports the outcome given by `options.outcome` — the
+   * poll → ack → execute → complete cycle a real gateway would run on
+   * a schedule. Never touches another machine's commands; the poll
+   * itself is already scoped to the authenticated machine.
+   */
+  async pollAndExecuteCommands(
+    options: { outcome?: 'success' | 'failure'; failureReason?: string } = {},
+  ): Promise<{ commandId: string; commandType: string; ackStatus: number; completeStatus: number | null }[]> {
+    if (!this.online) {
+      return [];
+    }
+    const poll = await this.caller.getPendingCommands(this.authHeader);
+    const commands = ((poll.body as { commands?: { id: string; commandType: string }[] } | null)?.commands) ?? [];
+
+    const results: { commandId: string; commandType: string; ackStatus: number; completeStatus: number | null }[] = [];
+    for (const command of commands) {
+      const ack = await this.caller.ackCommand(this.authHeader, command.id);
+      if (ack.status !== 200) {
+        results.push({ commandId: command.id, commandType: command.commandType, ackStatus: ack.status, completeStatus: null });
+        continue;
+      }
+      const success = options.outcome !== 'failure';
+      const complete = await this.caller.completeCommand(this.authHeader, command.id, {
+        success,
+        error: success ? undefined : (options.failureReason ?? 'execution failed'),
+      });
+      results.push({ commandId: command.id, commandType: command.commandType, ackStatus: ack.status, completeStatus: complete.status });
+    }
+    return results;
   }
 }
