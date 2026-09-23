@@ -1,11 +1,16 @@
 import type {
   Machine,
+  MachineAssortment,
   MachineCommand,
   MachineConnectivityStatus,
   MachineDailySummary,
+  MachineSettlement,
   MachineSlot,
+  MachineSubscription,
   MachineTransaction,
+  Partner,
   PartnerDailySummary,
+  PartnerEarningsLedgerEntry,
   RestockTask,
 } from '@/types';
 
@@ -173,4 +178,164 @@ export type SerializedPartnerDailySummary = Omit<PartnerDailySummary, 'rebuiltAt
 
 export function serializePartnerDailySummary(data: PartnerDailySummary): SerializedPartnerDailySummary {
   return { ...data, rebuiltAt: data.rebuiltAt.toDate().toISOString() };
+}
+
+export interface SerializedMachineAssortment {
+  machineId: string;
+  productId: string;
+  productCatalogue: MachineAssortment['productCatalogue'];
+  assorted: boolean;
+  slotCode: string | null;
+  displayOrder: number;
+  category: string | null;
+  customerFacingName: string | null;
+  customerFacingDescription: string | null;
+  customerFacingImageUrl: string | null;
+  priceOverrideKes: number | null;
+  promotionalState: MachineAssortment['promotionalState'];
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  visible: boolean;
+  updatedAt: string;
+}
+
+export function serializeMachineAssortment(data: MachineAssortment): SerializedMachineAssortment {
+  return {
+    machineId: data.machineId,
+    productId: data.productId,
+    productCatalogue: data.productCatalogue,
+    assorted: data.assorted,
+    slotCode: data.slotCode,
+    displayOrder: data.displayOrder,
+    category: data.category,
+    customerFacingName: data.customerFacingName,
+    customerFacingDescription: data.customerFacingDescription,
+    customerFacingImageUrl: data.customerFacingImageUrl,
+    priceOverrideKes: data.priceOverrideKes,
+    promotionalState: data.promotionalState,
+    effectiveFrom: data.effectiveFrom ? data.effectiveFrom.toDate().toISOString() : null,
+    effectiveTo: data.effectiveTo ? data.effectiveTo.toDate().toISOString() : null,
+    visible: data.visible,
+    updatedAt: data.updatedAt.toDate().toISOString(),
+  };
+}
+
+export interface SerializedMachineSubscription {
+  id: string;
+  machineId: string;
+  partnerId: string;
+  planName: string;
+  amountKes: number;
+  frequency: MachineSubscription['frequency'];
+  status: MachineSubscription['status'];
+  startDate: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  renewalDate: string;
+  lastPaymentStatus: MachineSubscription['lastPaymentStatus'];
+  lastPaidAt: string | null;
+  arrearsKes: number;
+  graceUntil: string | null;
+}
+
+export function serializeMachineSubscription(id: string, data: MachineSubscription): SerializedMachineSubscription {
+  return {
+    id,
+    machineId: data.machineId,
+    partnerId: data.partnerId,
+    planName: data.planName,
+    amountKes: data.amountKes,
+    frequency: data.frequency,
+    status: data.status,
+    startDate: data.startDate.toDate().toISOString(),
+    currentPeriodStart: data.currentPeriodStart.toDate().toISOString(),
+    currentPeriodEnd: data.currentPeriodEnd.toDate().toISOString(),
+    renewalDate: data.renewalDate.toDate().toISOString(),
+    lastPaymentStatus: data.lastPaymentStatus,
+    lastPaidAt: data.lastPaidAt ? data.lastPaidAt.toDate().toISOString() : null,
+    arrearsKes: data.arrearsKes,
+    graceUntil: data.graceUntil ? data.graceUntil.toDate().toISOString() : null,
+  };
+}
+
+export interface SerializedMachineSettlement {
+  id: string;
+  machineId: string;
+  partnerId: string;
+  periodStart: string;
+  periodEnd: string;
+  status: MachineSettlement['status'];
+  grossSalesKes: number;
+  refundsKes: number;
+  cogsKes: number;
+  unpricedSaleCount: number;
+  subscriptionChargedKes: number;
+  adjustmentKes: number;
+  adjustmentReason: string | null;
+  distributableOwnerKes: number;
+  netDistributableKes: number | null;
+  partnerShareKes: number | null;
+  businessShareKes: number | null;
+  finalizedAt: string | null;
+  paidAt: string | null;
+}
+
+export function serializeMachineSettlement(id: string, data: MachineSettlement): SerializedMachineSettlement {
+  return {
+    id,
+    machineId: data.machineId,
+    partnerId: data.partnerId,
+    periodStart: data.periodStart.toDate().toISOString(),
+    periodEnd: data.periodEnd.toDate().toISOString(),
+    status: data.status,
+    grossSalesKes: data.grossSalesKes,
+    refundsKes: data.refundsKes,
+    cogsKes: data.cogsKes,
+    unpricedSaleCount: data.unpricedSaleCount,
+    subscriptionChargedKes: data.subscriptionChargedKes,
+    adjustmentKes: data.adjustmentKes,
+    adjustmentReason: data.adjustmentReason,
+    distributableOwnerKes: data.distributableOwnerKes,
+    netDistributableKes: data.netDistributableKes,
+    partnerShareKes: data.partnerShareKes,
+    businessShareKes: data.businessShareKes,
+    finalizedAt: data.finalizedAt ? data.finalizedAt.toDate().toISOString() : null,
+    paidAt: data.paidAt ? data.paidAt.toDate().toISOString() : null,
+  };
+}
+
+export interface SerializedPartnerWallet {
+  partnerId: string;
+  name: string;
+  status: Partner['status'];
+  availableCashKes: number;
+  lifetimeEarnedKes: number;
+}
+
+export function serializePartnerWallet(id: string, data: Partner): SerializedPartnerWallet {
+  return {
+    partnerId: id,
+    name: data.name,
+    status: data.status,
+    availableCashKes: data.availableCashKes,
+    lifetimeEarnedKes: data.lifetimeEarnedKes,
+  };
+}
+
+export interface SerializedPartnerEarningsLedgerEntry {
+  type: PartnerEarningsLedgerEntry['type'];
+  settlementId: string;
+  machineId: string;
+  amountKes: number;
+  createdAt: string;
+}
+
+export function serializePartnerEarningsLedgerEntry(data: PartnerEarningsLedgerEntry): SerializedPartnerEarningsLedgerEntry {
+  return {
+    type: data.type,
+    settlementId: data.settlementId,
+    machineId: data.machineId,
+    amountKes: data.amountKes,
+    createdAt: data.createdAt.toDate().toISOString(),
+  };
 }

@@ -38,7 +38,8 @@ export interface CloudTransport {
 export class NullCloudTransport implements CloudTransport {
   readonly name = 'none';
 
-  async notifyMachine(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- must match CloudTransport's own signature; this implementation deliberately does nothing with either argument.
+  async notifyMachine(_machineId: string, _commandId: string): Promise<void> {
     // Deliberately nothing — see this file's own doc comment.
   }
 }

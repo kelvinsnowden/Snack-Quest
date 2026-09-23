@@ -76,6 +76,16 @@ export interface Machine extends AuditFields {
   installedAt: Timestamp | null;
   /** Last telemetry heartbeat received, written only by `machineTelemetryService` — never inferred from a transaction or any other event. */
   lastSeenAt: Timestamp | null;
+  /**
+   * The minimum inventory value (at cost) this machine should carry
+   * (§ KSh 100,000 MACHINE STOCK BASELINE, docs/INVENTORY_ARCHITECTURE.md
+   * §4). Null means "use the platform default" —
+   * `machineInventoryReserveService.DEFAULT_RESERVE_TARGET_KES`
+   * (100,000) — rather than every machine needing this field set
+   * explicitly; a partner agreement that actually negotiates a
+   * different baseline sets it here.
+   */
+  inventoryReserveTargetKes: number | null;
 }
 
 /** Every status transition this machine may make, keyed by its current status — enforced by `machineService.updateStatus`, not left to the caller. */

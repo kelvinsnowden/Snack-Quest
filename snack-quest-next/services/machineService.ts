@@ -35,6 +35,8 @@ export interface ProvisionMachineInput {
   hardwareVersion?: string | null;
   firmwareVersion?: string | null;
   ownerPartnerId?: string | null;
+  /** Overrides the platform default reserve baseline (§ KSh 100,000 MACHINE STOCK BASELINE) — null/omitted uses the default. */
+  inventoryReserveTargetKes?: number | null;
   actor: string;
 }
 
@@ -87,6 +89,7 @@ class MachineService {
       venueName: null,
       installedAt: null,
       lastSeenAt: null,
+      inventoryReserveTargetKes: input.inventoryReserveTargetKes ?? null,
       createdBy: input.actor,
     });
 

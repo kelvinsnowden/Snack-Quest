@@ -9,10 +9,16 @@ import {
 } from '@/repositories/withdrawalRepository';
 import {
   creatorRepository,
-  reserveBalanceInTransaction,
-  refundBalanceInTransaction,
+  reserveBalanceInTransaction as reserveCreatorBalanceInTransaction,
+  refundBalanceInTransaction as refundCreatorBalanceInTransaction,
   InsufficientCreatorBalanceError,
 } from '@/repositories/creatorRepository';
+import {
+  partnerRepository,
+  reserveBalanceInTransaction as reservePartnerBalanceInTransaction,
+  refundBalanceInTransaction as refundPartnerBalanceInTransaction,
+  InsufficientPartnerBalanceError,
+} from '@/repositories/partnerRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { userRepository } from '@/repositories/userRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
@@ -27,7 +33,7 @@ import { assertB2CDisbursementsNotFrozen, B2CDisbursementsFrozenError } from '@/
 import { classifyB2CResultCode, classifyB2CGatewayError, type B2CFailureCategory } from '@/lib/integrations/daraja/b2cResultCodes';
 import type { Withdrawal, WithdrawalOwnerType, WithdrawalStatus } from '@/types';
 
-export { InsufficientCreatorBalanceError, CreatorFinancialWritesFrozenError, B2CDisbursementsFrozenError };
+export { InsufficientCreatorBalanceError, InsufficientPartnerBalanceError, CreatorFinancialWritesFrozenError, B2CDisbursementsFrozenError };
 
 export class WithdrawalNotFoundError extends Error {
   constructor(withdrawalId: string) {
@@ -47,6 +53,13 @@ export class CreatorNotEligibleForWithdrawalError extends Error {
   constructor(creatorId: string) {
     super(`${creatorId} is not an active creator for this business`);
     this.name = 'CreatorNotEligibleForWithdrawalError';
+  }
+}
+
+export class PartnerNotEligibleForWithdrawalError extends Error {
+  constructor(partnerId: string) {
+    super(`${partnerId} is not an active partner for this business`);
+    this.name = 'PartnerNotEligibleForWithdrawalError';
   }
 }
 
@@ -71,7 +84,7 @@ export class WithdrawalAboveMaximumError extends Error {
 export class UnsupportedWithdrawalOwnerTypeError extends Error {
   constructor(ownerType: string) {
     super(
-      `Withdrawals for ownerType "${ownerType}" aren't supported yet — only 'creator' withdrawals (backed by creatorMemberships.availableCashKes) are wired up. There is no real customer wallet-cashout journey in this codebase to withdraw from.`,
+      `Withdrawals for ownerType "${ownerType}" aren't supported yet — only 'creator' (creatorMemberships.availableCashKes) and 'partner' (partners.availableCashKes) withdrawals are wired up. There is no real customer wallet-cashout journey in this codebase to withdraw from.`,
     );
     this.name = 'UnsupportedWithdrawalOwnerTypeError';
   }
@@ -105,14 +118,21 @@ export interface WithdrawalReconciliationOutcome {
  * together exceed what's actually available) → Daraja B2C payout →
  * paid (confirmed by the async result callback, or by an unambiguous
  * Transaction Status Query reconciliation) or failed (refunds the
- * reservation, exactly once). Only `ownerType: 'creator'` is wired to
- * a real balance source right now — `creatorMemberships.availableCashKes`,
- * credited by real referral commissions (§ Admin: Referrals).
- * `'customer'` is a real, documented schema value (TDD §8) with no
- * real wallet-cashout journey behind it yet; `requestWithdrawal` fails
- * closed rather than silently debiting a `customerProfiles` collection
- * nothing else in this codebase writes to (§ Admin: Customers found
- * the same gap).
+ * reservation, exactly once). Two owner types are wired to a real
+ * balance source right now: `'creator'` — `creatorMemberships.availableCashKes`,
+ * credited by real referral commissions (§ Admin: Referrals) — and
+ * `'partner'` — `partners.availableCashKes`, credited only by
+ * `MachineSettlementService.finalize()` (§ OWNER WITHDRAWAL,
+ * docs/MACHINE_COMMERCE.md §7). Every balance mutation below dispatches
+ * on `ownerType` to the matching repository's own
+ * `reserve/refundBalanceInTransaction` pair — the two are structurally
+ * identical (mirrored field-for-field on purpose) but never share a
+ * document, so a creator withdrawal can never touch a partner's
+ * balance or vice versa. `'customer'` is a real, documented schema
+ * value (TDD §8) with no real wallet-cashout journey behind it yet;
+ * `requestWithdrawal` fails closed rather than silently debiting a
+ * `customerProfiles` collection nothing else in this codebase writes to
+ * (§ Admin: Customers found the same gap).
  *
  * `approveWithdrawal`/`rejectWithdrawal` never do a plain
  * read-then-write on a withdrawal's status — every transition that
@@ -133,7 +153,7 @@ class WithdrawalService {
     amountKes: number;
     phoneNumber: string;
   }): Promise<string> {
-    if (input.ownerType !== 'creator') {
+    if (input.ownerType !== 'creator' && input.ownerType !== 'partner') {
       throw new UnsupportedWithdrawalOwnerTypeError(input.ownerType);
     }
     if (input.amountKes < MIN_WITHDRAWAL_KES) {
@@ -142,15 +162,26 @@ class WithdrawalService {
     if (input.amountKes > MAX_WITHDRAWAL_KES) {
       throw new WithdrawalAboveMaximumError(input.amountKes);
     }
-    await assertCreatorFinancialWritesNotFrozen(input.businessId);
 
-    const creator = await creatorRepository.findById(input.businessId, input.ownerId);
-    if (!creator || creator.businessId !== input.businessId || creator.status !== 'active') {
-      throw new CreatorNotEligibleForWithdrawalError(input.ownerId);
+    if (input.ownerType === 'creator') {
+      await assertCreatorFinancialWritesNotFrozen(input.businessId);
+      const creator = await creatorRepository.findById(input.businessId, input.ownerId);
+      if (!creator || creator.businessId !== input.businessId || creator.status !== 'active') {
+        throw new CreatorNotEligibleForWithdrawalError(input.ownerId);
+      }
+    } else {
+      const partner = await partnerRepository.findById(input.businessId, input.ownerId);
+      if (!partner || partner.status !== 'active') {
+        throw new PartnerNotEligibleForWithdrawalError(input.ownerId);
+      }
     }
 
     return adminFirestore.runTransaction(async (tx) => {
-      await reserveBalanceInTransaction(tx, input.businessId, input.ownerId, input.amountKes);
+      if (input.ownerType === 'creator') {
+        await reserveCreatorBalanceInTransaction(tx, input.businessId, input.ownerId, input.amountKes);
+      } else {
+        await reservePartnerBalanceInTransaction(tx, input.businessId, input.ownerId, input.amountKes);
+      }
       return withdrawalRepository.createInTransaction(
         tx,
         {
@@ -201,7 +232,14 @@ class WithdrawalService {
    * under real concurrency, not just in the common case.
    */
   async approveWithdrawal(businessId: string, withdrawalId: string, actor: string): Promise<WithdrawalStatus> {
-    await assertCreatorFinancialWritesNotFrozen(businessId);
+    // The creator-financial freeze guards only the creatorProfiles →
+    // creatorMemberships migration window (see its own doc comment) —
+    // it must not block a partner payout, so it's checked only once
+    // this withdrawal's actual ownerType is known.
+    const existing = await withdrawalRepository.findById(businessId, withdrawalId);
+    if (existing?.ownerType === 'creator') {
+      await assertCreatorFinancialWritesNotFrozen(businessId);
+    }
     await assertB2CDisbursementsNotFrozen(businessId);
 
     const originatorConversationId = randomUUID();
@@ -250,7 +288,12 @@ class WithdrawalService {
       });
       await this.textOwner(businessId, withdrawalId, claimed, 'approved');
 
-      const owner = await userRepository.findById(claimed.ownerId);
+      // Email confirmation only exists for `'creator'` — a partner has no
+      // portal or login to link to yet (§ MACHINE_COMMERCE.md "what this
+      // pass does not do"), so `claimed.ownerId` would resolve against
+      // `userRepository` to nothing meaningful; skip rather than send a
+      // broken link.
+      const owner = claimed.ownerType === 'creator' ? await userRepository.findById(claimed.ownerId) : null;
       if (owner?.email) {
         try {
           await notificationService.send(businessId, {
@@ -276,7 +319,7 @@ class WithdrawalService {
       const message = error instanceof Error ? error.message : 'Unknown B2C initiation failure';
       const { category, explanation } = classifyB2CGatewayError(message);
       await adminFirestore.runTransaction(async (tx) => {
-        refundBalanceInTransaction(tx, businessId, claimed.ownerId, claimed.amountKes);
+        this.refundOwnerBalanceInTransaction(tx, businessId, claimed.ownerType, claimed.ownerId, claimed.amountKes);
         withdrawalRepository.applyTransitionInTransaction(
           tx,
           withdrawalId,
@@ -410,7 +453,10 @@ class WithdrawalService {
   }
 
   async rejectWithdrawal(businessId: string, withdrawalId: string, actor: string, reason: string): Promise<void> {
-    await assertCreatorFinancialWritesNotFrozen(businessId);
+    const existing = await withdrawalRepository.findById(businessId, withdrawalId);
+    if (existing?.ownerType === 'creator') {
+      await assertCreatorFinancialWritesNotFrozen(businessId);
+    }
 
     let rejectedWithdrawal: Withdrawal | null = null;
     await adminFirestore.runTransaction(async (tx) => {
@@ -421,7 +467,7 @@ class WithdrawalService {
       if (found.data.status !== 'pending') {
         throw new InvalidWithdrawalTransitionError(found.data.status, 'reject');
       }
-      refundBalanceInTransaction(tx, businessId, found.data.ownerId, found.data.amountKes);
+      this.refundOwnerBalanceInTransaction(tx, businessId, found.data.ownerType, found.data.ownerId, found.data.amountKes);
       rejectedWithdrawal = found.data;
       withdrawalRepository.applyTransitionInTransaction(
         tx,
@@ -508,7 +554,7 @@ class WithdrawalService {
     } else {
       const { category, explanation } = classifyB2CResultCode(result.resultCode);
       await adminFirestore.runTransaction(async (tx) => {
-        refundBalanceInTransaction(tx, businessId, match.data.ownerId, match.data.amountKes);
+        this.refundOwnerBalanceInTransaction(tx, businessId, match.data.ownerType, match.data.ownerId, match.data.amountKes);
         withdrawalRepository.applyTransitionInTransaction(
           tx,
           match.id,
@@ -735,7 +781,7 @@ class WithdrawalService {
           actor,
         );
       } else {
-        refundBalanceInTransaction(tx, businessId, found.data.ownerId, found.data.amountKes);
+        this.refundOwnerBalanceInTransaction(tx, businessId, found.data.ownerType, found.data.ownerId, found.data.amountKes);
         withdrawalRepository.applyTransitionInTransaction(
           tx,
           withdrawalId,
@@ -815,7 +861,7 @@ class WithdrawalService {
   private async textOwner(
     businessId: string,
     withdrawalId: string,
-    withdrawal: Pick<Withdrawal, 'phoneNumber' | 'amountKes' | 'ownerId'>,
+    withdrawal: Pick<Withdrawal, 'phoneNumber' | 'amountKes' | 'ownerId' | 'ownerType'>,
     status: 'approved' | 'paid' | 'failed' | 'rejected',
     reason?: string,
   ): Promise<void> {
@@ -833,7 +879,7 @@ class WithdrawalService {
       await notificationService.send(businessId, {
         channel: 'sms',
         templateCode,
-        recipientType: 'creator',
+        recipientType: withdrawal.ownerType === 'partner' ? 'partner' : 'creator',
         recipientId: withdrawal.ownerId,
         recipientRef: withdrawal.phoneNumber,
         params: {
@@ -847,6 +893,28 @@ class WithdrawalService {
       });
     } catch {
       // Best-effort: the transition and the balance are already durable.
+    }
+  }
+
+  /**
+   * Dispatches a balance refund to the matching owner-type repository
+   * — the one place every failure/rejection/reversal path routes
+   * through, so a creator withdrawal can never accidentally refund a
+   * partner's balance (or vice versa) through a copy-pasted call.
+   * `'customer'` never reaches here: `requestWithdrawal` already
+   * rejects it before any reservation exists to refund.
+   */
+  private refundOwnerBalanceInTransaction(
+    tx: Parameters<typeof reserveCreatorBalanceInTransaction>[0],
+    businessId: string,
+    ownerType: WithdrawalOwnerType,
+    ownerId: string,
+    amountKes: number,
+  ): void {
+    if (ownerType === 'partner') {
+      refundPartnerBalanceInTransaction(tx, businessId, ownerId, amountKes);
+    } else {
+      refundCreatorBalanceInTransaction(tx, businessId, ownerId, amountKes);
     }
   }
 

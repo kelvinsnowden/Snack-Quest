@@ -49,6 +49,7 @@ export const zhCN: Dictionary = {
       '/admin/purchase-orders': '采购单',
       '/admin/suppliers': '供应商',
       '/admin/vending': '自动售货机',
+      '/admin/vending/partners': '机器所有者',
       '/admin/conversations': '会话',
       '/admin/customers': '客户',
       '/admin/reviews': '评价',

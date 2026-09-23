@@ -8,6 +8,10 @@ import { machineSlotService } from '@/services/machineSlotService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { machineCommandService } from '@/services/machineCommandService';
+import { machineAssortmentService } from '@/services/machineAssortmentService';
+import { machineInventoryReserveService } from '@/services/machineInventoryReserveService';
+import { machineSubscriptionService } from '@/services/machineSubscriptionService';
+import { machineSettlementService } from '@/services/machineSettlementService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
@@ -96,12 +100,16 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory] = await Promise.all([
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements] = await Promise.all([
     machineSlotService.listByMachine(session.businessId, machineId),
     machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
     machineTelemetryEventRepository.listByMachine(session.businessId, machineId, { limit: 15 }),
     runDiagnostics(machine.manufacturer, machineId),
     machineCommandService.listHistoryForMachine(session.businessId, machineId),
+    machineAssortmentService.listByMachine(session.businessId, machineId),
+    machineInventoryReserveService.getReserveStatus(session.businessId, machineId),
+    machineSubscriptionService.findActiveForMachine(session.businessId, machineId),
+    machineSettlementService.listByMachine(session.businessId, machineId),
   ]);
 
   const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
@@ -252,6 +260,120 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                         {slot.currentQuantity} / {slot.capacity}
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">{slot.enabled ? 'Yes' : 'No'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Assortment &amp; inventory reserve</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+            <DetailStat label="Reserve target" value={`KES ${reserveStatus.targetKes.toLocaleString('en-KE')}`} />
+            <DetailStat label="Current (cost)" value={`KES ${reserveStatus.currentAtCostKes.toLocaleString('en-KE')}`} />
+            <DetailStat label="Current (retail)" value={`KES ${reserveStatus.currentAtRetailKes.toLocaleString('en-KE')}`} />
+            <DetailStat
+              label="Variance"
+              value={`${reserveStatus.varianceKes >= 0 ? '+' : ''}KES ${reserveStatus.varianceKes.toLocaleString('en-KE')}`}
+            />
+            <DetailStat label="Replenishment needed" value={`KES ${reserveStatus.replenishmentRequiredKes.toLocaleString('en-KE')}`} />
+          </div>
+          {reserveStatus.unpricedSlotCount > 0 ? (
+            <p className="text-sm text-warning">
+              {reserveStatus.unpricedSlotCount} stocked slot{reserveStatus.unpricedSlotCount === 1 ? '' : 's'} carry a product with no
+              known unit cost — excluded from the cost figure above, not treated as free.
+            </p>
+          ) : null}
+
+          {assortment.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No products assorted to this machine yet.</p>
+          ) : (
+            <div className="overflow-x-auto border-t border-border pt-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Product</th>
+                    <th className="px-6 py-3 font-medium">Slot</th>
+                    <th className="px-6 py-3 font-medium">Price override</th>
+                    <th className="px-6 py-3 font-medium">Assorted</th>
+                    <th className="px-6 py-3 font-medium">Visible</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assortment.map((row) => (
+                    <tr key={`${row.productCatalogue}:${row.productId}`} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 font-medium text-foreground">
+                        {row.customerFacingName ?? row.productId} <span className="text-muted-foreground">({row.productCatalogue})</span>
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">{row.slotCode ?? '—'}</td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {row.priceOverrideKes !== null ? `KES ${row.priceOverrideKes.toLocaleString('en-KE')}` : '—'}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">{row.assorted ? 'Yes' : 'No'}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{row.visible ? 'Yes' : 'No'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Machine economics: subscription &amp; settlements</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {activeSubscription ? (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <DetailStat label="Plan" value={activeSubscription.data.planName} />
+              <DetailStat
+                label="Amount"
+                value={`KES ${activeSubscription.data.amountKes.toLocaleString('en-KE')} / ${activeSubscription.data.frequency}`}
+              />
+              <DetailStat label="Status" value={activeSubscription.data.status.replace('_', ' ')} />
+              <DetailStat label="Arrears" value={`KES ${activeSubscription.data.arrearsKes.toLocaleString('en-KE')}`} />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No active subscription on this machine.</p>
+          )}
+
+          {settlements.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No settlements recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto border-t border-border pt-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Period</th>
+                    <th className="px-6 py-3 font-medium">Gross</th>
+                    <th className="px-6 py-3 font-medium">COGS</th>
+                    <th className="px-6 py-3 font-medium">Subscription</th>
+                    <th className="px-6 py-3 font-medium">Distributable</th>
+                    <th className="px-6 py-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {settlements.map(({ id, data }) => (
+                    <tr key={id} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 font-medium text-foreground">
+                        {formatDateTime(data.periodStart)} – {formatDateTime(data.periodEnd)}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">KES {data.grossSalesKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        KES {data.cogsKes.toLocaleString('en-KE')}
+                        {data.unpricedSaleCount > 0 ? ` (${data.unpricedSaleCount} unpriced)` : ''}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">KES {data.subscriptionChargedKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3 text-muted-foreground">KES {data.distributableOwnerKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{data.status}</td>
                     </tr>
                   ))}
                 </tbody>

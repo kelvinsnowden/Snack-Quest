@@ -23,4 +23,16 @@ export interface Partner extends AuditFields {
   contactPhone: string | null;
   status: PartnerStatus;
   note: string | null;
+  /**
+   * Mirrors `CreatorProfile.availableCashKes`/`CustomerWallet.balanceKes`
+   * exactly (§ OWNER WALLET, docs/MACHINE_COMMERCE.md §6) — a cached,
+   * incrementally-maintained total; `PartnerEarningsLedgerEntry` is the
+   * append-only source of truth it's derived from. Credited only by
+   * `MachineSettlementService.finalize()`; debited (reserved) only by
+   * `WithdrawalService.requestWithdrawal()` via
+   * `partnerRepository.reserveBalanceInTransaction`.
+   */
+  availableCashKes: number;
+  /** Never decremented — the running total of everything ever credited, independent of withdrawals. */
+  lifetimeEarnedKes: number;
 }

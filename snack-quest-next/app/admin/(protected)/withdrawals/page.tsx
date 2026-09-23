@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireStaffSession } from '@/lib/auth/session';
 import { withdrawalService } from '@/services/withdrawalService';
 import { userRepository } from '@/repositories/userRepository';
+import { partnerService } from '@/services/partnerService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyWithdrawalsState } from '@/components/admin/EmptyWithdrawalsState';
@@ -30,7 +31,15 @@ export default async function AdminWithdrawalsPage({
     cursor,
   });
 
-  const owners = await Promise.all(withdrawals.map(({ data }) => userRepository.findById(data.ownerId)));
+  // Same branch as the withdrawal detail page: a partner withdrawal's
+  // `ownerId` is a `partnerId`, never a `userRepository` uid.
+  const ownerNames = await Promise.all(
+    withdrawals.map(async ({ data }) =>
+      data.ownerType === 'partner'
+        ? (await partnerService.findById(session.businessId, data.ownerId))?.name
+        : (await userRepository.findById(data.ownerId))?.displayName,
+    ),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -84,7 +93,7 @@ export default async function AdminWithdrawalsPage({
                   <tr key={id} className="border-b border-border last:border-0 hover:bg-border/20">
                     <td className="px-4 py-3">
                       <Link href={`/admin/withdrawals/${id}`} className="block">
-                        <span className="font-medium text-foreground">{owners[index]?.displayName ?? data.ownerId}</span>
+                        <span className="font-medium text-foreground">{ownerNames[index] ?? data.ownerId}</span>
                         <span className="block text-caption text-muted-foreground capitalize">{data.ownerType}</span>
                       </Link>
                     </td>

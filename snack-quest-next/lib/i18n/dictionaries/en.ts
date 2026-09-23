@@ -52,6 +52,7 @@ export const en = {
       '/admin/purchase-orders': 'Purchase orders',
       '/admin/suppliers': 'Suppliers',
       '/admin/vending': 'Vending Machines',
+      '/admin/vending/partners': 'Machine Owners',
       '/admin/conversations': 'Conversations',
       '/admin/customers': 'Customers',
       '/admin/reviews': 'Reviews',
