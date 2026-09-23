@@ -32,7 +32,16 @@ export type WebhookEventKind =
   | 'stk_query_reconciliation'
   | 'transaction_status_result'
   /** A TextSMS delivery report for one already-sent SMS. Unlike every other kind here, this one is pure enrichment — nothing downstream depends on it, which is why its handler is free to record an unrecognised status and change nothing. */
-  | 'sms_dlr';
+  | 'sms_dlr'
+  /**
+   * An STK callback the Daraja webhook route's vending branch
+   * recognised by `checkoutRequestId` match against
+   * `machineTransactions`, rather than the e-commerce checkout flow's
+   * own `stk_callback` kind — kept distinct so reconciliation
+   * tooling built against `stk_callback` never silently starts
+   * counting vending payments it wasn't written for.
+   */
+  | 'vending_stk_callback';
 
 export interface WebhookEvent {
   businessId: string;

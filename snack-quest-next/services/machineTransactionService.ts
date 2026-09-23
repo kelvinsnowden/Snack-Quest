@@ -8,9 +8,23 @@ import {
   MachineTransactionNotFoundError,
 } from '@/repositories/machineTransactionRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
+import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { machineInventoryMovementService } from '@/services/machineInventoryMovementService';
 import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
+import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
 import type { MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
+
+/**
+ * How long a transaction may sit `paid`/`vend_authorized` before the
+ * reconciliation sweep treats it as stuck (§ transaction timeout).
+ * A real vend completes in seconds; this is sized for "the machine
+ * lost connectivity mid-vend and needs time to reconnect and report,"
+ * not for the happy path. Chosen conservatively ahead of any real
+ * transaction volume — revisit once real machines report how long a
+ * genuine reconnect actually takes.
+ */
+const DEFAULT_STUCK_TRANSACTION_AFTER_MS = 15 * 60 * 1000;
 
 export class SlotUnavailableForSaleError extends Error {
   constructor(machineId: string, slotCode: string, detail: string) {
@@ -38,7 +52,17 @@ export class SlotUnavailableForSaleError extends Error {
  * duplicate check to reach either.
  */
 class MachineTransactionService {
-  constructor(private readonly resolveAdapter: VendingAdapterResolver = defaultVendingAdapterResolver) {}
+  constructor(
+    private readonly resolveAdapter: VendingAdapterResolver = defaultVendingAdapterResolver,
+    /**
+     * The same `PaymentGateway` interface every other M-Pesa
+     * collection in this codebase already depends on
+     * (`services/paymentService.ts`) — not a new "PaymentProvider"
+     * abstraction. Daraja today; a card gateway later implements the
+     * same three methods and this class never changes.
+     */
+    private readonly paymentGateway: PaymentGateway = darajaGateway,
+  ) {}
 
   /** Step 1 of the payment flow: a pending transaction, before any money has moved. */
   async createPending(input: {
@@ -75,6 +99,146 @@ class MachineTransactionService {
       currency: 'KES',
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /**
+   * Step 2: collect the money over M-Pesa (§ M-PESA ARCHITECTURE).
+   * Creates the pending transaction, then asks Daraja for an STK push
+   * to the customer's own phone — never the machine's own claim, and
+   * never routed through `PaymentIntent`/`ConversationService`, which
+   * are WhatsApp-checkout-specific (both require a `conversationId`
+   * that a vend has no equivalent of). `checkoutRequestId` is
+   * persisted immediately so the Daraja webhook route's vending
+   * branch can find this transaction the moment Safaricom's callback
+   * arrives — see that route's own doc comment for why it must be the
+   * *existing* webhook URL, not a new one.
+   *
+   * If the push itself fails to even reach Safaricom (network error,
+   * invalid phone, credentials misconfigured), the transaction is
+   * moved straight to `payment_failed` rather than left `pending`
+   * forever with no `checkoutRequestId` for anything to ever find —
+   * the reconciliation sweep only looks at `paid`/`vend_authorized`,
+   * so a push that never left this server would otherwise sit
+   * invisible to it.
+   */
+  async initiateMpesaPayment(input: {
+    businessId: string;
+    machineId: string;
+    slotId: string;
+    phoneNumber: string;
+  }): Promise<{ id: string; transactionRef: string; checkoutRequestId: string; customerMessage: string }> {
+    const { id, transactionRef } = await this.createPending({
+      businessId: input.businessId,
+      machineId: input.machineId,
+      slotId: input.slotId,
+      paymentMethod: 'mpesa',
+    });
+    const transaction = await machineTransactionRepository.findById(input.businessId, id);
+    if (!transaction) {
+      throw new MachineTransactionNotFoundError(id);
+    }
+
+    try {
+      const result = await this.paymentGateway.initiateStkPush({
+        businessId: input.businessId,
+        phone: input.phoneNumber,
+        amountKes: transaction.amountKes,
+        accountReference: transactionRef,
+        transactionDesc: 'Snack Quest vend',
+      });
+      await machineTransactionRepository.setCheckoutRequest(input.businessId, id, {
+        checkoutRequestId: result.checkoutRequestId,
+        merchantRequestId: result.merchantRequestId,
+      });
+      return { id, transactionRef, checkoutRequestId: result.checkoutRequestId, customerMessage: result.customerMessage };
+    } catch (error) {
+      await machineTransactionRepository.moveStatus(input.businessId, id, 'payment_failed');
+      throw error;
+    }
+  }
+
+  /**
+   * By its Safaricom `checkoutRequestId` — a passthrough so the
+   * Daraja webhook route's vending branch never reaches into
+   * `machineTransactionRepository` directly (§ route → service →
+   * repository).
+   */
+  async findByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction } | null> {
+    return machineTransactionRepository.findByCheckoutRequestId(businessId, checkoutRequestId);
+  }
+
+  /**
+   * Step 3: react to Safaricom's own verdict on the STK push from
+   * step 2 (§ M-PESA ARCHITECTURE). This is the *only* thing that can
+   * move a vending transaction into `paid` — a device never can, and
+   * neither can anything that hasn't gone through
+   * `darajaGateway.verifyCallback` first. Called from the Daraja
+   * webhook route's vending branch, never directly from a route.
+   *
+   * Idempotent two ways, deliberately redundant rather than trusting
+   * either alone: `webhookEventRepository.recordIfNew` is the atomic
+   * primitive (Firestore's `create()`-fails-on-duplicate) that closes
+   * the race a concurrent redelivery could otherwise win; the
+   * `transaction.status !== 'pending'` check below is what makes a
+   * *sequential* redelivery (the common case — Safaricom retries on a
+   * slow ack) a clean no-op instead of an `IllegalTransactionTransitionError`
+   * thrown from `moveStatus` on an already-settled transaction.
+   *
+   * Authorizes the vend synchronously, in the same call, once payment
+   * is confirmed — no command queue exists yet to do this any other
+   * way (§ device communication architecture, Phase 1). A hardware
+   * refusal here is not this method's problem to report as an error:
+   * `authorizeVend` already resolves it into `paid_vend_failed`, and
+   * Safaricom still gets its fast 200 either way.
+   */
+  async handleMpesaCallback(businessId: string, callback: PaymentCallbackResult): Promise<
+    | { handled: false }
+    | { handled: true; transactionId: string; outcome: 'duplicate' | 'succeeded' | 'failed' | 'amount_mismatch' }
+  > {
+    const found = await machineTransactionRepository.findByCheckoutRequestId(businessId, callback.checkoutRequestId);
+    if (!found) {
+      return { handled: false };
+    }
+
+    const { isNew } = await webhookEventRepository.recordIfNew({
+      businessId,
+      provider: 'daraja',
+      eventKind: 'vending_stk_callback',
+      providerEventId: callback.checkoutRequestId,
+      payload: callback as unknown as Record<string, unknown>,
+      relatedEntityId: found.id,
+    });
+    if (!isNew) {
+      return { handled: true, transactionId: found.id, outcome: 'duplicate' };
+    }
+
+    if (found.data.status !== 'pending') {
+      // A sequential redelivery of a callback already acted on — the
+      // atomic check above is what protects a *concurrent* one; this
+      // is what protects the ordinary "Safaricom retried after a slow
+      // ack" case from ever reaching `moveStatus` on a transaction
+      // that has already moved on.
+      return { handled: true, transactionId: found.id, outcome: 'duplicate' };
+    }
+
+    if (callback.resultCode !== 0) {
+      await this.markPaymentFailed(businessId, found.id);
+      return { handled: true, transactionId: found.id, outcome: 'failed' };
+    }
+
+    if (callback.amountKes !== found.data.amountKes) {
+      // Real money moved, but not the amount this transaction was
+      // created for — never fabricate a match. A human has to look;
+      // see `MachineTransactionStatus.manual_review`'s own doc comment.
+      await machineTransactionRepository.moveStatus(businessId, found.id, 'manual_review', {
+        failureReason: `Daraja confirmed KES ${callback.amountKes} against a KES ${found.data.amountKes} transaction`,
+      });
+      return { handled: true, transactionId: found.id, outcome: 'amount_mismatch' };
+    }
+
+    await this.markPaymentVerified(businessId, found.id, callback.mpesaReceiptNumber ?? '');
+    await this.authorizeVend(businessId, found.id);
+    return { handled: true, transactionId: found.id, outcome: 'succeeded' };
   }
 
   /**
@@ -196,6 +360,42 @@ class MachineTransactionService {
 
     await machineTelemetryEventRepository.markProcessed(telemetryEventId);
     return { applied: true, transactionId: found.id };
+  }
+
+  /**
+   * The reconciliation sweep (§ transaction timeout,
+   * docs/VENDING_OS_BENCHMARK.md §C/§H) — the exact pattern
+   * `PaymentService.reconcileStuckIntents` already proves in
+   * production, applied to a second collection rather than invented
+   * fresh. A transaction that has sat in `paid` or `vend_authorized`
+   * past `stuckAfterMs` with no device report ever arriving is moved
+   * to `manual_review`: the machine went offline mid-vend, or its
+   * report never reached the server, and nothing else will ever move
+   * it on its own. A late report arriving afterward still resolves it
+   * — see `MACHINE_TRANSACTION_STATUS_TRANSITIONS['manual_review']`.
+   *
+   * Deliberately does not attempt to query Daraja directly the way
+   * the e-commerce sweep does for a stuck *payment* — every
+   * transaction this sweep touches already has a *verified* payment
+   * (`paid`/`vend_authorized` are both reachable only from a real
+   * Daraja callback); what's unknown here is the *dispense* outcome,
+   * which is a fact only the machine holds, not Safaricom.
+   */
+  async reconcileStuckTransactions(businessId: string, stuckAfterMs = DEFAULT_STUCK_TRANSACTION_AFTER_MS): Promise<{ movedToManualReview: number }> {
+    const cutoff = new Date(Date.now() - stuckAfterMs);
+    let movedToManualReview = 0;
+
+    for (const status of ['paid', 'vend_authorized'] as const) {
+      const stuck = await machineTransactionRepository.listByStatusUpdatedBefore(businessId, status, cutoff);
+      for (const { id } of stuck) {
+        await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {
+          failureReason: `No device report received within ${Math.round(stuckAfterMs / 60000)} minutes of being marked "${status}"`,
+        });
+        movedToManualReview += 1;
+      }
+    }
+
+    return { movedToManualReview };
   }
 
   /** The customer's money is owed back — recorded, never itself moved. See `docs/VENDING_FOUNDATION.md` for why the actual reversal is explicitly not wired here. */

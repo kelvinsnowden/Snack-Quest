@@ -39,7 +39,20 @@ export type MachineTransactionStatus =
   | 'dispensed'
   | 'paid_vend_failed'
   | 'refund_requested'
-  | 'refunded';
+  | 'refunded'
+  /**
+   * A `paid`/`vend_authorized` transaction that sat past the
+   * reconciliation sweep's own threshold with no device report ever
+   * arriving — the machine went offline mid-vend, or its report was
+   * lost, and nothing else will ever move this transaction on its
+   * own. Mirrors `PaymentIntentStatus.expired`: money was taken, the
+   * outcome is genuinely unknown, and a human needs to look. Still
+   * reachable *out of* by a late device report (a machine that
+   * reconnects a day later and reports what actually happened is
+   * more authoritative than the sweep's own guess) — see
+   * `MACHINE_TRANSACTION_STATUS_TRANSITIONS`.
+   */
+  | 'manual_review';
 
 export type MachineTransactionPaymentMethod = 'mpesa' | 'cash' | 'other';
 
@@ -59,6 +72,18 @@ export interface MachineTransaction {
    * actually verified; never set from anything the device reports.
    */
   paymentRef: string | null;
+  /**
+   * Safaricom's own correlation pair for the STK push this
+   * transaction's payment was collected through — set once, at
+   * `initiateMpesaPayment`, before any callback exists to verify.
+   * This is what the Daraja webhook route's vending branch looks the
+   * transaction up by; it is never itself proof of payment, which is
+   * still only `paymentRef`/`paidAt`. Null for a transaction created
+   * without ever attempting an M-Pesa collection (`paymentMethod`
+   * `'cash'`/`'other'`).
+   */
+  checkoutRequestId: string | null;
+  merchantRequestId: string | null;
   /** Set once a vend is authorized and handed to the hardware adapter (§ hardware abstraction `authorizeVend()`) — the token/reference the adapter and the machine both use to correlate the eventual result. Null until authorized. */
   vendRef: string | null;
   amountKes: number;
@@ -87,17 +112,27 @@ export const MACHINE_TRANSACTION_STATUS_TRANSITIONS: Record<
   MachineTransactionStatus,
   MachineTransactionStatus[]
 > = {
-  pending: ['payment_failed', 'paid'],
+  // `manual_review` direct from `pending` covers one narrow case: a
+  // Daraja callback claims success for this transaction's own
+  // `checkoutRequestId` but the amount doesn't match what was
+  // charged for — real money moved, our records disagree, and a
+  // human has to look. See `machineTransactionService.handleMpesaCallback`.
+  pending: ['payment_failed', 'paid', 'manual_review'],
   payment_failed: [],
   // `paid_vend_failed` is reachable directly from `paid`, not only
   // through `vend_authorized` — a machine that refuses the
   // authorization outright (offline, slot empty, slot disabled) never
   // reaches "authorized" at all, and the customer's money still needs
   // the same refund path either way.
-  paid: ['vend_authorized', 'paid_vend_failed'],
-  vend_authorized: ['dispensed', 'paid_vend_failed'],
+  paid: ['vend_authorized', 'paid_vend_failed', 'manual_review'],
+  vend_authorized: ['dispensed', 'paid_vend_failed', 'manual_review'],
   dispensed: [],
   paid_vend_failed: ['refund_requested'],
   refund_requested: ['refunded'],
   refunded: [],
+  // A late device report is more authoritative than the sweep's own
+  // guess that nothing would ever arrive — if one does, it resolves
+  // this the same way it would have resolved `vend_authorized`
+  // directly, rather than being stuck behind a terminal state.
+  manual_review: ['dispensed', 'paid_vend_failed', 'refund_requested'],
 };

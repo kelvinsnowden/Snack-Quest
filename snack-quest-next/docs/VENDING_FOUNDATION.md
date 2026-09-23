@@ -295,9 +295,20 @@ succeeds, all 8 new routes registered with no conflicts.
 
 ## 7. Explicitly out of scope / deferred
 
+**Update**: M-Pesa payment initiation for vending (`POST /api/vending/payments`,
+the Daraja webhook route's vending branch, the transaction-timeout
+sweep) was built in the phase that followed this report — see
+`docs/VENDING_OS_BENCHMARK.md`'s own "Phase 1 — implemented" section
+for what shipped and why the design differs from what a naive reading
+of "add a payment endpoint" would produce (one shared Daraja callback
+URL per business, not a second one). The items below are otherwise
+still accurate.
+
 - **No Shengma adapter** — see §5. Nothing here guesses at their API.
-- **No customer-facing checkout endpoint for vending** — see §3's
-  interpretation note.
+- **No customer-facing *screen* driving the checkout endpoint** — the
+  API contract now exists and is real (unlike when this line was
+  first written); what's still missing is the machine-side touchscreen
+  that would call it, which is screen-CMS/SCALE-bucket work.
 - **No partner login/session/UI** — per the brief's own instruction.
   The type, Firestore rule, and service primitive exist; the session
   that would issue a `partnerId` claim does not.

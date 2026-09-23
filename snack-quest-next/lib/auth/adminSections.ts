@@ -23,7 +23,7 @@ import type { StaffSession } from '@/services/staffAuthService';
  * version a page's layout calls lives separately, and only there, in
  * `lib/auth/requireAdminSection.ts`.
  */
-export type AdminSection = 'orders' | 'finance' | 'marketing' | 'conversations' | 'operations';
+export type AdminSection = 'orders' | 'finance' | 'marketing' | 'conversations' | 'operations' | 'vending';
 
 export interface AdminSectionMeta {
   key: AdminSection;
@@ -56,6 +56,11 @@ export const ADMIN_SECTIONS: AdminSectionMeta[] = [
     key: 'operations',
     label: 'Operations & System',
     description: 'Operations dashboard, audit logs, storage, and settings.',
+  },
+  {
+    key: 'vending',
+    label: 'Vending',
+    description: 'Discovery Machine fleet — machines, slots, and transactions.',
   },
 ];
 

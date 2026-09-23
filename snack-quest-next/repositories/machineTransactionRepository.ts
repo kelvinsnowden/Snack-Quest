@@ -9,7 +9,18 @@ const COLLECTION = 'machineTransactions';
 
 export type MachineTransactionInput = Omit<
   MachineTransaction,
-  'createdAt' | 'updatedAt' | 'transactionRef' | 'status' | 'paidAt' | 'dispensedAt' | 'failureReason' | 'appliedTelemetryEventId' | 'paymentRef' | 'vendRef'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'transactionRef'
+  | 'status'
+  | 'paidAt'
+  | 'dispensedAt'
+  | 'failureReason'
+  | 'appliedTelemetryEventId'
+  | 'paymentRef'
+  | 'vendRef'
+  | 'checkoutRequestId'
+  | 'merchantRequestId'
 >;
 
 export class MachineTransactionNotFoundError extends Error {
@@ -46,6 +57,8 @@ class MachineTransactionRepository {
       status: 'pending' satisfies MachineTransactionStatus,
       paymentRef: null,
       vendRef: null,
+      checkoutRequestId: null,
+      merchantRequestId: null,
       paidAt: null,
       dispensedAt: null,
       failureReason: null,
@@ -84,6 +97,66 @@ class MachineTransactionRepository {
       .limit(1)
       .get();
     return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as MachineTransaction };
+  }
+
+  /**
+   * By the M-Pesa STK push's own `CheckoutRequestID` — how the Daraja
+   * webhook route's vending branch recognises "this callback belongs
+   * to a vending transaction, not the e-commerce checkout flow"
+   * before it decides anything else. Businesses only, never a
+   * fleet-wide scan across tenants, since Safaricom's ids are unique
+   * per push but this collection is not scoped by them alone.
+   */
+  async findByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('checkoutRequestId', '==', checkoutRequestId)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as MachineTransaction };
+  }
+
+  /**
+   * Records Safaricom's STK-push correlation pair at the moment the
+   * push is sent — before any callback exists to verify, which is
+   * exactly why this is a separate write from `moveStatus` rather than
+   * a field on it: setting these carries no state-machine transition,
+   * and a transaction stays `pending` the whole time a real customer
+   * is looking at their phone's PIN prompt.
+   */
+  async setCheckoutRequest(businessId: string, transactionId: string, input: { checkoutRequestId: string; merchantRequestId: string }): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
+    const snapshot = await ref.get();
+    const data = snapshot.data() as MachineTransaction | undefined;
+    if (!data || data.businessId !== businessId) {
+      throw new MachineTransactionNotFoundError(transactionId);
+    }
+    await ref.update({
+      checkoutRequestId: input.checkoutRequestId,
+      merchantRequestId: input.merchantRequestId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  /**
+   * Every transaction of one status whose `updatedAt` is older than
+   * `before` — the reconciliation sweep's own read (§ transaction
+   * timeout). Bounded to one status per call rather than an `in`
+   * filter so the sweep's two calls (`paid`, `vend_authorized`) never
+   * depend on a composite index this codebase doesn't already need
+   * elsewhere for an equality-plus-range query on the same two fields.
+   */
+  async listByStatusUpdatedBefore(businessId: string, status: MachineTransactionStatus, before: Date, limit = 200): Promise<{ id: string; data: MachineTransaction }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', status)
+      .where('updatedAt', '<', before)
+      .orderBy('updatedAt', 'asc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
   }
 
   /**
