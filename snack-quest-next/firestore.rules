@@ -42,6 +42,27 @@ service cloud.firestore {
     function isTenantAdmin(businessId) {
       return isAdmin() && belongsToBusiness(businessId);
     }
+    // A partner session (§ RBAC foundation, docs/VENDING_FOUNDATION.md)
+    // carries a `partnerId` custom claim the same way a staff session
+    // carries `businessId` — set once a partner login exists to set it
+    // (none does yet: no partner UI or login flow is built, per the
+    // brief's own "do not yet build a full partner UI"). This function
+    // and `machineOwnerPartnerId` below are the isolation boundary the
+    // fleet audit's own §Isolation section calls for enforced
+    // independently of the service layer — the same
+    // `machineService.assertPartnerOwnsMachine` check, expressed here
+    // so a future partner client SDK read can never bypass it even if
+    // a route guard has a bug.
+    function hasPartnerAccess(partnerId) {
+      return isSignedIn() && hasRole('partner') && partnerId != null && partnerId == request.auth.token.partnerId;
+    }
+    // One extra document read per rule evaluation — acceptable here
+    // because it only runs on the narrow set of collections keyed by
+    // `machineId` rather than carrying `ownerPartnerId` directly
+    // (`machineSlots`, `machineTransactions`, `machineDailySummary`).
+    function machineOwnerPartnerId(machineId) {
+      return get(/databases/$(database)/documents/machines/$(machineId)).data.ownerPartnerId;
+    }
 
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
@@ -419,6 +440,86 @@ service cloud.firestore {
       // seed script / Admin SDK only in practice
       allow create: if isTenantAdmin(request.resource.data.businessId);
       allow update, delete: if isTenantAdmin(resource.data.businessId);
+    }
+
+    // Discovery Machine fleet (§ CORE ENTITIES, docs/VENDING_FOUNDATION.md).
+    // Every write here is Admin-SDK-only — a machine's own gateway
+    // never holds a Firebase Auth session, and every device-facing
+    // route (`app/api/vending/telemetry`, `.../transactions`)
+    // authenticates with its own bearer-token scheme
+    // (`lib/vending/deviceAuth.ts`) entirely outside these rules, then
+    // writes through the Admin SDK, which bypasses Security Rules
+    // entirely. `allow write: if false` below is not a gap this relies
+    // on — it is the second, independent enforcement of "the vending
+    // machine must never write directly to Firestore".
+    //
+    // Reads: staff (admin/super_admin, this tenant) always; a
+    // `partner` session additionally reads exactly what
+    // FLEET_ARCHITECTURE_AUDIT.md §6's own partner-dashboard sketch
+    // describes — their own machines, those machines' slots and
+    // transactions, the daily rollups over both — and nothing else.
+    // `machineInventoryMovements`, `machineTelemetryEvents`,
+    // `machineLocationHistory`, `restockTasks`, `deviceCredentials`
+    // and `partnerMachineAgreements`/`machineSettlements` (commercial
+    // terms, not yet legally reviewed — see that type's own doc
+    // comment) stay staff-only: nothing in the audit's dashboard
+    // sketch reads them as a partner, and least-privilege means not
+    // granting a read nobody asked for yet.
+    match /machines/{machineId} {
+      allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(resource.data.ownerPartnerId);
+      allow write: if false;
+    }
+    match /machineSlots/{slotId} {
+      allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
+      allow write: if false;
+    }
+    match /machineTransactions/{transactionId} {
+      allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
+      allow write: if false;
+    }
+    match /machineDailySummary/{summaryId} {
+      allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
+      allow write: if false;
+    }
+    match /partnerDailySummary/{summaryId} {
+      allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(resource.data.partnerId);
+      allow write: if false;
+    }
+    match /partners/{partnerId} {
+      allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(partnerId);
+      allow write: if false;
+    }
+    match /machineInventoryMovements/{movementId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineTelemetryEvents/{eventId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineLocationHistory/{entryId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /restockTasks/{taskId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /partnerMachineAgreements/{agreementId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineSettlements/{settlementId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    // deviceCredentials: `secretHash` only, never plaintext (see
+    // `repositories/deviceCredentialRepository.ts`) — still kept to
+    // the same admin-read pattern as everything else here rather than
+    // treated as a lesser secret because it's hashed.
+    match /deviceCredentials/{credentialId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
     }
 
     // businesses: the tenant profile itself. The document ID *is* the

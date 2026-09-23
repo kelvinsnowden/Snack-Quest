@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/rebuild-analytics-rollups",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/rebuild-vending-rollups",
+      "schedule": "0 5 * * *"
     }
   ]
 }
