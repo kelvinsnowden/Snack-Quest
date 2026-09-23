@@ -166,14 +166,28 @@ describe('receiveTelemetry', () => {
 });
 
 describe('adapter registry', () => {
-  it('resolves "mock" to a working adapter', async () => {
+  it('resolves "mock" to a working, fully-capable adapter', async () => {
     const adapter = defaultVendingAdapterResolver('mock');
     expect(adapter.manufacturer).toBe('mock');
     expect(await adapter.getFaults('any-machine')).toEqual([]);
+    expect(adapter.capabilities().vend).toBe(true);
+  });
+
+  it('resolves "shengma" to an honest stub, not a guessed-at API', async () => {
+    const adapter = defaultVendingAdapterResolver('shengma');
+    expect(adapter.manufacturer).toBe('shengma');
+    // Every capability is false — nothing is wired behind this stub yet.
+    expect(adapter.capabilities().vend).toBe(false);
+    expect(adapter.capabilities().inventory_read).toBe(false);
+    // authorizeVend refuses cleanly rather than throwing, so the
+    // payment pipeline's existing refund path handles it unchanged.
+    const result = await adapter.authorizeVend('m1', 'A1');
+    expect(result.authorized).toBe(false);
+    // Every other action names exactly what's missing.
+    await expect(adapter.getMachineStatus('m1')).rejects.toThrow('protocol configured');
   });
 
   it('refuses an unimplemented manufacturer rather than guessing at an API', () => {
-    expect(() => defaultVendingAdapterResolver('shengma')).toThrow(UnsupportedManufacturerError);
     expect(() => defaultVendingAdapterResolver('other')).toThrow(UnsupportedManufacturerError);
   });
 });

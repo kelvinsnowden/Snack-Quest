@@ -8,6 +8,7 @@ import {
   type VendingSlotReport,
   type VendingTelemetryReport,
 } from '../hardwareAdapter';
+import { FULL_CAPABILITIES, type HardwareCapabilities } from '../protocol/capabilities';
 
 /**
  * `MockVendingAdapter` — the only `VendingHardwareAdapter`
@@ -34,6 +35,11 @@ export class MockVendingAdapter implements VendingHardwareAdapter {
   private readonly slots = new Map<string, Map<string, { quantity: number; enabled: boolean; priceKes: number }>>();
   private readonly faults = new Map<string, string[]>();
   private readonly online = new Set<string>();
+
+  /** Implements every method on the interface — the reference full-capability adapter. */
+  capabilities(): HardwareCapabilities {
+    return FULL_CAPABILITIES;
+  }
 
   /** Test/seed helper — not part of the interface. Real hardware's slots are configured through `setPrice`/`enableSlot`/a restock, not seeded directly. */
   seedSlot(machineId: string, slotCode: string, config: { quantity: number; enabled?: boolean; priceKes?: number }): void {

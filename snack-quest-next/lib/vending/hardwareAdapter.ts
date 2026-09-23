@@ -28,7 +28,15 @@
  * `async` for that reason, even the mock's, which resolves
  * synchronously today — a real adapter's won't, and nothing above
  * this interface should have to change when it doesn't.
+ *
+ * This is also the "universal machine contract"
+ * (§ D of docs/HARDWARE_COMPATIBILITY_ARCHITECTURE.md): a manufacturer
+ * adapter — `ShengmaAdapter` and any future one — implements this same
+ * interface directly rather than a separate parallel type, since this
+ * one already covers every action the business layer needs.
  */
+
+import type { HardwareCapabilities } from './protocol/capabilities';
 
 export interface VendingMachineStatusReport {
   machineId: string;
@@ -79,8 +87,35 @@ export class UnrecognisedHardwarePayloadError extends Error {
   }
 }
 
+/**
+ * Thrown by a manufacturer adapter stub (e.g. `ShengmaAdapter`) for any
+ * action beyond `capabilities()` — which must never throw, since
+ * discoverability is unconditional — and `authorizeVend`, which has a
+ * clean "refused" value already and returns that instead of throwing
+ * (§ E of docs/HARDWARE_COMPATIBILITY_ARCHITECTURE.md). This is the
+ * honest alternative to faking a response: it says "the interface slot
+ * exists; no protocol is wired behind it yet."
+ */
+export class ProtocolNotConfiguredError extends Error {
+  constructor(manufacturer: string, action: string) {
+    super(
+      `${manufacturer} adapter has no protocol configured for "${action}" — ` +
+        `see the ProtocolAdapterRegistry (lib/vending/protocol/registry.ts) for what is implemented, planned, or blocked on manufacturer documentation.`,
+    );
+    this.name = 'ProtocolNotConfiguredError';
+  }
+}
+
 export interface VendingHardwareAdapter {
   readonly manufacturer: string;
+
+  /**
+   * What this adapter can actually do — pure, synchronous, no I/O
+   * (§ D of docs/HARDWARE_COMPATIBILITY_ARCHITECTURE.md). A capability
+   * is a property of which protocol(s) this adapter was built against,
+   * not something worth a network round trip to ask the machine.
+   */
+  capabilities(): HardwareCapabilities;
 
   getMachineStatus(machineId: string): Promise<VendingMachineStatusReport>;
   getSlots(machineId: string): Promise<VendingSlotReport[]>;

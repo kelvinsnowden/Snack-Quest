@@ -193,13 +193,18 @@ this codebase. `MockVendingAdapter` is the only implementation today
 refuse an empty/disabled slot or an offline machine rather than always
 succeeding.
 
-**No Shengma-specific code exists.** `manufacturer: 'shengma'` is a
-valid enum value on `Machine` and `adapterRegistry.ts`'s
-`UnsupportedManufacturerError` is what a business would hit today if
-they tried to provision one — a clear, honest error, not a silent
-fallback to the mock. This is deliberate, per the brief's explicit
-"do not implement undocumented Shengma endpoints" and "do not assume
-Shengma's exact API until we receive their documentation."
+**Update, see `docs/HARDWARE_COMPATIBILITY_ARCHITECTURE.md`:** `manufacturer:
+'shengma'` now resolves to `ShengmaAdapter` — an honest,
+interface-conformant stub with every capability declared `false`,
+not the `UnsupportedManufacturerError` this section originally
+described. No Shengma-specific protocol behaviour was added; the stub
+exists so the admin UI and the business layer can talk about a
+Shengma machine at all (capabilities, diagnostics) without pretending
+any of it works. `manufacturer: 'other'` still throws
+`UnsupportedManufacturerError` — there is no manufacturer to name a
+stub after. This is still exactly the brief's original discipline: "do
+not implement undocumented Shengma endpoints," just expressed as a
+richer, capability-transparent refusal instead of a bare exception.
 
 **What's blocked on Shengma's documentation, explicitly**:
 - A `ShengmaVendingAdapter implements VendingHardwareAdapter` — every
