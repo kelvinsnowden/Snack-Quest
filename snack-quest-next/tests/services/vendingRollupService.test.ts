@@ -8,6 +8,9 @@ import { MachineTelemetryService } from '@/services/machineTelemetryService';
 import { partnerService } from '@/services/partnerService';
 import { vendingRollupService } from '@/services/vendingRollupService';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
+import { networkDailySummaryRepository } from '@/repositories/networkDailySummaryRepository';
+import { machineAssortmentService } from '@/services/machineAssortmentService';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import { dateKey } from '@/lib/analytics/dateKey';
 
@@ -93,6 +96,9 @@ beforeEach(async () => {
     'partners',
     'machineDailySummary',
     'partnerDailySummary',
+    'networkDailySummary',
+    'snackItems',
+    'machineAssortments',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
@@ -114,9 +120,80 @@ describe('vendingRollupService.computeMachineDay / rebuildMachineDay', () => {
     expect(rollup.grossSalesKes).toBe(1050);
     expect(rollup.unitsSold).toBe(3);
     expect(rollup.averageOrderValueKes).toBe(350);
-    expect(rollup.byProduct['pkg-1']).toEqual({ unitsSold: 3, grossSalesKes: 1050 });
+    expect(rollup.byProduct['pkg-1']).toEqual({ unitsSold: 3, grossSalesKes: 1050, cogsKes: 0, grossProfitKes: 1050, category: null });
     expect(rollup.paidVendFailedCount).toBe(0);
     expect(rollup.refundsKes).toBe(0);
+    // pkg-1 is a package — packages carry no cost field, so its units count as unpriced rather than a fabricated zero cost.
+    expect(rollup.unpricedUnitsSold).toBe(3);
+    expect(rollup.stockoutProductIds).toEqual([]);
+  });
+
+  it('resolves cost/profit/category for a snackItem sale from the transaction\'s own recorded product, not the slot\'s current config', async () => {
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: `SQ-SKU-${Date.now()}`,
+      serialNumber: 'SN-1',
+      manufacturer: 'mock',
+      model: 'test-model',
+      actor: 'staff-1',
+    });
+    const skuId = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Korean Spicy Snack', imageUrl: null, expectedUnitCostKes: 100, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    adapter.seedSlot(machineId, 'B01', { quantity: 5 });
+    const slots = new MachineSlotService(() => adapter);
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'B01', productId: skuId, productCatalogue: 'snackItem', priceKes: 250, capacity: 10, position: 1 });
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__B01`).update({ currentQuantity: 5 });
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: skuId, productCatalogue: 'snackItem', category: 'Asian Snacks', actor: 'staff-1' });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', skuId, 'B01');
+
+    const transactions = new MachineTransactionService(() => adapter);
+    const { id } = await transactions.createPending({ businessId: BUSINESS_ID, machineId, slotId: 'B01', paymentMethod: 'mpesa' });
+    await transactions.markPaymentVerified(BUSINESS_ID, id, `mpesa-ref-${id}`);
+    const { vendRef } = await transactions.authorizeVend(BUSINESS_ID, id);
+    await transactions.applyVendResult({ businessId: BUSINESS_ID, machineId, rawPayload: { vendRef, dispensed: true, idempotencyKey: `vend-result-${id}` }, source: 'mock', actor: 'staff-1' });
+    await adminFirestore.collection('machineTransactions').doc(id).update({ createdAt: fixedNow });
+
+    const rollup = await vendingRollupService.rebuildMachineDay(BUSINESS_ID, machineId, FIXED_DATE);
+    expect(rollup.byProduct[skuId]).toEqual({ unitsSold: 1, grossSalesKes: 250, cogsKes: 100, grossProfitKes: 150, category: 'Asian Snacks' });
+    expect(rollup.unpricedUnitsSold).toBe(0);
+  });
+
+  it('snapshots a stocked-out assorted product, but never an assorted product that still has stock', async () => {
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: `SQ-STOCKOUT-${Date.now()}`,
+      serialNumber: 'SN-1',
+      manufacturer: 'mock',
+      model: 'test-model',
+      actor: 'staff-1',
+    });
+    const emptySku = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Out Of Stock Snack', imageUrl: null, expectedUnitCostKes: 100, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    const stockedSku = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Well Stocked Snack', imageUrl: null, expectedUnitCostKes: 100, unitLabel: 'bag', origin: 'Japan', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    const slots = new MachineSlotService(() => adapter);
+    adapter.seedSlot(machineId, 'C01', { quantity: 0 });
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'C01', productId: emptySku, productCatalogue: 'snackItem', priceKes: 250, capacity: 10, position: 1 });
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__C01`).update({ currentQuantity: 0 });
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: emptySku, productCatalogue: 'snackItem', actor: 'staff-1' });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', emptySku, 'C01');
+
+    adapter.seedSlot(machineId, 'C02', { quantity: 8 });
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'C02', productId: stockedSku, productCatalogue: 'snackItem', priceKes: 250, capacity: 10, position: 2 });
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__C02`).update({ currentQuantity: 8 });
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: stockedSku, productCatalogue: 'snackItem', actor: 'staff-1' });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', stockedSku, 'C02');
+
+    const rollup = await vendingRollupService.rebuildMachineDay(BUSINESS_ID, machineId, FIXED_DATE);
+    expect(rollup.stockoutProductIds).toEqual([emptySku]);
   });
 
   it('counts a paid-but-vend-failed transaction separately from a clean dispense, and never as revenue', async () => {
@@ -257,5 +334,99 @@ describe('vendingRollupService.computePartnerDay / rebuildPartnerDay', () => {
     const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Empty Partner', actor: 'staff-1' });
     const rollup = await vendingRollupService.rebuildPartnerDay(BUSINESS_ID, partnerId, FIXED_DATE);
     expect(rollup).toEqual({ machineCount: 0, transactionCount: 0, dispensedCount: 0, grossSalesKes: 0, refundsKes: 0, faultCount: 0 });
+  });
+});
+
+describe('vendingRollupService.computeNetworkDay / rebuildNetworkDay', () => {
+  it('sums gross sales, COGS and category mix across every machine in the business, composed from machineDailySummary', async () => {
+    const adapter = new MockVendingAdapter();
+    const skuId = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Network Snack', imageUrl: null, expectedUnitCostKes: 100, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+
+    const { machineId: machineA } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: `SQ-NET-A-${Date.now()}`,
+      serialNumber: 'SN-1',
+      manufacturer: 'mock',
+      model: 'test-model',
+      actor: 'staff-1',
+    });
+    adapter.seedSlot(machineA, 'A01', { quantity: 5 });
+    const slots = new MachineSlotService(() => adapter);
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId: machineA, slotCode: 'A01', productId: skuId, productCatalogue: 'snackItem', priceKes: 250, capacity: 10, position: 1 });
+    await adminFirestore.collection('machineSlots').doc(`${machineA}__A01`).update({ currentQuantity: 5 });
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId: machineA, productId: skuId, productCatalogue: 'snackItem', category: 'Asian Snacks', actor: 'staff-1' });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineA, 'snackItem', skuId, 'A01');
+
+    const { machineId: machineB } = await seedMachineWithSlot(adapter, null);
+
+    // machine A: one snackItem sale (cost 100, price 250); machine B: one package sale (unpriced).
+    const transactionsA = new MachineTransactionService(() => adapter);
+    const { id: txA } = await transactionsA.createPending({ businessId: BUSINESS_ID, machineId: machineA, slotId: 'A01', paymentMethod: 'mpesa' });
+    await transactionsA.markPaymentVerified(BUSINESS_ID, txA, `mpesa-ref-${txA}`);
+    const { vendRef: vendRefA } = await transactionsA.authorizeVend(BUSINESS_ID, txA);
+    await transactionsA.applyVendResult({ businessId: BUSINESS_ID, machineId: machineA, rawPayload: { vendRef: vendRefA, dispensed: true, idempotencyKey: `vend-result-${txA}` }, source: 'mock', actor: 'staff-1' });
+    await adminFirestore.collection('machineTransactions').doc(txA).update({ createdAt: fixedNow });
+
+    await dispenseOneSale(adapter, machineB);
+
+    const rollup = await vendingRollupService.rebuildNetworkDay(BUSINESS_ID, FIXED_DATE);
+
+    expect(rollup.machineCount).toBe(2);
+    expect(rollup.transactionCount).toBe(2);
+    expect(rollup.dispensedCount).toBe(2);
+    expect(rollup.grossSalesKes).toBe(600); // 250 + 350
+    expect(rollup.cogsKes).toBe(100);
+    expect(rollup.grossProfitKes).toBe(500);
+    expect(rollup.unpricedUnitsSold).toBe(1); // machine B's package sale
+    expect(rollup.byCategory['Asian Snacks']).toEqual({ unitsSold: 1, grossSalesKes: 250, cogsKes: 100, grossProfitKes: 150 });
+    expect(rollup.byCategory.uncategorized).toEqual({ unitsSold: 1, grossSalesKes: 350, cogsKes: 0, grossProfitKes: 350 });
+
+    const stored = await networkDailySummaryRepository.get(BUSINESS_ID, FIXED_DATE);
+    expect(stored?.grossSalesKes).toBe(600);
+  });
+
+  it('self-heals a machine day that was never stored, without persisting it under the machine itself', async () => {
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSlot(adapter, null);
+    await dispenseOneSale(adapter, machineId);
+    // Deliberately never call rebuildMachineDay for this machine.
+
+    const rollup = await vendingRollupService.computeNetworkDay(BUSINESS_ID, FIXED_DATE);
+    expect(rollup.grossSalesKes).toBe(350);
+
+    const storedMachineRollup = await machineDailySummaryRepository.get(BUSINESS_ID, machineId, FIXED_DATE);
+    expect(storedMachineRollup).toBeNull();
+  });
+
+  it('is idempotent: rebuilding the same network day twice produces the same stored rollup, never double-counted', async () => {
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSlot(adapter, null);
+    await dispenseOneSale(adapter, machineId);
+
+    const first = await vendingRollupService.rebuildNetworkDay(BUSINESS_ID, FIXED_DATE);
+    const second = await vendingRollupService.rebuildNetworkDay(BUSINESS_ID, FIXED_DATE);
+    expect(second).toEqual(first);
+    expect(second.grossSalesKes).toBe(350);
+  });
+
+  it('reports zero for a business with no machines', async () => {
+    const rollup = await vendingRollupService.rebuildNetworkDay(BUSINESS_ID, FIXED_DATE);
+    expect(rollup).toEqual({
+      machineCount: 0,
+      transactionCount: 0,
+      dispensedCount: 0,
+      grossSalesKes: 0,
+      refundsKes: 0,
+      unitsSold: 0,
+      cogsKes: 0,
+      grossProfitKes: 0,
+      unpricedUnitsSold: 0,
+      faultCount: 0,
+      stockoutSnapshotCount: 0,
+      byCategory: {},
+    });
   });
 });

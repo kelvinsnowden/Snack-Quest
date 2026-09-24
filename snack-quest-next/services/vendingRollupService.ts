@@ -6,8 +6,12 @@ import { machineInventoryMovementRepository } from '@/repositories/machineInvent
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { partnerDailySummaryRepository } from '@/repositories/partnerDailySummaryRepository';
+import { networkDailySummaryRepository } from '@/repositories/networkDailySummaryRepository';
+import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
+import { machineSlotRepository } from '@/repositories/machineSlotRepository';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { dateKey, dayBounds } from '@/lib/analytics/dateKey';
-import type { MachineDailySummary, PartnerDailySummary } from '@/types';
+import type { MachineDailySummary, PartnerDailySummary, NetworkDailySummary } from '@/types';
 
 /**
  * `machineDailySummary`/`partnerDailySummary` rollups (§ ANALYTICS,
@@ -34,6 +38,7 @@ const TELEMETRY_PAGE_SIZE = 500;
 
 type MachineDayRollup = Omit<MachineDailySummary, 'businessId' | 'machineId' | 'date' | 'rebuiltAt'>;
 type PartnerDayRollup = Omit<PartnerDailySummary, 'businessId' | 'partnerId' | 'date' | 'rebuiltAt'>;
+type NetworkDayRollup = Omit<NetworkDailySummary, 'businessId' | 'date' | 'rebuiltAt'>;
 
 class VendingRollupService {
   /**
@@ -52,7 +57,10 @@ class VendingRollupService {
     let grossSalesKes = 0;
     let refundsKes = 0;
     let unitsSold = 0;
-    const byProduct: Record<string, { unitsSold: number; grossSalesKes: number }> = {};
+    let unpricedUnitsSold = 0;
+    const byProduct: Record<string, { unitsSold: number; grossSalesKes: number; cogsKes: number; grossProfitKes: number; category: string | null }> = {};
+    /** Every dispensed sale's own `(productCatalogue, productId)`, deduped, resolved once after the stream ends rather than once per transaction. */
+    const soldProducts = new Map<string, { productCatalogue: 'package' | 'snackItem'; productId: string }>();
 
     for await (const { data } of machineTransactionRepository.streamRange(businessId, {
       machineId,
@@ -65,16 +73,58 @@ class VendingRollupService {
         dispensedCount += 1;
         unitsSold += 1;
         grossSalesKes += data.amountKes;
-        const product = byProduct[data.productId] ?? { unitsSold: 0, grossSalesKes: 0 };
+        const product = byProduct[data.productId] ?? { unitsSold: 0, grossSalesKes: 0, cogsKes: 0, grossProfitKes: 0, category: null };
         product.unitsSold += 1;
         product.grossSalesKes += data.amountKes;
         byProduct[data.productId] = product;
+        soldProducts.set(data.productId, { productCatalogue: data.productCatalogue, productId: data.productId });
       } else if (data.status === 'paid_vend_failed') {
         paidVendFailedCount += 1;
       } else if (data.status === 'refunded') {
         refundsKes += data.amountKes;
       }
     }
+
+    // Cost resolution (§ PRODUCT INTELLIGENCE): each sale's own recorded
+    // productCatalogue/productId, never the slot's current config — a
+    // package carries no cost field at all, counted in
+    // `unpricedUnitsSold` rather than silently costed at zero.
+    const snackItemProductIds = Array.from(soldProducts.values())
+      .filter((p) => p.productCatalogue === 'snackItem')
+      .map((p) => p.productId);
+    const snackItemsById = await snackItemRepository.findManyById(snackItemProductIds);
+
+    // Category resolution: this machine's own current assortment row for
+    // each sold product — null if never assorted with one, or no longer
+    // assorted to this machine at all (the row itself may not exist).
+    const assortmentRows = await machineAssortmentRepository.listByMachine(businessId, machineId);
+    const categoryByProductKey = new Map(assortmentRows.map((row) => [`${row.productCatalogue}__${row.productId}`, row.category]));
+
+    for (const [productId, { productCatalogue }] of soldProducts) {
+      const product = byProduct[productId];
+      const unitCostKes = productCatalogue === 'snackItem' ? snackItemsById.get(productId)?.expectedUnitCostKes ?? null : null;
+      if (unitCostKes === null) {
+        unpricedUnitsSold += product.unitsSold;
+      } else {
+        product.cogsKes = product.unitsSold * unitCostKes;
+      }
+      product.grossProfitKes = product.grossSalesKes - product.cogsKes;
+      product.category = categoryByProductKey.get(`${productCatalogue}__${productId}`) ?? null;
+    }
+
+    // Stockout snapshot (§ STOCKOUT INTELLIGENCE): every currently
+    // assorted+visible product whose linked slot has nothing sellable
+    // right now — a point-in-time read at rollup-build time, not a
+    // trace of exactly when during the day it happened.
+    const slots = await machineSlotRepository.listByMachine(businessId, machineId);
+    const slotByCode = new Map(slots.map((slot) => [slot.slotCode, slot]));
+    const stockoutProductIds = assortmentRows
+      .filter((row) => row.assorted && row.visible)
+      .filter((row) => {
+        const slot = row.slotCode ? slotByCode.get(row.slotCode) : null;
+        return !slot || slot.currentQuantity <= 0;
+      })
+      .map((row) => row.productId);
 
     const restockCount = await countAsyncIterable(
       machineInventoryMovementRepository.streamMovementsInRange(businessId, {
@@ -115,6 +165,8 @@ class VendingRollupService {
       unitsSold,
       averageOrderValueKes: dispensedCount > 0 ? Math.round((grossSalesKes / dispensedCount) * 100) / 100 : null,
       byProduct,
+      unpricedUnitsSold,
+      stockoutProductIds,
       restockCount,
       faultCount,
       heartbeatCount,
@@ -189,6 +241,88 @@ class VendingRollupService {
         continue;
       }
       await this.rebuildPartnerDay(businessId, partnerId, date);
+      days += 1;
+    }
+    return { days };
+  }
+
+  /**
+   * The whole fleet's day, composed from every machine's own
+   * `machineDailySummary` (§ NETWORK INTELLIGENCE: "Use rollups. Do
+   * not scan raw transaction collections on every dashboard") — the
+   * exact same "sum the smaller rollup" shape `computePartnerDay`
+   * already uses, at business scope instead of partner scope. A
+   * machine with no stored rollup yet for this day is computed on the
+   * spot (self-healing) and not persisted, same as `computePartnerDay`.
+   */
+  async computeNetworkDay(businessId: string, date: string): Promise<NetworkDayRollup> {
+    const machines = await machineRepository.listAllStatuses(businessId);
+    const machineIds = machines.map((m) => m.id);
+    const stored = await machineDailySummaryRepository.listForDate(businessId, machineIds, date);
+
+    let transactionCount = 0;
+    let dispensedCount = 0;
+    let grossSalesKes = 0;
+    let refundsKes = 0;
+    let unitsSold = 0;
+    let cogsKes = 0;
+    let unpricedUnitsSold = 0;
+    let faultCount = 0;
+    let stockoutSnapshotCount = 0;
+    const byCategory: Record<string, { unitsSold: number; grossSalesKes: number; cogsKes: number; grossProfitKes: number }> = {};
+
+    for (const machineId of machineIds) {
+      const rollup = stored.get(machineId) ?? (await this.computeMachineDay(businessId, machineId, date));
+      transactionCount += rollup.transactionCount;
+      dispensedCount += rollup.dispensedCount;
+      grossSalesKes += rollup.grossSalesKes;
+      refundsKes += rollup.refundsKes;
+      unitsSold += rollup.unitsSold;
+      unpricedUnitsSold += rollup.unpricedUnitsSold;
+      faultCount += rollup.faultCount;
+      stockoutSnapshotCount += rollup.stockoutProductIds.length;
+      for (const product of Object.values(rollup.byProduct)) {
+        cogsKes += product.cogsKes;
+        const categoryKey = product.category ?? 'uncategorized';
+        const category = byCategory[categoryKey] ?? { unitsSold: 0, grossSalesKes: 0, cogsKes: 0, grossProfitKes: 0 };
+        category.unitsSold += product.unitsSold;
+        category.grossSalesKes += product.grossSalesKes;
+        category.cogsKes += product.cogsKes;
+        category.grossProfitKes += product.grossProfitKes;
+        byCategory[categoryKey] = category;
+      }
+    }
+
+    return {
+      machineCount: machineIds.length,
+      transactionCount,
+      dispensedCount,
+      grossSalesKes,
+      refundsKes,
+      unitsSold,
+      cogsKes,
+      grossProfitKes: grossSalesKes - cogsKes,
+      unpricedUnitsSold,
+      faultCount,
+      stockoutSnapshotCount,
+      byCategory,
+    };
+  }
+
+  async rebuildNetworkDay(businessId: string, date: string): Promise<NetworkDayRollup> {
+    const rollup = await this.computeNetworkDay(businessId, date);
+    await networkDailySummaryRepository.put(businessId, date, rollup);
+    return rollup;
+  }
+
+  async rebuildNetworkDayRange(businessId: string, startDate: string, endDate: string): Promise<{ days: number }> {
+    const today = dateKey(new Date());
+    let days = 0;
+    for (const date of datesBetween(startDate, endDate)) {
+      if (date >= today) {
+        continue;
+      }
+      await this.rebuildNetworkDay(businessId, date);
       days += 1;
     }
     return { days };

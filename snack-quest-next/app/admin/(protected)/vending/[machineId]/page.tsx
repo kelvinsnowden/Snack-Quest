@@ -13,6 +13,7 @@ import { machineInventoryReserveService } from '@/services/machineInventoryReser
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSettlementService } from '@/services/machineSettlementService';
 import { restockTaskService } from '@/services/restockTaskService';
+import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
 import { serializeRestockTask } from '@/lib/vending/serialize';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
@@ -113,7 +114,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion] =
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion, catalogLayers, assortmentPerformance] =
     await Promise.all([
       machineSlotService.listByMachine(session.businessId, machineId),
       machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
@@ -126,6 +127,8 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       machineSettlementService.listByMachine(session.businessId, machineId),
       restockTaskService.listByMachine(session.businessId, machineId),
       machineAssortmentService.getCatalogVersion(session.businessId, machineId),
+      machineAssortmentIntelligenceService.classifyMachineCatalogLayers(session.businessId, machineId),
+      machineAssortmentIntelligenceService.getAssortmentPerformance(session.businessId, machineId, 30),
     ]);
 
   const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
@@ -263,6 +266,58 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">{formatDateTime(data.createdAt)}</td>
                       <td className="px-6 py-3 text-muted-foreground">{data.error ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Assortment intelligence</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <DetailStat label="Global catalog" value={String(catalogLayers.globalCatalogCount)} />
+            <DetailStat label="Assorted here" value={String(catalogLayers.assortmentCount)} />
+            <DetailStat label="Currently stocked" value={String(catalogLayers.stockedCount)} />
+            <DetailStat label="Currently sellable" value={String(catalogLayers.sellableCount)} />
+          </div>
+          <p className="text-caption text-muted-foreground">
+            Slot performance over the last {assortmentPerformance.windowDays} days — data quality: {assortmentPerformance.dataQuality}.
+          </p>
+          {assortmentPerformance.slots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No assorted slots with performance data yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Slot</th>
+                    <th className="px-6 py-3 font-medium">Product</th>
+                    <th className="px-6 py-3 font-medium">Units sold</th>
+                    <th className="px-6 py-3 font-medium">Revenue</th>
+                    <th className="px-6 py-3 font-medium">Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assortmentPerformance.slots.map((slot) => (
+                    <tr key={slot.slotCode} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 font-medium text-foreground">{slot.slotCode}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{slot.productId}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{slot.unitsSold}</td>
+                      <td className="px-6 py-3 text-muted-foreground">KES {slot.revenueKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {slot.currentlyStockedOut ? <Badge variant="warning">stocked out</Badge> : null}
+                          {slot.dead ? <Badge variant="danger">dead</Badge> : null}
+                          {slot.highVelocity ? <Badge variant="success">high velocity</Badge> : null}
+                          {slot.underperforming ? <Badge variant="outline">underperforming</Badge> : null}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

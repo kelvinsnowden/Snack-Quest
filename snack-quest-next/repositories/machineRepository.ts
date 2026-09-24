@@ -97,6 +97,22 @@ class MachineRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Machine }));
   }
 
+  /**
+   * Every machine currently at a given location (§ LOCATION IS THE
+   * INTELLIGENCE UNIT: "a location can have one or multiple
+   * machines"). This is the one query every "this location's
+   * machines" read goes through — never an assumption that a location
+   * has exactly one.
+   */
+  async listByLocation(businessId: string, locationId: string): Promise<{ id: string; data: Machine }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('locationId', '==', locationId)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Machine }));
+  }
+
   async countByStatus(businessId: string, status: MachineStatus): Promise<number> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)

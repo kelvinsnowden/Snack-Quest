@@ -1,4 +1,6 @@
 import type {
+  IntelligenceRecommendation,
+  Location,
   Machine,
   MachineAssortment,
   MachineCommand,
@@ -8,6 +10,7 @@ import type {
   MachineSlot,
   MachineSubscription,
   MachineTransaction,
+  NetworkDailySummary,
   Partner,
   PartnerDailySummary,
   PartnerEarningsLedgerEntry,
@@ -196,6 +199,48 @@ export function serializePartnerDailySummary(data: PartnerDailySummary): Seriali
   return { ...data, rebuiltAt: data.rebuiltAt.toDate().toISOString() };
 }
 
+export type SerializedNetworkDailySummary = Omit<NetworkDailySummary, 'rebuiltAt'> & { rebuiltAt: string };
+
+export function serializeNetworkDailySummary(data: NetworkDailySummary): SerializedNetworkDailySummary {
+  return { ...data, rebuiltAt: data.rebuiltAt.toDate().toISOString() };
+}
+
+export interface SerializedIntelligenceRecommendation {
+  id: string;
+  type: IntelligenceRecommendation['type'];
+  target: IntelligenceRecommendation['target'];
+  reason: string;
+  supportingMetrics: IntelligenceRecommendation['supportingMetrics'];
+  confidence: IntelligenceRecommendation['confidence'];
+  status: IntelligenceRecommendation['status'];
+  actionTaken: string | null;
+  actionedAt: string | null;
+  actionedBy: string | null;
+  outcome: string | null;
+  outcomeMetrics: IntelligenceRecommendation['outcomeMetrics'];
+  outcomeRecordedAt: string | null;
+  createdAt: string;
+}
+
+export function serializeIntelligenceRecommendation(id: string, data: IntelligenceRecommendation): SerializedIntelligenceRecommendation {
+  return {
+    id,
+    type: data.type,
+    target: data.target,
+    reason: data.reason,
+    supportingMetrics: data.supportingMetrics,
+    confidence: data.confidence,
+    status: data.status,
+    actionTaken: data.actionTaken,
+    actionedAt: data.actionedAt ? data.actionedAt.toDate().toISOString() : null,
+    actionedBy: data.actionedBy,
+    outcome: data.outcome,
+    outcomeMetrics: data.outcomeMetrics,
+    outcomeRecordedAt: data.outcomeRecordedAt ? data.outcomeRecordedAt.toDate().toISOString() : null,
+    createdAt: data.createdAt.toDate().toISOString(),
+  };
+}
+
 export interface SerializedMachineAssortment {
   machineId: string;
   productId: string;
@@ -353,5 +398,47 @@ export function serializePartnerEarningsLedgerEntry(data: PartnerEarningsLedgerE
     machineId: data.machineId,
     amountKes: data.amountKes,
     createdAt: data.createdAt.toDate().toISOString(),
+  };
+}
+
+export interface SerializedLocation {
+  id: string;
+  name: string;
+  locationType: Location['locationType'];
+  city: string;
+  area: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  estimatedFootTraffic: number | null;
+  operatingHours: string | null;
+  customerType: Location['customerType'];
+  indoorOutdoor: Location['indoorOutdoor'];
+  nearbyBusinesses: string[];
+  competingFoodBeverageOutlets: string[];
+  launchDate: string | null;
+  notes: string | null;
+  machineCount: number;
+}
+
+export function serializeLocation(id: string, data: Location, machineCount: number): SerializedLocation {
+  return {
+    id,
+    name: data.name,
+    locationType: data.locationType,
+    city: data.city,
+    area: data.area,
+    address: data.address,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    estimatedFootTraffic: data.estimatedFootTraffic,
+    operatingHours: data.operatingHours,
+    customerType: data.customerType,
+    indoorOutdoor: data.indoorOutdoor,
+    nearbyBusinesses: data.nearbyBusinesses,
+    competingFoodBeverageOutlets: data.competingFoodBeverageOutlets,
+    launchDate: data.launchDate ? data.launchDate.toDate().toISOString() : null,
+    notes: data.notes,
+    machineCount,
   };
 }

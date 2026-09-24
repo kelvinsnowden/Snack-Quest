@@ -19,6 +19,12 @@ import type { Timestamp } from 'firebase/firestore';
  * warns against one level up, for settlements. This stays at what the
  * telemetry stream actually proves: how many heartbeats and how many
  * faults were reported that day.
+ *
+ * `byProduct[...].cogsKes`/`grossProfitKes`/`category` and
+ * `unpricedUnitsSold`/`stockoutProductIds` are Snack Intelligence's own
+ * additions (§ PRODUCT INTELLIGENCE, § STOCKOUT INTELLIGENCE,
+ * docs/SNACK_INTELLIGENCE.md) — additive to the fields above, which
+ * predate that phase and keep their exact original meaning.
  */
 export interface MachineDailySummary {
   businessId: string;
@@ -35,7 +41,32 @@ export interface MachineDailySummary {
   unitsSold: number;
   /** `grossSalesKes / dispensedCount`, null when nothing dispensed that day rather than a division by zero pretending to be a number. */
   averageOrderValueKes: number | null;
-  byProduct: Record<string, { unitsSold: number; grossSalesKes: number }>;
+  /**
+   * `cogsKes` is resolved from the *transaction's own* recorded
+   * `productId`/`productCatalogue` (captured at the moment of sale,
+   * never a later slot/price change) against `SnackItem.expectedUnitCostKes`
+   * — `0` for a `package`-catalogue sale or any `snackItem` lookup miss,
+   * which is exactly what `unpricedUnitsSold` (below) counts, never
+   * silently treated as a real zero cost. `grossProfitKes` is
+   * `grossSalesKes - cogsKes` for that product; `category` is this
+   * machine's own `MachineAssortment.category` for the product at
+   * rollup time — null if the product was never assorted with a
+   * category, or is no longer assorted to this machine at all.
+   */
+  byProduct: Record<string, { unitsSold: number; grossSalesKes: number; cogsKes: number; grossProfitKes: number; category: string | null }>;
+  /** Units dispensed whose cost could not be resolved (package catalogue, or a snackItem no longer found) — never folded into `cogsKes` as an invented zero. */
+  unpricedUnitsSold: number;
+  /**
+   * A point-in-time snapshot, taken when this rollup was built (not a
+   * continuous intra-day trace): every product this machine had
+   * `assorted && visible` whose linked slot reported zero sellable
+   * quantity at that moment. A real signal for "was this product out
+   * of stock around the time this day closed," not proof of *when*
+   * during the day it ran out or for how long — `docs/SNACK_INTELLIGENCE.md`
+   * states this limitation directly rather than implying finer
+   * granularity than a daily rollup can actually carry.
+   */
+  stockoutProductIds: string[];
   /** `machineInventoryMovements` with `reason: 'restock'` that day — the restock-frequency signal. */
   restockCount: number;
   /** `machineTelemetryEvents` with `eventType: 'fault'` that day. */

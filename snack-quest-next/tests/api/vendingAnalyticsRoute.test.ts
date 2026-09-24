@@ -54,6 +54,8 @@ const EMPTY_ROLLUP = {
   unitsSold: 0,
   averageOrderValueKes: null,
   byProduct: {},
+  unpricedUnitsSold: 0,
+  stockoutProductIds: [],
   restockCount: 0,
   faultCount: 0,
   heartbeatCount: 0,

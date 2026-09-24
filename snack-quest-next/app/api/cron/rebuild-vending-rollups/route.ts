@@ -9,13 +9,14 @@ const JOB_NAME = 'rebuild-vending-rollups';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Keeps `machineDailySummary` and `partnerDailySummary` current
- * without a fleet or partner dashboard load paying for the rebuild
- * (§ ANALYTICS, mirrors `rebuild-analytics-rollups` exactly — see that
+ * Keeps `machineDailySummary`, `partnerDailySummary` and
+ * `networkDailySummary` current without a fleet, partner, or network
+ * dashboard load paying for the rebuild (§ ANALYTICS, § NETWORK
+ * INTELLIGENCE, mirrors `rebuild-analytics-rollups` exactly — see that
  * route and docs/ANALYTICS_ROLLUPS.md §3 for why this pairing of
  * "cron keeps it warm" with "a missing day self-heals on read"
- * — `vendingRollupService.computePartnerDay` — is the shape to keep,
- * not a fresh one).
+ * — `vendingRollupService.computePartnerDay`/`computeNetworkDay` — is
+ * the shape to keep, not a fresh one).
  *
  * The last three days are rebuilt for every machine, then for every
  * partner, same three-day margin `rebuild-analytics-rollups` uses for
@@ -62,7 +63,9 @@ export async function GET(request: Request): Promise<Response> {
       partnerDays += days;
     }
 
-    const result = { machineCount: machines.length, machineDays, partnerCount: partners.length, partnerDays };
+    const { days: networkDays } = await vendingRollupService.rebuildNetworkDayRange(businessId, startDate, endDate);
+
+    const result = { machineCount: machines.length, machineDays, partnerCount: partners.length, partnerDays, networkDays };
     await scheduledJobRunRepository.record({
       businessId,
       jobName: JOB_NAME,

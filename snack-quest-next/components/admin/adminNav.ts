@@ -14,6 +14,7 @@ import {
   HelpCircle,
   Ticket,
   LayoutDashboard,
+  Lightbulb,
   Mail,
   MailPlus,
   ChefHat,
@@ -30,6 +31,7 @@ import {
   ScrollText,
   Settings,
   Share2,
+  TrendingUp,
   Truck,
   UserCog,
   Users,
@@ -120,6 +122,10 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { href: '/admin/vending', label: 'Vending Machines', shortLabel: 'Vending', icon: Cpu, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/partners', label: 'Machine Owners', shortLabel: 'Owners', icon: Banknote, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence', label: 'Network Intelligence', shortLabel: 'Intelligence', icon: BarChart3, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
 
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers' },
   { href: '/admin/customers', label: 'Customers', icon: Users, section: 'marketing', group: 'Customers' },
