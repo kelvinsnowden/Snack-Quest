@@ -52,6 +52,7 @@ export const en = {
       '/admin/purchase-orders': 'Purchase orders',
       '/admin/suppliers': 'Suppliers',
       '/admin/vending': 'Vending Machines',
+      '/admin/vending/alerts': 'Alert Center',
       '/admin/vending/partners': 'Machine Owners',
       '/admin/vending/intelligence': 'Network Intelligence',
       '/admin/vending/intelligence/locations': 'Location Intelligence',

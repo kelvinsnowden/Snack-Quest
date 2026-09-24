@@ -1,4 +1,5 @@
 import type {
+  Alert,
   IntelligenceRecommendation,
   Location,
   Machine,
@@ -440,5 +441,39 @@ export function serializeLocation(id: string, data: Location, machineCount: numb
     launchDate: data.launchDate ? data.launchDate.toDate().toISOString() : null,
     notes: data.notes,
     machineCount,
+  };
+}
+
+export interface SerializedAlert {
+  id: string;
+  type: Alert['type'];
+  severity: Alert['severity'];
+  machineId: string | null;
+  locationId: string | null;
+  title: string;
+  detail: string;
+  status: Alert['status'];
+  assignee: string | null;
+  resolution: string | null;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+}
+
+export function serializeAlert(id: string, data: Alert): SerializedAlert {
+  return {
+    id,
+    type: data.type,
+    severity: data.severity,
+    machineId: data.machineId,
+    locationId: data.locationId,
+    title: data.title,
+    detail: data.detail,
+    status: data.status,
+    assignee: data.assignee,
+    resolution: data.resolution,
+    resolvedAt: data.resolvedAt ? data.resolvedAt.toDate().toISOString() : null,
+    resolvedBy: data.resolvedBy,
+    createdAt: data.createdAt.toDate().toISOString(),
   };
 }
