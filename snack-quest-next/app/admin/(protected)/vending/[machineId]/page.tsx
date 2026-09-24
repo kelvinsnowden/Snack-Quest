@@ -14,7 +14,8 @@ import { machineSubscriptionService } from '@/services/machineSubscriptionServic
 import { machineSettlementService } from '@/services/machineSettlementService';
 import { restockTaskService } from '@/services/restockTaskService';
 import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
-import { serializeRestockTask } from '@/lib/vending/serialize';
+import { cameraService } from '@/services/cameraService';
+import { serializeRestockTask, serializeCamera } from '@/lib/vending/serialize';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
@@ -31,6 +32,9 @@ import { TestVendAction } from '@/components/admin/TestVendAction';
 import { StockDiscrepancyForm } from '@/components/admin/StockDiscrepancyForm';
 import { RestockTaskStatusBadge } from '@/components/admin/RestockTaskStatusBadge';
 import { RestockTaskActions } from '@/components/admin/RestockTaskActions';
+import { CameraStatusBadge } from '@/components/admin/CameraStatusBadge';
+import { AddCameraForm } from '@/components/admin/AddCameraForm';
+import { CameraActions } from '@/components/admin/CameraActions';
 import { formatDateTime } from '@/lib/orders/format';
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -115,7 +119,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion, catalogLayers, assortmentPerformance] =
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion, catalogLayers, assortmentPerformance, cameras] =
     await Promise.all([
       machineSlotService.listByMachine(session.businessId, machineId),
       machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
@@ -130,7 +134,12 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       machineAssortmentService.getCatalogVersion(session.businessId, machineId),
       machineAssortmentIntelligenceService.classifyMachineCatalogLayers(session.businessId, machineId),
       machineAssortmentIntelligenceService.getAssortmentPerformance(session.businessId, machineId, 30),
+      cameraService.listByMachine(session.businessId, machineId),
     ]);
+
+  const cameraRows = await Promise.all(
+    cameras.map(async ({ id, data }) => ({ id, camera: serializeCamera(id, data), diagnostics: await cameraService.getDiagnostics(data) })),
+  );
 
   const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);
@@ -232,6 +241,48 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                 </div>
               ) : null}
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cameras</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <AddCameraForm machineId={machineId} />
+          {cameraRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No cameras registered on this machine yet.</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {cameraRows.map(({ id, camera, diagnostics }) => (
+                <div key={id} className="flex flex-col gap-2 border-t border-border pt-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-foreground">{camera.label}</span>
+                    <Badge variant="outline">{camera.type}</Badge>
+                    <CameraStatusBadge status={camera.status} />
+                    <span className="text-caption text-muted-foreground">connection: {camera.connectionState}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <DetailStat label="Last seen" value={camera.lastSeenAt ? formatIsoDateTime(camera.lastSeenAt) : 'Never'} />
+                    <DetailStat label="Last health check" value={camera.lastHealthOk === null ? 'Never' : camera.lastHealthOk ? 'OK' : `Failed: ${camera.lastErrorMessage ?? ''}`} />
+                    <DetailStat label="Last snapshot" value={camera.lastSnapshotAt ? formatIsoDateTime(camera.lastSnapshotAt) : 'None yet'} />
+                    <DetailStat label="Model" value={camera.model ?? '—'} />
+                  </div>
+                  {!diagnostics.registered ? (
+                    <p className="text-sm text-warning">Not yet integrated for this camera type — see the camera protocol registry.</p>
+                  ) : (
+                    <CameraActions
+                      cameraId={id}
+                      status={camera.status}
+                      canSnapshot={diagnostics.statusByCapability.camera_snapshot === 'supported'}
+                      canStream={diagnostics.statusByCapability.camera_stream === 'supported'}
+                      canHealthCheck={diagnostics.statusByCapability.camera_health === 'supported'}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -611,6 +662,11 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       </Card>
     </div>
   );
+}
+
+/** `formatDateTime` expects a Firestore `Timestamp`; `SerializedCamera`'s date fields are already ISO strings (§ client-safe shapes) — this is the same conversion, for that shape. */
+function formatIsoDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function DetailStat({ label, value }: { label: string; value: string }) {

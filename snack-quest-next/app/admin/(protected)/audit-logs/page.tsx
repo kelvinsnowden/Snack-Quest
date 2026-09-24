@@ -26,6 +26,8 @@ const ENTITY_TYPE_FILTERS = [
   'machineSubscription',
   'machineCommand',
   'alert',
+  'camera',
+  'cameraSnapshot',
 ] as const;
 
 const ENTITY_TYPE_LABELS: Record<(typeof ENTITY_TYPE_FILTERS)[number], string> = {
@@ -43,6 +45,8 @@ const ENTITY_TYPE_LABELS: Record<(typeof ENTITY_TYPE_FILTERS)[number], string> =
   machineSubscription: 'Subscriptions',
   machineCommand: 'Commands',
   alert: 'Alerts',
+  camera: 'Cameras',
+  cameraSnapshot: 'Camera snapshots',
 };
 
 export default async function AdminAuditLogsPage({

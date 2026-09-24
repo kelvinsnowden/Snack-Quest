@@ -520,6 +520,22 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
+    // cameras (§ CAMERA COMPATIBILITY): staff-only, same as every
+    // other operational hardware collection above. `connection`
+    // never leaves the server as plaintext (`passwordEncrypted`/
+    // `apiKeyEncrypted` are ciphertext even at rest — see
+    // `types/camera.ts`), but the read gate here still stays
+    // admin-only rather than relying on that alone. No device or
+    // partner writes directly — every write goes through
+    // `cameraService`, same as `alerts`.
+    match /cameras/{cameraId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /cameraSnapshots/{snapshotId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     // deviceCredentials: `secretHash` only, never plaintext (see
     // `repositories/deviceCredentialRepository.ts`) — still kept to
     // the same admin-read pattern as everything else here rather than

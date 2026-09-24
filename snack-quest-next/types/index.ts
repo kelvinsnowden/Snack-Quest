@@ -70,3 +70,5 @@ export * from './deviceCredential';
 export * from './machineDailySummary';
 export * from './partnerDailySummary';
 export * from './alert';
+export * from './camera';
+export * from './cameraSnapshot';

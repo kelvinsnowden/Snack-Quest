@@ -19,6 +19,24 @@
       ]
     },
     {
+      "collectionGroup": "cameraSnapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "businessId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "cameraId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "capturedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "machineSettlements",
       "queryScope": "COLLECTION",
       "fields": [

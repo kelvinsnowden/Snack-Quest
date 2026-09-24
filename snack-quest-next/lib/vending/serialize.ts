@@ -1,5 +1,7 @@
 import type {
   Alert,
+  Camera,
+  CameraSnapshot,
   IntelligenceRecommendation,
   Location,
   Machine,
@@ -475,5 +477,86 @@ export function serializeAlert(id: string, data: Alert): SerializedAlert {
     resolvedAt: data.resolvedAt ? data.resolvedAt.toDate().toISOString() : null,
     resolvedBy: data.resolvedBy,
     createdAt: data.createdAt.toDate().toISOString(),
+  };
+}
+
+/**
+ * `Camera.connection` never appears here (§ SECURITY: "Do not
+ * expose... passwords... in normal API responses"). `host`/`port`/
+ * `streamPath`/`username`/`onvifProfileToken` are operational facts,
+ * not secrets, and safe for staff to see what's configured;
+ * `passwordEncrypted`/`apiKeyEncrypted` are omitted entirely rather
+ * than masked — there is no representation of a secret this
+ * response ever needs to carry, encrypted or not.
+ */
+export interface SerializedCamera {
+  id: string;
+  machineId: string;
+  type: Camera['type'];
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  label: string;
+  status: Camera['status'];
+  connectionState: Camera['connectionState'];
+  connection: { host: string | null; port: number | null; streamPath: string | null; username: string | null; onvifProfileToken: string | null };
+  lastSeenAt: string | null;
+  lastHealthCheckAt: string | null;
+  lastHealthOk: boolean | null;
+  lastErrorMessage: string | null;
+  lastSnapshotAt: string | null;
+}
+
+export function serializeCamera(id: string, data: Camera): SerializedCamera {
+  return {
+    id,
+    machineId: data.machineId,
+    type: data.type,
+    manufacturer: data.manufacturer,
+    model: data.model,
+    serialNumber: data.serialNumber,
+    label: data.label,
+    status: data.status,
+    connectionState: data.connectionState,
+    connection: {
+      host: data.connection.host,
+      port: data.connection.port,
+      streamPath: data.connection.streamPath,
+      username: data.connection.username,
+      onvifProfileToken: data.connection.onvifProfileToken,
+    },
+    lastSeenAt: data.lastSeenAt ? data.lastSeenAt.toDate().toISOString() : null,
+    lastHealthCheckAt: data.lastHealthCheckAt ? data.lastHealthCheckAt.toDate().toISOString() : null,
+    lastHealthOk: data.lastHealthOk,
+    lastErrorMessage: data.lastErrorMessage,
+    lastSnapshotAt: data.lastSnapshotAt ? data.lastSnapshotAt.toDate().toISOString() : null,
+  };
+}
+
+export interface SerializedCameraSnapshot {
+  id: string;
+  cameraId: string;
+  machineId: string;
+  transactionId: string | null;
+  reason: CameraSnapshot['reason'];
+  success: boolean;
+  storageRef: string | null;
+  errorMessage: string | null;
+  capturedAt: string;
+  capturedBy: string;
+}
+
+export function serializeCameraSnapshot(id: string, data: CameraSnapshot): SerializedCameraSnapshot {
+  return {
+    id,
+    cameraId: data.cameraId,
+    machineId: data.machineId,
+    transactionId: data.transactionId,
+    reason: data.reason,
+    success: data.success,
+    storageRef: data.storageRef,
+    errorMessage: data.errorMessage,
+    capturedAt: data.capturedAt.toDate().toISOString(),
+    capturedBy: data.capturedBy,
   };
 }
