@@ -108,15 +108,23 @@ class MachineTransactionRepository {
    * before it decides anything else. Businesses only, never a
    * fleet-wide scan across tenants, since Safaricom's ids are unique
    * per push but this collection is not scoped by them alone.
+   *
+   * Plural, not `.limit(1)`, because one STK push can now cover a
+   * whole cart: `MachineTransactionService.initiateCartPayment`
+   * creates one `machineTransactions` doc per slot but sends exactly
+   * one STK push for the total, and stamps every one of that cart's
+   * docs with the same `checkoutRequestId` (§ "record the sale per
+   * slot, but the customer pays once"). A single-item cart still
+   * finds exactly one document, so every call site written before
+   * carts existed reads correctly unchanged.
    */
-  async findByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction } | null> {
+  async listByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
       .where('checkoutRequestId', '==', checkoutRequestId)
-      .limit(1)
       .get();
-    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as MachineTransaction };
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
   }
 
   /**

@@ -83,7 +83,8 @@ describe('initiateMpesaPayment', () => {
 
     expect(result.checkoutRequestId).toBe('ws_CO_1');
     expect(gateway.initiateStkPushMock).toHaveBeenCalledWith(
-      expect.objectContaining({ businessId: BUSINESS_ID, phone: '254712345678', amountKes: 350, accountReference: result.transactionRef }),
+      // `accountReference` is the cart's own reference, not the transaction's — a single-item purchase is a cart of one (§ initiateMpesaPayment's own doc comment), so it gets a `CART-` reference exactly like any other cart.
+      expect.objectContaining({ businessId: BUSINESS_ID, phone: '254712345678', amountKes: 350, accountReference: expect.stringMatching(/^CART-/) }),
     );
 
     const transaction = await service.findById(BUSINESS_ID, result.id);
@@ -123,6 +124,90 @@ describe('initiateMpesaPayment', () => {
   });
 });
 
+/** Adds a second slot (B01) to a machine already seeded with A01, for cart tests that need more than one item. */
+async function addSecondSlot(adapter: MockVendingAdapter, machineId: string, quantity = 5) {
+  adapter.seedSlot(machineId, 'B01', { quantity });
+  const slots = new MachineSlotService(() => adapter);
+  await slots.configureSlot({
+    businessId: BUSINESS_ID,
+    machineId,
+    slotCode: 'B01',
+    productId: 'pkg-2',
+    productCatalogue: 'package',
+    priceKes: 150,
+    capacity: 10,
+    position: 2,
+  });
+  await adminFirestore.collection('machineSlots').doc(`${machineId}__B01`).update({ currentQuantity: quantity });
+}
+
+describe('initiateCartPayment', () => {
+  it('creates one transaction per slot and sends exactly one STK push for the cart total', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockResolvedValue({
+      merchantRequestId: 'mr-cart-1',
+      checkoutRequestId: 'ws_CO_cart_1',
+      responseCode: '0',
+      responseDescription: 'Success',
+      customerMessage: 'Enter your PIN',
+    });
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await addSecondSlot(adapter, machineId);
+    const service = new MachineTransactionService(() => adapter, gateway);
+
+    const cart = await service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01', 'B01'], phoneNumber: '254712345678' });
+
+    expect(cart.checkoutRequestId).toBe('ws_CO_cart_1');
+    expect(cart.transactions).toHaveLength(2);
+    expect(gateway.initiateStkPushMock).toHaveBeenCalledTimes(1); // one push, not two
+    expect(gateway.initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 500, accountReference: cart.cartRef })); // 350 + 150
+
+    for (const t of cart.transactions) {
+      const transaction = await service.findById(BUSINESS_ID, t.id);
+      expect(transaction?.status).toBe('pending');
+      expect(transaction?.checkoutRequestId).toBe('ws_CO_cart_1');
+    }
+  });
+
+  it('rolls every already-created transaction back to payment_failed if the one STK push fails', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockRejectedValue(new Error('Daraja STK push failed: invalid credentials'));
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await addSecondSlot(adapter, machineId);
+    const service = new MachineTransactionService(() => adapter, gateway);
+
+    await expect(service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01', 'B01'], phoneNumber: '254712345678' })).rejects.toThrow(
+      'Daraja STK push failed',
+    );
+
+    const found = await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get();
+    expect(found.docs).toHaveLength(2);
+    for (const doc of found.docs) {
+      expect(doc.data().status).toBe('payment_failed');
+      expect(doc.data().checkoutRequestId).toBeNull();
+    }
+  });
+
+  it('rolls back every transaction created so far if a later item in the cart fails its own pre-sale check', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await addSecondSlot(adapter, machineId, 0); // B01 out of stock
+    const service = new MachineTransactionService(() => adapter, gateway);
+
+    await expect(service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01', 'B01'], phoneNumber: '254712345678' })).rejects.toThrow(
+      'out of stock',
+    );
+    expect(gateway.initiateStkPushMock).not.toHaveBeenCalled();
+
+    const found = await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get();
+    expect(found.docs).toHaveLength(1); // only A01's was ever created
+    expect(found.docs[0].data().status).toBe('payment_failed');
+  });
+});
+
 describe('handleMpesaCallback', () => {
   async function initiatePayment(adapter: MockVendingAdapter, gateway: FakePaymentGateway, machineId: string, checkoutRequestId = 'ws_CO_1') {
     gateway.initiateStkPushMock.mockResolvedValue({
@@ -152,7 +237,7 @@ describe('handleMpesaCallback', () => {
       mpesaReceiptNumber: 'RECEIPT1',
     });
 
-    expect(outcome).toEqual({ handled: true, transactionId: id, outcome: 'succeeded' });
+    expect(outcome).toEqual({ handled: true, transactionIds: [id], outcome: 'succeeded' });
     const transaction = await service.findById(BUSINESS_ID, id);
     expect(transaction?.status).toBe('vend_authorized');
     expect(transaction?.paymentRef).toBe('RECEIPT1');
@@ -172,7 +257,7 @@ describe('handleMpesaCallback', () => {
       resultDesc: 'Request cancelled by user',
     });
 
-    expect(outcome).toEqual({ handled: true, transactionId: id, outcome: 'failed' });
+    expect(outcome).toEqual({ handled: true, transactionIds: [id], outcome: 'failed' });
     const transaction = await service.findById(BUSINESS_ID, id);
     expect(transaction?.status).toBe('payment_failed');
     expect(transaction?.vendRef).toBeNull();
@@ -212,8 +297,8 @@ describe('handleMpesaCallback', () => {
     const first = await service.handleMpesaCallback(BUSINESS_ID, callback);
     const second = await service.handleMpesaCallback(BUSINESS_ID, callback);
 
-    expect(first).toEqual({ handled: true, transactionId: id, outcome: 'succeeded' });
-    expect(second).toEqual({ handled: true, transactionId: id, outcome: 'duplicate' });
+    expect(first).toEqual({ handled: true, transactionIds: [id], outcome: 'succeeded' });
+    expect(second).toEqual({ handled: true, transactionIds: [id], outcome: 'duplicate' });
 
     // Exactly one vend authorization happened — the mock adapter's own
     // quantity only decrements once per real authorizeVend() call.
@@ -260,10 +345,43 @@ describe('handleMpesaCallback', () => {
       mpesaReceiptNumber: 'RECEIPT1',
     });
 
-    expect(outcome).toEqual({ handled: true, transactionId: id, outcome: 'amount_mismatch' });
+    expect(outcome).toEqual({ handled: true, transactionIds: [id], outcome: 'amount_mismatch' });
     const transaction = await service.findById(BUSINESS_ID, id);
     expect(transaction?.status).toBe('manual_review');
     expect(transaction?.paymentRef).toBeNull(); // never marked verified on a mismatch
+  });
+
+  it('settles every item in a cart from the one callback its one STK push produced, authorizing each one its own vend', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockResolvedValue({
+      merchantRequestId: 'mr-cart-2',
+      checkoutRequestId: 'ws_CO_cart_2',
+      responseCode: '0',
+      responseDescription: 'Success',
+      customerMessage: 'Enter your PIN',
+    });
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await addSecondSlot(adapter, machineId);
+    const service = new MachineTransactionService(() => adapter, gateway);
+    const cart = await service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01', 'B01'], phoneNumber: '254712345678' });
+
+    const outcome = await service.handleMpesaCallback(BUSINESS_ID, {
+      checkoutRequestId: 'ws_CO_cart_2',
+      merchantRequestId: 'mr-cart-2',
+      resultCode: 0,
+      resultDesc: 'Success',
+      amountKes: 500, // 350 + 150, the cart total — never one item's own price
+      mpesaReceiptNumber: 'RECEIPT-CART',
+    });
+
+    expect(outcome.handled).toBe(true);
+    expect(outcome).toEqual({ handled: true, transactionIds: cart.transactions.map((t) => t.id), outcome: 'succeeded' });
+    for (const t of cart.transactions) {
+      const transaction = await service.findById(BUSINESS_ID, t.id);
+      expect(transaction?.status).toBe('vend_authorized'); // both items authorized from the one payment
+      expect(transaction?.paymentRef).toBe('RECEIPT-CART');
+    }
   });
 });
 

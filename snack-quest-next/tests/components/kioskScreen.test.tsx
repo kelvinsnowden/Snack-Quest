@@ -12,11 +12,14 @@ import type { ProductAvailabilityState } from '@/types';
  * session, never a staff session), only an `available` tile can be
  * added to the cart, the cart's running total is exactly the sum of
  * its lines, and — the one real architectural constraint this screen
- * has to honor — a multi-item checkout is never sent as one combined
- * charge; it is a sequential queue of one STK push and one vend per
- * cart line, because the machine can only ever dispense one slot at a
- * time. A fetch failure falls back to the last cached catalog rather
- * than blanking the screen.
+ * has to honor — a multi-item checkout is still exactly one STK push
+ * for the whole cart (`slotIds`, not a `slotId`-per-request queue),
+ * because a customer should never have to approve three separate
+ * M-Pesa prompts for three items; the machine still authorizes each
+ * item's own vend once that one payment clears, and this screen polls
+ * every transaction id it gets back until each has its own outcome. A
+ * fetch failure falls back to the last cached catalog rather than
+ * blanking the screen.
  */
 
 const MACHINE_ID = 'machine-kiosk-1';
@@ -149,10 +152,22 @@ describe('KioskScreen — cart and multi-item checkout', () => {
         };
       }
       if (url === '/api/vending/payments' && init?.method === 'POST') {
-        const body = JSON.parse(init.body as string);
-        if (body.slotId === 'A01') return { ok: true, status: 201, json: async () => ({ id: 'txn-a' }) };
-        if (body.slotId === 'B01') return { ok: true, status: 201, json: async () => ({ id: 'txn-b' }) };
-        throw new Error(`unexpected slotId ${body.slotId}`);
+        const body = JSON.parse(init.body as string) as { slotIds: string[] };
+        expect(body.slotIds).toEqual(['A01', 'B01']); // exactly one POST for the whole cart — never one request per item
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            checkoutRequestId: 'ws_CO_cart',
+            merchantRequestId: 'mr_cart',
+            customerMessage: 'Enter your PIN',
+            cartRef: 'CART-TEST',
+            transactions: [
+              { id: 'txn-a', transactionRef: 'TXN-A', slotId: 'A01', amountKes: 200 },
+              { id: 'txn-b', transactionRef: 'TXN-B', slotId: 'B01', amountKes: 300 },
+            ],
+          }),
+        };
       }
       if (url === '/api/vending/payments/txn-a') {
         return { ok: true, status: 200, json: async () => ({ status: 'dispensed', vendRef: 'vend-a', failureReason: null }) };
@@ -164,7 +179,7 @@ describe('KioskScreen — cart and multi-item checkout', () => {
     });
   }
 
-  it('sums the cart total from its lines and checks out each line as its own sequential payment — never one combined charge', async () => {
+  it('sums the cart total from its lines and pays for the whole cart with exactly one STK push', async () => {
     window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
     mockCatalogAndPayments();
 
@@ -183,10 +198,10 @@ describe('KioskScreen — cart and multi-item checkout', () => {
     fireEvent.change(phoneInput, { target: { value: '0700000000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send STK Push' }));
 
-    // Exactly two separate POSTs, one per cart line, each with its own slotId and no combined amount field — the honest bridge over a one-slot-at-a-time machine.
+    // Exactly one POST for the whole cart — the mock's own assertion on `slotIds` above is what actually proves the shape; this proves it was only called once.
     await waitFor(() => {
       const postCalls = fetchMock.mock.calls.filter((call: unknown[]) => call[0] === '/api/vending/payments' && (call[1] as RequestInit | undefined)?.method === 'POST');
-      expect(postCalls).toHaveLength(2);
+      expect(postCalls).toHaveLength(1);
     }, { timeout: 5000 });
 
     await waitFor(() => expect(screen.getByText(/All done/)).toBeTruthy(), { timeout: 5000 });

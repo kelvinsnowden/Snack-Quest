@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
@@ -30,6 +31,13 @@ export class SlotUnavailableForSaleError extends Error {
   constructor(machineId: string, slotCode: string, detail: string) {
     super(`Slot ${slotCode} on machine ${machineId} is not available for sale: ${detail}`);
     this.name = 'SlotUnavailableForSaleError';
+  }
+}
+
+export class EmptyCartError extends Error {
+  constructor() {
+    super('A cart payment needs at least one item');
+    this.name = 'EmptyCartError';
   }
 }
 
@@ -102,24 +110,110 @@ class MachineTransactionService {
   }
 
   /**
-   * Step 2: collect the money over M-Pesa (§ M-PESA ARCHITECTURE).
-   * Creates the pending transaction, then asks Daraja for an STK push
-   * to the customer's own phone — never the machine's own claim, and
-   * never routed through `PaymentIntent`/`ConversationService`, which
-   * are WhatsApp-checkout-specific (both require a `conversationId`
-   * that a vend has no equivalent of). `checkoutRequestId` is
-   * persisted immediately so the Daraja webhook route's vending
-   * branch can find this transaction the moment Safaricom's callback
-   * arrives — see that route's own doc comment for why it must be the
-   * *existing* webhook URL, not a new one.
+   * Step 2, generalized to a cart (§ PART 1 — CUSTOMER MACHINE
+   * EXPERIENCE, "the UX will be terrible if someone has to make
+   * three different payments for three different items"). Creates
+   * one `pending` `MachineTransaction` per slot — inventory,
+   * settlement and COGS still cost each sale exactly the way they
+   * always have, one line item at a time — then asks Daraja for
+   * exactly **one** STK push, for the sum of every item's own price,
+   * so the customer approves one M-Pesa prompt no matter how many
+   * items are in the cart. `checkoutRequestId`/`merchantRequestId`
+   * are then stamped onto every transaction in the cart, which is
+   * what lets `handleMpesaCallback` find and settle the whole group
+   * from Safaricom's one callback. The hardware still only ever
+   * dispenses one slot at a time — that is a fact about the machine,
+   * not about the payment, and `handleMpesaCallback` authorizes each
+   * item's vend in turn once the one payment clears.
    *
-   * If the push itself fails to even reach Safaricom (network error,
-   * invalid phone, credentials misconfigured), the transaction is
-   * moved straight to `payment_failed` rather than left `pending`
-   * forever with no `checkoutRequestId` for anything to ever find —
-   * the reconciliation sweep only looks at `paid`/`vend_authorized`,
-   * so a push that never left this server would otherwise sit
-   * invisible to it.
+   * If any slot fails its own pre-sale check (out of stock, disabled,
+   * unassigned), nothing already created for this cart is left
+   * dangling `pending` with no `checkoutRequestId` — every
+   * transaction created so far is rolled back to `payment_failed`
+   * before the original error is rethrown, the same "never invisible
+   * to the reconciliation sweep" reasoning `initiateMpesaPayment`
+   * (below) always applied to its own single transaction. The same
+   * rollback runs if the STK push itself never reaches Safaricom.
+   */
+  async initiateCartPayment(input: {
+    businessId: string;
+    machineId: string;
+    slotIds: string[];
+    phoneNumber: string;
+  }): Promise<{
+    checkoutRequestId: string;
+    merchantRequestId: string;
+    customerMessage: string;
+    cartRef: string;
+    transactions: { id: string; transactionRef: string; slotId: string; amountKes: number }[];
+  }> {
+    if (input.slotIds.length === 0) {
+      throw new EmptyCartError();
+    }
+
+    const created: { id: string; transactionRef: string; slotId: string; amountKes: number }[] = [];
+    try {
+      for (const slotId of input.slotIds) {
+        const { id, transactionRef } = await this.createPending({
+          businessId: input.businessId,
+          machineId: input.machineId,
+          slotId,
+          paymentMethod: 'mpesa',
+        });
+        const transaction = await machineTransactionRepository.findById(input.businessId, id);
+        if (!transaction) {
+          throw new MachineTransactionNotFoundError(id);
+        }
+        created.push({ id, transactionRef, slotId, amountKes: transaction.amountKes });
+      }
+    } catch (error) {
+      await this.failCreated(input.businessId, created);
+      throw error;
+    }
+
+    const totalAmountKes = created.reduce((sum, t) => sum + t.amountKes, 0);
+    const cartRef = `CART-${randomUUID().slice(0, 8).toUpperCase()}`;
+    try {
+      const result = await this.paymentGateway.initiateStkPush({
+        businessId: input.businessId,
+        phone: input.phoneNumber,
+        amountKes: totalAmountKes,
+        accountReference: cartRef,
+        transactionDesc: 'Snack Quest vend',
+      });
+      for (const t of created) {
+        await machineTransactionRepository.setCheckoutRequest(input.businessId, t.id, {
+          checkoutRequestId: result.checkoutRequestId,
+          merchantRequestId: result.merchantRequestId,
+        });
+      }
+      return {
+        checkoutRequestId: result.checkoutRequestId,
+        merchantRequestId: result.merchantRequestId,
+        customerMessage: result.customerMessage,
+        cartRef,
+        transactions: created,
+      };
+    } catch (error) {
+      await this.failCreated(input.businessId, created);
+      throw error;
+    }
+  }
+
+  private async failCreated(businessId: string, created: { id: string }[]): Promise<void> {
+    for (const t of created) {
+      await machineTransactionRepository.moveStatus(businessId, t.id, 'payment_failed');
+    }
+  }
+
+  /**
+   * Step 2 for exactly one item — kept as its own method because a
+   * single-slot sale (a staff-run diagnostic sale, the simulator, any
+   * caller that only ever has one item) shouldn't have to build a
+   * one-element array to get it. Implemented as `initiateCartPayment`
+   * with a cart of one, so a single-item purchase and a single-item
+   * cart are, and stay, provably the same code path — not two
+   * implementations that could quietly drift apart.
    */
   async initiateMpesaPayment(input: {
     businessId: string;
@@ -127,44 +221,19 @@ class MachineTransactionService {
     slotId: string;
     phoneNumber: string;
   }): Promise<{ id: string; transactionRef: string; checkoutRequestId: string; customerMessage: string }> {
-    const { id, transactionRef } = await this.createPending({
+    const cart = await this.initiateCartPayment({
       businessId: input.businessId,
       machineId: input.machineId,
-      slotId: input.slotId,
-      paymentMethod: 'mpesa',
+      slotIds: [input.slotId],
+      phoneNumber: input.phoneNumber,
     });
-    const transaction = await machineTransactionRepository.findById(input.businessId, id);
-    if (!transaction) {
-      throw new MachineTransactionNotFoundError(id);
-    }
-
-    try {
-      const result = await this.paymentGateway.initiateStkPush({
-        businessId: input.businessId,
-        phone: input.phoneNumber,
-        amountKes: transaction.amountKes,
-        accountReference: transactionRef,
-        transactionDesc: 'Snack Quest vend',
-      });
-      await machineTransactionRepository.setCheckoutRequest(input.businessId, id, {
-        checkoutRequestId: result.checkoutRequestId,
-        merchantRequestId: result.merchantRequestId,
-      });
-      return { id, transactionRef, checkoutRequestId: result.checkoutRequestId, customerMessage: result.customerMessage };
-    } catch (error) {
-      await machineTransactionRepository.moveStatus(input.businessId, id, 'payment_failed');
-      throw error;
-    }
-  }
-
-  /**
-   * By its Safaricom `checkoutRequestId` — a passthrough so the
-   * Daraja webhook route's vending branch never reaches into
-   * `machineTransactionRepository` directly (§ route → service →
-   * repository).
-   */
-  async findByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction } | null> {
-    return machineTransactionRepository.findByCheckoutRequestId(businessId, checkoutRequestId);
+    const [transaction] = cart.transactions;
+    return {
+      id: transaction.id,
+      transactionRef: transaction.transactionRef,
+      checkoutRequestId: cart.checkoutRequestId,
+      customerMessage: cart.customerMessage,
+    };
   }
 
   /**
@@ -184,21 +253,33 @@ class MachineTransactionService {
    * slow ack) a clean no-op instead of an `IllegalTransactionTransitionError`
    * thrown from `moveStatus` on an already-settled transaction.
    *
-   * Authorizes the vend synchronously, in the same call, once payment
-   * is confirmed — no command queue exists yet to do this any other
-   * way (§ device communication architecture, Phase 1). A hardware
-   * refusal here is not this method's problem to report as an error:
-   * `authorizeVend` already resolves it into `paid_vend_failed`, and
-   * Safaricom still gets its fast 200 either way.
+   * Authorizes every transaction's own vend synchronously, in the
+   * same call, once the one payment covering all of them is
+   * confirmed — no command queue exists yet to do this any other way
+   * (§ device communication architecture, Phase 1). Operates over
+   * `listByCheckoutRequestId`'s whole group, not one transaction: a
+   * cart of three items shares one `checkoutRequestId`
+   * (`initiateCartPayment`), so one Daraja callback here settles the
+   * payment side of all three, then authorizes each one's own vend in
+   * turn — the hardware still dispenses one slot at a time, that is
+   * just a fact about the machine, never a reason to ask the customer
+   * to pay three times. A single-item purchase is a group of one, so
+   * every step below is unchanged for it. A hardware refusal on any
+   * one item is not this method's problem to report as an error:
+   * `authorizeVend` already resolves it into that one transaction's
+   * own `paid_vend_failed`, which never stops the rest of the group
+   * from being authorized, and Safaricom still gets its fast 200
+   * either way.
    */
   async handleMpesaCallback(businessId: string, callback: PaymentCallbackResult): Promise<
     | { handled: false }
-    | { handled: true; transactionId: string; outcome: 'duplicate' | 'succeeded' | 'failed' | 'amount_mismatch' }
+    | { handled: true; transactionIds: string[]; outcome: 'duplicate' | 'succeeded' | 'failed' | 'amount_mismatch' }
   > {
-    const found = await machineTransactionRepository.findByCheckoutRequestId(businessId, callback.checkoutRequestId);
-    if (!found) {
+    const group = await machineTransactionRepository.listByCheckoutRequestId(businessId, callback.checkoutRequestId);
+    if (group.length === 0) {
       return { handled: false };
     }
+    const transactionIds = group.map((t) => t.id);
 
     const { isNew } = await webhookEventRepository.recordIfNew({
       businessId,
@@ -206,39 +287,49 @@ class MachineTransactionService {
       eventKind: 'vending_stk_callback',
       providerEventId: callback.checkoutRequestId,
       payload: callback as unknown as Record<string, unknown>,
-      relatedEntityId: found.id,
+      // One representative id for the whole cart this callback
+      // settles — see `listByCheckoutRequestId`'s own doc comment for
+      // why a checkoutRequestId can now cover more than one document.
+      relatedEntityId: transactionIds[0],
     });
     if (!isNew) {
-      return { handled: true, transactionId: found.id, outcome: 'duplicate' };
+      return { handled: true, transactionIds, outcome: 'duplicate' };
     }
 
-    if (found.data.status !== 'pending') {
+    if (!group.some((t) => t.data.status === 'pending')) {
       // A sequential redelivery of a callback already acted on — the
       // atomic check above is what protects a *concurrent* one; this
       // is what protects the ordinary "Safaricom retried after a slow
-      // ack" case from ever reaching `moveStatus` on a transaction
-      // that has already moved on.
-      return { handled: true, transactionId: found.id, outcome: 'duplicate' };
+      // ack" case from ever reaching `moveStatus` on a group that has
+      // already moved on.
+      return { handled: true, transactionIds, outcome: 'duplicate' };
     }
 
     if (callback.resultCode !== 0) {
-      await this.markPaymentFailed(businessId, found.id);
-      return { handled: true, transactionId: found.id, outcome: 'failed' };
+      for (const { id } of group) {
+        await this.markPaymentFailed(businessId, id);
+      }
+      return { handled: true, transactionIds, outcome: 'failed' };
     }
 
-    if (callback.amountKes !== found.data.amountKes) {
-      // Real money moved, but not the amount this transaction was
-      // created for — never fabricate a match. A human has to look;
-      // see `MachineTransactionStatus.manual_review`'s own doc comment.
-      await machineTransactionRepository.moveStatus(businessId, found.id, 'manual_review', {
-        failureReason: `Daraja confirmed KES ${callback.amountKes} against a KES ${found.data.amountKes} transaction`,
-      });
-      return { handled: true, transactionId: found.id, outcome: 'amount_mismatch' };
+    const totalAmountKes = group.reduce((sum, t) => sum + t.data.amountKes, 0);
+    if (callback.amountKes !== totalAmountKes) {
+      // Real money moved, but not the amount this cart was created
+      // for — never fabricate a match. A human has to look; see
+      // `MachineTransactionStatus.manual_review`'s own doc comment.
+      for (const { id, data } of group) {
+        await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {
+          failureReason: `Daraja confirmed KES ${callback.amountKes} against a KES ${totalAmountKes} cart (this item: KES ${data.amountKes})`,
+        });
+      }
+      return { handled: true, transactionIds, outcome: 'amount_mismatch' };
     }
 
-    await this.markPaymentVerified(businessId, found.id, callback.mpesaReceiptNumber ?? '');
-    await this.authorizeVend(businessId, found.id);
-    return { handled: true, transactionId: found.id, outcome: 'succeeded' };
+    for (const { id } of group) {
+      await this.markPaymentVerified(businessId, id, callback.mpesaReceiptNumber ?? '');
+      await this.authorizeVend(businessId, id);
+    }
+    return { handled: true, transactionIds, outcome: 'succeeded' };
   }
 
   /**

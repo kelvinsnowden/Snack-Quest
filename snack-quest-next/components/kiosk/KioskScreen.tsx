@@ -30,14 +30,17 @@ import type { ProductAvailabilityState, SellableCatalogItem } from '@/types';
  *
  * § SHOPPING FLOW: browse by category → product detail → cart →
  * confirm & pay → waiting for M-Pesa → result. The cart shows one
- * combined total, matching how a customer actually thinks about their
- * order — but the machine can only ever dispense one slot at a time
- * (one physical motor, one vend, one `MachineTransaction`), so there
- * is no such thing as a single M-Pesa charge covering three different
- * slots. `runCheckoutQueue` is the honest bridge: the phone number is
- * collected once, then each cart line becomes its own STK push and
- * vend, back to back, with a visible "item X of N" — never a fabricated
- * single combined charge the hardware could not actually fulfil.
+ * combined total and the customer pays it with exactly **one** M-Pesa
+ * prompt, however many items are in the cart — `POST /api/vending/payments`
+ * is called once, with every cart line flattened into one `slotId` per
+ * physical unit (`slotIds`), and `machineTransactionService.initiateCartPayment`
+ * creates one `MachineTransaction` per unit (the sale is still recorded
+ * per slot, for inventory/settlement/COGS exactly as before) while
+ * asking Daraja for a single STK push covering the total. The machine
+ * still only ever dispenses one slot at a time — that is a fact about
+ * the hardware, not the payment, so once that one payment clears, each
+ * unit's own vend is authorized in turn and this screen polls every
+ * transaction it got back until each has its own final outcome.
  *
  * § KIOSK PAIRING: a kiosk is not a customer with an account and not
  * a staff member with a session — it *is* the machine, using the same
@@ -74,6 +77,8 @@ interface CatalogResponse {
 
 type CartLine = { item: SellableCatalogItem; quantity: number };
 type View = 'browse' | 'detail' | 'cart' | 'checkout' | 'paying' | 'result';
+/** One physical unit's own vend, once the cart's one payment has been accepted and this unit's transaction id is known. */
+type CartTransaction = { id: string; item: SellableCatalogItem };
 
 function authHeader(machineId: string, secret: string): string {
   return `Bearer ${machineId}:${secret}`;
@@ -157,11 +162,9 @@ export function KioskScreen({ machineId, machineCode }: { machineId: string; mac
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [queue, setQueue] = useState<CartLine[]>([]);
-  const [queueIndex, setQueueIndex] = useState(0);
-  const [transactionId, setTransactionId] = useState<string | null>(null);
-  const [transactionStatus, setTransactionStatus] = useState<TransactionStatus | null>(null);
-  const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [cartTransactions, setCartTransactions] = useState<CartTransaction[]>([]);
+  const [statuses, setStatuses] = useState<Record<string, TransactionStatus>>({});
+  const [failureReasons, setFailureReasons] = useState<Record<string, string | null>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const authRef = useRef<string | null>(null);
@@ -250,6 +253,18 @@ export function KioskScreen({ machineId, machineCode }: { machineId: string; mac
   const cartCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotalKes = cartLines.reduce((sum, line) => sum + line.item.priceKes * line.quantity, 0);
 
+  /** Every unit paid for in this checkout, grouped back by cart line — a quantity-2 line's two units can finish independently (one dispensed, one jammed), so progress is reported per line, not assumed uniform. */
+  const transactionsByLineKey = useMemo(() => {
+    const map = new Map<string, CartTransaction[]>();
+    for (const t of cartTransactions) {
+      const key = cartKey(t.item);
+      map.set(key, [...(map.get(key) ?? []), t]);
+    }
+    return map;
+  }, [cartTransactions]);
+
+  const cartTransactionsDone = cartTransactions.filter((t) => statuses[t.id] && SUCCESS_STATUSES.includes(statuses[t.id])).length;
+
   function addToCart(item: SellableCatalogItem, delta = 1) {
     setCart((prev) => {
       const next = new Map(prev);
@@ -279,110 +294,121 @@ export function KioskScreen({ machineId, machineCode }: { machineId: string; mac
     setCart(new Map());
     setPhoneNumber('');
     setCheckoutError(null);
-    setQueue([]);
-    setQueueIndex(0);
-    setTransactionId(null);
-    setTransactionStatus(null);
-    setFailureReason(null);
+    setCartTransactions([]);
+    setStatuses({});
+    setFailureReasons({});
     fetchCatalog();
   }
 
-  async function chargeOneLine(line: CartLine, phone: string): Promise<void> {
-    const auth = authRef.current;
-    if (!auth) return;
-    setTransactionId(null);
-    setTransactionStatus(null);
-    setFailureReason(null);
-
-    const res = await fetch('/api/vending/payments', {
-      method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slotId: line.item.slotCode, phoneNumber: phone }),
-    });
-    const body = (await res.json()) as { id?: string; error?: string };
-    if (!res.ok || !body.id) {
-      // § FAILURE SCENARIO — an item in the queue went out of stock or was removed from assortment between browsing and checkout: the server re-validates the slot itself, so a stale cart line can never actually complete a charge for something no longer sellable.
-      setCheckoutError(body.error ?? `Could not start payment for ${line.item.name}. It may no longer be available.`);
-      setView('cart');
-      return;
-    }
-    setTransactionId(body.id);
-    setTransactionStatus('pending');
-  }
-
   function startCheckout() {
-    const lines = cartLines;
-    if (lines.length === 0) return;
-    setQueue(lines);
-    setQueueIndex(0);
+    if (cartLines.length === 0) return;
     setCheckoutError(null);
     setView('checkout');
   }
 
+  /** One STK push for the whole cart — never one per item. Flattens quantities into one `slotId` per physical unit first: a quantity-2 line is two separate vends (one physical motor, one slot, one unit each), even though the customer approved only one M-Pesa prompt for both. */
   async function submitPhoneAndPay() {
-    if (!phoneNumber.trim() || queue.length === 0) return;
+    const auth = authRef.current;
+    if (!phoneNumber.trim() || cartLines.length === 0 || !auth) return;
     setSubmitting(true);
     setCheckoutError(null);
-    setView('paying');
-    await chargeOneLine(queue[0], phoneNumber);
-    setSubmitting(false);
+
+    const units: SellableCatalogItem[] = [];
+    for (const line of cartLines) {
+      for (let i = 0; i < line.quantity; i += 1) units.push(line.item);
+    }
+
+    try {
+      const res = await fetch('/api/vending/payments', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotIds: units.map((item) => item.slotCode), phoneNumber }),
+      });
+      const body = (await res.json()) as { transactions?: { id: string; slotId: string }[]; error?: string };
+      if (!res.ok || !body.transactions) {
+        // § FAILURE SCENARIO — an item in the cart went out of stock or was removed from assortment between browsing and checkout: the server re-validates every slot itself, so a stale cart line can never actually complete a charge for something no longer sellable.
+        setCheckoutError(body.error ?? 'Could not start payment. Some items may no longer be available.');
+        setView('cart');
+        return;
+      }
+      const zipped = body.transactions.map((t, index) => ({ id: t.id, item: units[index] }));
+      setCartTransactions(zipped);
+      const initialStatuses: Record<string, TransactionStatus> = {};
+      for (const t of zipped) initialStatuses[t.id] = 'pending';
+      setStatuses(initialStatuses);
+      setFailureReasons({});
+      setView('paying');
+    } catch {
+      setCheckoutError('Could not reach Snack Quest. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  // Advances the queue once the current line's transaction reaches a terminal state — the sequential-vend bridge this file's own doc comment explains.
+  // Polls every transaction the one payment covers, in parallel, until each has reached its own final outcome — the one payment settles together, but each unit's own vend can still succeed or fail independently.
   useEffect(() => {
-    if (!transactionStatus || !TERMINAL_STATUSES.includes(transactionStatus)) return;
-    if (!SUCCESS_STATUSES.includes(transactionStatus)) {
-      // A real failure mid-queue: stop rather than silently skip a charge the customer needs to know about.
-      return;
-    }
-    const nextIndex = queueIndex + 1;
-    if (nextIndex >= queue.length) {
-      return; // whole queue done — the terminal-result view below handles display + reset
-    }
-    const timeout = setTimeout(async () => {
-      setQueueIndex(nextIndex);
-      await chargeOneLine(queue[nextIndex], phoneNumber);
-    }, 800);
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargeOneLine/phoneNumber/queue are stable for the lifetime of one checkout run; re-triggering on their identity would restart the advance.
-  }, [transactionStatus, queueIndex]);
-
-  useEffect(() => {
-    if (!transactionId || !authRef.current) return;
+    if (cartTransactions.length === 0 || !authRef.current) return;
     const startedAt = Date.now();
     const interval = setInterval(async () => {
       const auth = authRef.current;
       if (!auth) return;
-      try {
-        const res = await fetch(`/api/vending/payments/${transactionId}`, { headers: { Authorization: auth }, cache: 'no-store' });
-        if (!res.ok) return;
-        const body = (await res.json()) as { status: TransactionStatus; failureReason: string | null };
-        setTransactionStatus(body.status);
-        setFailureReason(body.failureReason);
-        if (TERMINAL_STATUSES.includes(body.status)) {
-          clearInterval(interval);
-        } else if (Date.now() - startedAt > PAYMENT_POLL_TIMEOUT_MS) {
-          setTransactionStatus('manual_review');
-          setFailureReason('This is taking longer than expected. Please contact support if you were charged.');
-          clearInterval(interval);
-        }
-      } catch {
-        // A transient poll failure — the interval itself keeps trying, never silently gives up on a real charge in flight.
+      const results = await Promise.all(
+        cartTransactions.map(async (t) => {
+          try {
+            const res = await fetch(`/api/vending/payments/${t.id}`, { headers: { Authorization: auth }, cache: 'no-store' });
+            if (!res.ok) return null;
+            const body = (await res.json()) as { status: TransactionStatus; failureReason: string | null };
+            return { id: t.id, status: body.status, failureReason: body.failureReason };
+          } catch {
+            // A transient poll failure for this one item — the interval itself keeps trying, never silently gives up on a real charge in flight.
+            return null;
+          }
+        }),
+      );
+      const known = results.filter((r): r is { id: string; status: TransactionStatus; failureReason: string | null } => r !== null);
+      if (known.length > 0) {
+        setStatuses((prev) => {
+          const next = { ...prev };
+          for (const r of known) next[r.id] = r.status;
+          return next;
+        });
+        setFailureReasons((prev) => {
+          const next = { ...prev };
+          for (const r of known) next[r.id] = r.failureReason;
+          return next;
+        });
+      }
+      const allTerminal = known.length === cartTransactions.length && known.every((r) => TERMINAL_STATUSES.includes(r.status));
+      if (allTerminal) {
+        clearInterval(interval);
+      } else if (Date.now() - startedAt > PAYMENT_POLL_TIMEOUT_MS) {
+        setStatuses((prev) => {
+          const next = { ...prev };
+          for (const t of cartTransactions) if (!next[t.id] || !TERMINAL_STATUSES.includes(next[t.id])) next[t.id] = 'manual_review';
+          return next;
+        });
+        setFailureReasons((prev) => {
+          const next = { ...prev };
+          for (const t of cartTransactions) if (!next[t.id]) next[t.id] = 'This is taking longer than expected. Please contact support if you were charged.';
+          return next;
+        });
+        clearInterval(interval);
       }
     }, PAYMENT_POLL_MS);
     return () => clearInterval(interval);
-  }, [transactionId]);
+  }, [cartTransactions]);
 
   useEffect(() => {
-    const wholeQueueDone = transactionStatus && TERMINAL_STATUSES.includes(transactionStatus) && (queueIndex + 1 >= queue.length || !SUCCESS_STATUSES.includes(transactionStatus));
-    if (wholeQueueDone) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- switching to the result view is the intentional reaction to the queue's own terminal state landing, not a render-triggered update loop.
+    if (cartTransactions.length === 0) return;
+    const allTerminal = cartTransactions.every((t) => statuses[t.id] && TERMINAL_STATUSES.includes(statuses[t.id]));
+    if (allTerminal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- switching to the result view is the intentional reaction to every item's own terminal state landing, not a render-triggered update loop.
       setView('result');
       const timeout = setTimeout(resetToBrowse, RESULT_DISPLAY_MS);
       return () => clearTimeout(timeout);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resetToBrowse is stable for this kiosk loop; re-running on its identity would restart the reset timer needlessly.
-  }, [transactionStatus, queueIndex, queue.length]);
+  }, [statuses, cartTransactions]);
 
   if (!secret) {
     return (
@@ -419,12 +445,12 @@ export function KioskScreen({ machineId, machineCode }: { machineId: string; mac
     );
   }
 
-  if (view === 'result' && transactionStatus) {
+  if (view === 'result' && cartTransactions.length > 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background p-6">
         <Card className="w-full max-w-sm text-center">
           <CardContent className="flex flex-col items-center gap-4 py-10">
-            <TransactionStatusMessage status={transactionStatus} failureReason={failureReason} itemsDone={queueIndex + (SUCCESS_STATUSES.includes(transactionStatus) ? 1 : 0)} itemsTotal={queue.length} />
+            <CartResultMessage cartTransactions={cartTransactions} statuses={statuses} failureReasons={failureReasons} />
             <Button variant="outline" onClick={resetToBrowse}>
               Back to menu
             </Button>
@@ -435,7 +461,7 @@ export function KioskScreen({ machineId, machineCode }: { machineId: string; mac
   }
 
   if (view === 'paying') {
-    const currentLine = queue[queueIndex];
+    const anyDispensing = cartTransactions.some((t) => statuses[t.id] && !['pending', 'paid'].includes(statuses[t.id]));
     return (
       <main className="min-h-screen bg-background p-4 md:p-8">
         <KioskHeader machineCode={machineCode} offline={offline} onBack={null} />
@@ -443,36 +469,48 @@ export function KioskScreen({ machineId, machineCode }: { machineId: string; mac
           <div className="flex flex-col items-center justify-center gap-6 rounded-lg border border-border bg-surface p-8 text-center shadow-sm">
             <Smartphone className="size-16 text-primary" aria-hidden="true" />
             <div>
-              <h2 className="text-xl font-bold text-foreground">Check Your Phone</h2>
+              <h2 className="text-xl font-bold text-foreground">{anyDispensing ? 'Payment Received' : 'Check Your Phone'}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                We&apos;ve sent an M-Pesa prompt to <span className="font-semibold text-foreground">{phoneNumber}</span>
+                {anyDispensing ? (
+                  'Dispensing your snacks now…'
+                ) : (
+                  <>We&apos;ve sent one M-Pesa prompt to <span className="font-semibold text-foreground">{phoneNumber}</span> for your whole order</>
+                )}
               </p>
             </div>
             <ol className="w-full space-y-3 text-left text-sm">
               <li className="flex items-center gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>Check your phone for the prompt</li>
               <li className="flex items-center gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-border/60 text-xs font-bold text-muted-foreground">2</span>Enter your M-Pesa PIN to approve</li>
-              <li className="flex items-center gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-border/60 text-xs font-bold text-muted-foreground">3</span>We&apos;ll confirm it here automatically</li>
+              <li className="flex items-center gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-border/60 text-xs font-bold text-muted-foreground">3</span>We&apos;ll dispense every item automatically</li>
             </ol>
           </div>
           <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-6 shadow-sm">
             <h3 className="font-semibold text-foreground">Order Summary</h3>
-            {queue.map((line, index) => (
-              <div key={cartKey(line.item)} className={`flex items-center justify-between text-sm ${index === queueIndex ? 'font-semibold text-foreground' : index < queueIndex ? 'text-success' : 'text-muted-foreground'}`}>
-                <span>
-                  {index < queueIndex ? <Check className="mr-1 inline size-3.5" aria-hidden="true" /> : null}
-                  {line.item.name} &times; {line.quantity}
-                </span>
-                <span>KES {(line.item.priceKes * line.quantity).toLocaleString('en-KE')}</span>
-              </div>
-            ))}
+            {cartLines.map((line) => {
+              const units = transactionsByLineKey.get(cartKey(line.item)) ?? [];
+              const doneCount = units.filter((t) => statuses[t.id] && SUCCESS_STATUSES.includes(statuses[t.id])).length;
+              const failedCount = units.filter((t) => statuses[t.id] && TERMINAL_STATUSES.includes(statuses[t.id]) && !SUCCESS_STATUSES.includes(statuses[t.id])).length;
+              return (
+                <div key={cartKey(line.item)} className={`flex items-center justify-between text-sm ${failedCount > 0 ? 'text-danger' : doneCount === line.quantity ? 'text-success' : 'text-foreground'}`}>
+                  <span>
+                    {doneCount === line.quantity ? <Check className="mr-1 inline size-3.5" aria-hidden="true" /> : null}
+                    {line.item.name} &times; {line.quantity}
+                    {line.quantity > 1 && doneCount > 0 ? ` (${doneCount}/${line.quantity} done)` : null}
+                  </span>
+                  <span>KES {(line.item.priceKes * line.quantity).toLocaleString('en-KE')}</span>
+                </div>
+              );
+            })}
             <div className="mt-2 flex items-center justify-between border-t border-border pt-3 font-bold text-foreground">
               <span>Total</span>
               <span>KES {cartTotalKes.toLocaleString('en-KE')}</span>
             </div>
-            {queue.length > 1 ? <p className="text-xs text-muted-foreground">Item {queueIndex + 1} of {queue.length} &mdash; each item is confirmed with its own M-Pesa prompt.</p> : null}
+            {cartTransactions.length > 1 ? (
+              <p className="text-xs text-muted-foreground">{cartTransactionsDone} of {cartTransactions.length} items done &mdash; one M-Pesa prompt covers the whole order.</p>
+            ) : null}
             <div className="mt-auto flex items-center justify-center gap-2 rounded-md bg-border/30 py-3 text-sm font-medium text-muted-foreground">
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              Waiting for payment{currentLine ? ` — ${currentLine.item.name}` : ''}&hellip;
+              {anyDispensing ? 'Dispensing your order' : 'Waiting for payment'}&hellip;
             </div>
           </div>
         </div>
@@ -736,35 +774,49 @@ function KioskHeader({
   );
 }
 
-function TransactionStatusMessage({
-  status,
-  failureReason,
-  itemsDone,
-  itemsTotal,
+/**
+ * The one payment settles together, but each unit's own vend can
+ * still land differently — one dispensed, one jammed, one still stuck
+ * in `manual_review` — so this summarizes across every transaction
+ * the cart's one STK push covered rather than describing a single
+ * status, the way the previous one-item-at-a-time queue's message
+ * could.
+ */
+function CartResultMessage({
+  cartTransactions,
+  statuses,
+  failureReasons,
 }: {
-  status: TransactionStatus;
-  failureReason: string | null;
-  itemsDone: number;
-  itemsTotal: number;
+  cartTransactions: CartTransaction[];
+  statuses: Record<string, TransactionStatus>;
+  failureReasons: Record<string, string | null>;
 }) {
-  const progress = itemsTotal > 1 ? ` (${itemsDone} of ${itemsTotal} items)` : '';
-  switch (status) {
-    case 'pending':
-    case 'paid':
-      return <p className="text-lg font-semibold text-foreground">Check your phone for the M-Pesa prompt&hellip;</p>;
-    case 'vend_authorized':
-      return <p className="text-lg font-semibold text-foreground">Payment received &mdash; dispensing your snack&hellip;</p>;
-    case 'dispensed':
-      return <p className="text-lg font-semibold text-success">{itemsTotal > 1 ? `All done—enjoy your snacks!${progress}` : 'Enjoy your snack!'}</p>;
-    case 'payment_failed':
-      return <p className="text-lg font-semibold text-danger">Payment was not completed{progress}. {failureReason ?? 'Please try again.'}</p>;
-    case 'paid_vend_failed':
-      return <p className="text-lg font-semibold text-danger">We couldn&apos;t dispense your item{progress}. {failureReason ?? 'Please contact support for a refund.'}</p>;
-    case 'manual_review':
-      return <p className="text-lg font-semibold text-warning">We&apos;re checking on your order{progress}. {failureReason ?? 'If you were charged, support will follow up.'}</p>;
-    case 'refunded':
-      return <p className="text-lg font-semibold text-foreground">Your payment was refunded.</p>;
-    default:
-      return <p className="text-lg font-semibold text-foreground">Processing&hellip;</p>;
+  const total = cartTransactions.length;
+  const statusOf = (t: CartTransaction) => statuses[t.id];
+  const dispensed = cartTransactions.filter((t) => statusOf(t) === 'dispensed').length;
+  const paymentFailed = cartTransactions.filter((t) => statusOf(t) === 'payment_failed').length;
+  const refunded = cartTransactions.filter((t) => statusOf(t) === 'refunded').length;
+  const failedOrReview = cartTransactions.filter((t) => statusOf(t) === 'paid_vend_failed' || statusOf(t) === 'manual_review');
+  const representativeReason = failedOrReview.map((t) => failureReasons[t.id]).find(Boolean) ?? null;
+
+  if (paymentFailed === total) {
+    return <p className="text-lg font-semibold text-danger">Payment was not completed. {failureReasons[cartTransactions[0].id] ?? 'Please try again.'}</p>;
   }
+  if (refunded === total) {
+    return <p className="text-lg font-semibold text-foreground">Your payment was refunded.</p>;
+  }
+  if (dispensed === total) {
+    return <p className="text-lg font-semibold text-success">{total > 1 ? 'All done — enjoy your snacks!' : 'Enjoy your snack!'}</p>;
+  }
+  if (dispensed > 0) {
+    return (
+      <p className="text-lg font-semibold text-warning">
+        {dispensed} of {total} items dispensed. {failedOrReview.length} had an issue{representativeReason ? `: ${representativeReason}` : '.'} If you were charged for those, support will follow up.
+      </p>
+    );
+  }
+  if (cartTransactions.some((t) => statusOf(t) === 'manual_review')) {
+    return <p className="text-lg font-semibold text-warning">We&apos;re checking on your order. {representativeReason ?? 'If you were charged, support will follow up.'}</p>;
+  }
+  return <p className="text-lg font-semibold text-danger">We couldn&apos;t dispense your order. {representativeReason ?? 'Please contact support for a refund.'}</p>;
 }
