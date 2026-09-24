@@ -46,6 +46,12 @@ class MachineSlotRepository {
     return snapshot.docs.map((doc) => doc.data() as MachineSlot).sort((a, b) => a.position - b.position);
   }
 
+  /** Every slot in the fleet — the Alert Center's own stockout/stockout-risk sweep. Bounded by fleet slot count, not transaction volume, same accepted scale as `machineRepository.listAllStatuses`. */
+  async listByBusiness(businessId: string): Promise<MachineSlot[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    return snapshot.docs.map((doc) => doc.data() as MachineSlot);
+  }
+
   async updatePrice(businessId: string, machineId: string, slotCode: string, priceKes: number): Promise<void> {
     const ref = adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode));
     const snapshot = await ref.get();

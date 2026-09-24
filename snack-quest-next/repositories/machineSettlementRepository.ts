@@ -105,6 +105,17 @@ class MachineSettlementRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSettlement }));
   }
 
+  /** Every `draft` settlement whose period ended before `before`, fleet-wide — the Alert Center's own settlement-failure sweep: a settlement that should have been finalized by now and wasn't. */
+  async listStaleDrafts(businessId: string, before: Date): Promise<{ id: string; data: MachineSettlement }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', 'draft' satisfies MachineSettlementStatus)
+      .where('periodEnd', '<', before)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSettlement }));
+  }
+
   async getInTransaction(tx: Transaction, businessId: string, settlementId: string): Promise<{ ref: FirebaseFirestore.DocumentReference; data: MachineSettlement } | null> {
     const ref = adminFirestore.collection(COLLECTION).doc(settlementId);
     const snapshot = await tx.get(ref);

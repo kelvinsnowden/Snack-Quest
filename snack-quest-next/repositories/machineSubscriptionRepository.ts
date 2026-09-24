@@ -71,6 +71,16 @@ class MachineSubscriptionRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSubscription }));
   }
 
+  /** Every subscription currently `in_arrears`, fleet-wide — the Alert Center's own subscription-issue sweep. */
+  async listInArrears(businessId: string): Promise<{ id: string; data: MachineSubscription }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', 'in_arrears' satisfies MachineSubscriptionStatus)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSubscription }));
+  }
+
   async moveStatus(businessId: string, subscriptionId: string, to: MachineSubscriptionStatus): Promise<void> {
     const ref = adminFirestore.collection(COLLECTION).doc(subscriptionId);
     const snapshot = await ref.get();

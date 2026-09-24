@@ -69,3 +69,4 @@ export * from './machineSettlement';
 export * from './deviceCredential';
 export * from './machineDailySummary';
 export * from './partnerDailySummary';
+export * from './alert';

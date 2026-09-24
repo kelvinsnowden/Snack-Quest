@@ -124,11 +124,11 @@ class MachineRepository {
   }
 
   /** Every machine, unpaginated — for the fleet-wide status summary card, which needs a full count breakdown rather than a page. Bounded by fleet size, not by an arbitrary constant; revisit per `docs/FLEET_ARCHITECTURE_AUDIT.md`'s own escalation path once that stops being true. */
-  async listAllStatuses(businessId: string): Promise<{ id: string; status: MachineStatus; lastSeenAt: Machine['lastSeenAt'] }[]> {
+  async listAllStatuses(businessId: string): Promise<{ id: string; status: MachineStatus; lastSeenAt: Machine['lastSeenAt']; locationId: string | null }[]> {
     const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
     return snapshot.docs.map((doc) => {
       const data = doc.data() as Machine;
-      return { id: doc.id, status: data.status, lastSeenAt: data.lastSeenAt };
+      return { id: doc.id, status: data.status, lastSeenAt: data.lastSeenAt, locationId: data.locationId };
     });
   }
 

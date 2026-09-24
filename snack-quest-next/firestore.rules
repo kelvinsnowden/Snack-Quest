@@ -513,6 +513,13 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
+    // alerts (§ PART 6 — ALERT CENTER): staff-only, same as every
+    // other operational/financial vending collection above — nothing
+    // in the Owner Portal reads this directly today.
+    match /alerts/{alertId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     // deviceCredentials: `secretHash` only, never plaintext (see
     // `repositories/deviceCredentialRepository.ts`) — still kept to
     // the same admin-read pattern as everything else here rather than
