@@ -21,6 +21,8 @@ vi.mock('@/services/machineCommandService', async () => {
 import { GET as commandsGet, POST as commandsPost } from '@/app/api/vending/machines/[id]/commands/route';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { CommandNotSupportedError } from '@/services/machineCommandService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
 const WAREHOUSE_SESSION = { ...STAFF_SESSION, roles: ['warehouse'] };
@@ -41,8 +43,9 @@ const COMMAND = {
   createdAt: { toDate: () => new Date('2024-01-01T00:00:00.000Z') },
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 function postRequest(body: unknown): Request {
@@ -87,6 +90,11 @@ describe('POST /api/vending/machines/[id]/commands', () => {
     expect(issueCommandMock).toHaveBeenCalledWith(
       expect.objectContaining({ businessId: 'biz-1', machineId: 'm-1', commandType: 'restart', requestedBy: 'staff-1' }),
     );
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'issue_machine_command', entityType: 'machineCommand', machineId: 'm-1', actorId: 'staff-1' });
+    expect(logs[0].data.after).toMatchObject({ machineId: 'm-1', commandType: 'restart' });
   });
 
   it('404s a machine that does not exist', async () => {

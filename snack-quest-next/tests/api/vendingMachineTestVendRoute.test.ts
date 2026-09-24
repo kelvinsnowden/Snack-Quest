@@ -17,13 +17,16 @@ vi.mock('@/services/machineService', async () => {
 import { POST as testVendPost } from '@/app/api/vending/machines/[id]/testVend/route';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { TestVendNotSupportedError } from '@/services/machineService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const ADMIN_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
 const WAREHOUSE_SESSION = { ...ADMIN_SESSION, roles: ['warehouse'] };
 const FINANCE_SESSION = { ...ADMIN_SESSION, roles: ['finance'] };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 function postRequest(body: unknown): Request {
@@ -71,6 +74,11 @@ describe('POST /api/vending/machines/[id]/testVend', () => {
     expect(testVendMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01');
     const body = await response.json();
     expect(body).toEqual({ vendRef: 'vend-ref-1', authorized: true, reason: null });
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'test_vend', entityType: 'machine', machineId: 'm-1', actorId: 'staff-1' });
+    expect(logs[0].data.after).toMatchObject({ slotCode: 'A01', vendRef: 'vend-ref-1', authorized: true });
   });
 
   it('404s a machine that does not exist', async () => {

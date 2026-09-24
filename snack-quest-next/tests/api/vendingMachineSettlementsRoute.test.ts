@@ -36,6 +36,8 @@ vi.mock('@/repositories/machineRepository', async () => {
 import { GET as settlementsGet, POST as settlementsPost } from '@/app/api/vending/machines/[id]/settlements/route';
 import { POST as finalizePost } from '@/app/api/vending/settlements/[id]/finalize/route';
 import { MachineSettlementNotFoundError, IllegalSettlementTransitionError } from '@/services/machineSettlementService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
 const FINANCE_SESSION = { ...STAFF_SESSION, roles: ['finance'] };
@@ -65,8 +67,9 @@ const SETTLEMENT = {
   paidAt: null,
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 describe('GET /api/vending/machines/[id]/settlements', () => {
@@ -163,6 +166,12 @@ describe('POST /api/vending/settlements/[id]/finalize', () => {
     const response = await post();
     expect(response.status).toBe(200);
     expect(finalizeMock).toHaveBeenCalledWith('biz-1', 'settle-1', 'staff-1');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'finalize_settlement', entityType: 'machineSettlement', entityId: 'settle-1', actorId: 'staff-1' });
+    expect(logs[0].data.before).toMatchObject({ status: 'draft' });
+    expect(logs[0].data.after).toMatchObject({ status: 'finalized' });
   });
 
   it('404s a settlement that does not exist', async () => {

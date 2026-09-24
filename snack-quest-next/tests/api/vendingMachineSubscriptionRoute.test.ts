@@ -42,6 +42,8 @@ import { PATCH as subscriptionPatch } from '@/app/api/vending/machines/[id]/subs
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { MachineAlreadyHasActiveSubscriptionError } from '@/services/machineSubscriptionService';
 import { MachineSubscriptionNotFoundError, IllegalSubscriptionTransitionError } from '@/repositories/machineSubscriptionRepository';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
 const FINANCE_SESSION = { ...STAFF_SESSION, roles: ['finance'] };
@@ -65,8 +67,9 @@ const SUBSCRIPTION = {
   graceUntil: null,
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 describe('GET /api/vending/machines/[id]/subscription', () => {
@@ -127,6 +130,11 @@ describe('POST /api/vending/machines/[id]/subscription', () => {
     expect(createSubscriptionMock).toHaveBeenCalledWith(
       expect.objectContaining({ businessId: 'biz-1', machineId: 'm-1', partnerId: 'p-1', amountKes: 3500, frequency: 'weekly' }),
     );
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'create_subscription', entityType: 'machineSubscription', machineId: 'm-1', actorId: 'staff-1' });
+    expect(logs[0].data.after).toMatchObject({ machineId: 'm-1', partnerId: 'p-1', amountKes: 3500, frequency: 'weekly' });
   });
 
   it('404s a machine that does not exist', async () => {
@@ -168,11 +176,15 @@ describe('PATCH /api/vending/machines/[id]/subscription/[subscriptionId]', () =>
     ['pause', () => pauseSubscriptionMock],
     ['resume', () => resumeSubscriptionMock],
     ['cancel', () => cancelSubscriptionMock],
-  ] as const)('dispatches action "%s" to the matching service method', async (action, getMock) => {
+  ] as const)('dispatches action "%s" to the matching service method and writes a real audit log entry', async (action, getMock) => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     const response = await patch({ action });
     expect(response.status).toBe(200);
     expect(getMock()).toHaveBeenCalledWith('biz-1', 'sub-1');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: `subscription_${action}`, entityType: 'machineSubscription', machineId: 'm-1', actorId: 'staff-1' });
   });
 
   it('waivePeriod calls recordPeriodPayment with waived: true', async () => {

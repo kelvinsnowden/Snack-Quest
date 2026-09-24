@@ -24,6 +24,8 @@ vi.mock('@/services/restockTaskService', async () => {
 import { GET as restockGet, POST as restockPost } from '@/app/api/vending/restock/route';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { RestockTaskHasNoItemsError, RestockTaskQuantityError, SlotNotFoundError } from '@/services/restockTaskService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['warehouse'], businessId: 'biz-1' };
 const AGENT_SESSION = { ...STAFF_SESSION, roles: ['agent'] };
@@ -54,8 +56,9 @@ function postReq(body: unknown) {
   return restockPost(new Request('http://localhost/api/vending/restock', { method: 'POST', body: JSON.stringify(body) }));
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 describe('GET /api/vending/restock', () => {
@@ -153,6 +156,10 @@ describe('POST /api/vending/restock', () => {
       note: 'manual top-up',
       actor: 'staff-1',
     });
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'create_restock_task', entityType: 'restockTask', machineId: 'm-1', actorId: 'staff-1' });
   });
 
   it('404s a machine that does not exist', async () => {

@@ -1659,6 +1659,24 @@
       ]
     },
     {
+      "collectionGroup": "machineTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "businessId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkoutRequestId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "machineCommands",
       "queryScope": "COLLECTION",
       "fields": [

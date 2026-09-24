@@ -117,12 +117,19 @@ class MachineTransactionRepository {
    * slot, but the customer pays once"). A single-item cart still
    * finds exactly one document, so every call site written before
    * carts existed reads correctly unchanged.
+   *
+   * Ordered by `createdAt` — Firestore gives no ordering guarantee
+   * for an equality-only query, and `initiateCartPayment` created
+   * this group in exactly this order, so a caller that wants "the
+   * cart's own item order" back (as opposed to an arbitrary but
+   * still complete and correct set) can rely on it.
    */
   async listByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
       .where('checkoutRequestId', '==', checkoutRequestId)
+      .orderBy('createdAt', 'asc')
       .get();
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
   }

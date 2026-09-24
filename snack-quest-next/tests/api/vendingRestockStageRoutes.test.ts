@@ -51,6 +51,8 @@ import {
   RestockTaskQuantityError,
   SlotNotFoundError,
 } from '@/services/restockTaskService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['warehouse'], businessId: 'biz-1' };
 const AGENT_SESSION = { ...STAFF_SESSION, roles: ['agent'] };
@@ -59,8 +61,9 @@ function req(body?: unknown) {
   return new Request('http://localhost/x', { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 describe('POST /api/vending/restock/[taskId]/approve', () => {
@@ -82,6 +85,10 @@ describe('POST /api/vending/restock/[taskId]/approve', () => {
     const response = await approvePost(req({ warehouseId: 'wh-1' }), { params: Promise.resolve({ taskId: 'task-1' }) });
     expect(response.status).toBe(200);
     expect(approveMock).toHaveBeenCalledWith('biz-1', 'task-1', 'staff-1', 'wh-1');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'approve_restock_task', entityType: 'restockTask', entityId: 'task-1', actorId: 'staff-1' });
   });
 
   it('200s with no body at all', async () => {
@@ -114,6 +121,10 @@ describe('POST /api/vending/restock/[taskId]/start-picking', () => {
     const response = await startPickingPost(req(), { params: Promise.resolve({ taskId: 'task-1' }) });
     expect(response.status).toBe(200);
     expect(startPickingMock).toHaveBeenCalledWith('biz-1', 'task-1', 'staff-1');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'start_picking_restock_task', entityType: 'restockTask', entityId: 'task-1' });
   });
 
   it('409s an illegal transition', async () => {
@@ -149,6 +160,10 @@ describe('POST /api/vending/restock/[taskId]/dispatch', () => {
     expect(dispatchMock).toHaveBeenCalledWith('biz-1', 'task-1', 'staff-1', [
       { slotId: 'A01', quantityDispatched: 8, batchId: 'batch-1', expiresAt: new Date('2027-01-01T00:00:00.000Z') },
     ]);
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'dispatch_restock_task', entityType: 'restockTask', entityId: 'task-1' });
   });
 
   it('404s a slotId that is not part of the task', async () => {
@@ -180,6 +195,10 @@ describe('POST /api/vending/restock/[taskId]/mark-in-transit', () => {
     const response = await markInTransitPost(req(), { params: Promise.resolve({ taskId: 'task-1' }) });
     expect(response.status).toBe(200);
     expect(markInTransitMock).toHaveBeenCalledWith('biz-1', 'task-1', 'staff-1');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'mark_restock_task_in_transit', entityType: 'restockTask', entityId: 'task-1' });
   });
 });
 
@@ -202,6 +221,11 @@ describe('POST /api/vending/restock/[taskId]/receive', () => {
     const body = await response.json();
     expect(body.status).toBe('partially_received');
     expect(receiveMock).toHaveBeenCalledWith('biz-1', 'task-1', 'staff-1', [{ slotId: 'A01', quantityReceived: 5 }], 'short by 3');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'receive_restock_task', entityType: 'restockTask', entityId: 'task-1' });
+    expect(logs[0].data.after).toMatchObject({ status: 'partially_received', discrepancyNote: 'short by 3' });
   });
 
   it('404s a slot that does not exist', async () => {
@@ -233,6 +257,10 @@ describe('POST /api/vending/restock/[taskId]/cancel', () => {
     const response = await cancelPost(req(), { params: Promise.resolve({ taskId: 'task-1' }) });
     expect(response.status).toBe(200);
     expect(cancelMock).toHaveBeenCalledWith('biz-1', 'task-1', 'staff-1');
+
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'cancel_restock_task', entityType: 'restockTask', entityId: 'task-1' });
   });
 
   it('409s cancelling an in_transit task', async () => {
