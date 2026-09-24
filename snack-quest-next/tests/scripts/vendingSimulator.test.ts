@@ -199,11 +199,41 @@ describe('vendingSimulator', () => {
       amountKes: 350,
       mpesaReceiptNumber: 'SIMRECEIPT2',
     });
-    await machine.waitForAuthorizationAndReport(initiated.transactionId!, { dispenseOutcome: 'failure' });
+    await machine.waitForAuthorizationAndReport(initiated.transactionId!, { dispenseOutcome: 'jam' });
 
     const transaction = await machineTransactionService.findById(BUSINESS_ID, initiated.transactionId!);
     expect(transaction?.status).toBe('paid_vend_failed');
-    expect(transaction?.failureReason).toBe('jam');
+    expect(transaction?.dispenseFailureStatus).toBe('jam');
+    expect(transaction?.failureReason).toBe('mechanical jam');
+  });
+
+  it('an "unknown" dispense outcome lands the transaction on manual_review, not paid_vend_failed', async () => {
+    const adapter = sharedAdapter;
+    const caller = new InProcessRouteCaller();
+    const { machine } = await provisionSimulatedMachine(adapter, caller);
+
+    initiateStkPushMock.mockResolvedValue({
+      merchantRequestId: 'mr-sim-unknown',
+      checkoutRequestId: 'ws_CO_sim_unknown',
+      responseCode: '0',
+      responseDescription: 'Success',
+      customerMessage: 'Enter your PIN',
+    });
+
+    const initiated = await machine.initiatePurchase('A01', '0712345678');
+    await machineTransactionService.handleMpesaCallback(BUSINESS_ID, {
+      checkoutRequestId: 'ws_CO_sim_unknown',
+      merchantRequestId: 'mr-sim-unknown',
+      resultCode: 0,
+      resultDesc: 'Success',
+      amountKes: 350,
+      mpesaReceiptNumber: 'SIMRECEIPTUNKNOWN',
+    });
+    await machine.waitForAuthorizationAndReport(initiated.transactionId!, { dispenseOutcome: 'unknown' });
+
+    const transaction = await machineTransactionService.findById(BUSINESS_ID, initiated.transactionId!);
+    expect(transaction?.status).toBe('manual_review');
+    expect(transaction?.dispenseFailureStatus).toBe('unknown');
   });
 
   it('a machine that never reports a dispense result leaves the transaction authorized, ready for the reconciliation sweep', async () => {

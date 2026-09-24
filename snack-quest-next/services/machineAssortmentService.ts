@@ -261,6 +261,44 @@ class MachineAssortmentService {
 
     return items.sort((a, b) => a.displayOrder - b.displayOrder);
   }
+
+  /**
+   * A deterministic version for the customer catalog
+   * (§ LOCAL MACHINE CATALOG CACHE: "version checks, stale detection").
+   * Two reads with nothing changed underneath return the exact same
+   * string — the latest `updatedAt` across this machine's own
+   * assortment rows and slots, both already carrying a real audit
+   * timestamp bumped on every write, rather than a fresh
+   * `new Date().toISOString()` computed on every call that could never
+   * be compared against anything.
+   *
+   * Reads over *every* row/slot for the machine, not just the ones
+   * `getSellableCatalog` would currently render: a row that just
+   * became invisible or unassorted is itself a write with a fresh
+   * `updatedAt`, so this stays a safe upper bound on "something that
+   * could affect the catalog changed" without re-deriving
+   * `getSellableCatalog`'s own filtering here — a spurious re-fetch a
+   * gateway makes because of an irrelevant change is harmless; a real
+   * change this method failed to surface would not be.
+   */
+  async getCatalogVersion(businessId: string, machineId: string): Promise<string> {
+    const machine = await machineRepository.findById(businessId, machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(machineId);
+    }
+
+    const [assortmentRows, slots] = await Promise.all([
+      machineAssortmentRepository.listByMachine(businessId, machineId),
+      machineSlotRepository.listByMachine(businessId, machineId),
+    ]);
+
+    const timestampsMs = [
+      ...assortmentRows.map((row) => row.updatedAt.toMillis()),
+      ...slots.map((slot) => slot.updatedAt.toMillis()),
+    ];
+    const latestMs = timestampsMs.length > 0 ? Math.max(...timestampsMs) : machine.updatedAt.toMillis();
+    return new Date(latestMs).toISOString();
+  }
 }
 
 export const machineAssortmentService = new MachineAssortmentService();

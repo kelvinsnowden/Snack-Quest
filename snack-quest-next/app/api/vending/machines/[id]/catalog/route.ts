@@ -14,9 +14,11 @@ import { MachineNotFoundError } from '@/repositories/machineRepository';
  *
  * `catalogVersion` is what a real gateway's local cache would compare
  * against its last-fetched version (§ LOCAL MACHINE CATALOG CACHE) —
- * an ISO timestamp of now, since this route always computes a fresh
- * read rather than serving a stale one; a gateway holding its own
- * cache decides for itself whether a re-fetch is worth it.
+ * `machineAssortmentService.getCatalogVersion`'s deterministic read of
+ * the underlying data's own latest `updatedAt`, not a timestamp of
+ * "now": two consecutive reads with nothing changed return the exact
+ * same version, which is the whole point of a version a cache can
+ * actually compare against.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const businessId = getCurrentBusinessId();
@@ -35,8 +37,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   try {
-    const items = await machineAssortmentService.getSellableCatalog(auth.businessId, auth.machineId);
-    return Response.json({ catalogVersion: new Date().toISOString(), items });
+    const [items, catalogVersion] = await Promise.all([
+      machineAssortmentService.getSellableCatalog(auth.businessId, auth.machineId),
+      machineAssortmentService.getCatalogVersion(auth.businessId, auth.machineId),
+    ]);
+    return Response.json({ catalogVersion, items });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });

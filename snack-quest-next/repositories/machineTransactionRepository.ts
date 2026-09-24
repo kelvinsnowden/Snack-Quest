@@ -16,6 +16,7 @@ export type MachineTransactionInput = Omit<
   | 'paidAt'
   | 'dispensedAt'
   | 'failureReason'
+  | 'dispenseFailureStatus'
   | 'appliedTelemetryEventId'
   | 'paymentRef'
   | 'vendRef'
@@ -62,6 +63,7 @@ class MachineTransactionRepository {
       paidAt: null,
       dispensedAt: null,
       failureReason: null,
+      dispenseFailureStatus: null,
       appliedTelemetryEventId: null,
       createdAt: now,
       updatedAt: now,
@@ -178,7 +180,7 @@ class MachineTransactionRepository {
     businessId: string,
     transactionId: string,
     to: MachineTransactionStatus,
-    fields: Partial<Pick<MachineTransaction, 'paymentRef' | 'vendRef' | 'failureReason' | 'appliedTelemetryEventId'>> = {},
+    fields: Partial<Pick<MachineTransaction, 'paymentRef' | 'vendRef' | 'failureReason' | 'dispenseFailureStatus' | 'appliedTelemetryEventId'>> = {},
   ): Promise<void> {
     const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
     const snapshot = await ref.get();

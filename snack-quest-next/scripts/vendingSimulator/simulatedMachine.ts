@@ -2,7 +2,19 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 import { buildDeviceAuthHeader } from '@/lib/vending/deviceAuth';
+import type { DispenseResultStatus } from '@/lib/vending/hardwareAdapter';
 import type { RouteCaller } from './routeCaller';
+
+/** A representative human-readable reason per non-success `DispenseResultStatus` — what a real device's own `failureReason` string would carry alongside the normalized status. */
+const DISPENSE_FAILURE_REASONS: Record<Exclude<DispenseResultStatus, 'success'>, string> = {
+  failed: 'dispense failed',
+  timeout: 'no confirmation received in time',
+  unknown: 'controller did not confirm',
+  jam: 'mechanical jam',
+  no_product: 'slot reported empty at dispense time',
+  sensor_failure: 'drop sensor fault',
+  machine_offline: 'machine went offline mid-vend',
+};
 
 /**
  * A realistic gateway's own behavior, driven against the real API
@@ -94,10 +106,11 @@ export class SimulatedMachine {
    * The full customer purchase flow: pay, poll for authorization,
    * report the dispense outcome — the same three legs
    * `docs/VENDING_OS_BENCHMARK.md` §C/§E designs for a real screen to
-   * drive. `dispenseOutcome: 'success' | 'failure' | 'never-report'`
-   * is what makes this a scenario driver rather than a one-shot call —
-   * `'never-report'` is exactly the "machine goes offline mid-vend"
-   * case the transaction-timeout sweep exists for.
+   * drive. `dispenseOutcome` is the full `DispenseResultStatus`
+   * vocabulary plus `'never-report'`, which is what makes this a
+   * scenario driver rather than a one-shot call — `'never-report'` is
+   * exactly the "machine goes offline mid-vend" case the
+   * transaction-timeout sweep exists for.
    */
   /**
    * Step 1 of `buy()`, split out so a caller can wait for its own
@@ -119,10 +132,20 @@ export class SimulatedMachine {
     return { initiated: true, initiateStatus: initiate.status, transactionId };
   }
 
-  /** Step 2 of `buy()`: poll until the payment resolves one way or another, then report a dispense outcome if one was authorized. */
+  /**
+   * Step 2 of `buy()`: poll until the payment resolves one way or
+   * another, then report a dispense outcome if one was authorized.
+   *
+   * `dispenseOutcome` is the full `DispenseResultStatus` vocabulary
+   * (§ DISPENSE RESULT) plus `'never-report'` — a simulator-only
+   * concept with no status of its own, since it is the *absence* of
+   * any report at all (the machine went offline mid-vend), the exact
+   * case `reconcileStuckTransactions`'s own timeout sweep exists for
+   * rather than something a device ever explicitly says.
+   */
   async waitForAuthorizationAndReport(
     transactionId: string,
-    options: { maxPollAttempts?: number; dispenseOutcome?: 'success' | 'failure' | 'never-report' } = {},
+    options: { maxPollAttempts?: number; dispenseOutcome?: DispenseResultStatus | 'never-report' } = {},
   ): Promise<{ finalStatus: string | null; vendResultStatus?: number }> {
     const maxAttempts = options.maxPollAttempts ?? 10;
     let finalStatus: string | null = null;
@@ -141,12 +164,14 @@ export class SimulatedMachine {
       return { finalStatus };
     }
 
-    const dispensed = options.dispenseOutcome !== 'failure';
+    const status = options.dispenseOutcome ?? 'success';
+    const dispensed = status === 'success';
     const result = await this.caller.postTransactionResult(this.authHeader, {
       vendRef,
       dispensed,
+      status,
       idempotencyKey: `vend-result-${transactionId}`,
-      failureReason: dispensed ? null : 'jam',
+      failureReason: dispensed ? null : DISPENSE_FAILURE_REASONS[status],
     });
     return { finalStatus, vendResultStatus: result.status };
   }
@@ -163,7 +188,7 @@ export class SimulatedMachine {
   async buy(
     slotId: string,
     phoneNumber: string,
-    options: { maxPollAttempts?: number; dispenseOutcome?: 'success' | 'failure' | 'never-report' } = {},
+    options: { maxPollAttempts?: number; dispenseOutcome?: DispenseResultStatus | 'never-report' } = {},
   ): Promise<{
     initiated: boolean;
     initiateStatus: number;

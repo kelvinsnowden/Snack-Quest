@@ -61,15 +61,63 @@ export interface VendAuthorizationResult {
   reason: string | null;
 }
 
+/**
+ * The normalized outcome of one dispense attempt (§ DISPENSE RESULT).
+ * `dispensed`/`failureReason` (below) stay as the two fields every
+ * existing caller already reads — `status` is additive, the one new
+ * fact this type didn't used to carry: *why* it wasn't a success, in
+ * a vocabulary the business layer can actually branch on instead of
+ * pattern-matching a free-text string. `unknown` is deliberately
+ * distinct from every named failure: the device is not asserting a
+ * specific fault, only that it cannot say what happened — the same
+ * "genuinely don't know, don't guess" case a stuck-transaction timeout
+ * already routes to `manual_review` for, now reachable from an
+ * explicit device report too, not only from silence.
+ */
+export type DispenseResultStatus =
+  | 'success'
+  | 'failed'
+  | 'timeout'
+  | 'unknown'
+  | 'jam'
+  | 'no_product'
+  | 'sensor_failure'
+  | 'machine_offline';
+
 /** The canonical shape any manufacturer's vend-result payload normalises to. */
 export interface VendResultReport {
   vendRef: string;
+  /** `status === 'success'` restated as a boolean — kept for every existing caller that only ever needed a yes/no. */
   dispensed: boolean;
+  /** The normalized outcome (§ DISPENSE RESULT) — `'success'` iff `dispensed`. Every non-success value, including `'unknown'`, means inventory must never be decremented for this vend (§ MACHINE SALES: "failed vending must NOT automatically consume inventory"). */
+  status: DispenseResultStatus;
   failureReason: string | null;
   deviceTimestamp: string | null;
   /** The manufacturer/gateway's own de-duplication key for this specific report, if it supplies one — carried through to `MachineTelemetryEvent.idempotencyKey`. Adapters that receive no such key from the device must derive a stable one (e.g. from `vendRef` + a result hash), never fabricate a fresh one per call, or a retried report would be treated as new every time. */
   idempotencyKey: string;
 }
+
+/**
+ * Which physical method a machine's own hardware uses to confirm a
+ * dispense actually happened (§ DISPENSE CONFIRMATION STRATEGIES) —
+ * "machine configuration selects the appropriate strategy". Purely
+ * descriptive today: `receiveVendResult` already normalizes whatever
+ * an adapter parses into one `VendResultReport` regardless of which
+ * physical method produced it, since no two manufacturers this
+ * codebase has real documentation for report their confirmation
+ * differently enough yet to need branching code. Recording which
+ * strategy a given machine actually uses is still worth doing now —
+ * it is a real, staff-known fact about the hardware, not invented —
+ * so a future adapter that *does* need to special-case one has
+ * somewhere to read it from instead of adding a new field under
+ * time pressure.
+ */
+export type DispenseConfirmationStrategy =
+  | 'drop_sensor'
+  | 'motor_completion'
+  | 'elevator_confirmation'
+  | 'weight_sensor'
+  | 'controller_confirmation';
 
 /** The canonical shape any manufacturer's telemetry payload normalises to. */
 export interface VendingTelemetryReport {

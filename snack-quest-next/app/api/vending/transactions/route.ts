@@ -18,6 +18,7 @@ const VALID_STATUSES: MachineTransactionStatus[] = [
   'paid_vend_failed',
   'refund_requested',
   'refunded',
+  'manual_review',
 ];
 
 /**

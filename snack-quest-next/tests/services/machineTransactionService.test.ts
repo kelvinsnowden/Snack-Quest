@@ -242,6 +242,73 @@ describe('applyVendResult — the device path', () => {
     expect(movements.some((m) => m.data.reason === 'sale')).toBe(false);
   });
 
+  /*
+   * The granular `DispenseResultStatus` vocabulary (§ DISPENSE
+   * RESULT) — every named device-reported failure lands on
+   * `paid_vend_failed` exactly like the plain boolean case above did,
+   * with the specific reason now preserved as a real, typed field
+   * rather than only inside the free-text `failureReason` string.
+   */
+  it.each(['jam', 'no_product', 'sensor_failure', 'machine_offline', 'failed', 'timeout'] as const)(
+    'a "%s" dispense report moves the transaction to paid_vend_failed with dispenseFailureStatus set, and records no sale movement',
+    async (status) => {
+      const adapter = new MockVendingAdapter();
+      const { service, machineId, id, vendRef } = await paidAndAuthorized(adapter);
+
+      await service.applyVendResult({
+        businessId: BUSINESS_ID,
+        machineId,
+        rawPayload: { vendRef, dispensed: false, status, failureReason: `reported ${status}`, idempotencyKey: `result-${vendRef}` },
+        source: 'mock',
+        actor: 'device',
+      });
+
+      const transaction = await service.findById(BUSINESS_ID, id);
+      expect(transaction?.status).toBe('paid_vend_failed');
+      expect(transaction?.dispenseFailureStatus).toBe(status);
+      expect(transaction?.failureReason).toBe(`reported ${status}`);
+
+      const movements = await machineInventoryMovementRepository.listBySlot(BUSINESS_ID, machineId, 'A01');
+      expect(movements.some((m) => m.data.reason === 'sale')).toBe(false);
+    },
+  );
+
+  it('an "unknown" dispense report moves the transaction to manual_review, never paid_vend_failed, and never touches inventory', async () => {
+    const adapter = new MockVendingAdapter();
+    const { service, machineId, id, vendRef } = await paidAndAuthorized(adapter);
+
+    const result = await service.applyVendResult({
+      businessId: BUSINESS_ID,
+      machineId,
+      rawPayload: { vendRef, dispensed: false, status: 'unknown', failureReason: 'controller did not confirm', idempotencyKey: `result-${vendRef}` },
+      source: 'mock',
+      actor: 'device',
+    });
+
+    expect(result.applied).toBe(true);
+    const transaction = await service.findById(BUSINESS_ID, id);
+    expect(transaction?.status).toBe('manual_review');
+    expect(transaction?.dispenseFailureStatus).toBe('unknown');
+
+    const movements = await machineInventoryMovementRepository.listBySlot(BUSINESS_ID, machineId, 'A01');
+    expect(movements.some((m) => m.data.reason === 'sale')).toBe(false);
+  });
+
+  it('rejects a payload whose dispensed boolean disagrees with its own status, rather than silently picking one', async () => {
+    const adapter = new MockVendingAdapter();
+    const { service, machineId, vendRef } = await paidAndAuthorized(adapter);
+
+    await expect(
+      service.applyVendResult({
+        businessId: BUSINESS_ID,
+        machineId,
+        rawPayload: { vendRef, dispensed: true, status: 'jam', idempotencyKey: `result-${vendRef}` },
+        source: 'mock',
+        actor: 'device',
+      }),
+    ).rejects.toBeInstanceOf(UnrecognisedHardwarePayloadError);
+  });
+
   /* The single test that proves the idempotency requirement, not just asserts it. */
   it('applying the exact same vend-result report twice creates exactly one sale, not two', async () => {
     const adapter = new MockVendingAdapter();

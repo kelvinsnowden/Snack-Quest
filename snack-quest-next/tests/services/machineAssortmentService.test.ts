@@ -207,3 +207,35 @@ describe('MachineAssortmentService — promotional window', () => {
     expect(catalog[0].promotionalState).toBe('featured');
   });
 });
+
+describe('MachineAssortmentService.getCatalogVersion', () => {
+  it('returns the exact same version across two reads when nothing has changed', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-VER-1');
+    const sku = await createSnackItem('Version Snack', 100);
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
+
+    const first = await machineAssortmentService.getCatalogVersion(BUSINESS_ID, machineId);
+    const second = await machineAssortmentService.getCatalogVersion(BUSINESS_ID, machineId);
+    expect(first).toBe(second);
+  });
+
+  it('changes when the assortment is written again', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-VER-2');
+    const sku = await createSnackItem('Version Snack 2', 100);
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
+    const before = await machineAssortmentService.getCatalogVersion(BUSINESS_ID, machineId);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await machineAssortmentService.setVisible(BUSINESS_ID, machineId, 'snackItem', sku, false);
+    const after = await machineAssortmentService.getCatalogVersion(BUSINESS_ID, machineId);
+
+    expect(after).not.toBe(before);
+  });
+
+  it('falls back to the machine\'s own updatedAt when nothing is assorted yet', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-VER-3');
+    const version = await machineAssortmentService.getCatalogVersion(BUSINESS_ID, machineId);
+    expect(typeof version).toBe('string');
+    expect(new Date(version).toString()).not.toBe('Invalid Date');
+  });
+});

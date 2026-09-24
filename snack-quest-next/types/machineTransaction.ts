@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { DispenseResultStatus } from '@/lib/vending/hardwareAdapter';
 
 /**
  * `machineTransactions/{transactionId}` — one vend attempt, immutable
@@ -96,6 +97,8 @@ export interface MachineTransaction {
   dispensedAt: Timestamp | null;
   /** Present only when `status` is `paid_vend_failed`, `refund_requested` or `refunded` — the machine/adapter's own reported reason, kept verbatim for the refund conversation, never interpreted as more than that. */
   failureReason: string | null;
+  /** The normalized `DispenseResultStatus` (`lib/vending/hardwareAdapter.ts`) a device report carried, when one has been applied — `null` for a transaction moved to `manual_review` by the timeout sweep instead (§ transaction timeout), which never received a device report at all. `'unknown'` is the one value that itself explains why `status` is `manual_review` rather than `paid_vend_failed` — the device couldn't say what happened, so this codebase doesn't guess either. */
+  dispenseFailureStatus: DispenseResultStatus | null;
   /** The raw `machineTelemetryEvents` idempotency key this transaction's vend result was applied from — lets a duplicate device report be recognised and ignored rather than double-processed. Null until a vend result has actually been applied. */
   appliedTelemetryEventId: string | null;
   createdAt: Timestamp;

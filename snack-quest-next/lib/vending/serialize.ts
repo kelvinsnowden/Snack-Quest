@@ -86,6 +86,7 @@ export interface SerializedMachineTransaction {
   paidAt: string | null;
   dispensedAt: string | null;
   failureReason: string | null;
+  dispenseFailureStatus: MachineTransaction['dispenseFailureStatus'];
   createdAt: string;
 }
 
@@ -106,6 +107,7 @@ export function serializeMachineTransaction(id: string, data: MachineTransaction
     paidAt: data.paidAt ? data.paidAt.toDate().toISOString() : null,
     dispensedAt: data.dispensedAt ? data.dispensedAt.toDate().toISOString() : null,
     failureReason: data.failureReason,
+    dispenseFailureStatus: data.dispenseFailureStatus,
     createdAt: data.createdAt.toDate().toISOString(),
   };
 }

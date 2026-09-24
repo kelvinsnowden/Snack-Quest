@@ -17,7 +17,7 @@ import { serializeRestockTask } from '@/lib/vending/serialize';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
-import { ALL_HARDWARE_CAPABILITIES, hasCapability } from '@/lib/vending/protocol/capabilities';
+import { ALL_HARDWARE_CAPABILITIES, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
 import { findProtocolRegistryEntry } from '@/lib/vending/protocol/registry';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,7 @@ import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivity
 import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransactionStatusBadge';
 import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
 import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
+import { TestVendAction } from '@/components/admin/TestVendAction';
 import { RestockTaskStatusBadge } from '@/components/admin/RestockTaskStatusBadge';
 import { RestockTaskActions } from '@/components/admin/RestockTaskActions';
 import { formatDateTime } from '@/lib/orders/format';
@@ -45,6 +46,14 @@ const CAPABILITY_LABELS: Record<string, string> = {
   remote_enable_disable: 'Remote enable/disable',
   remote_restart: 'Remote restart',
   audit_export: 'Audit export',
+};
+
+/** The four-way capability read (§ classifyCapabilityStatus) rendered as one badge look each — never collapsed back into a single ✓/○. */
+const CAPABILITY_STATUS_PRESENTATION: Record<CapabilityStatus, { label: string; icon: string; variant: 'success' | 'outline' | 'warning' | 'secondary' }> = {
+  supported: { label: 'Supported', icon: '✓', variant: 'success' },
+  not_supported: { label: 'Not supported', icon: '✕', variant: 'outline' },
+  not_configured: { label: 'Not configured', icon: '…', variant: 'warning' },
+  unknown: { label: 'Unknown', icon: '?', variant: 'secondary' },
 };
 
 /**
@@ -104,7 +113,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks] =
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion] =
     await Promise.all([
       machineSlotService.listByMachine(session.businessId, machineId),
       machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
@@ -116,10 +125,13 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       machineSubscriptionService.findActiveForMachine(session.businessId, machineId),
       machineSettlementService.listByMachine(session.businessId, machineId),
       restockTaskService.listByMachine(session.businessId, machineId),
+      machineAssortmentService.getCatalogVersion(session.businessId, machineId),
     ]);
 
   const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);
+  const lastVendTransaction = transactionPage.transactions.find((t) => t.data.status === 'dispensed' || t.data.status === 'paid_vend_failed');
+  const lastFaultEvent = telemetryEvents.find((e) => e.data.eventType === 'fault');
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -167,10 +179,15 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
             <>
               <div className="flex flex-wrap gap-2">
                 {ALL_HARDWARE_CAPABILITIES.map((capability) => {
-                  const enabled = hasCapability(diagnostics.capabilities, capability);
+                  const status = classifyCapabilityStatus(capability, {
+                    registered: diagnostics.registered,
+                    protocolConfigured: diagnostics.live.ok,
+                    capabilities: diagnostics.capabilities,
+                  });
+                  const presentation = CAPABILITY_STATUS_PRESENTATION[status];
                   return (
-                    <Badge key={capability} variant={enabled ? 'success' : 'outline'}>
-                      {enabled ? '✓' : '○'} {CAPABILITY_LABELS[capability] ?? capability}
+                    <Badge key={capability} variant={presentation.variant} title={presentation.label}>
+                      {presentation.icon} {CAPABILITY_LABELS[capability] ?? capability}
                     </Badge>
                   );
                 })}
@@ -186,6 +203,24 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
               ) : (
                 <p className="text-sm text-warning">Live read unavailable — {diagnostics.live.reason}</p>
               )}
+
+              <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 sm:grid-cols-4">
+                <DetailStat label="Catalog version" value={catalogVersion} />
+                <DetailStat
+                  label="Last vend"
+                  value={lastVendTransaction ? `${lastVendTransaction.data.status} · ${formatDateTime(lastVendTransaction.data.createdAt)}` : 'None yet'}
+                />
+                <DetailStat
+                  label="Last fault"
+                  value={lastFaultEvent ? `${JSON.stringify(lastFaultEvent.data.payload)} · ${formatDateTime(lastFaultEvent.data.receivedAt)}` : 'None recorded'}
+                />
+              </div>
+
+              {hasCapability(diagnostics.capabilities, 'vend') ? (
+                <div className="border-t border-border pt-4">
+                  <TestVendAction machineId={machineId} slotCodes={slots.map((slot) => slot.slotCode)} />
+                </div>
+              ) : null}
             </>
           )}
         </CardContent>

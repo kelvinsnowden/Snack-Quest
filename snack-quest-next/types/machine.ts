@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
+import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
 
 /**
  * `machines/{machineId}` — a physical Discovery Machine
@@ -86,6 +87,17 @@ export interface Machine extends AuditFields {
    * different baseline sets it here.
    */
   inventoryReserveTargetKes: number | null;
+  /**
+   * Which physical method this machine's hardware uses to confirm a
+   * dispense (§ DISPENSE CONFIRMATION STRATEGIES,
+   * `lib/vending/hardwareAdapter.ts`'s own doc comment on
+   * `DispenseConfirmationStrategy` for why this is descriptive, not
+   * yet behavior-changing). Null until staff record what the
+   * physical machine actually uses — never guessed from the
+   * manufacturer alone, since two machines from the same
+   * manufacturer's line can ship with different sensors.
+   */
+  dispenseConfirmationStrategy: DispenseConfirmationStrategy | null;
 }
 
 /** Every status transition this machine may make, keyed by its current status — enforced by `machineService.updateStatus`, not left to the caller. */

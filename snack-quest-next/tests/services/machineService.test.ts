@@ -1,9 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { machineService, MachineNotFoundError, IllegalMachineStatusTransitionError, PartnerDoesNotOwnMachineError } from '@/services/machineService';
+import {
+  machineService,
+  MachineService,
+  MachineNotFoundError,
+  IllegalMachineStatusTransitionError,
+  PartnerDoesNotOwnMachineError,
+  TestVendNotSupportedError,
+} from '@/services/machineService';
 import { partnerService } from '@/services/partnerService';
 import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { machineLocationHistoryRepository } from '@/repositories/machineLocationHistoryRepository';
+import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
+import { ShengmaAdapter } from '@/lib/vending/adapters/shengmaAdapter';
 
 const BUSINESS_ID = 'biz-machine-service-test';
 
@@ -30,6 +39,29 @@ describe('provisionDevice', () => {
 
     const active = await deviceCredentialRepository.listActiveByMachine(BUSINESS_ID, machineId);
     expect(active).toHaveLength(1);
+  });
+
+  it('defaults dispenseConfirmationStrategy to null, and stores an explicit value when given', async () => {
+    const { machineId: defaulted } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: 'SQ-DCS1',
+      serialNumber: 'SN-1',
+      manufacturer: 'mock',
+      model: 'test',
+      actor: 'staff-1',
+    });
+    expect((await machineService.findById(BUSINESS_ID, defaulted))?.dispenseConfirmationStrategy).toBeNull();
+
+    const { machineId: explicit } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: 'SQ-DCS2',
+      serialNumber: 'SN-2',
+      manufacturer: 'mock',
+      model: 'test',
+      dispenseConfirmationStrategy: 'drop_sensor',
+      actor: 'staff-1',
+    });
+    expect((await machineService.findById(BUSINESS_ID, explicit))?.dispenseConfirmationStrategy).toBe('drop_sensor');
   });
 
   it('refuses a duplicate machineCode', async () => {
@@ -196,5 +228,40 @@ describe('fleetStatusSummary', () => {
     expect(summary.provisioning).toBe(1);
     expect(summary.total).toBe(2);
     void m2;
+  });
+});
+
+describe('testVend', () => {
+  it('calls the resolved adapter\'s authorizeVend and returns its result', async () => {
+    const testAdapter = new MockVendingAdapter();
+    const service = new MachineService(() => testAdapter);
+    const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: 'SQ-TV1', serialNumber: 'SN-1', manufacturer: 'mock', model: 'test', actor: 'staff-1' });
+    testAdapter.seedSlot(machineId, 'A01', { quantity: 5 });
+
+    const result = await service.testVend(BUSINESS_ID, machineId, 'A01');
+    expect(result.authorized).toBe(true);
+    expect(result.vendRef).toBeTruthy();
+  });
+
+  it('returns a real refusal — not a thrown error — when the slot cannot vend', async () => {
+    const testAdapter = new MockVendingAdapter();
+    const service = new MachineService(() => testAdapter);
+    const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: 'SQ-TV2', serialNumber: 'SN-1', manufacturer: 'mock', model: 'test', actor: 'staff-1' });
+    testAdapter.seedSlot(machineId, 'A01', { quantity: 0 });
+
+    const result = await service.testVend(BUSINESS_ID, machineId, 'A01');
+    expect(result.authorized).toBe(false);
+    expect(result.reason).toBe('slot empty');
+  });
+
+  it('throws TestVendNotSupportedError for a manufacturer whose adapter does not declare "vend"', async () => {
+    const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: 'SQ-TV3', serialNumber: 'SN-1', manufacturer: 'shengma', model: 'test', actor: 'staff-1' });
+    const service = new MachineService(() => new ShengmaAdapter());
+
+    await expect(service.testVend(BUSINESS_ID, machineId, 'A01')).rejects.toThrow(TestVendNotSupportedError);
+  });
+
+  it('throws MachineNotFoundError for a machine that does not exist', async () => {
+    await expect(machineService.testVend(BUSINESS_ID, 'ghost-machine', 'A01')).rejects.toThrow(MachineNotFoundError);
   });
 });

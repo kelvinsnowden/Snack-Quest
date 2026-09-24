@@ -112,6 +112,7 @@ describe('receiveVendResult', () => {
     expect(parsed).toEqual({
       vendRef: 'mock-vend-1',
       dispensed: true,
+      status: 'success',
       failureReason: null,
       deviceTimestamp: null,
       idempotencyKey: 'idem-1',

@@ -338,8 +338,9 @@ class MachineTransactionService {
       return { applied: false, transactionId: null };
     }
 
-    if (report.dispensed) {
+    if (report.status === 'success') {
       await machineTransactionRepository.moveStatus(input.businessId, found.id, 'dispensed', {
+        dispenseFailureStatus: null,
         appliedTelemetryEventId: telemetryEventId,
       });
       await machineInventoryMovementService.recordMovement({
@@ -351,9 +352,23 @@ class MachineTransactionService {
         sourceTransactionId: found.id,
         actor: input.actor,
       });
+    } else if (report.status === 'unknown') {
+      // The device itself cannot say what happened — the same
+      // "genuinely don't know, don't guess" case the timeout sweep
+      // already routes to `manual_review` for, reached here from an
+      // explicit report instead of silence (§ DISPENSE RESULT:
+      // "UNKNOWN vend results require reconciliation"). Inventory is
+      // never touched — the same rule every other non-success status
+      // already follows.
+      await machineTransactionRepository.moveStatus(input.businessId, found.id, 'manual_review', {
+        failureReason: report.failureReason,
+        dispenseFailureStatus: report.status,
+        appliedTelemetryEventId: telemetryEventId,
+      });
     } else {
       await machineTransactionRepository.moveStatus(input.businessId, found.id, 'paid_vend_failed', {
         failureReason: report.failureReason,
+        dispenseFailureStatus: report.status,
         appliedTelemetryEventId: telemetryEventId,
       });
     }

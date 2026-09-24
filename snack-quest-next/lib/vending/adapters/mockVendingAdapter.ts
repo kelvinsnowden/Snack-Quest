@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   UnrecognisedHardwarePayloadError,
+  type DispenseResultStatus,
   type VendAuthorizationResult,
   type VendResultReport,
   type VendingHardwareAdapter,
@@ -8,6 +9,17 @@ import {
   type VendingSlotReport,
   type VendingTelemetryReport,
 } from '../hardwareAdapter';
+
+const DISPENSE_RESULT_STATUSES: DispenseResultStatus[] = [
+  'success',
+  'failed',
+  'timeout',
+  'unknown',
+  'jam',
+  'no_product',
+  'sensor_failure',
+  'machine_offline',
+];
 import { FULL_CAPABILITIES, type HardwareCapabilities } from '../protocol/capabilities';
 
 /**
@@ -131,9 +143,23 @@ export class MockVendingAdapter implements VendingHardwareAdapter {
     const payload = asRecord(rawPayload, 'mock');
     const vendRef = requireString(payload, 'vendRef', 'mock');
     const dispensed = requireBoolean(payload, 'dispensed', 'mock');
+    // `status` is additive (§ DISPENSE RESULT) — a caller that only
+    // ever supplied `dispensed` (every payload written before this
+    // field existed) still gets a coherent status, derived rather
+    // than required, so nothing already sending the old shape breaks.
+    let status: DispenseResultStatus;
+    if (typeof payload.status === 'string' && DISPENSE_RESULT_STATUSES.includes(payload.status as DispenseResultStatus)) {
+      status = payload.status as DispenseResultStatus;
+      if (dispensed !== (status === 'success')) {
+        throw new UnrecognisedHardwarePayloadError('mock', `dispensed (${dispensed}) disagrees with status "${status}"`);
+      }
+    } else {
+      status = dispensed ? 'success' : 'failed';
+    }
     return {
       vendRef,
       dispensed,
+      status,
       failureReason: typeof payload.failureReason === 'string' ? payload.failureReason : null,
       deviceTimestamp: typeof payload.deviceTimestamp === 'string' ? payload.deviceTimestamp : null,
       idempotencyKey:

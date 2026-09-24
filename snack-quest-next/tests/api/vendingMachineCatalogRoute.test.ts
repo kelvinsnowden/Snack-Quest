@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { authenticateDeviceMock, getSellableCatalogMock } = vi.hoisted(() => ({
+const { authenticateDeviceMock, getSellableCatalogMock, getCatalogVersionMock } = vi.hoisted(() => ({
   authenticateDeviceMock: vi.fn(),
   getSellableCatalogMock: vi.fn(),
+  getCatalogVersionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/vending/deviceAuth', () => ({
@@ -11,7 +12,7 @@ vi.mock('@/lib/vending/deviceAuth', () => ({
 
 vi.mock('@/services/machineAssortmentService', async () => {
   const actual = await vi.importActual<typeof import('@/services/machineAssortmentService')>('@/services/machineAssortmentService');
-  return { ...actual, machineAssortmentService: { getSellableCatalog: getSellableCatalogMock } };
+  return { ...actual, machineAssortmentService: { getSellableCatalog: getSellableCatalogMock, getCatalogVersion: getCatalogVersionMock } };
 });
 
 import { GET as catalogGet } from '@/app/api/vending/machines/[id]/catalog/route';
@@ -19,6 +20,7 @@ import { MachineNotFoundError } from '@/repositories/machineRepository';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getCatalogVersionMock.mockResolvedValue('2026-01-01T00:00:00.000Z');
 });
 
 function call(id = 'm-1') {
@@ -56,9 +58,19 @@ describe('GET /api/vending/machines/[id]/catalog', () => {
     const response = await call('m-1');
     expect(response.status).toBe(200);
     expect(getSellableCatalogMock).toHaveBeenCalledWith('biz-1', 'm-1');
+    expect(getCatalogVersionMock).toHaveBeenCalledWith('biz-1', 'm-1');
     const body = await response.json();
-    expect(typeof body.catalogVersion).toBe('string');
+    expect(body.catalogVersion).toBe('2026-01-01T00:00:00.000Z');
     expect(body.items).toHaveLength(1);
     expect(body.items[0]).toMatchObject({ productId: 'sku-1', sellable: true, priceKes: 350 });
+  });
+
+  it('returns the exact same catalogVersion across two reads when the underlying data has not changed', async () => {
+    authenticateDeviceMock.mockResolvedValue({ ok: true, businessId: 'biz-1', machineId: 'm-1', credentialId: 'cred-1' });
+    getSellableCatalogMock.mockResolvedValue([]);
+
+    const first = await (await call('m-1')).json();
+    const second = await (await call('m-1')).json();
+    expect(first.catalogVersion).toBe(second.catalogVersion);
   });
 });
