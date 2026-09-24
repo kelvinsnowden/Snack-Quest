@@ -192,6 +192,17 @@ own instruction — **feeds** the existing restock workflow
 (`docs/INVENTORY_ARCHITECTURE.md` §5's `RestockTask`); it never creates
 a `RestockTask` itself.
 
+**Shared with the Operations Command Center (Phase 4).** The
+velocity/days-remaining/recommended-quantity arithmetic above is
+factored out as one exported pure function, `computeRestockNeed`
+(`services/recommendationEngineService.ts`), specifically so
+`docs/INVENTORY_ARCHITECTURE.md` §7's live, fleet-wide Restock
+Command Center table can reuse it rather than re-deriving the same
+numbers a second way — a slot's days-of-stock-remaining can never
+disagree between "today's command-center table" and "the stored
+`RESTOCK` recommendation for this slot," because both read the one
+function.
+
 ## 9. Location-to-location learning and new-machine recommendations (§11, §12)
 
 `peerLearningService.getProductLocationTypeAffinity` groups every

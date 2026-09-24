@@ -89,23 +89,35 @@ of the brief asks for, applied narrowly to the one field that's
 actually a commercial decision rather than to every field on the
 document.
 
-### The three states, made real
+### Sellability — five states, not one boolean (§ PRODUCT STATES, Phase 4)
 
-| | `assorted` | slot exists & has stock | `sellable` (derived) |
-|---|---|---|---|
-| Not part of this machine's plan | `false` | — | `false` |
-| Planned, not yet placed | `true` | no slot | `false` |
-| Placed, empty | `true` | slot, qty 0 | `false` |
-| Placed, disabled | `true` | slot, qty > 0, `enabled: false` | `false` |
-| Machine offline/maintenance | `true` | slot, qty > 0, enabled | `false` |
-| Live | `true` | slot, qty > 0, enabled | **`true`** |
+The original pass collapsed everything down to one boolean,
+`sellable`. That boolean still exists (kept for every caller that only
+ever needed yes/no), but it now derives from a real five-value
+`ProductAvailabilityState` (`types/machineAssortment.ts`) —
+`available | sold_out | unavailable | coming_soon | hidden` — computed
+by `machineAssortmentService.getSellableCatalog` on every read, in
+this precedence order:
 
-`sellable` is never stored. `machineAssortmentService.getSellableCatalog`
-computes it on every read from `assortment.assorted`,
-`assortment.visible`, `slot.enabled`, `slot.currentQuantity > 0`, and
-`machine.status === 'active'` — the same "derive, don't cache a
-decision" discipline `deriveConnectivityStatus` already holds for
-online/offline, applied to sellability.
+| State | Meaning | Real signal used |
+|---|---|---|
+| `hidden` | `visible: false` — never reaches this method's per-item logic at all; the screen has no entry for it, not a visible entry marked hidden | filtered out of `assorted` before any state is computed |
+| `coming_soon` | Assorted + visible, but `effectiveFrom` is still in the future | `effectiveFrom.toMillis() > now` |
+| `unavailable` | Assorted + visible + within its window, but currently un-sellable for a *non-stock* reason — no slot linked, the slot disabled, the machine not `active`, or `effectiveTo` already passed | `!slot \|\| !slot.enabled \|\| machine.status !== 'active' \|\| windowEnded` |
+| `sold_out` | Everything else checks out except physical stock | `slot.currentQuantity <= 0` |
+| `available` | Assorted, visible, a real enabled slot with stock, the machine active, within its effective window | every other fact holds |
+
+`coming_soon` closes a real bug the original three-state model had:
+a promotion whose `effectiveFrom` hadn't started yet was previously
+just an early `sellable: true` the moment a slot had stock — the
+window was never actually checked. `sold_out` stays distinct from
+`unavailable` specifically because it's the one state restocking
+alone fixes; conflating the two would tell a customer "unavailable"
+for a slot that's one restock away from being buyable. `sellable`
+itself is simply `availabilityState === 'available'` — still never
+stored, still computed fresh on every read, the same "derive, don't
+cache a decision" discipline `deriveConnectivityStatus` already holds
+for online/offline, now applied across five states instead of one.
 
 ### Isolation, tested directly
 
@@ -142,6 +154,21 @@ The screen renders exactly this. It never independently decides price,
 availability, or eligibility — those decisions are made server-side by
 `machineAssortmentService.getSellableCatalog` before the response is
 ever built.
+
+**The real customer screen** (`app/machine/[machineCode]/page.tsx`,
+Phase 4) is that thin renderer, not a mock — it resolves a
+`machineCode` to a machine, calls this same route, and shows exactly
+the five states above (a `sold_out` item renders greyed with no add-
+to-cart control, `coming_soon` shows its own badge, `unavailable`
+and `hidden` items the customer simply never sees). `KioskScreen`
+(`components/kiosk/KioskScreen.tsx`) is the checkout half of this same
+screen — see `docs/VENDING_OS_ARCHITECTURE.md` §10 for the
+cart-checkout model it drives. `scripts/vendingSimulator` was extended
+this phase to exercise the catalog endpoint directly (fetch the
+catalog, assert the sellability the simulator's own known slot state
+predicts) — the same "prove the real API surface a gateway would
+call" role the simulator already plays for commands/telemetry,
+applied to the catalog contract.
 
 ### Local cache / offline (§ 10 of the brief)
 
@@ -184,6 +211,19 @@ reserve status (§ INVENTORY_ARCHITECTURE.md §4), and a "Assortment &
 inventory reserve" card on the machine detail admin page rendering
 both. See `docs/MACHINE_COMMERCE.md` §9 for the subscription/settlement/
 wallet API surface added alongside this.
+
+**Catalog Preview** (Phase 4,
+`app/admin/(protected)/vending/[machineId]/catalog-preview/page.tsx`)
+lets staff see exactly what a given machine's customer screen would
+show, without a real device or a physical visit — and it does so by
+calling `machineAssortmentService.getSellableCatalog`/`getCatalogVersion`
+directly, server-side, the same two calls
+`GET /api/vending/machines/{id}/catalog` itself makes. This was a
+deliberate choice against the alternative (reimplementing the
+sellability logic, or fetching the device-authenticated route some
+other way) — a separate "preview" formula could drift from what a
+real customer actually sees; calling the real service function
+directly cannot.
 
 ---
 

@@ -1,5 +1,13 @@
 # Manufacturer integration contract
 
+**Phase 4 note:** the commerce/inventory/operations work covered by
+`docs/VENDING_OS_ARCHITECTURE.md` §10–11, `docs/MACHINE_COMMERCE.md`,
+and `docs/VENDING_OPERATIONS_RUNBOOK.md` touched none of the
+hardware-adapter or protocol layer this document governs — no new
+manufacturer, no new capability, no change to `PROTOCOL_REGISTRY`.
+This document stands exactly as it was written; named here rather
+than left silently unmentioned in a phase-by-phase doc pass.
+
 What a new manufacturer adapter — a real `ShengmaAdapter`
 implementation once Shengma's protocol is known, or any other
 manufacturer — must actually satisfy before it is trusted, and how

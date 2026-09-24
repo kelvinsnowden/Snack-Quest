@@ -248,7 +248,96 @@ happens. See `docs/MANUFACTURER_INTEGRATION_CONTRACT.md` for the exact
 contract such a controller (or any new manufacturer adapter) must
 satisfy.
 
-## 10. Cross-references
+## 10. One payment can cover a cart — hardware still dispenses one item at a time (Phase 4)
+
+§5's `pending → paid → vend_authorized → dispensed` sequence is
+per-`MachineTransaction`, and that stays true even though a customer
+now checks out a whole cart in one payment. `initiateCartPayment`
+(`services/machineTransactionService.ts`) creates one
+`MachineTransaction` document per physical unit/slot in the cart —
+inventory and settlement arithmetic still resolve one unit at a
+time, unchanged — but issues exactly **one** Daraja STK push for the
+summed total. `handleMpesaCallback` settles the whole group from that
+one callback (`machineTransactionRepository.listByCheckoutRequestId`,
+ordered by `createdAt` so the group comes back in the order it was
+created), then authorizes each unit's own vend in sequence — the
+hardware still dispensing one item at a time is a physical fact about
+the machine, not a fact about how the customer paid, and the two were
+conflated in this codebase's first cart-checkout attempt before being
+corrected. `initiateMpesaPayment` (the pre-cart, single-item entry
+point) is now literally `initiateCartPayment` called with a
+one-element array — one implementation, not two kept in sync by hand.
+`POST /api/vending/payments` accepts either a single `slotId` (legacy
+callers) or a `slotIds` array; `EmptyCartError` guards the array form
+against an empty checkout. Covered by
+`tests/services/machineTransactionPaymentFlow.test.ts`'s
+`initiateCartPayment`/cart-settlement cases and
+`tests/components/kioskScreen.test.tsx`'s parallel-polling checkout
+flow.
+
+## 11. Operational visibility: Alert Center & Operations Command Center (Phase 4)
+
+Everything through §10 is what makes a transaction, a vend, or a
+catalog correct. None of it tells a staff member *where to look* on a
+fleet of any real size — that's what this section adds, and it adds
+nothing that computes a new fact about the fleet; both pieces below
+read facts every other service in this document already produces.
+
+**Alert Center** (`types/alert.ts`, `repositories/alertRepository.ts`,
+`services/alertService.ts`) is a single `alerts` collection covering
+ten types — `machine_offline`, `heartbeat_missing`, `stockout`,
+`stockout_risk`, `machine_fault`, `payment_reconciliation_issue`,
+`inventory_discrepancy`, `expiry_risk`, `subscription_issue`,
+`settlement_failure` — behind two lifecycles distinguished only by how
+`evaluateAndSync` writes them, never by a field on the document:
+**condition alerts** (`dedupeKey` stable per machine/slot; reopened by
+the next sweep if still true, auto-resolved the moment the sweep no
+longer finds the condition) and **event alerts** (`machine_fault`,
+`inventory_discrepancy` — `dedupeKey` is the permanent source event/
+movement id, one alert per real occurrence, ever; never
+auto-resolved, since there is no "cleared" signal to detect, only a
+human closing it). Every evaluator reads a signal this document or
+`docs/INVENTORY_ARCHITECTURE.md`/`docs/MACHINE_COMMERCE.md` already
+computes elsewhere — `deriveConnectivityStatus` for
+offline/heartbeat, `machineSlotService`'s own low-stock threshold for
+stockout/stockout-risk, `vendingReconciliationService` for payment
+issues, `machineSubscriptionRepository.listInArrears` for
+subscription issues, a stale-draft settlement read for settlement
+failures, fault/discrepancy telemetry for the two event types, and a
+slot's own most-recent restock `expiresAt` (an honest approximation,
+not a real batch ledger — see `docs/INVENTORY_ARCHITECTURE.md` §4's
+`batchId` doc comment) for expiry risk. See
+`docs/VENDING_OPERATIONS_RUNBOOK.md` for what a staff member actually
+does with each type.
+
+**Operations Command Center** (`services/networkOverviewService.ts`,
+`services/restockCommandCenterService.ts`,
+`app/admin/(protected)/vending/page.tsx`) is the fleet-wide dashboard
+this alerting feeds: a network overview strip
+(`OperationsNetworkOverview` — machine/location/owner counts,
+online/offline split, 30-day revenue/transactions/inventory value from
+`networkIntelligenceService`, and four counts —
+`stockoutRiskCount`/`faultCount`/`subscriptionIssueCount`/
+`reconciliationIssueCount` — sourced by literally counting
+`alertService.listOpen()` results by type, so this strip and the
+Alert Center page can never disagree about how many faults are open),
+an enriched fleet table with filter chips, and a **Restock Command
+Center** (`restockCommandCenterService.getAtRiskSlots`) that reuses
+the exact same `computeRestockNeed` pure function
+`recommendationEngineService.generateRestockRecommendations` writes a
+stored `RESTOCK` recommendation from (extracted from that service this
+phase specifically so the two paths share one formula) — a live,
+unstored, fleet-wide view, never a second velocity/days-remaining
+calculation that could drift from the one recommendations already
+use. A Catalog Preview admin page
+(`app/admin/(protected)/vending/[machineId]/catalog-preview/page.tsx`)
+calls `machineAssortmentService.getSellableCatalog`/`getCatalogVersion`
+directly, server-side — the exact same two calls
+`GET /api/vending/machines/{id}/catalog` makes — so staff previewing
+what a customer sees can never be shown a different answer than the
+customer actually gets.
+
+## 12. Cross-references
 
 - `docs/HARDWARE_COMPATIBILITY_ARCHITECTURE.md` — protocol-layer
   history (MDB/DEX codecs, capability model's introduction, the
@@ -263,6 +352,8 @@ satisfy.
 - `docs/INVENTORY_ARCHITECTURE.md` / `docs/MACHINE_ASSORTMENT.md` /
   `docs/MACHINE_COMMERCE.md` — the commercial/inventory layer this
   phase explicitly does not rebuild.
+- `docs/VENDING_OPERATIONS_RUNBOOK.md` — the staff-facing "what do I
+  actually do" companion to §11's alerting/command-center layer.
 
 ## Still NEXT/SCALE
 

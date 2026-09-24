@@ -220,3 +220,50 @@ nothing to run it against.
 machines' tasks (docs/FLEET_ARCHITECTURE_AUDIT.md §23's own Phase-2
 framing, unchanged), and the real warehouse-inventory draw described
 above.
+
+## 6. Stock discrepancy adjustments (§ STOCK DISCREPANCY — implemented, Phase 4)
+
+A physical count doesn't always match `MachineSlot.currentQuantity`.
+`machineInventoryMovementService.recordDiscrepancyAdjustment` is the
+one place that reconciles the two: it reads the slot's own cached
+`currentQuantity` as the expected count (never re-derived from the
+ledger here — that's a different operation, `reconcile`), takes a
+staff-entered `physicalCountQuantity`, and writes exactly one
+`MachineInventoryMovement` with `reason: 'manual_adjustment'` and
+`quantityDelta = physicalCountQuantity - expectedQuantity` — positive
+or negative, through the same `recordMovement` transaction every other
+movement reason already uses, so the slot's cached quantity and the
+ledger move together. **A reason is required, not optional**
+(`DiscrepancyReasonRequiredError` when it's blank) — the requirement
+the brief's own wording ("require a reason") asks for, enforced rather
+than merely suggested by a form label. A count that finds no
+discrepancy is still recorded (`quantityDelta: 0` is a legal
+`manual_adjustment` movement) — "we checked, it was correct" is a real
+fact worth keeping, not a silent no-op with no trace a count ever
+happened.
+
+Every non-zero discrepancy also raises an `inventory_discrepancy`
+event alert in the Alert Center
+(`docs/VENDING_OS_ARCHITECTURE.md` §11) — one alert per movement id,
+never auto-resolved, since the correction already happened the
+moment it was recorded; a human closes it once they've reviewed why
+the count was off, not once some condition clears.
+
+## 7. Restock Command Center — the fleet-wide view (§ OPERATIONS COMMAND CENTER — implemented, Phase 4)
+
+`restockCommandCenterService.getAtRiskSlots` (§ this section's own
+service) is a **live, unstored** cross-machine listing of every
+currently-at-risk slot fleet-wide, sorted by days-of-stock-remaining —
+built to answer "where does staff need to go today," which a listing
+of only the machines `generateRestockRecommendations` (§ SNACK
+INTELLIGENCE §8) happened to have run against recently cannot answer
+on its own. It shares its arithmetic with that generator exactly:
+both call the same extracted `computeRestockNeed` pure function
+(`services/recommendationEngineService.ts`), so a slot's
+days-remaining and recommended quantity can never disagree between
+"a stored `RESTOCK` recommendation exists for this slot" and "this
+slot shows up in today's fleet-wide command center table." Rendered at
+`app/admin/(protected)/vending/restock/page.tsx`, with a
+"Create restock task" action wired straight to the existing
+§5 workflow — this view finds the risk, §5's staged task tracks
+fixing it.

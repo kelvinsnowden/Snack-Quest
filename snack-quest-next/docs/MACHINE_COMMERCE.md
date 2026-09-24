@@ -136,6 +136,19 @@ there. `Partner` gets the same pair, mirroring the creator shape most
 closely since a partner, like a creator, is paid out through the
 existing B2C withdrawal engine (§7).
 
+**`createDraft` idempotency, hardened (Phase 4 bug fix).** The overlap
+check and the write are now one atomic Firestore transaction
+(`machineSettlementRepository.createIfNoOverlap`) — closing a real
+race the original implementation had: two concurrent `createDraft`
+calls for the same machine/period (a double-click, a retried request)
+could both pass a read-then-write overlap check before either had
+written, producing two draft settlements over the same revenue. The
+gross/COGS/subscription arithmetic stays computed before the
+transaction (real arithmetic over already-settled facts, safe to
+compute outside it); only "does this period already have a
+settlement" needs to be atomic with the write itself, the same
+distinction `finalize()` already drew for its own credit path below.
+
 `machineSettlementService.finalize()` is the one and only credit path:
 moving a settlement `draft → finalized` reads-and-writes inside one
 Firestore transaction (mirroring `WithdrawalService.approveWithdrawal`'s
@@ -251,19 +264,117 @@ service mocked — the service-level behavior itself is what
 
 ---
 
-## 9. What this pass does not do, and why
+## 10. Owner Portal — partner authentication + self-service UI (§ PART 2 — OWNER PORTAL, implemented, Phase 4)
+
+§9's own "No partner login/session" gap is what this section closes.
+`lib/auth/partnerSession.ts` + `services/partnerAuthService.ts` mirror
+`lib/auth/creatorSession.ts`'s existing pattern field-for-field — its
+own cookie (`PARTNER_SESSION_COOKIE`, never shared with the staff or
+creator session, so all three can coexist in one browser without ever
+being conflated), Firebase Auth verifying the identity, and
+`requirePartnerSession`/`verifyPartnerSessionFromRequest` covering
+Server Components and Route Handlers the same way
+`requireStaffSession`/`verifyStaffSessionFromRequest` already do for
+staff. This is deliberately **not** a new auth system — it's the
+existing pattern applied to a third actor type.
+
+The Owner Portal itself (`app/partner/(protected)/**`, mobile-first)
+is the partner's own authenticated view of exactly the data §6–§8
+already compute for them: a dashboard (`page.tsx`) summarizing wallet
+balance and recent settlements, `machines/[machineId]/page.tsx` for a
+single machine's own economics, `subscription/page.tsx`, and
+`wallet/page.tsx` (balance, ledger, a self-service withdrawal request
+against the same `POST /api/vending/partners/me/withdrawals` endpoint
+§7's engine already exposes — scoped to the authenticated partner's
+own `ownerId`, never a body-supplied one; see that route's own tests
+for the identity-scoping assertion this matters most for). Every read
+here is scoped through `machineService.assertPartnerOwnsMachine` or
+the equivalent partner-scoped repository call — the same enforcement
+primitive `docs/SNACK_INTELLIGENCE.md` §14 already established for
+owner-facing intelligence reads, applied to owner-facing commerce
+reads. §9's "no bulk/self-service withdrawal UI for the partner
+themselves" gap is now closed by this same portal, not by extending
+the staff-facing `RequestPartnerWithdrawalAction`.
+
+## 11. Owner vs. location economics — location expenses (§ PART 7, implemented, Phase 4)
+
+A location has real costs — rent, a placement fee, electricity — that
+belong to the machine owner, not to Snack Quest, and §3 already
+states plainly that Snack Quest's own settlement math never nets them
+out. This section builds the owner's own record of those costs, on
+the owner's own side of that boundary: `LocationOwnerExpenses`
+(`monthlyRentKes`, `placementFeeKes`, `monthlyElectricityKes`,
+`locationCommissionPct`), written by the owner themselves through
+`PUT /api/vending/partners/me/locations/{locationId}/expenses` and
+`components/partner/LocationExpensesForm.tsx` in the Owner Portal.
+
+**Nothing entered here ever reaches Snack Quest's settlement math.**
+`machineSettlementService`'s `distributableOwnerKes` formula (§3, §6)
+reads none of these fields — this is purely the owner's own
+record-keeping, exactly like a landlord tracking their own utility
+bills separately from what a tenant pays them. The form's own copy
+says so explicitly, rather than leaving an owner to guess whether
+filling it in changes what they're paid — the same "never let a UI
+imply a consequence the code doesn't actually have" discipline this
+codebase applies to `revenueSharePartnerPct` (§1's own table:
+"structurally present," never silently assumed to do anything).
+
+## 12. Central payment/vend reconciliation (§ PART 4, implemented, Phase 4)
+
+`services/vendingReconciliationService.ts` is the staff-facing answer
+to "did every payment become a vend, and every vend come from a real
+payment" — assembled from signals the state machine in
+`docs/VENDING_OS_ARCHITECTURE.md` §5 already produces, not a parallel
+correlation engine. Two issue kinds, both real and both detectable
+today:
+
+- **Payment-without-vend / stuck transactions** — every
+  `MachineTransaction` currently sitting in `manual_review`: an amount
+  mismatch, a stuck-transaction timeout with no device report ever
+  arriving, or an explicit device `unknown` vend result. This *is*
+  the reconciliation-issue queue, not an approximation of it — the
+  correlation work already happened inside the transaction's own
+  state machine; this reads its output.
+- **Vend-without-payment** — a device's own vend report whose
+  `vendRef` matched no transaction at all
+  (`machineTelemetryEventRepository`'s `vend_result` events with
+  `processingError` set). Reachable only from a genuine hardware/
+  protocol anomaly, since a vend is only ever authorized from an
+  already-paid transaction in this architecture — never from the
+  diagnostic Test Vend action, which creates no transaction and is
+  excluded from this signal by definition.
+
+Exposed as `GET /api/vending/reconciliation`
+(`ADMIN_FINANCE_OR_WAREHOUSE`) and rendered on an admin Reconciliation
+page listing both issue lists. **Deliberately not attempted, rather
+than faked:** duplicate payment and unknown payment (a vending STK
+callback matching no transaction at all) — both would need to be told
+apart from the e-commerce checkout's own unmatched-payment bucket,
+which needs a schema change to the webhook ledger this pass didn't
+make; named as real future work in
+`docs/VENDING_OPERATIONS_RUNBOOK.md`'s own NEXT list, not glossed
+over. Every `payment_reconciliation_issue` this service surfaces also
+feeds the Alert Center (`docs/VENDING_OS_ARCHITECTURE.md` §11) — the
+same signal, two surfaces, never two independently-maintained copies
+of it.
+
+## 13. Audit-log coverage (Phase 4)
+
+Every financial write this document describes — subscription
+payment/waive/pause/resume/cancel, settlement draft creation and
+finalization, a withdrawal request, an alert acknowledge/resolve —
+now writes a real `AuditLog` entry, closing a gap where roughly half
+of this domain's mutating routes recorded no audit trail at all.
+Covered by route-level tests asserting the write actually happens
+(`auditLogRepository.listByBusiness` against the real emulator, not
+just a mocked call), not merely that the route returns 200 —
+see `docs/VENDING_OPERATIONS_RUNBOOK.md` § for where staff actually go
+to read this trail.
+
+## 14. What this pass does not do, and why
 
 - **No automatic subscription charging** (§5) — a real payments
   decision, not this pass's to make.
-- **No partner login/session.** `docs/VENDING_FOUNDATION.md` already
-  established "no partner login flow built yet" as deliberate scope;
-  every surface this pass adds (§9) is staff-facing — an admin viewing
-  or acting on a partner's behalf — not a partner's own authenticated
-  session. A real partner portal is a future pass, not a gap in this
-  one's own scope.
-- **No bulk/self-service withdrawal UI for the partner themselves** —
-  same reason as above; `RequestPartnerWithdrawalAction` is a staff
-  control, not a partner-facing form.
 - **No revenue-share settlement path removed.** It stays, unused by
   every agreement that exists today, available if a future commercial
   decision actually sets `revenueSharePartnerPct`.
@@ -271,3 +382,9 @@ service mocked — the service-level behavior itself is what
   honest `0`** — same as `requestWithdrawal` already does for
   creators; inventing a score would be worse than admitting none
   exists.
+- **No duplicate-payment / unknown-payment detection** (§12) — needs a
+  webhook-ledger schema change this pass didn't make; named, not
+  hidden.
+- **No automatic re-charge for a stalled `settlement_failure` alert**
+  — the alert tells a human a draft is stale; finalizing it is still
+  always a deliberate `ADMIN_ONLY` action, never automated.
