@@ -97,6 +97,12 @@ class MachineRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Machine }));
   }
 
+  /** Every machine's own full document, fleet-wide, unpaginated — the Operations Command Center's own network overview and fleet table read (§ PART 3 — OPERATIONS COMMAND CENTER: "network overview", "machine fleet"), which filters and enriches in memory rather than needing a combinatorial set of indexed queries. Same accepted scale as `listAllStatuses`. */
+  async listAllForBusiness(businessId: string): Promise<{ id: string; data: Machine }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Machine }));
+  }
+
   /**
    * Every machine currently at a given location (§ LOCATION IS THE
    * INTELLIGENCE UNIT: "a location can have one or multiple

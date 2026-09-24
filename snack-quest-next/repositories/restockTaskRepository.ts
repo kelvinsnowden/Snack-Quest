@@ -102,6 +102,16 @@ class RestockTaskRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as RestockTask }));
   }
 
+  /** Every open (non-terminal) task fleet-wide — the Network Overview's own "restock queue" count (§ PART 3 — NETWORK OVERVIEW). */
+  async listOpenByBusiness(businessId: string): Promise<{ id: string; data: RestockTask }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', 'in', OPEN_RESTOCK_TASK_STATUSES)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as RestockTask }));
+  }
+
   /**
    * The one status-changing write every transition goes through
    * (approve/cancel; picking/dispatch/in-transit/receive layer

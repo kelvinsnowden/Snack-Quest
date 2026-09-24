@@ -50,6 +50,7 @@ export const zhCN: Dictionary = {
       '/admin/suppliers': '供应商',
       '/admin/vending': '自动售货机',
       '/admin/vending/alerts': '告警中心',
+      '/admin/vending/restock': '补货指挥中心',
       '/admin/vending/partners': '机器所有者',
       '/admin/vending/intelligence': '网络智能',
       '/admin/vending/intelligence/locations': '地点智能',

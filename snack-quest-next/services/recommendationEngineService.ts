@@ -8,7 +8,7 @@ import {
 } from '@/repositories/intelligenceRecommendationRepository';
 import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
 import { peerLearningService } from '@/services/peerLearningService';
-import type { DataQuality } from '@/services/machineAssortmentIntelligenceService';
+import type { DataQuality, SlotPerformance } from '@/services/machineAssortmentIntelligenceService';
 import type { IntelligenceRecommendation, RecommendationConfidence } from '@/types';
 
 export { RecommendationNotFoundError, IllegalRecommendationTransitionError, RecommendationNotApprovedError };
@@ -21,8 +21,58 @@ function confidenceFor(dataQuality: DataQuality): RecommendationConfidence | nul
 }
 
 /** How many days of stock a restock recommendation aims to leave the slot holding, at its measured velocity — a real operating choice, not a guess disguised as one. */
-const TARGET_DAYS_OF_STOCK = 7;
+export const TARGET_DAYS_OF_STOCK = 7;
 const MIN_STOCKOUT_FREQUENCY_FOR_DEAD_STOCK_ALTERNATIVE = 0; // dead slots are flagged regardless of stockout state — they're the opposite problem.
+
+export interface RestockNeed {
+  slotCode: string;
+  productId: string;
+  velocityPerDay: number;
+  currentQuantity: number;
+  capacity: number;
+  daysOfStockRemaining: number;
+  recommendedQuantity: number;
+}
+
+/**
+ * The exact math `generateRestockRecommendations` writes into a
+ * recommendation — pulled out as its own pure function so
+ * `restockCommandCenterService` (§ PART 3 — RESTOCK COMMAND CENTER)
+ * can show the fleet the same "at risk" slots and the same
+ * recommended quantity live, without either writing a recommendation
+ * doc for a page view or maintaining a second copy of this formula
+ * that could quietly drift from the one that actually creates
+ * recommendations. Returns `null` for a slot that isn't actually at
+ * risk (no measured velocity, or already holding
+ * `TARGET_DAYS_OF_STOCK`+ days, or nothing left to send within
+ * capacity) — never a zero-value result papering over "not at risk."
+ */
+export function computeRestockNeed(slot: Pick<SlotPerformance, 'slotCode' | 'productId' | 'currentQuantity' | 'capacity' | 'velocityPerDay'>): RestockNeed | null {
+  const { velocityPerDay } = slot;
+  if (velocityPerDay <= 0) {
+    return null;
+  }
+  const daysOfStockRemaining = slot.currentQuantity / velocityPerDay;
+  if (daysOfStockRemaining >= TARGET_DAYS_OF_STOCK) {
+    return null;
+  }
+  const recommendedQuantity = Math.min(
+    slot.capacity - slot.currentQuantity,
+    Math.max(0, Math.ceil(velocityPerDay * TARGET_DAYS_OF_STOCK) - slot.currentQuantity),
+  );
+  if (recommendedQuantity <= 0) {
+    return null;
+  }
+  return {
+    slotCode: slot.slotCode,
+    productId: slot.productId,
+    velocityPerDay: Math.round(velocityPerDay * 100) / 100,
+    currentQuantity: slot.currentQuantity,
+    capacity: slot.capacity,
+    daysOfStockRemaining: Math.round(daysOfStockRemaining * 100) / 100,
+    recommendedQuantity,
+  };
+}
 
 class RecommendationEngineService {
   /**
@@ -41,19 +91,8 @@ class RecommendationEngineService {
     const created: string[] = [];
     for (const slot of performance.slots) {
       // slot.velocityPerDay is already downtime-aware (unitsSold / activeDays, not unitsSold / windowDays) — see machineAssortmentIntelligenceService's own doc comment on why that matters (§ STOCKOUT INTELLIGENCE).
-      const velocityPerDay = slot.velocityPerDay;
-      if (velocityPerDay <= 0) {
-        continue;
-      }
-      const daysOfStockRemaining = slot.currentQuantity / velocityPerDay;
-      if (daysOfStockRemaining >= TARGET_DAYS_OF_STOCK) {
-        continue;
-      }
-      const recommendedQuantity = Math.min(
-        slot.capacity - slot.currentQuantity,
-        Math.max(0, Math.ceil(velocityPerDay * TARGET_DAYS_OF_STOCK) - slot.currentQuantity),
-      );
-      if (recommendedQuantity <= 0) {
+      const need = computeRestockNeed(slot);
+      if (!need) {
         continue;
       }
 
@@ -66,16 +105,8 @@ class RecommendationEngineService {
         businessId,
         type: 'RESTOCK',
         target: { kind: 'machine', id: machineId },
-        reason: `Slot ${slot.slotCode} (${slot.productId}) is selling ~${velocityPerDay.toFixed(1)}/day with ${slot.currentQuantity} on hand — about ${daysOfStockRemaining.toFixed(1)} days of stock left, under the ${TARGET_DAYS_OF_STOCK}-day target.`,
-        supportingMetrics: {
-          slotCode: slot.slotCode,
-          productId: slot.productId,
-          velocityPerDay: Math.round(velocityPerDay * 100) / 100,
-          currentQuantity: slot.currentQuantity,
-          capacity: slot.capacity,
-          daysOfStockRemaining: Math.round(daysOfStockRemaining * 100) / 100,
-          recommendedQuantity,
-        },
+        reason: `Slot ${need.slotCode} (${need.productId}) is selling ~${need.velocityPerDay.toFixed(1)}/day with ${need.currentQuantity} on hand — about ${need.daysOfStockRemaining.toFixed(1)} days of stock left, under the ${TARGET_DAYS_OF_STOCK}-day target.`,
+        supportingMetrics: { ...need },
         confidence,
         status: 'pending',
         actionTaken: null,

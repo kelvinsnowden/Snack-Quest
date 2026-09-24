@@ -156,6 +156,12 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <div className="flex items-center gap-2">
           <MachineStatusBadge status={machine.status} />
           <MachineConnectivityBadge status={connectivityStatus} />
+          <Link
+            href={`/admin/vending/${machineId}/catalog-preview`}
+            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
+          >
+            Preview customer catalog
+          </Link>
         </div>
       </div>
 
