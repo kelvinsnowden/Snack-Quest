@@ -3,6 +3,7 @@ import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbidden
 import { machineAssortmentService, ProductNotFoundError } from '@/services/machineAssortmentService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineAssortment } from '@/lib/vending/serialize';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineAssortment } from '@/types';
 
 const VALID_CATALOGUES: MachineAssortment['productCatalogue'][] = ['snackItem', 'package'];
@@ -83,6 +84,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const row = await machineAssortmentService
       .listByMachine(session.businessId, id)
       .then((rows) => rows.find((r) => r.productId === productId && r.productCatalogue === productCatalogue));
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'assort_product',
+      entityType: 'machineAssortment',
+      entityId: `${id}__${productCatalogue}__${productId}`,
+      after: row ? (serializeMachineAssortment(row) as unknown as Record<string, unknown>) : null,
+      machineId: id,
+    });
     return Response.json({ assortment: row ? serializeMachineAssortment(row) : null }, { status: 201 });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {

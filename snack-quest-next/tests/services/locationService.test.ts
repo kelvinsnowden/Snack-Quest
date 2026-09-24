@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { locationService, LocationNotFoundError } from '@/services/locationService';
 import { machineService } from '@/services/machineService';
+import { partnerService } from '@/services/partnerService';
+import { machineSettlementService } from '@/services/machineSettlementService';
+import { MachineTransactionService } from '@/services/machineTransactionService';
+import { MachineSlotService } from '@/services/machineSlotService';
+import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import { adminFirestore } from '@/lib/firebase/admin';
 
 const BUSINESS_ID = 'biz-location-test';
 
 async function cleanCollections() {
-  for (const collection of ['locations', 'machines', 'machineLocationHistory', 'deviceCredentials']) {
+  for (const collection of ['locations', 'machines', 'machineLocationHistory', 'deviceCredentials', 'partners', 'machineSlots', 'machineTransactions', 'machineSettlements']) {
     const snapshot = await adminFirestore.collection(collection).where('businessId', '==', BUSINESS_ID).get();
     await Promise.all(snapshot.docs.map((doc) => doc.ref.delete()));
   }
@@ -129,5 +134,84 @@ describe('LocationService.update', () => {
 
     const location = await locationService.findById(BUSINESS_ID, locationId);
     expect(location?.name).toBe('Isolated');
+  });
+});
+
+describe('LocationService.setOwnerExpenses', () => {
+  it('stores the owner\'s own costs, leaving unset fields null rather than defaulting to zero', async () => {
+    const locationId = await locationService.create({ businessId: BUSINESS_ID, name: 'Owner Costs Location', locationType: 'office', city: 'Nairobi', actor: 'staff-1' });
+    expect((await locationService.findById(BUSINESS_ID, locationId))?.expenses).toBeNull();
+
+    await locationService.setOwnerExpenses(BUSINESS_ID, locationId, { monthlyRentKes: 15000, placementFeeKes: 5000, monthlyElectricityKes: null, locationCommissionPct: 10 }, 'owner-uid-1');
+
+    const location = await locationService.findById(BUSINESS_ID, locationId);
+    expect(location?.expenses?.monthlyRentKes).toBe(15000);
+    expect(location?.expenses?.placementFeeKes).toBe(5000);
+    expect(location?.expenses?.monthlyElectricityKes).toBeNull();
+    expect(location?.expenses?.locationCommissionPct).toBe(10);
+  });
+
+  it('never changes machine settlement math — distributable profit stays revenue minus COGS minus subscription regardless of what is recorded here', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Cost-Recording Owner', actor: 'staff-1' });
+    const locationId = await locationService.create({ businessId: BUSINESS_ID, name: 'Settlement-Isolation Location', locationType: 'office', city: 'Nairobi', actor: 'staff-1' });
+    const { machineId } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: `SQ-EXP-${Date.now()}`,
+      serialNumber: 'SN-1',
+      manufacturer: 'mock',
+      model: 'test',
+      ownerPartnerId: partnerId,
+      actor: 'staff-1',
+    });
+    await machineService.relocate(BUSINESS_ID, machineId, { locationId, latitude: null, longitude: null, address: null, venueName: null }, 'staff-1');
+
+    const adapter = new MockVendingAdapter();
+    const slots = new MachineSlotService(() => adapter);
+    adapter.seedSlot(machineId, 'A01', { quantity: 10 });
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: 'pkg-1', productCatalogue: 'package', priceKes: 200, capacity: 20, position: 1 });
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__A01`).update({ currentQuantity: 10 });
+
+    const transactions = new MachineTransactionService(() => adapter);
+    const { id } = await transactions.createPending({ businessId: BUSINESS_ID, machineId, slotId: 'A01', paymentMethod: 'mpesa' });
+    await transactions.markPaymentVerified(BUSINESS_ID, id, `mpesa-ref-${id}`);
+    const { vendRef } = await transactions.authorizeVend(BUSINESS_ID, id);
+    await transactions.applyVendResult({ businessId: BUSINESS_ID, machineId, rawPayload: { vendRef, dispensed: true, idempotencyKey: `vend-result-${id}` }, source: 'mock', actor: 'staff-1' });
+
+    // Two distinct periods (not the same period twice) — kept independent of whatever dedupe-by-period guard `createDraft` may also enforce.
+    const withoutExpensesId = await machineSettlementService.createDraft({
+      businessId: BUSINESS_ID,
+      machineId,
+      partnerId,
+      periodStart: new Date(Date.now() - 4 * 60 * 60 * 1000),
+      periodEnd: new Date(Date.now() - 3 * 60 * 60 * 1000),
+      actor: 'staff-1',
+    });
+    const withoutExpenses = await machineSettlementService.listByMachine(BUSINESS_ID, machineId);
+
+    // Recording a large rent/placement/electricity/commission figure — this must never touch the settlement.
+    await locationService.setOwnerExpenses(BUSINESS_ID, locationId, { monthlyRentKes: 999_000, placementFeeKes: 500_000, monthlyElectricityKes: 80_000, locationCommissionPct: 50 }, 'owner-uid-1');
+
+    const withExpensesId = await machineSettlementService.createDraft({
+      businessId: BUSINESS_ID,
+      machineId,
+      partnerId,
+      periodStart: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      periodEnd: new Date(Date.now() - 1 * 60 * 60 * 1000),
+      actor: 'staff-1',
+    });
+    const withExpenses = await machineSettlementService.listByMachine(BUSINESS_ID, machineId);
+
+    const before = withoutExpenses.find((s) => s.id === withoutExpensesId)!.data;
+    const after = withExpenses.find((s) => s.id === withExpensesId)!.data;
+    expect(after.distributableOwnerKes).toBe(before.distributableOwnerKes);
+    expect(after.grossSalesKes).toBe(before.grossSalesKes);
+    expect(after.cogsKes).toBe(before.cogsKes);
+  });
+
+  it('throws LocationNotFoundError for a location belonging to a different business', async () => {
+    const locationId = await locationService.create({ businessId: BUSINESS_ID, name: 'Isolated Costs', locationType: 'office', city: 'Nairobi', actor: 'staff-1' });
+    await expect(
+      locationService.setOwnerExpenses('some-other-business', locationId, { monthlyRentKes: 1000, placementFeeKes: null, monthlyElectricityKes: null, locationCommissionPct: null }, 'owner-uid-1'),
+    ).rejects.toThrow(LocationNotFoundError);
   });
 });

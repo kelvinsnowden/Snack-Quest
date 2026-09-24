@@ -77,27 +77,29 @@ describe('MachineAssortmentService — isolation', () => {
   });
 });
 
-describe('MachineAssortmentService — the three product states', () => {
-  it('stays assorted but not sellable when stock is zero', async () => {
+describe('MachineAssortmentService — the five product states', () => {
+  it('stays assorted but sold_out when stock is zero, then flips to available on restock', async () => {
     const machineId = await provisionMachine('SQ-ASSORT-ZERO');
     const sku = await createSnackItem('Korean Snack', 180);
     await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
     sharedAdapter.seedSlot(machineId, 'A03', { quantity: 0 });
     await slotService.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A03', productId: sku, productCatalogue: 'snackItem', priceKes: 350, capacity: 8, position: 1 });
     await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', sku, 'A03');
+    await adminFirestore.collection('machines').doc(machineId).update({ status: 'active' });
 
     const catalog = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
     expect(catalog).toHaveLength(1);
     expect(catalog[0].sellable).toBe(false);
+    expect(catalog[0].availabilityState).toBe('sold_out');
 
-    // Restock and activate the machine, and it becomes sellable — proving the same row flips state rather than a new one being needed.
+    // Restock, and it becomes available — proving the same row flips state rather than a new one being needed.
     await adminFirestore.collection('machineSlots').doc(`${machineId}__A03`).update({ currentQuantity: 8 });
-    await adminFirestore.collection('machines').doc(machineId).update({ status: 'active' });
     const restocked = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
     expect(restocked[0].sellable).toBe(true);
+    expect(restocked[0].availabilityState).toBe('available');
   });
 
-  it('is not sellable when assorted and in stock but not yet linked to a slot', async () => {
+  it('is unavailable (not sold_out) when assorted and in stock but not yet linked to a slot', async () => {
     const machineId = await provisionMachine('SQ-ASSORT-UNPLACED');
     const sku = await createSnackItem('Not Yet Placed', 100);
     await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
@@ -106,9 +108,10 @@ describe('MachineAssortmentService — the three product states', () => {
     expect(catalog).toHaveLength(1);
     expect(catalog[0].slotCode).toBeNull();
     expect(catalog[0].sellable).toBe(false);
+    expect(catalog[0].availabilityState).toBe('unavailable');
   });
 
-  it('is not sellable when the machine itself is not active, even with stock', async () => {
+  it('is unavailable when the machine itself is not active, even with stock', async () => {
     const machineId = await provisionMachine('SQ-ASSORT-OFFLINE');
     const sku = await createSnackItem('Machine Offline Snack', 100);
     await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
@@ -119,6 +122,78 @@ describe('MachineAssortmentService — the three product states', () => {
     // Machine starts 'provisioning' — never active until installed/tested.
     const catalog = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
     expect(catalog[0].sellable).toBe(false);
+    expect(catalog[0].availabilityState).toBe('unavailable');
+  });
+
+  it('is unavailable (not sellable) when a linked slot exists but is disabled', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-DISABLED');
+    const sku = await createSnackItem('Disabled Slot Snack', 100);
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
+    sharedAdapter.seedSlot(machineId, 'A02', { quantity: 8 });
+    await slotService.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A02', productId: sku, productCatalogue: 'snackItem', priceKes: 300, capacity: 8, position: 1 });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', sku, 'A02');
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__A02`).update({ currentQuantity: 8, enabled: false });
+    await adminFirestore.collection('machines').doc(machineId).update({ status: 'active' });
+
+    const catalog = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    expect(catalog[0].sellable).toBe(false);
+    expect(catalog[0].availabilityState).toBe('unavailable');
+  });
+
+  it('is coming_soon — never purchasable early — when effectiveFrom is still in the future, even fully stocked and active', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-SOON');
+    const sku = await createSnackItem('Arriving Soon Snack', 100);
+    await machineAssortmentService.assortProduct({
+      businessId: BUSINESS_ID,
+      machineId,
+      productId: sku,
+      productCatalogue: 'snackItem',
+      effectiveFrom: new Date(Date.now() + 60 * 60 * 1000),
+      actor: 'staff-1',
+    });
+    sharedAdapter.seedSlot(machineId, 'A01', { quantity: 8 });
+    await slotService.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: sku, productCatalogue: 'snackItem', priceKes: 300, capacity: 8, position: 1 });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', sku, 'A01');
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__A01`).update({ currentQuantity: 8 });
+    await adminFirestore.collection('machines').doc(machineId).update({ status: 'active' });
+
+    const catalog = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    // The real bug this fixes: before, `sellable` never checked the window at all, so a not-yet-started product was already purchasable.
+    expect(catalog[0].sellable).toBe(false);
+    expect(catalog[0].availabilityState).toBe('coming_soon');
+  });
+
+  it('is unavailable, not coming_soon, once effectiveTo has already passed', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-ENDED');
+    const sku = await createSnackItem('Ended Promo Snack', 100);
+    await machineAssortmentService.assortProduct({
+      businessId: BUSINESS_ID,
+      machineId,
+      productId: sku,
+      productCatalogue: 'snackItem',
+      effectiveFrom: new Date(Date.now() - 60 * 60 * 1000),
+      effectiveTo: new Date(Date.now() - 30 * 60 * 1000),
+      actor: 'staff-1',
+    });
+    sharedAdapter.seedSlot(machineId, 'A01', { quantity: 8 });
+    await slotService.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: sku, productCatalogue: 'snackItem', priceKes: 300, capacity: 8, position: 1 });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', sku, 'A01');
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__A01`).update({ currentQuantity: 8 });
+    await adminFirestore.collection('machines').doc(machineId).update({ status: 'active' });
+
+    const catalog = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    expect(catalog[0].sellable).toBe(false);
+    expect(catalog[0].availabilityState).toBe('unavailable');
+  });
+
+  it('never appears in the sellable catalog at all — not even as hidden — when visible is false', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-HIDDEN');
+    const sku = await createSnackItem('Hidden Snack', 100);
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
+    await machineAssortmentService.setVisible(BUSINESS_ID, machineId, 'snackItem', sku, false);
+
+    const catalog = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    expect(catalog).toHaveLength(0);
   });
 
   it('unassorting removes a product from the sellable catalog without deleting its history', async () => {

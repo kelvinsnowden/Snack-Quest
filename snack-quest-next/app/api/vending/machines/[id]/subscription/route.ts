@@ -3,6 +3,7 @@ import { hasStaffRole, ADMIN_ONLY, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse
 import { machineSubscriptionService, MachineAlreadyHasActiveSubscriptionError } from '@/services/machineSubscriptionService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSubscription } from '@/lib/vending/serialize';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineSubscriptionFrequency } from '@/types';
 
 const VALID_FREQUENCIES: MachineSubscriptionFrequency[] = ['weekly', 'monthly'];
@@ -69,6 +70,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       planName,
       amountKes,
       frequency: frequency as MachineSubscriptionFrequency,
+    });
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'create_subscription',
+      entityType: 'machineSubscription',
+      entityId: subscriptionId,
+      after: { machineId: id, partnerId, planName, amountKes, frequency },
+      machineId: id,
     });
     return Response.json({ subscriptionId }, { status: 201 });
   } catch (error) {

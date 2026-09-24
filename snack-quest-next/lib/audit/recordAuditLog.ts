@@ -24,6 +24,10 @@ export interface AuditLogEntryInput {
   entityId: string;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
+  /** § PART 9 — AUDIT LOG: which surface initiated this. Defaults to `'admin_portal'` — see `AuditLog.source`'s own doc comment. */
+  source?: string;
+  /** § PART 9 — AUDIT LOG: the machine this action concerns, when it concerns one. Null (the default) for anything not machine-scoped. */
+  machineId?: string | null;
 }
 
 /**
@@ -42,6 +46,8 @@ export async function recordAuditLog(request: Request, entry: AuditLogEntryInput
     entityId: entry.entityId,
     before: entry.before ?? null,
     after: entry.after ?? null,
+    source: entry.source,
+    machineId: entry.machineId,
     ipAddress: clientIpFrom(request),
   });
 }

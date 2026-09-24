@@ -3,6 +3,7 @@ import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbidden
 import { machineAssortmentService } from '@/services/machineAssortmentService';
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
 import { serializeMachineAssortment } from '@/lib/vending/serialize';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineAssortment } from '@/types';
 
 type RouteParams = { id: string; productCatalogue: string; productId: string };
@@ -58,6 +59,9 @@ export async function PATCH(
   }
 
   try {
+    const beforeRows = await machineAssortmentService.listByMachine(session.businessId, machineId);
+    const before = beforeRows.find((row) => row.productCatalogue === productCatalogue && row.productId === productId);
+
     if (unassort === true) {
       await machineAssortmentService.unassortProduct(session.businessId, machineId, productCatalogue, productId);
     }
@@ -79,6 +83,16 @@ export async function PATCH(
     }
     const rows = await machineAssortmentService.listByMachine(session.businessId, machineId);
     const updated = rows.find((row) => row.productCatalogue === productCatalogue && row.productId === productId);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: priceOverrideKes !== undefined ? 'change_price_override' : unassort === true ? 'unassort_product' : slotCode !== undefined ? 'change_slot_link' : 'change_visibility',
+      entityType: 'machineAssortment',
+      entityId: `${machineId}__${productCatalogue}__${productId}`,
+      before: before ? (serializeMachineAssortment(before) as unknown as Record<string, unknown>) : null,
+      after: updated ? (serializeMachineAssortment(updated) as unknown as Record<string, unknown>) : null,
+      machineId,
+    });
     return Response.json({ assortment: updated ? serializeMachineAssortment(updated) : null });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'could not update assortment' }, { status: 400 });

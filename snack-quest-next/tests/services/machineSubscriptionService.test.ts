@@ -33,7 +33,7 @@ async function provisionMachine(machineCode: string) {
 }
 
 async function createPartner(name: string) {
-  return partnerRepository.create({ businessId: BUSINESS_ID, name, contactEmail: null, contactPhone: null, status: 'active', note: null, availableCashKes: 0, lifetimeEarnedKes: 0, createdBy: 'staff-1' });
+  return partnerRepository.create({ businessId: BUSINESS_ID, name, contactEmail: null, contactPhone: null, status: 'active', note: null, authUid: null, availableCashKes: 0, lifetimeEarnedKes: 0, createdBy: 'staff-1' });
 }
 
 describe('MachineSubscriptionService.createSubscription', () => {

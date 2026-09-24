@@ -117,6 +117,41 @@ class PartnerRepository {
     const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Partner }));
   }
+
+  /** § partner authentication — the login-side lookup, by the Firebase Auth uid a prior `register()` already linked. At most one partner can hold a given uid (`register` only ever links an unclaimed one), so `limit(1)` is safe. */
+  async findByAuthUid(businessId: string, authUid: string): Promise<{ id: string; data: Partner } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('authUid', '==', authUid)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as Partner };
+  }
+
+  /**
+   * § partner authentication — the register-side lookup: find the
+   * staff-created partner record this email belongs to, so a
+   * Firebase Auth account can claim it. Case-insensitive because
+   * email casing is not a business decision anyone should have to get
+   * exactly right twice (once when staff typed it, once when the
+   * partner signs up). Excludes an already-claimed partner — a second
+   * account can never claim the same partner out from under the
+   * first.
+   */
+  async findUnclaimedByContactEmail(businessId: string, contactEmail: string): Promise<{ id: string; data: Partner } | null> {
+    const normalized = contactEmail.trim().toLowerCase();
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    const match = snapshot.docs.find(
+      (doc) => (doc.data() as Partner).contactEmail?.trim().toLowerCase() === normalized && (doc.data() as Partner).authUid === null,
+    );
+    return match ? { id: match.id, data: match.data() as Partner } : null;
+  }
+
+  /** § partner authentication — the one and only writer of `authUid`, called exactly once per partner, the moment `register()` links it. */
+  async linkAuthUid(partnerId: string, authUid: string): Promise<void> {
+    await partnerRef(partnerId).update({ authUid, updatedAt: FieldValue.serverTimestamp() });
+  }
 }
 
 export const partnerRepository = new PartnerRepository();

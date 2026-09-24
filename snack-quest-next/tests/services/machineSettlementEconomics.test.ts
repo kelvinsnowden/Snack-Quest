@@ -5,7 +5,7 @@ import { MachineSlotService } from '@/services/machineSlotService';
 import { MachineTransactionService } from '@/services/machineTransactionService';
 import { partnerService } from '@/services/partnerService';
 import { partnerRepository } from '@/repositories/partnerRepository';
-import { machineSettlementService, IllegalSettlementTransitionError } from '@/services/machineSettlementService';
+import { machineSettlementService, IllegalSettlementTransitionError, OverlappingSettlementPeriodError } from '@/services/machineSettlementService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
@@ -174,5 +174,64 @@ describe('machineSettlementService.finalize', () => {
     await machineSettlementService.finalize(BUSINESS_ID, settlementId, 'staff-1');
     const partner = await partnerRepository.findById(BUSINESS_ID, partnerId);
     expect(partner?.availableCashKes).toBe(expectedCredit);
+  });
+});
+
+describe('machineSettlementService — createDraft idempotency', () => {
+  it('refuses a second draft over an identical period — settlement must never run twice over the same revenue', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    const periodStart = new Date(Date.now() - 60_000);
+    await dispenseOneSale(adapter, machineId);
+    const periodEnd = new Date(Date.now() + 60_000);
+
+    await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart, periodEnd, actor: 'staff-1' });
+    await expect(machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart, periodEnd, actor: 'staff-1' })).rejects.toThrow(
+      OverlappingSettlementPeriodError,
+    );
+
+    const settlements = await machineSettlementService.listByMachine(BUSINESS_ID, machineId);
+    expect(settlements).toHaveLength(1); // the second attempt never wrote a second draft
+  });
+
+  it('refuses a second draft whose period only partially overlaps an existing one', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    const now = Date.now();
+
+    await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart: new Date(now - 3 * 60_000), periodEnd: new Date(now), actor: 'staff-1' });
+    // Starts an hour before the existing period ends, and extends past it — a real partial overlap, not just an exact duplicate.
+    await expect(
+      machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart: new Date(now - 60_000), periodEnd: new Date(now + 60_000), actor: 'staff-1' }),
+    ).rejects.toThrow(OverlappingSettlementPeriodError);
+  });
+
+  it('allows two settlements for the same machine over genuinely back-to-back, non-overlapping periods', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    const now = Date.now();
+
+    await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart: new Date(now - 2 * 60_000), periodEnd: new Date(now - 60_000), actor: 'staff-1' });
+    await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart: new Date(now - 60_000), periodEnd: new Date(now), actor: 'staff-1' });
+
+    const settlements = await machineSettlementService.listByMachine(BUSINESS_ID, machineId);
+    expect(settlements).toHaveLength(2);
+  });
+
+  it('never blocks a different machine\'s settlement for the same overlapping period', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId: machineA } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    const { machineId: machineB } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    const periodStart = new Date(Date.now() - 60_000);
+    const periodEnd = new Date(Date.now() + 60_000);
+
+    await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId: machineA, partnerId, periodStart, periodEnd, actor: 'staff-1' });
+    await expect(
+      machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId: machineB, partnerId, periodStart, periodEnd, actor: 'staff-1' }),
+    ).resolves.toBeTruthy();
   });
 });

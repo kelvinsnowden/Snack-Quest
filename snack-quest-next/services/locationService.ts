@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { FieldValue } from 'firebase-admin/firestore';
+import type { Timestamp } from 'firebase/firestore';
 import { locationRepository, LocationNotFoundError, type LocationInput } from '@/repositories/locationRepository';
 import { machineRepository } from '@/repositories/machineRepository';
 import type { Location, Machine } from '@/types';
@@ -53,9 +55,21 @@ class LocationService {
       competingFoodBeverageOutlets: input.competingFoodBeverageOutlets ?? [],
       launchDate: (input.launchDate as unknown as Location['launchDate']) ?? null,
       notes: input.notes ?? null,
+      expenses: null,
       createdBy: input.actor,
     };
     return locationRepository.create(record);
+  }
+
+  /** § PART 7 — OWNER VS LOCATION ECONOMICS: the owner's own record of their site-hosting costs — never read by `machineSettlementService`, see `LocationOwnerExpenses`'s own doc comment. */
+  async setOwnerExpenses(
+    businessId: string,
+    locationId: string,
+    expenses: { monthlyRentKes: number | null; placementFeeKes: number | null; monthlyElectricityKes: number | null; locationCommissionPct: number | null },
+    actor: string,
+  ): Promise<void> {
+    const withTimestamp: Location['expenses'] = { ...expenses, updatedAt: FieldValue.serverTimestamp() as unknown as Timestamp };
+    await locationRepository.update(businessId, locationId, { expenses: withTimestamp }, actor);
   }
 
   async findById(businessId: string, locationId: string): Promise<Location | null> {

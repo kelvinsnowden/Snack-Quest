@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
 import { machineSlotService, MachineSlotService } from '@/services/machineSlotService';
-import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError } from '@/services/machineInventoryMovementService';
+import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError, DiscrepancyReasonRequiredError } from '@/services/machineInventoryMovementService';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 
@@ -117,5 +117,57 @@ describe('reconcile', () => {
 
     const result = await machineInventoryMovementService.reconcile(BUSINESS_ID, machineId, 'A01');
     expect(result).toEqual({ cached: 999, ledgerDerived: 5, matches: false });
+  });
+});
+
+describe('recordDiscrepancyAdjustment', () => {
+  it('writes a manual_adjustment ledger entry sized to the gap between expected and physical count', async () => {
+    const { machineId } = await setUpSlot();
+    await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'restock', quantityDelta: 10, actor: 'staff-1' });
+
+    const result = await machineInventoryMovementService.recordDiscrepancyAdjustment({
+      businessId: BUSINESS_ID,
+      machineId,
+      slotId: 'A01',
+      physicalCountQuantity: 7,
+      reason: 'Physical count during weekly audit found 3 fewer units',
+      actor: 'staff-1',
+    });
+
+    expect(result).toEqual({ expectedQuantity: 10, physicalCountQuantity: 7, discrepancy: -3, afterQuantity: 7 });
+    const slots = await machineSlotService.listByMachine(BUSINESS_ID, machineId);
+    expect(slots[0].currentQuantity).toBe(7);
+    const reconciled = await machineInventoryMovementService.reconcile(BUSINESS_ID, machineId, 'A01');
+    expect(reconciled.matches).toBe(true); // the ledger and cache agree — the adjustment is itself a real ledger entry, not a side-channel correction
+  });
+
+  it('still writes a ledger entry recording the count when it matches exactly — never a silent no-op', async () => {
+    const { machineId } = await setUpSlot();
+    await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'restock', quantityDelta: 5, actor: 'staff-1' });
+
+    const result = await machineInventoryMovementService.recordDiscrepancyAdjustment({
+      businessId: BUSINESS_ID,
+      machineId,
+      slotId: 'A01',
+      physicalCountQuantity: 5,
+      reason: 'Weekly count confirmed',
+      actor: 'staff-1',
+    });
+    expect(result.discrepancy).toBe(0);
+    expect(result.afterQuantity).toBe(5);
+  });
+
+  it('refuses a blank reason', async () => {
+    const { machineId } = await setUpSlot();
+    await expect(
+      machineInventoryMovementService.recordDiscrepancyAdjustment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', physicalCountQuantity: 3, reason: '   ', actor: 'staff-1' }),
+    ).rejects.toBeInstanceOf(DiscrepancyReasonRequiredError);
+  });
+
+  it('throws SlotNotFoundError for a slot that does not exist', async () => {
+    const { machineId } = await setUpSlot();
+    await expect(
+      machineInventoryMovementService.recordDiscrepancyAdjustment({ businessId: BUSINESS_ID, machineId, slotId: 'Z99', physicalCountQuantity: 3, reason: 'count', actor: 'staff-1' }),
+    ).rejects.toBeInstanceOf(SlotNotFoundError);
   });
 });

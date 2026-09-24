@@ -20,24 +20,60 @@ export class IllegalSettlementTransitionError extends Error {
   }
 }
 
+export class OverlappingSettlementPeriodError extends Error {
+  constructor(machineId: string, existingSettlementId: string) {
+    super(`Machine ${machineId} already has a settlement (${existingSettlementId}) covering an overlapping period`);
+    this.name = 'OverlappingSettlementPeriodError';
+  }
+}
+
 export type MachineSettlementInput = Omit<MachineSettlement, 'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy' | 'finalizedAt' | 'paidAt'> & {
   createdBy: string;
 };
 
 /** `machineSettlements` reads/writes (§ CORE ENTITIES 9). No invented arithmetic here either — see the type's own doc comment. */
 class MachineSettlementRepository {
-  async create(input: MachineSettlementInput): Promise<string> {
-    const now = FieldValue.serverTimestamp();
-    const ref = await adminFirestore.collection(COLLECTION).add({
-      ...input,
-      finalizedAt: null,
-      paidAt: null,
-      createdAt: now,
-      updatedAt: now,
-      updatedBy: input.createdBy,
-      deletedAt: null,
+  /**
+   * The overlap-checked write (§ SETTLEMENT: "must be reproducible
+   * and auditable" — silently double-drafting the same revenue is
+   * neither). The overlap query and the write happen inside one
+   * Firestore transaction, so two concurrent `createDraft` calls for
+   * the same machine and period can never both pass the check before
+   * either commits — the second one always re-reads the first one's
+   * just-written document and throws. Existing settlements are read
+   * by machine + businessId (not by period) because Firestore cannot
+   * express "any doc whose stored range overlaps this new range" as a
+   * query; the overlap test itself runs client-side afterward, over
+   * what is always a small, bounded set (one machine's own lifetime
+   * settlement count, never transaction-volume-sized).
+   */
+  async createIfNoOverlap(input: MachineSettlementInput): Promise<string> {
+    return adminFirestore.runTransaction(async (tx) => {
+      const query = adminFirestore.collection(COLLECTION).where('businessId', '==', input.businessId).where('machineId', '==', input.machineId);
+      const snapshot = await tx.get(query);
+      const newStartMs = input.periodStart.toMillis();
+      const newEndMs = input.periodEnd.toMillis();
+      const overlapping = snapshot.docs.find((doc) => {
+        const existing = doc.data() as MachineSettlement;
+        return existing.periodStart.toMillis() < newEndMs && existing.periodEnd.toMillis() > newStartMs;
+      });
+      if (overlapping) {
+        throw new OverlappingSettlementPeriodError(input.machineId, overlapping.id);
+      }
+
+      const ref = adminFirestore.collection(COLLECTION).doc();
+      const now = FieldValue.serverTimestamp();
+      tx.set(ref, {
+        ...input,
+        finalizedAt: null,
+        paidAt: null,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: input.createdBy,
+        deletedAt: null,
+      });
+      return ref.id;
     });
-    return ref.id;
   }
 
   async findById(businessId: string, settlementId: string): Promise<MachineSettlement | null> {

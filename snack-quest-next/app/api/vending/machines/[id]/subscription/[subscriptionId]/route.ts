@@ -1,7 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
-import { MachineSubscriptionNotFoundError, IllegalSubscriptionTransitionError } from '@/repositories/machineSubscriptionRepository';
+import { machineSubscriptionRepository, MachineSubscriptionNotFoundError, IllegalSubscriptionTransitionError } from '@/repositories/machineSubscriptionRepository';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 const VALID_ACTIONS = ['recordPayment', 'waivePeriod', 'pause', 'resume', 'cancel'] as const;
 type Action = (typeof VALID_ACTIONS)[number];
@@ -25,7 +26,7 @@ export async function PATCH(
     return forbiddenResponse();
   }
 
-  const { subscriptionId } = await params;
+  const { id: machineId, subscriptionId } = await params;
 
   let body: unknown;
   try {
@@ -40,6 +41,7 @@ export async function PATCH(
   }
 
   try {
+    const before = await machineSubscriptionRepository.findById(session.businessId, subscriptionId);
     switch (action as Action) {
       case 'recordPayment':
         await machineSubscriptionService.recordPeriodPayment(session.businessId, subscriptionId);
@@ -57,6 +59,17 @@ export async function PATCH(
         await machineSubscriptionService.cancelSubscription(session.businessId, subscriptionId);
         break;
     }
+    const after = await machineSubscriptionRepository.findById(session.businessId, subscriptionId);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: `subscription_${action}`,
+      entityType: 'machineSubscription',
+      entityId: subscriptionId,
+      before: before ? { status: before.status, lastPaymentStatus: before.lastPaymentStatus, arrearsKes: before.arrearsKes } : null,
+      after: after ? { status: after.status, lastPaymentStatus: after.lastPaymentStatus, arrearsKes: after.arrearsKes } : null,
+      machineId,
+    });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof MachineSubscriptionNotFoundError) {

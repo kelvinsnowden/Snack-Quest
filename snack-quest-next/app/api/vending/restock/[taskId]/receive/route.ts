@@ -9,6 +9,8 @@ import {
   RestockTaskQuantityError,
   SlotNotFoundError,
 } from '@/services/restockTaskService';
+import { restockTaskRepository } from '@/repositories/restockTaskRepository';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * `in_transit → received | partially_received` — the one call that
@@ -48,6 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
   }
 
   try {
+    const before = await restockTaskRepository.findById(session.businessId, taskId);
     const { status } = await restockTaskService.receive(
       session.businessId,
       taskId,
@@ -55,6 +58,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
       items as { slotId: string; quantityReceived: number }[],
       discrepancyNote as string | null | undefined,
     );
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'receive_restock_task',
+      entityType: 'restockTask',
+      entityId: taskId,
+      before: before ? { status: before.status } : null,
+      after: { status, items, discrepancyNote: discrepancyNote ?? null },
+      machineId: before?.machineId ?? null,
+    });
     return Response.json({ status });
   } catch (error) {
     if (error instanceof RestockTaskNotFoundError || error instanceof RestockTaskItemMismatchError || error instanceof SlotNotFoundError) {

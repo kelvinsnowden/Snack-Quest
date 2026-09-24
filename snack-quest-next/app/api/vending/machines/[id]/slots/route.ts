@@ -3,6 +3,7 @@ import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbidden
 import { machineSlotService } from '@/services/machineSlotService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSlot } from '@/lib/vending/serialize';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * A machine's own slots (§ CORE ENTITIES 2). `GET` is the panel-layout
@@ -62,6 +63,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   try {
+    const beforeSlots = await machineSlotService.listByMachine(session.businessId, id);
+    const before = beforeSlots.find((slot) => slot.slotCode === slotCode);
+
     if (priceKes !== undefined) {
       await machineSlotService.setPrice(session.businessId, id, slotCode, priceKes);
     }
@@ -70,6 +74,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     const slots = await machineSlotService.listByMachine(session.businessId, id);
     const updated = slots.find((slot) => slot.slotCode === slotCode);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: priceKes !== undefined ? 'change_slot_price' : 'change_slot_enabled',
+      entityType: 'machineSlot',
+      entityId: `${id}__${slotCode}`,
+      before: before ? (serializeMachineSlot(before) as unknown as Record<string, unknown>) : null,
+      after: updated ? (serializeMachineSlot(updated) as unknown as Record<string, unknown>) : null,
+      machineId: id,
+    });
     return Response.json({ slot: updated ? serializeMachineSlot(updated) : null });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {

@@ -5,7 +5,7 @@ import { machineRepository, MachineNotFoundError } from '@/repositories/machineR
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { packageRepository } from '@/repositories/packageRepository';
-import type { MachineAssortment, MachineAssortmentPromotionalState, SellableCatalogItem } from '@/types';
+import type { MachineAssortment, MachineAssortmentPromotionalState, ProductAvailabilityState, SellableCatalogItem } from '@/types';
 
 export class ProductNotFoundError extends Error {
   constructor(productCatalogue: string, productId: string) {
@@ -179,13 +179,30 @@ class MachineAssortmentService {
 
   /**
    * The customer screen's own read (§ MACHINE CUSTOMER CATALOG,
-   * § THREE DIFFERENT PRODUCT STATES). `sellable` is derived here,
-   * never stored: `assorted && visible` (the catalog-intent facts) AND
-   * a real slot exists, is enabled, and has stock (the physical facts)
-   * AND the machine itself is `active` (the operational fact). Any one
-   * of those being false makes the product ASSORTED but not
-   * SELLABLE — never silently omitted from the assortment, and never
-   * fabricated as purchasable.
+   * § PRODUCT STATES). `availabilityState` is derived here, never
+   * stored, in this precedence order:
+   *
+   *   1. `coming_soon` — assorted+visible but `effectiveFrom` is still
+   *      in the future; a real, meaningful state to show a customer
+   *      ("arriving soon"), not just an early sellable=true the way
+   *      this method used to compute it (a real bug: the window was
+   *      never checked before, so a not-yet-started promotion was
+   *      already purchasable the moment a slot had stock).
+   *   2. `unavailable` — assorted+visible but currently un-sellable for
+   *      a *non-stock* reason: no slot linked yet, the slot is
+   *      disabled, the machine itself isn't `active`, or `effectiveTo`
+   *      has already passed.
+   *   3. `sold_out` — everything else checks out except physical stock
+   *      (`currentQuantity <= 0`) — distinct from `unavailable` because
+   *      it's the one state restocking alone fixes.
+   *   4. `available` — every fact holds: assorted, visible, a real
+   *      slot that's enabled and stocked, the machine active, and
+   *      within its effective window.
+   *
+   * `hidden` (§ PRODUCT STATES) never reaches this method at all — an
+   * assortment row with `visible: false` is filtered out of `assorted`
+   * below before any state is computed, exactly because "hidden" means
+   * the screen has no entry for it, not a visible entry marked hidden.
    *
    * A product not in this machine's `machineAssortments` rows at all
    * has no path into this result, however many other machines carry
@@ -238,11 +255,21 @@ class MachineAssortmentService {
       }
 
       const priceKes = row.priceOverrideKes ?? slot?.priceKes ?? fallbackPriceKes;
-      const sellable = Boolean(slot) && slot!.enabled && slot!.currentQuantity > 0 && machine.status === 'active';
 
-      const withinPromoWindow =
-        (!row.effectiveFrom || row.effectiveFrom.toMillis() <= now) &&
-        (!row.effectiveTo || row.effectiveTo.toMillis() >= now);
+      const notYetStarted = Boolean(row.effectiveFrom && row.effectiveFrom.toMillis() > now);
+      const windowEnded = Boolean(row.effectiveTo && row.effectiveTo.toMillis() < now);
+      const withinPromoWindow = !notYetStarted && !windowEnded;
+
+      let availabilityState: ProductAvailabilityState;
+      if (notYetStarted) {
+        availabilityState = 'coming_soon';
+      } else if (!slot || !slot.enabled || windowEnded || machine.status !== 'active') {
+        availabilityState = 'unavailable';
+      } else if (slot.currentQuantity <= 0) {
+        availabilityState = 'sold_out';
+      } else {
+        availabilityState = 'available';
+      }
 
       items.push({
         productId: row.productId,
@@ -253,7 +280,8 @@ class MachineAssortmentService {
         imageUrl,
         category: row.category,
         priceKes,
-        sellable,
+        availabilityState,
+        sellable: availabilityState === 'available',
         displayOrder: row.displayOrder,
         promotionalState: withinPromoWindow ? row.promotionalState : 'none',
       });

@@ -2,6 +2,7 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineService, TestVendNotSupportedError } from '@/services/machineService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * `POST` — the diagnostics page's "Test vend" action
@@ -40,6 +41,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     const result = await machineService.testVend(session.businessId, id, slotCode);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'test_vend',
+      entityType: 'machine',
+      entityId: id,
+      after: { slotCode, ...result },
+      machineId: id,
+    });
     return Response.json(result);
   } catch (error) {
     if (error instanceof MachineNotFoundError) {

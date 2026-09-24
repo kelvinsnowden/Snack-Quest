@@ -7,6 +7,7 @@ import {
   Boxes,
   ClipboardList,
   ClipboardCheck,
+  GitCompareArrows,
   Activity,
   Cpu,
   Flag,
@@ -126,6 +127,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/reconciliation', label: 'Payment Reconciliation', shortLabel: 'Reconciliation', icon: GitCompareArrows, section: 'vending', group: 'Vending' },
 
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers' },
   { href: '/admin/customers', label: 'Customers', icon: Users, section: 'marketing', group: 'Customers' },

@@ -51,6 +51,8 @@ import { GET as assortmentGet, POST as assortmentPost } from '@/app/api/vending/
 import { PATCH as assortmentPatch, GET as priceHistoryGet } from '@/app/api/vending/machines/[id]/assortment/[productCatalogue]/[productId]/route';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { ProductNotFoundError } from '@/services/machineAssortmentService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { adminFirestore } from '@/lib/firebase/admin';
 
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['admin'], businessId: 'biz-1' };
 const WAREHOUSE_SESSION = { ...STAFF_SESSION, roles: ['warehouse'] };
@@ -77,8 +79,9 @@ const ASSORTMENT_ROW = {
   updatedAt: { toDate: () => new Date('2024-01-01T00:00:00.000Z') },
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  await adminFirestore.recursiveDelete(adminFirestore.collection('auditLogs'));
 });
 
 describe('GET /api/vending/machines/[id]/assortment', () => {
@@ -141,6 +144,11 @@ describe('POST /api/vending/machines/[id]/assortment', () => {
     expect(assortProductMock).toHaveBeenCalledWith(
       expect.objectContaining({ businessId: 'biz-1', machineId: 'm-1', productId: 'sku-1', productCatalogue: 'snackItem', actor: 'staff-1' }),
     );
+
+    // § PART 9 — AUDIT LOG: an assortment change is real, staff-attributed, and machine-scoped.
+    const { logs } = await auditLogRepository.listByBusiness('biz-1');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].data).toMatchObject({ action: 'assort_product', entityType: 'machineAssortment', machineId: 'm-1', actorId: 'staff-1' });
   });
 
   it('404s a machine that does not exist', async () => {

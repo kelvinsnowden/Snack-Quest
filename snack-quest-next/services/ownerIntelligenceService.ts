@@ -17,6 +17,8 @@ export interface OwnerMachineSummary {
   windowDays: number;
   revenueKes: number;
   unitsSold: number;
+  /** For the owner's own AOV (`revenueKes / transactionCount`) — never assumed to equal `unitsSold`, since one transaction is one vend, not necessarily one unit in every future catalogue shape. */
+  transactionCount: number;
   topCategory: string | null;
   topProductId: string | null;
   /** From `machineAssortmentIntelligenceService.classifyMachineCatalogLayers` — never the global catalogue count, which would tell an owner things about the network's own product range. */
@@ -52,6 +54,7 @@ class OwnerIntelligenceService {
 
     let revenueKes = 0;
     let unitsSold = 0;
+    let transactionCount = 0;
     let heartbeatCount = 0;
     let faultCount = 0;
     const categoryTotals = new Map<string, number>();
@@ -60,6 +63,7 @@ class OwnerIntelligenceService {
     for (const rollup of rollups.values()) {
       revenueKes += rollup.grossSalesKes;
       unitsSold += rollup.unitsSold;
+      transactionCount += rollup.transactionCount;
       heartbeatCount += rollup.heartbeatCount;
       faultCount += rollup.faultCount;
       for (const [productId, product] of Object.entries(rollup.byProduct)) {
@@ -86,6 +90,7 @@ class OwnerIntelligenceService {
       windowDays,
       revenueKes,
       unitsSold,
+      transactionCount,
       topCategory,
       topProductId,
       stockHealth: { assortmentCount: layers.assortmentCount, stockedCount: layers.stockedCount, sellableCount: layers.sellableCount },

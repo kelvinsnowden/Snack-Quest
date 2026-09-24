@@ -22,6 +22,8 @@ import 'server-only';
  * adding one is its own decision, not a side effect of this file.
  */
 export interface RouteCaller {
+  /** § MACHINE CUSTOMER CATALOG — what a real screen fetches on startup and on its own catalog-sync poll (§ LOCAL MACHINE CATALOG CACHE). */
+  getCatalog(authHeader: string, machineId: string): Promise<{ status: number; body: unknown }>;
   postTelemetry(authHeader: string, payload: unknown): Promise<{ status: number; body: unknown }>;
   postPayment(authHeader: string, body: unknown): Promise<{ status: number; body: unknown }>;
   getPaymentStatus(authHeader: string, transactionId: string): Promise<{ status: number; body: unknown }>;
@@ -41,6 +43,15 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export class InProcessRouteCaller implements RouteCaller {
+  async getCatalog(authHeader: string, machineId: string) {
+    const { GET } = await import('@/app/api/vending/machines/[id]/catalog/route');
+    const response = await GET(
+      new Request(`http://localhost/api/vending/machines/${machineId}/catalog`, { headers: { authorization: authHeader } }),
+      { params: Promise.resolve({ id: machineId }) },
+    );
+    return { status: response.status, body: await readJson(response) };
+  }
+
   async postTelemetry(authHeader: string, payload: unknown) {
     const { POST } = await import('@/app/api/vending/telemetry/route');
     const response = await POST(

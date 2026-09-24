@@ -8,6 +8,8 @@ import {
   RestockTaskItemIncompleteError,
   RestockTaskQuantityError,
 } from '@/services/restockTaskService';
+import { restockTaskRepository } from '@/repositories/restockTaskRepository';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 interface DispatchItemBody {
   slotId: string;
@@ -52,6 +54,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
   }
 
   try {
+    const before = await restockTaskRepository.findById(session.businessId, taskId);
     await restockTaskService.dispatch(
       session.businessId,
       taskId,
@@ -63,6 +66,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
         expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
       })),
     );
+    const after = await restockTaskRepository.findById(session.businessId, taskId);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'dispatch_restock_task',
+      entityType: 'restockTask',
+      entityId: taskId,
+      before: before ? { status: before.status } : null,
+      after: after ? { status: after.status, items } : null,
+      machineId: after?.machineId ?? before?.machineId ?? null,
+    });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof RestockTaskNotFoundError || error instanceof RestockTaskItemMismatchError) {

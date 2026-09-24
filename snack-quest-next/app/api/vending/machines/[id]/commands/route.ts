@@ -3,6 +3,7 @@ import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbidden
 import { machineCommandService, CommandNotSupportedError } from '@/services/machineCommandService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineCommand } from '@/lib/vending/serialize';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineCommandType } from '@/types';
 
 const VALID_COMMAND_TYPES: MachineCommandType[] = ['restart'];
@@ -73,6 +74,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       commandType: commandType as MachineCommandType,
       payload: (payload as Record<string, unknown> | undefined) ?? null,
       requestedBy: session.uid,
+    });
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'issue_machine_command',
+      entityType: 'machineCommand',
+      entityId: commandId,
+      after: { machineId: id, commandType, payload: payload ?? null },
+      machineId: id,
     });
     return Response.json({ commandId, commandRef }, { status: 201 });
   } catch (error) {

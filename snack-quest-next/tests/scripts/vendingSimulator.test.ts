@@ -332,4 +332,23 @@ describe('vendingSimulator', () => {
     const command = await machineCommandRepository.findById(BUSINESS_ID, commandId);
     expect(command?.status).toBe('pending'); // untouched
   });
+
+  it('fetches its own catalog, detects a version change, and goes offline like every other call', async () => {
+    const adapter = sharedAdapter;
+    const caller = new InProcessRouteCaller();
+    const { machine } = await provisionSimulatedMachine(adapter, caller);
+
+    const first = await machine.fetchCatalog();
+    expect(first.fetched).toBe(true);
+    expect(first.status).toBe(200);
+    expect(first.changed).toBe(true); // no cached version yet — anything counts as a change
+    expect(first.itemCount).toBe(0); // slot configured, but nothing assorted to it in this fixture
+
+    const second = await machine.fetchCatalog();
+    expect(second.changed).toBe(false); // nothing changed underneath between the two fetches
+
+    machine.goOffline();
+    const offline = await machine.fetchCatalog();
+    expect(offline.fetched).toBe(false);
+  });
 });

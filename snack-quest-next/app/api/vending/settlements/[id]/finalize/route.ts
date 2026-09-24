@@ -1,6 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSettlementService, MachineSettlementNotFoundError, IllegalSettlementTransitionError } from '@/services/machineSettlementService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * Finalizes a `draft` settlement and credits `distributableOwnerKes +
@@ -22,7 +23,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    const before = await machineSettlementService.findById(session.businessId, id);
     await machineSettlementService.finalize(session.businessId, id, session.uid);
+    const after = await machineSettlementService.findById(session.businessId, id);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'finalize_settlement',
+      entityType: 'machineSettlement',
+      entityId: id,
+      before: before ? { status: before.status } : null,
+      after: after ? { status: after.status, distributableOwnerKes: after.distributableOwnerKes, adjustmentKes: after.adjustmentKes } : null,
+      machineId: after?.machineId ?? before?.machineId ?? null,
+    });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof MachineSettlementNotFoundError) {

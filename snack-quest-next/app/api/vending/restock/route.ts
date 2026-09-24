@@ -4,6 +4,7 @@ import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { restockTaskService, RestockTaskHasNoItemsError, RestockTaskQuantityError, SlotNotFoundError } from '@/services/restockTaskService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeRestockTask } from '@/lib/vending/serialize';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * A machine's restock tasks (§ RESTOCKING, docs/INVENTORY_ARCHITECTURE.md
@@ -89,6 +90,15 @@ export async function POST(request: Request): Promise<Response> {
       priority: priority as 'low' | 'normal' | 'high' | undefined,
       note: typeof note === 'string' ? note : undefined,
       actor: session.uid,
+    });
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'create_restock_task',
+      entityType: 'restockTask',
+      entityId: taskId,
+      after: { machineId, items, warehouseId: warehouseId ?? null, priority: priority ?? 'normal' },
+      machineId,
     });
     return Response.json({ taskId }, { status: 201 });
   } catch (error) {

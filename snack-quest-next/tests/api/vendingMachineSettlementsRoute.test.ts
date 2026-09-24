@@ -5,12 +5,14 @@ const {
   listByMachineMock,
   createDraftMock,
   finalizeMock,
+  findByIdSettlementMock,
   findByIdMachineMock,
 } = vi.hoisted(() => ({
   verifyStaffSessionFromRequestMock: vi.fn(),
   listByMachineMock: vi.fn(),
   createDraftMock: vi.fn(),
   finalizeMock: vi.fn(),
+  findByIdSettlementMock: vi.fn(),
   findByIdMachineMock: vi.fn(),
 }));
 
@@ -22,7 +24,7 @@ vi.mock('@/services/machineSettlementService', async () => {
   const actual = await vi.importActual<typeof import('@/services/machineSettlementService')>('@/services/machineSettlementService');
   return {
     ...actual,
-    machineSettlementService: { listByMachine: listByMachineMock, createDraft: createDraftMock, finalize: finalizeMock },
+    machineSettlementService: { listByMachine: listByMachineMock, createDraft: createDraftMock, finalize: finalizeMock, findById: findByIdSettlementMock },
   };
 });
 
@@ -156,6 +158,7 @@ describe('POST /api/vending/settlements/[id]/finalize', () => {
 
   it('200s and finalizes', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    findByIdSettlementMock.mockResolvedValueOnce(SETTLEMENT).mockResolvedValueOnce({ ...SETTLEMENT, status: 'finalized' });
     finalizeMock.mockResolvedValue(undefined);
     const response = await post();
     expect(response.status).toBe(200);
@@ -164,6 +167,7 @@ describe('POST /api/vending/settlements/[id]/finalize', () => {
 
   it('404s a settlement that does not exist', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    findByIdSettlementMock.mockResolvedValue(null);
     finalizeMock.mockRejectedValue(new MachineSettlementNotFoundError('settle-1'));
     const response = await post();
     expect(response.status).toBe(404);
@@ -171,6 +175,7 @@ describe('POST /api/vending/settlements/[id]/finalize', () => {
 
   it('409s a settlement already finalized — never double-credits', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    findByIdSettlementMock.mockResolvedValue({ ...SETTLEMENT, status: 'finalized' });
     finalizeMock.mockRejectedValue(new IllegalSettlementTransitionError('finalized', 'finalized'));
     const response = await post();
     expect(response.status).toBe(409);

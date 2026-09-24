@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_ONLY, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
-import { machineSettlementService } from '@/services/machineSettlementService';
+import { machineSettlementService, OverlappingSettlementPeriodError } from '@/services/machineSettlementService';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSettlement } from '@/lib/vending/serialize';
 
@@ -62,13 +62,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: `Machine ${id} has no ownerPartnerId to settle against` }, { status: 409 });
   }
 
-  const settlementId = await machineSettlementService.createDraft({
-    businessId: session.businessId,
-    machineId: id,
-    partnerId: machine.ownerPartnerId,
-    periodStart: parsedStart,
-    periodEnd: parsedEnd,
-    actor: session.uid,
-  });
-  return Response.json({ settlementId }, { status: 201 });
+  try {
+    const settlementId = await machineSettlementService.createDraft({
+      businessId: session.businessId,
+      machineId: id,
+      partnerId: machine.ownerPartnerId,
+      periodStart: parsedStart,
+      periodEnd: parsedEnd,
+      actor: session.uid,
+    });
+    return Response.json({ settlementId }, { status: 201 });
+  } catch (error) {
+    if (error instanceof OverlappingSettlementPeriodError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
 }

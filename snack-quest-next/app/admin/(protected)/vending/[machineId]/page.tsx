@@ -28,6 +28,7 @@ import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransac
 import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
 import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
 import { TestVendAction } from '@/components/admin/TestVendAction';
+import { StockDiscrepancyForm } from '@/components/admin/StockDiscrepancyForm';
 import { RestockTaskStatusBadge } from '@/components/admin/RestockTaskStatusBadge';
 import { RestockTaskActions } from '@/components/admin/RestockTaskActions';
 import { formatDateTime } from '@/lib/orders/format';
@@ -331,7 +332,10 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <CardHeader>
           <CardTitle>Slots</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="flex flex-col gap-4 p-0">
+          <div className="px-6 pt-6">
+            <StockDiscrepancyForm machineId={machineId} slotCodes={slots.map((slot) => slot.slotCode)} />
+          </div>
           {slots.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">No slots configured yet.</p>
           ) : (

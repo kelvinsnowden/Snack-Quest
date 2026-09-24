@@ -21,6 +21,7 @@ class PartnerService {
       contactPhone: input.contactPhone ?? null,
       status: 'active',
       note: null,
+      authUid: null,
       availableCashKes: 0,
       lifetimeEarnedKes: 0,
       createdBy: input.actor,

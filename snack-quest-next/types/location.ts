@@ -42,6 +42,24 @@ export type LocationType =
 
 export type LocationCustomerType = 'students' | 'employees' | 'travelers' | 'patients_and_visitors' | 'general_public' | 'mixed' | 'other';
 
+/**
+ * § PART 7 — OWNER VS LOCATION ECONOMICS. Every field is null until
+ * an owner records it — never defaulted to `0`, which would silently
+ * claim "no rent" for a site nobody has actually entered a figure
+ * for. Recurring monthly costs (`rentKes`/`electricityKes`) are kept
+ * separate from a one-off `placementFeeKes` because conflating the
+ * two would make a location's monthly cost picture wrong the very
+ * month a placement fee happened to be paid.
+ */
+export interface LocationOwnerExpenses {
+  monthlyRentKes: number | null;
+  placementFeeKes: number | null;
+  monthlyElectricityKes: number | null;
+  /** The site's own cut, as a percentage of revenue — a commission arrangement, distinct from a flat rent. */
+  locationCommissionPct: number | null;
+  updatedAt: Timestamp;
+}
+
 export interface Location extends AuditFields {
   businessId: string;
   name: string;
@@ -62,6 +80,19 @@ export interface Location extends AuditFields {
   operatingHours: string | null;
   customerType: LocationCustomerType | null;
   indoorOutdoor: 'indoor' | 'outdoor' | 'mixed' | null;
+  /**
+   * The owner's own site-hosting costs (§ PART 7 — OWNER VS LOCATION
+   * ECONOMICS) — rent, a one-off/recurring placement fee, electricity,
+   * and a location-commission percentage the site itself charges the
+   * owner. Owner-entered and owner-visible only; deliberately never
+   * read by `machineSettlementService` — Snack Quest's own machine
+   * economics stay `revenue - COGS - subscription = distributable
+   * profit` regardless of what's recorded here (§ MACHINE ECONOMICS
+   * default). An owner factors these into their *own* profitability
+   * separately; Snack Quest never becomes responsible for them just
+   * because they were entered.
+   */
+  expenses: LocationOwnerExpenses | null;
   /** Free-text notes on what else is physically nearby — not a structured directory integration, which does not exist. */
   nearbyBusinesses: string[];
   /** Competing food/beverage outlets specifically — kept distinct from `nearbyBusinesses` because it is the one category that actually matters for assortment/pricing decisions. */

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { machineSettlementRepository, IllegalSettlementTransitionError, MachineSettlementNotFoundError } from '@/repositories/machineSettlementRepository';
+import { machineSettlementRepository, IllegalSettlementTransitionError, MachineSettlementNotFoundError, OverlappingSettlementPeriodError } from '@/repositories/machineSettlementRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
@@ -12,7 +12,7 @@ import { machineSubscriptionRepository } from '@/repositories/machineSubscriptio
 import { creditEarningsInTransaction } from '@/repositories/partnerRepository';
 import type { MachineSettlement } from '@/types';
 
-export { MachineSettlementNotFoundError, IllegalSettlementTransitionError };
+export { MachineSettlementNotFoundError, IllegalSettlementTransitionError, OverlappingSettlementPeriodError };
 
 /**
  * Settlement (§ CORE ENTITIES 9, § MACHINE ECONOMICS,
@@ -92,6 +92,17 @@ class MachineSettlementService {
     return subscription?.data.amountKes ?? 0;
   }
 
+  /**
+   * `createIfNoOverlap` (§ SETTLEMENT: "must be reproducible and
+   * auditable") is what actually prevents two drafts over the same
+   * revenue — the overlap check and the write are one atomic Firestore
+   * transaction, so two concurrent calls for the same machine/period
+   * can never both succeed. Everything computed above the write
+   * (gross/COGS/subscription) is real arithmetic over already-settled
+   * facts and is safe to compute before the transaction; only the
+   * "does this period already have a settlement" check needs to be
+   * atomic with the write itself.
+   */
   async createDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date; actor: string }): Promise<string> {
     const [{ grossSalesKes, refundsKes }, { cogsKes, unpricedSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
       this.computeGrossForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
@@ -111,7 +122,7 @@ class MachineSettlementService {
 
     const distributableOwnerKes = grossSalesKes - refundsKes - cogsKes - subscriptionChargedKes;
 
-    return machineSettlementRepository.create({
+    return machineSettlementRepository.createIfNoOverlap({
       businessId: input.businessId,
       machineId: input.machineId,
       partnerId: input.partnerId,

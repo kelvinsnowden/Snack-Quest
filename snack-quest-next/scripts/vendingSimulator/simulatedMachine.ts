@@ -37,6 +37,8 @@ const DISPENSE_FAILURE_REASONS: Record<Exclude<DispenseResultStatus, 'success'>,
 export class SimulatedMachine {
   private readonly authHeader: string;
   private online = true;
+  /** The last `catalogVersion` this gateway has seen — the local cache a real screen keeps to decide whether a fetch actually changed anything (§ LOCAL MACHINE CATALOG CACHE). */
+  private cachedCatalogVersion: string | null = null;
 
   constructor(
     private readonly caller: RouteCaller,
@@ -90,6 +92,33 @@ export class SimulatedMachine {
       idempotencyKey: `oo-open-${this.machineId}-${randomUUID()}`,
       deviceTimestamp: new Date(now - 5000).toISOString(), // reports as having happened *before* the close that was actually delivered first
     });
+  }
+
+  /**
+   * What a real screen does on startup and on its own sync poll
+   * (§ MACHINE CUSTOMER CATALOG, § LOCAL MACHINE CATALOG CACHE): fetch
+   * the catalog, and report whether its version actually changed
+   * since the last fetch — a gateway that polls but never checks the
+   * version would re-render on every tick for no reason, and one that
+   * never polls at all would never notice a price or assortment
+   * change made in the cloud (§ FAILURE SCENARIO: "price changed in
+   * cloud but machine has old configuration"). Offline goes through
+   * the same no-op-and-report-it path every other method here uses,
+   * and is exactly when a real screen would fall back to its last
+   * cached response instead.
+   */
+  async fetchCatalog(): Promise<{ fetched: boolean; status?: number; catalogVersion?: string; changed?: boolean; itemCount?: number }> {
+    if (!this.online) {
+      return { fetched: false };
+    }
+    const { status, body } = await this.caller.getCatalog(this.authHeader, this.machineId);
+    if (status !== 200) {
+      return { fetched: true, status };
+    }
+    const { catalogVersion, items } = body as { catalogVersion: string; items: unknown[] };
+    const changed = catalogVersion !== this.cachedCatalogVersion;
+    this.cachedCatalogVersion = catalogVersion;
+    return { fetched: true, status, catalogVersion, changed, itemCount: items.length };
   }
 
   async reportFault(faultCode: string): Promise<{ status: number }> {

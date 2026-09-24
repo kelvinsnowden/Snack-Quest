@@ -24,6 +24,20 @@ import type { Timestamp } from 'firebase/firestore';
  */
 export type MachineAssortmentPromotionalState = 'none' | 'featured' | 'new' | 'limited_time';
 
+/**
+ * The five states a customer screen must be able to tell apart
+ * (§ PRODUCT STATES) — never a bare boolean. Only `available` allows a
+ * purchase; every other state exists so the screen shows the customer
+ * an honest reason rather than just omitting the product or, worse,
+ * accepting a payment it can't fulfil. `hidden` never reaches
+ * `getSellableCatalog`'s response at all (an assortment row with
+ * `visible: false` is filtered out before this state is computed) —
+ * it's listed here only because it's part of the same named
+ * vocabulary and because a preview/ops view over the raw assortment
+ * rows (not the sellable catalog) does need to render it.
+ */
+export type ProductAvailabilityState = 'available' | 'sold_out' | 'unavailable' | 'coming_soon' | 'hidden';
+
 export interface MachineAssortment {
   businessId: string;
   machineId: string;
@@ -94,7 +108,14 @@ export interface SellableCatalogItem {
   imageUrl: string | null;
   category: string | null;
   priceKes: number;
-  /** Derived, never stored — see `machineAssortmentService.getSellableCatalog`'s own doc comment for exactly which facts combine to produce this. */
+  /**
+   * The one true availability signal a screen needs to decide what to
+   * render. Derived, never stored — see
+   * `machineAssortmentService.getSellableCatalog`'s own doc comment for
+   * exactly which facts combine to produce it.
+   */
+  availabilityState: ProductAvailabilityState;
+  /** `availabilityState === 'available'` — kept alongside it only because it's the one field server-side purchase validation actually needs to check; the screen itself should render off `availabilityState`, not this. */
   sellable: boolean;
   displayOrder: number;
   promotionalState: MachineAssortmentPromotionalState;

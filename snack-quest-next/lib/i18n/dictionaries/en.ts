@@ -57,6 +57,7 @@ export const en = {
       '/admin/vending/intelligence/locations': 'Location Intelligence',
       '/admin/vending/intelligence/products': 'Product Intelligence',
       '/admin/vending/intelligence/recommendations': 'Recommendations',
+      '/admin/vending/reconciliation': 'Payment Reconciliation',
       '/admin/conversations': 'Conversations',
       '/admin/customers': 'Customers',
       '/admin/reviews': 'Reviews',

@@ -54,6 +54,7 @@ export const zhCN: Dictionary = {
       '/admin/vending/intelligence/locations': '地点智能',
       '/admin/vending/intelligence/products': '产品智能',
       '/admin/vending/intelligence/recommendations': '推荐',
+      '/admin/vending/reconciliation': '支付对账',
       '/admin/conversations': '会话',
       '/admin/customers': '客户',
       '/admin/reviews': '评价',

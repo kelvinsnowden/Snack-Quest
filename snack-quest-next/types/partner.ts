@@ -7,12 +7,14 @@ import type { AuditFields } from './common';
  *
  * One partner, many machines, one account — `Machine.ownerPartnerId`
  * points here. Deliberately not a role on `staffProfiles`: a partner
- * is not an employee, has no Admin Portal access, and (per this
- * pass's own scope) has no login flow built yet — see
- * `docs/VENDING_FOUNDATION.md`'s RBAC section for what is and is not
- * built. This collection and `machineService`'s partner-scoped reads
- * are the enforcement primitive a real partner session will sit on
- * top of once one exists.
+ * is not an employee and has no Admin Portal access. Its own login
+ * (§ PART 2 — OWNER PORTAL, `services/partnerAuthService.ts`) is a
+ * separate Firebase Auth-backed session, the same pattern
+ * `creatorAuthService` already proved, claimed via `authUid` rather
+ * than granted a `staffProfiles` role — see
+ * `docs/VENDING_FOUNDATION.md`'s RBAC section for the full picture.
+ * This collection and `machineService`'s partner-scoped reads are the
+ * enforcement primitive that real partner session now sits on top of.
  */
 export type PartnerStatus = 'active' | 'suspended';
 
@@ -23,6 +25,18 @@ export interface Partner extends AuditFields {
   contactPhone: string | null;
   status: PartnerStatus;
   note: string | null;
+  /**
+   * The Firebase Auth uid of the person who claimed this partner's
+   * Owner Portal login (§ PART 2 — OWNER PORTAL, § partner
+   * authentication). Null until claimed — a partner is always
+   * created by staff first (with `contactEmail`), then claims its own
+   * login by registering with that same email, exactly mirroring
+   * `services/creatorAuthService.register()`'s own "the real account
+   * is Firebase Auth; the role-granting link only gets written here"
+   * pattern. At most one partner can ever hold a given uid — see
+   * `partnerRepository.findByAuthUid`.
+   */
+  authUid: string | null;
   /**
    * Mirrors `CreatorProfile.availableCashKes`/`CustomerWallet.balanceKes`
    * exactly (§ OWNER WALLET, docs/MACHINE_COMMERCE.md §6) — a cached,

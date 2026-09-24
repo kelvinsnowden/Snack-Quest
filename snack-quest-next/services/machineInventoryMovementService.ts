@@ -21,6 +21,13 @@ export class InsufficientMachineStockError extends Error {
   }
 }
 
+export class DiscrepancyReasonRequiredError extends Error {
+  constructor() {
+    super('A reason is required to record a stock discrepancy adjustment');
+    this.name = 'DiscrepancyReasonRequiredError';
+  }
+}
+
 /**
  * The immutable ledger behind every machine slot's stock
  * (§ CORE ENTITIES 4, § "do not make current_quantity the sole
@@ -103,6 +110,50 @@ class MachineInventoryMovementService {
     }
     const ledgerDerived = await machineInventoryMovementRepository.sumDeltasForSlot(businessId, machineId, slotCode);
     return { cached: slot.currentQuantity, ledgerDerived, matches: slot.currentQuantity === ledgerDerived };
+  }
+
+  /**
+   * § STOCK DISCREPANCY: "expected quantity vs physical count, require
+   * a reason, create an inventory adjustment ledger entry" — the one
+   * writer of `reason: 'manual_adjustment'` in this codebase. The
+   * expected quantity is the slot's own cached `currentQuantity` at
+   * the moment of the count, never re-derived from the ledger here
+   * (that comparison is what `reconcile` is for, a different
+   * question: "did this service's own bookkeeping stay consistent",
+   * not "does the physical shelf match what we think is on it"). A
+   * count that matches exactly still writes a zero-delta movement —
+   * a real, useful fact ("we checked, it was correct") rather than a
+   * silent no-op that leaves no trace a count ever happened.
+   */
+  async recordDiscrepancyAdjustment(input: {
+    businessId: string;
+    machineId: string;
+    slotId: string;
+    physicalCountQuantity: number;
+    reason: string;
+    actor: string;
+  }): Promise<{ expectedQuantity: number; physicalCountQuantity: number; discrepancy: number; afterQuantity: number }> {
+    if (!input.reason.trim()) {
+      throw new DiscrepancyReasonRequiredError();
+    }
+    const slot = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotId);
+    if (!slot) {
+      throw new SlotNotFoundError(input.machineId, input.slotId);
+    }
+    const expectedQuantity = slot.currentQuantity;
+    const discrepancy = input.physicalCountQuantity - expectedQuantity;
+
+    const { afterQuantity } = await this.recordMovement({
+      businessId: input.businessId,
+      machineId: input.machineId,
+      slotId: input.slotId,
+      reason: 'manual_adjustment',
+      quantityDelta: discrepancy,
+      note: input.reason,
+      actor: input.actor,
+    });
+
+    return { expectedQuantity, physicalCountQuantity: input.physicalCountQuantity, discrepancy, afterQuantity };
   }
 }
 
