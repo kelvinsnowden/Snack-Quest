@@ -5,12 +5,18 @@ import { usePathname } from 'next/navigation';
 import { Boxes, LayoutDashboard, ReceiptText, TrendingUp, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+/**
+ * `mobileLabel` keeps the bottom tab bar's five labels to one word
+ * each so none of them wrap to a second line at phone width (the
+ * two-word `label` — "My Machines", "Sales & Revenue" — is fine in
+ * `PartnerSideNav`'s much wider desktop rail, where it stays).
+ */
 const TABS = [
-  { href: '/partner', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/partner/machines', label: 'My Machines', icon: Boxes },
-  { href: '/partner/sales', label: 'Sales & Revenue', icon: TrendingUp },
-  { href: '/partner/payouts', label: 'Payouts', icon: Wallet },
-  { href: '/partner/subscription', label: 'Subscription', icon: ReceiptText },
+  { href: '/partner', label: 'Dashboard', mobileLabel: 'Dashboard', icon: LayoutDashboard },
+  { href: '/partner/machines', label: 'My Machines', mobileLabel: 'Machines', icon: Boxes },
+  { href: '/partner/sales', label: 'Sales & Revenue', mobileLabel: 'Sales', icon: TrendingUp },
+  { href: '/partner/payouts', label: 'Payouts', mobileLabel: 'Payouts', icon: Wallet },
+  { href: '/partner/subscription', label: 'Subscription', mobileLabel: 'Subscription', icon: ReceiptText },
 ];
 
 /**
@@ -25,19 +31,19 @@ export function PartnerTabBar() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-      {TABS.map(({ href, label, icon: Icon }) => {
+      {TABS.map(({ href, mobileLabel, icon: Icon }) => {
         const active = href === '/partner' ? pathname === '/partner' : pathname.startsWith(href);
         return (
           <Link
             key={href}
             href={href}
             className={cn(
-              'flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium',
+              'flex flex-1 flex-col items-center gap-1 whitespace-nowrap py-2.5 text-xs font-medium',
               active ? 'text-primary' : 'text-muted-foreground',
             )}
           >
             <Icon className="size-5" aria-hidden="true" />
-            {label}
+            {mobileLabel}
           </Link>
         );
       })}

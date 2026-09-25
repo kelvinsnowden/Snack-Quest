@@ -4,9 +4,9 @@ import { Banknote, ShoppingCart, Wallet } from 'lucide-react';
 import { requirePartnerSession } from '@/lib/auth/partnerSession';
 import { ownerPortalService } from '@/services/ownerPortalService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { DailySalesBarChart } from '@/components/partner/DailySalesBarChart';
-import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Sales & Revenue' };
 
@@ -40,16 +40,9 @@ export default async function PartnerSalesPage({ searchParams }: { searchParams:
         </div>
         <div className="flex gap-1 rounded-md border border-border p-1">
           {WINDOWS.map((days) => (
-            <Link
-              key={days}
-              href={`/partner/sales?window=${days}`}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium',
-                days === windowDays ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-border/30',
-              )}
-            >
-              {days}d
-            </Link>
+            <Button key={days} asChild variant={days === windowDays ? 'primary' : 'ghost'} size="sm">
+              <Link href={`/partner/sales?window=${days}`}>{days}d</Link>
+            </Button>
           ))}
         </div>
       </div>
