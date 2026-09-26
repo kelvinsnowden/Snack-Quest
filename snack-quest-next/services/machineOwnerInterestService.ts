@@ -128,7 +128,7 @@ class MachineOwnerInterestService {
 
     const now = Date.now();
     if (submitterHash) {
-      const recent = await machineOwnerInterestRepository.countSince(submitterHash, new Date(now - RATE_LIMIT_WINDOW_MS));
+      const recent = await this.safeCount(submitterHash, new Date(now - RATE_LIMIT_WINDOW_MS));
       if (recent >= RATE_LIMIT_MAX) {
         throw new MachineOwnerInterestRateLimitError();
       }
@@ -139,7 +139,7 @@ class MachineOwnerInterestService {
      * rationale as `InvestorInterestService`: nothing is written, the
      * list stays clean, and a prober learns nothing from the response.
      */
-    const existing = await machineOwnerInterestRepository.findRecentByWhatsapp(whatsapp, new Date(now - DUPLICATE_WINDOW_MS));
+    const existing = await this.safeFindRecent(whatsapp, new Date(now - DUPLICATE_WINDOW_MS));
     if (existing) {
       return { interestId: existing.id, duplicate: true };
     }
@@ -159,6 +159,41 @@ class MachineOwnerInterestService {
 
     const interestId = await machineOwnerInterestRepository.create(record);
     return { interestId, duplicate: false };
+  }
+
+  /**
+   * Both anti-abuse reads need a composite index Firestore has to be
+   * told about ahead of time (`firestore.indexes.json`), and that
+   * deployment is a separate, human-triggered step (a GitHub Actions
+   * secret someone has to add) from shipping this code. If that step
+   * hasn't happened yet — or a query index is still asynchronously
+   * building right after it has — these two calls fail with
+   * `FAILED_PRECONDITION`, and a real applicant is the one who pays
+   * for it if that failure is allowed to abort the whole submission.
+   *
+   * So each read is optional in effect, not in intent: a working index
+   * still rate-limits and de-duplicates exactly as before; a missing
+   * or not-yet-ready one degrades to "skip this check" rather than
+   * "refuse every application," and the failure is logged so it's
+   * still visible to whoever is watching function logs, not silently
+   * swallowed forever.
+   */
+  private async safeCount(submitterHash: string, since: Date): Promise<number> {
+    try {
+      return await machineOwnerInterestRepository.countSince(submitterHash, since);
+    } catch (error) {
+      console.error('[machineOwnerInterestService] rate-limit check failed — continuing without it', error);
+      return 0;
+    }
+  }
+
+  private async safeFindRecent(whatsapp: string, since: Date): Promise<{ id: string } | null> {
+    try {
+      return await machineOwnerInterestRepository.findRecentByWhatsapp(whatsapp, since);
+    } catch (error) {
+      console.error('[machineOwnerInterestService] duplicate check failed — continuing without it', error);
+      return null;
+    }
   }
 
   private oneOf<T extends string>(options: readonly { value: T; label: string }[], value: unknown, field: string): T {
