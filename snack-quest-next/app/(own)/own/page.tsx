@@ -29,9 +29,9 @@ import { OwnNav } from '@/components/marketing/own/OwnNav';
 import { OwnCta } from '@/components/marketing/own/OwnCta';
 import { MobileOwnBar } from '@/components/marketing/own/MobileOwnBar';
 import { ApplicationForm } from '@/components/marketing/own/ApplicationForm';
-import { HeroImagePlaceholder } from '@/components/marketing/own/HeroImagePlaceholder';
-import { DashboardImagePlaceholder } from '@/components/marketing/own/DashboardImagePlaceholder';
-import { LocationsCollagePlaceholder } from '@/components/marketing/own/LocationsCollagePlaceholder';
+import { MachinePhoto } from '@/components/marketing/own/MachinePhoto';
+import { OwnerPortalPhoto } from '@/components/marketing/own/OwnerPortalPhoto';
+import { LocationsCollagePhoto } from '@/components/marketing/own/LocationsCollagePhoto';
 
 const TITLE = 'Own a Snack Quest Discovery Machine | Machine Ownership';
 const DESCRIPTION =
@@ -201,7 +201,7 @@ export default function OwnPage() {
           </div>
 
           <div className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none">
-            <HeroImagePlaceholder variant="landscape" />
+            <MachinePhoto variant="landscape" />
           </div>
         </div>
       </section>
@@ -219,7 +219,7 @@ export default function OwnPage() {
             <p>A great location gives the machine access to the people who can actually buy from it.</p>
             <p>That’s why we’re looking for owners who can bring more than capital.</p>
           </div>
-          <LocationsCollagePlaceholder meta={LOCATION_META} />
+          <LocationsCollagePhoto meta={LOCATION_META} />
         </div>
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:mt-12 sm:p-8">
@@ -270,7 +270,7 @@ export default function OwnPage() {
         <Lede>Manage one machine or several from your own owner portal.</Lede>
 
         <div className="mt-10 grid gap-8 sm:mt-12 lg:grid-cols-2 lg:items-center lg:gap-12">
-          <DashboardImagePlaceholder className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none" />
+          <OwnerPortalPhoto className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none" />
 
           <ul className="flex flex-col gap-2.5">
             {PORTAL_ITEMS.map((item) => (
@@ -391,7 +391,7 @@ export default function OwnPage() {
       {/* ── FINAL SCREEN ─────────────────────────────────────── */}
       <section className={`${INK} relative flex min-h-[80vh] flex-col items-center justify-center overflow-hidden px-5 py-24 text-center sm:px-8`}>
         <div className="mx-auto w-full max-w-xs sm:max-w-sm">
-          <HeroImagePlaceholder />
+          <MachinePhoto />
         </div>
         <div className="relative mx-auto mt-12 max-w-3xl sm:mt-16">
           <Statement>Own the first one. Let the system help you build the next.</Statement>
