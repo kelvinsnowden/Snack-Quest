@@ -31,8 +31,7 @@ import { MobileOwnBar } from '@/components/marketing/own/MobileOwnBar';
 import { ApplicationForm } from '@/components/marketing/own/ApplicationForm';
 import { HeroImagePlaceholder } from '@/components/marketing/own/HeroImagePlaceholder';
 import { DashboardImagePlaceholder } from '@/components/marketing/own/DashboardImagePlaceholder';
-import { LocationPhotoCard } from '@/components/marketing/own/LocationPhotoCard';
-import { LOCATION_TYPES } from '@/types/machineOwnerInterest';
+import { LocationsCollagePlaceholder } from '@/components/marketing/own/LocationsCollagePlaceholder';
 
 const TITLE = 'Own a Snack Quest Discovery Machine | Machine Ownership';
 const DESCRIPTION =
@@ -220,15 +219,7 @@ export default function OwnPage() {
             <p>A great location gives the machine access to the people who can actually buy from it.</p>
             <p>That’s why we’re looking for owners who can bring more than capital.</p>
           </div>
-          <div>
-            <p className="mb-3 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">Places our machines can go</p>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-2">
-              {LOCATION_TYPES.filter((option) => option.value !== 'other').map((option) => {
-                const meta = LOCATION_META[option.value];
-                return <LocationPhotoCard key={option.value} icon={meta.icon} label={option.label} accentClassName={meta.accent} />;
-              })}
-            </div>
-          </div>
+          <LocationsCollagePlaceholder meta={LOCATION_META} />
         </div>
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:mt-12 sm:p-8">
