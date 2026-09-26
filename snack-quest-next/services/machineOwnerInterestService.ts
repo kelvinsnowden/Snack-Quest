@@ -5,7 +5,15 @@ import {
   machineOwnerInterestRepository,
   type MachineOwnerInterestInput,
 } from '@/repositories/machineOwnerInterestRepository';
-import { CAPITAL_RANGES, LOCATION_ACCESS_OPTIONS, LOCATION_TYPES, OWNER_PROFILES, type LocationType } from '@/types/machineOwnerInterest';
+import {
+  BUILDING_PORTFOLIO_OPTIONS,
+  CAPITAL_RANGES,
+  LOCATION_ACCESS_OPTIONS,
+  LOCATION_COUNTS,
+  LOCATION_TYPES,
+  OWNER_PROFILES,
+  type LocationType,
+} from '@/types/machineOwnerInterest';
 import { normalizeKenyanPhone, InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
 
@@ -37,8 +45,12 @@ export interface MachineOwnerInterestSubmission {
   email?: unknown;
   capitalRange: unknown;
   locationAccess: unknown;
+  /** Only meaningful when `locationAccess` is `'multiple'` — ignored otherwise, never required. */
+  locationCount?: unknown;
   locationTypes?: unknown;
   ownerProfile: unknown;
+  /** Only meaningful when `ownerProfile` is `'multiple_machines'` — ignored otherwise, never required. */
+  buildingPortfolio?: unknown;
   /** The raw client address, hashed here and never stored as given. */
   submitterIp?: unknown;
 }
@@ -94,7 +106,23 @@ class MachineOwnerInterestService {
     const capitalRange = this.oneOf(CAPITAL_RANGES, input.capitalRange, 'How much capital you can deploy');
     const locationAccess = this.oneOf(LOCATION_ACCESS_OPTIONS, input.locationAccess, 'Whether you have access to a location');
     const ownerProfile = this.oneOf(OWNER_PROFILES, input.ownerProfile, 'What describes you best');
-    const locationTypes = locationAccess === 'no' ? [] : this.locationTypes(input.locationTypes);
+    const locationTypes = this.locationTypes(input.locationTypes);
+
+    /*
+     * Both of these are only ever asked conditionally in the form, so
+     * they're validated as optional-if-present rather than required —
+     * a client that never asked the question (because the branch
+     * didn't apply) sends nothing, and nothing is exactly what gets
+     * stored, never a guessed default.
+     */
+    const locationCount =
+      locationAccess === 'multiple' && input.locationCount !== undefined
+        ? this.oneOf(LOCATION_COUNTS, input.locationCount, 'Roughly how many potential locations')
+        : null;
+    const buildingPortfolio =
+      ownerProfile === 'multiple_machines' && input.buildingPortfolio !== undefined
+        ? this.oneOf(BUILDING_PORTFOLIO_OPTIONS, input.buildingPortfolio, 'Whether you’re building a portfolio')
+        : null;
 
     const submitterHash = this.hashSubmitter(input.submitterIp);
 
@@ -122,8 +150,10 @@ class MachineOwnerInterestService {
       email,
       capitalRange,
       locationAccess,
+      locationCount,
       locationTypes,
       ownerProfile,
+      buildingPortfolio,
       submitterHash,
     };
 

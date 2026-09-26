@@ -35,8 +35,10 @@ export async function POST(request: Request): Promise<Response> {
       email: payload.email,
       capitalRange: payload.capitalRange,
       locationAccess: payload.locationAccess,
+      locationCount: payload.locationCount,
       locationTypes: payload.locationTypes,
       ownerProfile: payload.ownerProfile,
+      buildingPortfolio: payload.buildingPortfolio,
       submitterIp:
         request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
         request.headers.get('x-real-ip') ??
