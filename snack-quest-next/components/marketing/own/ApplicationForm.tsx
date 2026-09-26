@@ -293,7 +293,7 @@ export function ApplicationForm() {
         {line ? <p className="text-primary mb-3 text-sm font-medium">{line}</p> : null}
 
         {step === 'name' ? <NameStep answers={answers} setAnswers={setAnswers} onNext={next} /> : null}
-        {step === 'greeting' ? <GreetingStep name={answers.fullName} onNext={next} /> : null}
+        {step === 'greeting' ? <GreetingStep onNext={next} /> : null}
         {step === 'capital' ? <CapitalStep selected={answers.capitalRange} onSelect={selectCapital} /> : null}
         {step === 'locationAccess' ? <LocationAccessStep selected={answers.locationAccess} onSelect={selectLocationAccess} /> : null}
         {step === 'locationCount' ? <LocationCountStep selected={answers.locationCount} onSelect={selectLocationCount} /> : null}
@@ -382,6 +382,27 @@ function ContinueButton({ onClick, disabled, label = 'Continue' }: { onClick: ()
 /* ── Steps ──────────────────────────────────────────────────────── */
 
 function NameStep({ answers, setAnswers, onNext }: { answers: Answers; setAnswers: (updater: (a: Answers) => Answers) => void; onNext: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    /*
+     * This step is mounted the moment `/own` loads — it's the form's
+     * initial state, not something the visitor navigated to — because
+     * it sits below the fold inside the full page, not behind a route
+     * change. A plain `autoFocus` would fire right then, and focusing
+     * an off-screen input makes the browser scroll the whole page down
+     * to it: every visitor would land already scrolled past the hero,
+     * straight onto the form. Only focus it if it's already on screen —
+     * true once someone has actually scrolled or tapped a CTA down to it.
+     */
+    const element = inputRef.current;
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    if (rect.top >= 0 && rect.top < window.innerHeight) {
+      element.focus();
+    }
+  }, []);
+
   return (
     <form
       onSubmit={(event) => {
@@ -392,7 +413,7 @@ function NameStep({ answers, setAnswers, onNext }: { answers: Answers; setAnswer
     >
       <h3 className={HEADLINE_CLASS}>Let’s start with your name.</h3>
       <input
-        autoFocus
+        ref={inputRef}
         value={answers.fullName}
         onChange={(event) => setAnswers((current) => ({ ...current, fullName: event.target.value }))}
         placeholder="Your name"
@@ -403,12 +424,11 @@ function NameStep({ answers, setAnswers, onNext }: { answers: Answers; setAnswer
   );
 }
 
-function GreetingStep({ name, onNext }: { name: string; onNext: () => void }) {
-  const firstName = name.trim().split(/\s+/)[0] ?? '';
+function GreetingStep({ onNext }: { onNext: () => void }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
-      <h3 className={HEADLINE_CLASS}>Nice to meet you, {firstName}.</h3>
-      <p className="text-base text-white/70 sm:text-lg">Let’s see if a Discovery Machine could be a fit.</p>
+      <h3 className={HEADLINE_CLASS}>Thank you for showing interest.</h3>
+      <p className="text-base text-white/70 sm:text-lg">Let’s see if the Discovery Machine model could be a fit for you.</p>
       <ContinueButton onClick={onNext} />
     </div>
   );
@@ -437,7 +457,7 @@ function LocationAccessStep({ selected, onSelect }: { selected: LocationAccess |
           Location matters
         </span>
         <p className="mb-1 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">Now the important question</p>
-        <h3 className={HEADLINE_CLASS}>Do you have access to a strong location?</h3>
+        <h3 className={HEADLINE_CLASS}>Do you already have access to a strong location?</h3>
       </div>
       <div className="flex flex-col gap-2.5">
         {LOCATION_ACCESS_OPTIONS.map((option) => (
@@ -504,7 +524,7 @@ function InterestStep({ selected, onSelect }: { selected: OwnerProfile | null; o
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
       <p className="mb-1 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">The opportunity</p>
-      <h3 className={cn(HEADLINE_CLASS, '-mt-4')}>What interests you most?</h3>
+      <h3 className={cn(HEADLINE_CLASS, '-mt-4')}>What are you looking to build?</h3>
       <div className="flex flex-col gap-2.5">
         {OWNER_PROFILES.map((option) => (
           <ChoiceCard key={option.value} label={option.label} description={option.description} selected={selected === option.value} onClick={() => onSelect(option.value)} />

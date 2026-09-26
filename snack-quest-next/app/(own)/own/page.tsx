@@ -6,8 +6,8 @@ import { OwnNav } from '@/components/marketing/own/OwnNav';
 import { OwnCta } from '@/components/marketing/own/OwnCta';
 import { MobileOwnBar } from '@/components/marketing/own/MobileOwnBar';
 import { ApplicationForm } from '@/components/marketing/own/ApplicationForm';
-import { DiscoveryMachineGraphic } from '@/components/marketing/own/DiscoveryMachineGraphic';
-import { OwnerPortalMockup } from '@/components/marketing/own/OwnerPortalMockup';
+import { HeroImagePlaceholder } from '@/components/marketing/own/HeroImagePlaceholder';
+import { DashboardImagePlaceholder } from '@/components/marketing/own/DashboardImagePlaceholder';
 import { LOCATION_TYPES } from '@/types/machineOwnerInterest';
 
 const TITLE = 'Own a Snack Quest Discovery Machine | Machine Ownership';
@@ -87,7 +87,7 @@ export default function OwnPage() {
           </div>
 
           <div className="mx-auto mt-14 max-w-sm sm:mt-16">
-            <DiscoveryMachineGraphic />
+            <HeroImagePlaceholder />
           </div>
 
           <div className="mx-auto mt-14 grid max-w-3xl gap-4 sm:mt-16 sm:grid-cols-3">
@@ -97,8 +97,8 @@ export default function OwnPage() {
           </div>
 
           <div className="mt-12 flex flex-col items-center gap-3 sm:mt-14">
-            <OwnCta source="hero" size="lg">
-              See if this fits you
+            <OwnCta source="hero" size="lg" className="uppercase">
+              See if you qualify
               <ArrowRight className="size-5" aria-hidden="true" />
             </OwnCta>
             <p className="text-sm text-white/45">For people with capital, location access, or both.</p>
@@ -112,7 +112,11 @@ export default function OwnPage() {
         <Statement>The machine isn’t the most important part. The location is.</Statement>
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center sm:mt-12 sm:rounded-3xl sm:p-10">
-          <p className="font-display text-[clamp(1.3rem,4vw,2rem)] leading-tight text-white uppercase">
+          <p className="text-primary text-xs font-bold tracking-[0.2em] uppercase">The single biggest factor</p>
+          <p className="font-display mt-3 text-[clamp(1.5rem,4.5vw,2.25rem)] leading-tight text-white uppercase">
+            The location is the most important part of this business.
+          </p>
+          <p className="font-display mt-4 text-[clamp(1.1rem,3.5vw,1.5rem)] leading-tight text-white/70 uppercase">
             Right machine <span className="text-primary">+</span> right location{' '}
             <span className="text-primary">=</span> the opportunity
           </p>
@@ -163,7 +167,10 @@ export default function OwnPage() {
 
         <div className="mt-12 rounded-2xl border border-[#1f1f1f]/10 bg-[#1f1f1f] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
           <p className="font-display text-[clamp(1.5rem,4.5vw,2.5rem)] leading-tight text-white uppercase">
-            You own the asset. We help you run what’s inside it.
+            You own the machine. We provide the operating layer.
+          </p>
+          <p className="mt-4 text-sm text-white/50 sm:text-base">
+            Performance depends on your location, demand, product mix, pricing and operating conditions — not a guarantee we make you.
           </p>
         </div>
       </Section>
@@ -172,10 +179,28 @@ export default function OwnPage() {
       <Section id="portal" className={INK}>
         <Eyebrow>The differentiator</Eyebrow>
         <Statement>Your machines. Your dashboard. Your data.</Statement>
-        <Lede>Own one machine or several. Manage them from one place.</Lede>
+        <Lede>Own one machine or several. Every one of them connects to the same portal.</Lede>
 
-        <div className="mt-10 sm:mt-12">
-          <OwnerPortalMockup />
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:mt-12">
+          {['Machine 01', 'Machine 02', 'Machine 03', 'Machine 04'].map((label) => (
+            <span key={label} className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-semibold text-white/70">
+              {label}
+            </span>
+          ))}
+          <ArrowRight className="text-primary size-4" aria-hidden="true" />
+          <span className="bg-primary/15 text-primary rounded-full px-4 py-1.5 text-xs font-bold tracking-[0.1em] uppercase">One Owner Portal</span>
+        </div>
+
+        <div className="mt-8 sm:mt-10">
+          <DashboardImagePlaceholder />
+        </div>
+
+        <div className="mt-8 flex flex-wrap justify-center gap-2 sm:mt-10">
+          {['Sales', 'Inventory', 'Machine status', 'Location', 'Product performance', 'Transactions', 'Demand data', 'Camera monitoring'].map((item) => (
+            <span key={item} className="rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-xs font-medium text-white/60">
+              {item}
+            </span>
+          ))}
         </div>
 
         <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
@@ -234,9 +259,10 @@ export default function OwnPage() {
 
         <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
           <p className="font-display text-[clamp(1.5rem,4.5vw,2.5rem)] leading-tight text-white uppercase">
-            One machine can become as many as you choose to own.
+            One machine can become a portfolio.
           </p>
-          <p className="mt-4 text-sm text-white/50 sm:text-base">Expansion depends on your capital, available locations and machine performance.</p>
+          <p className="mt-4 text-base text-white/70 sm:text-lg">Each additional machine plugs into the same Snack Quest operating layer.</p>
+          <p className="mt-4 text-sm text-white/50 sm:text-base">Expansion depends on capital, location access and machine performance.</p>
         </div>
       </Section>
 
@@ -278,7 +304,7 @@ export default function OwnPage() {
       {/* ── FINAL SCREEN ─────────────────────────────────────── */}
       <section className={`${INK} relative flex min-h-[80vh] flex-col items-center justify-center overflow-hidden px-5 py-24 text-center sm:px-8`}>
         <div className="mx-auto w-full max-w-xs sm:max-w-sm">
-          <DiscoveryMachineGraphic />
+          <HeroImagePlaceholder />
         </div>
         <div className="relative mx-auto mt-12 max-w-3xl sm:mt-16">
           <Statement>Own the first one. Let the system help you build the next.</Statement>
