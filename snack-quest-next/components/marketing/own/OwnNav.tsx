@@ -8,11 +8,9 @@ import { cn } from '@/lib/utils';
 import { OwnCta } from './OwnCta';
 
 const SECTIONS = [
-  { id: 'location', label: 'The Location' },
-  { id: 'stack', label: 'The Offer' },
-  { id: 'portal', label: 'Owner Portal' },
-  { id: 'repeat', label: 'Expansion' },
-  { id: 'apply', label: 'Qualify' },
+  { id: 'how-it-works', label: 'How it Works' },
+  { id: 'locations', label: 'Locations' },
+  { id: 'faq', label: 'FAQ' },
 ] as const;
 
 /**
@@ -53,6 +51,9 @@ export function OwnNav() {
         </Link>
 
         <nav aria-label="Sections" className="hidden items-center gap-1 lg:flex">
+          <a href="#" className="text-primary decoration-primary px-3.5 py-2 text-sm font-semibold underline decoration-2 underline-offset-8">
+            Own a Machine
+          </a>
           {SECTIONS.map((section) => (
             <a
               key={section.id}
@@ -84,6 +85,9 @@ export function OwnNav() {
       {open ? (
         <div id="own-mobile-nav" className="border-t border-white/10 px-5 pb-5 lg:hidden">
           <nav aria-label="Sections" className="flex flex-col py-2">
+            <a href="#" onClick={() => setOpen(false)} className="text-primary rounded-xl px-3 py-3 text-base font-semibold">
+              Own a Machine
+            </a>
             {SECTIONS.map((section) => (
               <a
                 key={section.id}
