@@ -299,6 +299,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /*
+     * machineOwnerInterests: applications from the public `/own`
+     * machine-owner lead-generation page. Same profile as
+     * `investorInterests` — named people, phone numbers, and what
+     * commercial access each claims — so the same unconditional deny
+     * applies in both directions. Writes come from the Admin SDK
+     * behind `POST /api/machine-owners/interest`, which bypasses these
+     * rules; there is no client read path of any kind.
+     */
+    match /machineOwnerInterests/{interestId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // inventoryMovements: the stock-adjustment audit trail (§ Admin:
     // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
     // is the sole writer, always inside the same transaction as the

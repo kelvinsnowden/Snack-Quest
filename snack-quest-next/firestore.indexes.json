@@ -1375,6 +1375,34 @@
       ]
     },
     {
+      "collectionGroup": "machineOwnerInterests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "whatsapp",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "machineOwnerInterests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "submitterHash",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "customerLifetime",
       "queryScope": "COLLECTION",
       "fields": [
