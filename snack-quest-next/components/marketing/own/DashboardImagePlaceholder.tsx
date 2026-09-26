@@ -13,13 +13,13 @@ import { LayoutDashboard } from 'lucide-react';
 export function DashboardImagePlaceholder({ className }: { className?: string }) {
   return (
     <div
-      className={`mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_40px_100px_-30px_rgba(0,0,0,0.6)] sm:rounded-3xl ${className ?? ''}`}
+      className={`border-border mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border bg-white shadow-[0_30px_80px_-30px_rgba(31,31,31,0.2)] sm:rounded-3xl ${className ?? ''}`}
     >
-      <div className="flex items-center gap-2 border-b border-white/10 bg-black/30 px-4 py-3 sm:px-5">
-        <span className="size-2.5 rounded-full bg-white/20" />
-        <span className="size-2.5 rounded-full bg-white/20" />
-        <span className="size-2.5 rounded-full bg-white/20" />
-        <span className="ml-3 text-xs font-medium text-white/40">Owner Portal · Dashboard</span>
+      <div className="border-border bg-background flex items-center gap-2 border-b px-4 py-3 sm:px-5">
+        <span className="bg-border size-2.5 rounded-full" />
+        <span className="bg-border size-2.5 rounded-full" />
+        <span className="bg-border size-2.5 rounded-full" />
+        <span className="text-foreground/40 ml-3 text-xs font-medium">Owner Portal · Dashboard</span>
       </div>
 
       <div className="relative flex aspect-[16/10] w-full flex-col items-center justify-center gap-3 p-6">
@@ -28,9 +28,9 @@ export function DashboardImagePlaceholder({ className }: { className?: string })
         <span aria-hidden="true" className="border-primary/40 pointer-events-none absolute bottom-4 left-4 size-5 rounded-bl-md border-b-2 border-l-2" />
         <span aria-hidden="true" className="border-primary/40 pointer-events-none absolute bottom-4 right-4 size-5 rounded-br-md border-b-2 border-r-2" />
 
-        <LayoutDashboard className="size-9 text-white/25" aria-hidden="true" />
-        <p className="font-display text-lg text-white uppercase tracking-wide sm:text-xl">Owner Portal / Dashboard</p>
-        <p className="text-xs text-white/40">Live product screenshot — coming soon</p>
+        <LayoutDashboard className="text-foreground/25 size-9" aria-hidden="true" />
+        <p className="font-display text-foreground text-lg uppercase tracking-wide sm:text-xl">Owner Portal / Dashboard</p>
+        <p className="text-foreground/40 text-xs">Live product screenshot — coming soon</p>
       </div>
     </div>
   );

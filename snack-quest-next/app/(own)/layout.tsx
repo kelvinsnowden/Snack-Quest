@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default function OwnLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-full flex-col bg-black">
+    <div className="bg-background flex min-h-full flex-col">
       <PageViewTracker />
       <a
         href="#main-content"

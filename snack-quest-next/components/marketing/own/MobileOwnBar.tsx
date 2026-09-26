@@ -40,7 +40,7 @@ export function MobileOwnBar() {
   return (
     <div
       className={
-        'fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur transition-transform duration-300 sm:hidden ' +
+        'border-border fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_-15px_rgba(31,31,31,0.15)] backdrop-blur transition-transform duration-300 sm:hidden ' +
         (visible ? 'translate-y-0' : 'translate-y-full')
       }
       aria-hidden={!visible}
