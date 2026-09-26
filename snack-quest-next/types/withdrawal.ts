@@ -2,7 +2,14 @@ import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { B2CFailureCategory } from '@/lib/integrations/daraja/b2cResultCodes';
 
-export type WithdrawalOwnerType = 'creator' | 'customer';
+/**
+ * `'partner'` withdraws from `Partner.availableCashKes` — a machine
+ * owner's settlement earnings (§ OWNER WITHDRAWAL,
+ * docs/MACHINE_COMMERCE.md §7). Wired to a real balance source exactly
+ * like `'creator'`; see `WithdrawalService`'s own doc comment for why
+ * `'customer'` still is not.
+ */
+export type WithdrawalOwnerType = 'creator' | 'customer' | 'partner';
 /**
  * `submitting` is the crash-safe claim state (§ Daraja B2C production
  * readiness): approving a withdrawal atomically transitions `pending`

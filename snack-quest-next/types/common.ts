@@ -16,7 +16,17 @@ export type Role =
   | 'super_admin'
   | 'agent'
   | 'warehouse'
-  | 'finance';
+  | 'finance'
+  /**
+   * A Discovery Machine partner (§ RBAC foundation,
+   * docs/VENDING_FOUNDATION.md). Scoped by a `partnerId` custom claim
+   * the same way staff roles are scoped by `businessId` — see
+   * `firestore.rules`' `hasPartnerAccess()`. No login flow issues this
+   * claim yet, and no partner UI reads it yet ("do not yet build a
+   * full partner UI"); this is the type-level and rules-level half of
+   * the foundation, ahead of the session/login half.
+   */
+  | 'partner';
 
 /**
  * Audit fields present on every document per TDD §8's design principles:

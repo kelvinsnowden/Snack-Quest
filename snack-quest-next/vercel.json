@@ -14,6 +14,22 @@
     {
       "path": "/api/cron/reconcile-stuck-withdrawals",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/rebuild-analytics-rollups",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/rebuild-vending-rollups",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-vending-transactions",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-vending-commands",
+      "schedule": "0 7 * * *"
     }
   ]
 }

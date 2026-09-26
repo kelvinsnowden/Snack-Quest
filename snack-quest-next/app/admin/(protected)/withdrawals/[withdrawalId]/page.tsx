@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { withdrawalRepository } from '@/repositories/withdrawalRepository';
 import { userRepository } from '@/repositories/userRepository';
+import { partnerService } from '@/services/partnerService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { WithdrawalStatusBadge } from '@/components/admin/WithdrawalStatusBadge';
 import { WithdrawalActions } from '@/components/admin/WithdrawalActions';
@@ -35,7 +36,14 @@ export default async function AdminWithdrawalDetailPage({
     notFound();
   }
 
-  const owner = await userRepository.findById(withdrawal.ownerId);
+  // A partner withdrawal's `ownerId` is a `partnerId`, never a
+  // `userRepository` uid — there is no partner login yet
+  // (docs/MACHINE_COMMERCE.md §9), so resolving the display name has
+  // to branch on `ownerType` rather than guessing which lookup applies.
+  const ownerName =
+    withdrawal.ownerType === 'partner'
+      ? (await partnerService.findById(session.businessId, withdrawal.ownerId))?.name
+      : (await userRepository.findById(withdrawal.ownerId))?.displayName;
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,7 +57,7 @@ export default async function AdminWithdrawalDetailPage({
             Withdrawals
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{owner?.displayName ?? withdrawal.ownerId}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">{ownerName ?? withdrawal.ownerId}</h1>
             <WithdrawalStatusBadge status={withdrawal.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -258,10 +258,28 @@ class OrderRepository {
    * ordered newest-first, optionally narrowed to one status. Needs a
    * composite index (businessId + status + createdAt, and businessId +
    * createdAt for the unfiltered case) — see firestore.indexes.json.
+   *
+   * `since`/`until` bound the window in the *query* rather than in the
+   * caller (§ analytics rollups). Every analytics metric used to ask
+   * for a thousand rows and then filter them by date in memory, which
+   * is not the same question: the newest thousand rows are not "every
+   * row in this window", and no amount of filtering afterwards can
+   * recover the ones the page size excluded. The range is half-open —
+   * `since` included, `until` excluded — matching every other range in
+   * this codebase.
+   *
+   * Both clauses are on `createdAt`, which the existing composite
+   * indexes already order by, so this needs no new index.
    */
   async listByBusiness(
     businessId: string,
-    options: { status?: OrderStatus; limit?: number; cursor?: string } = {},
+    options: {
+      status?: OrderStatus;
+      limit?: number;
+      cursor?: string;
+      since?: Date;
+      until?: Date;
+    } = {},
   ): Promise<{ orders: { id: string; data: Order }[]; nextCursor: string | null }> {
     const pageSize = options.limit ?? 25;
     let query = adminFirestore
@@ -270,6 +288,12 @@ class OrderRepository {
 
     if (options.status) {
       query = query.where('status', '==', options.status);
+    }
+    if (options.since) {
+      query = query.where('createdAt', '>=', options.since);
+    }
+    if (options.until) {
+      query = query.where('createdAt', '<', options.until);
     }
     query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
 
@@ -288,6 +312,102 @@ class OrderRepository {
       orders: docs.map((doc) => ({ id: doc.id, data: doc.data() as Order })),
       nextCursor: hasMore ? docs[docs.length - 1].id : null,
     };
+  }
+
+  /**
+   * How many orders fall in a window, without reading any of them
+   * (§ analytics rollups).
+   *
+   * Firestore's `count()` is billed and timed as an aggregation, not as
+   * N document reads, so a metric that only needs a denominator should
+   * never page through rows to get one.
+   */
+  async countInRange(
+    businessId: string,
+    options: { status?: OrderStatus; since?: Date; until?: Date } = {},
+  ): Promise<number> {
+    let query = adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+
+    if (options.status) {
+      query = query.where('status', '==', options.status);
+    }
+    if (options.since) {
+      query = query.where('createdAt', '>=', options.since);
+    }
+    if (options.until) {
+      query = query.where('createdAt', '<', options.until);
+    }
+
+    const snapshot = await query.count().get();
+    return snapshot.data().count;
+  }
+
+  /**
+   * Every order in a window, cursor-paged (§ analytics rollups).
+   *
+   * This is the shape an aggregation wants and `listByBusiness` is
+   * not: there is no page size to exceed, because the generator keeps
+   * walking until the window is exhausted, and the caller holds
+   * accumulators rather than rows. The bound is the date range —
+   * something the business chose — instead of a constant somebody
+   * picked years ago and nobody revisited.
+   *
+   * Deliberately not called from a request handler with an open-ended
+   * window. Correctness there comes from the range; cost control comes
+   * from the range too, which is why both are the caller's to state.
+   */
+  async *streamRange(
+    businessId: string,
+    options: { status?: OrderStatus; since?: Date; until?: Date; pageSize?: number } = {},
+  ): AsyncGenerator<{ id: string; data: Order }> {
+    const pageSize = options.pageSize ?? 500;
+    let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+
+    for (;;) {
+      let query = adminFirestore
+        .collection(COLLECTION)
+        .where('businessId', '==', businessId) as FirebaseFirestore.Query;
+
+      if (options.status) {
+        query = query.where('status', '==', options.status);
+      }
+      if (options.since) {
+        query = query.where('createdAt', '>=', options.since);
+      }
+      if (options.until) {
+        query = query.where('createdAt', '<', options.until);
+      }
+      query = query.orderBy('createdAt', 'desc').limit(pageSize);
+      if (cursor) {
+        query = query.startAfter(cursor);
+      }
+
+      const snapshot = await query.get();
+      if (snapshot.empty) {
+        return;
+      }
+      for (const doc of snapshot.docs) {
+        yield { id: doc.id, data: doc.data() as Order };
+      }
+      if (snapshot.size < pageSize) {
+        return;
+      }
+      cursor = snapshot.docs[snapshot.docs.length - 1];
+    }
+  }
+
+  /**
+   * Every order this business has ever placed, paged. For the nightly
+   * rollup rebuild, which is the one job that genuinely needs all of
+   * them — a lifetime metric cannot be computed from a window.
+   */
+  streamAll(
+    businessId: string,
+    options: { pageSize?: number } = {},
+  ): AsyncGenerator<{ id: string; data: Order }> {
+    return this.streamRange(businessId, { pageSize: options.pageSize });
   }
 
   /** The order (if any) a given conversation resulted in — how the Human Sales Agent workspace finds "what did paying this conversation actually create" (§ Human Sales Agent workspace), e.g. to locate its shipment for manual courier booking. */

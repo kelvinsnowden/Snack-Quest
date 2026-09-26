@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { orderRepository } from '@/repositories/orderRepository';
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { referralAttributionRepository } from '@/repositories/referralAttributionRepository';
 import { userRepository } from '@/repositories/userRepository';
@@ -11,19 +10,42 @@ import { analyticsEventRepository } from '@/repositories/analyticsEventRepositor
 import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 import { isComplimentaryBox } from '@/lib/analytics/complimentaryOrder';
 import { refundRepository } from '@/repositories/refundRepository';
+import { customerLifetimeRepository } from '@/repositories/customerLifetimeRepository';
+import { trafficDailyRepository } from '@/repositories/trafficDailyRepository';
+import { analyticsRollupService } from '@/services/analyticsRollupService';
+import { dateKey, monthBounds } from '@/lib/analytics/dateKey';
+import { AnalyticsRequestCache, NoRequestCache } from '@/lib/analytics/requestCache';
+import { loadOrdersInWindow } from '@/lib/analytics/ordersWindow';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import { SHIPMENT_STATUS_LABELS } from '@/lib/delivery/transitions';
-import type { Order, ShipmentStatus } from '@/types';
+import type { Order, ShipmentStatus, TrafficDaily } from '@/types';
 
 /**
- * Real analytics, all derived on demand from the same collections the
- * rest of the Admin Portal already reads (§ Admin: Analytics) — no
- * separate analytics pipeline or warehouse, since none exists and
- * none is justified at this business's scale yet. Bounded scans, same
- * discipline as `CustomerService`: correct for today's volume, and
- * the honest fix if that changes is a real read-model, not a bigger
- * limit here.
+ * Real analytics, derived from the same collections the rest of the
+ * Admin Portal already reads (§ Admin: Analytics) — no separate
+ * analytics pipeline or warehouse, since none is justified at this
+ * business's scale yet.
+ *
+ * Two different disciplines live here now, and the split is
+ * deliberate (§ analytics rollups, docs/FLEET_ARCHITECTURE_AUDIT.md).
+ * Anything that answers "in the last N days" — revenue, refunds,
+ * repeat purchase, channel split, creator ROI — reads orders by date
+ * range (`loadOrdersInWindow`, shared per request through an
+ * `AnalyticsRequestCache`), never by a fixed count: a `limit(1000)`
+ * scan is correct only until the business has more than 1000 orders,
+ * and fails by quietly reporting a better number than the truth
+ * rather than by erroring.
+ *
+ * Anything that answers a *lifetime* question instead — a customer's
+ * first-ever order, which `getLtv`/`getCac`/`getCacByChannel` all
+ * turn on — cannot be answered from any window at all, however wide.
+ * Those read `customerLifetime`, a rollup rebuilt from every order
+ * the business has ever taken. Website traffic has the same shape of
+ * problem at a much larger volume (page views outnumber orders by
+ * three orders of magnitude) and the same fix: `trafficDaily`, one
+ * document per business per day, read instead of a raw scan of
+ * `pageViews`.
  *
  * CAC is the one metric with no automatic data source: this codebase
  * has no ad-spend-reporting integration (Meta Conversion API sends
@@ -32,7 +54,6 @@ import type { Order, ShipmentStatus } from '@/types';
  * figure (`marketingSpendRepository`) — real, not fabricated, but
  * only as accurate as what's entered.
  */
-const REVENUE_ORDER_LIMIT = 1000;
 const FUNNEL_CONVERSATION_LIMIT = 500;
 const COMMISSION_ATTRIBUTION_LIMIT = 500;
 const SHIPMENT_ANALYTICS_LIMIT = 500;
@@ -68,7 +89,7 @@ const REVENUE_STATUSES: Order['status'][] = ['confirmed', 'dispatched', 'deliver
  * customers worth nothing each in the LTV figure, and put seven
  * payments in the bottom of the checkout funnel that nobody made.
  */
-function isRealisedRevenue(order: Order): boolean {
+export function isRealisedRevenue(order: Order): boolean {
   return (
     REVENUE_STATUSES.includes(order.status) &&
     order.payment?.dueOnDelivery !== true &&
@@ -134,7 +155,7 @@ function dateKeysBetween(start: Date, end: Date): string[] {
   return keys;
 }
 
-function deriveOrderChannel(order: Order): OrderChannel {
+export function deriveOrderChannel(order: Order): OrderChannel {
   if (order.referralLinkId) {
     return 'referral';
   }
@@ -339,8 +360,19 @@ export interface DeliveryPerformance {
 }
 
 class BusinessAnalyticsService {
-  async getRevenueOverview(businessId: string, days = 30): Promise<RevenueOverview> {
-    const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
+  /**
+   * `cache` is optional and defaults to a scope that shares nothing —
+   * every method here is correct and independently testable called on
+   * its own. The admin Analytics page passes one real
+   * `AnalyticsRequestCache` to every metric in its `Promise.all`, and
+   * that is what collapses six identical order reads into one.
+   */
+  async getRevenueOverview(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<RevenueOverview> {
+    const orders = await loadOrdersInWindow(businessId, days, cache);
     const windowMs = days * 24 * 60 * 60 * 1000;
     const cutoff = Date.now() - windowMs;
     const previousCutoff = cutoff - windowMs;
@@ -348,10 +380,9 @@ class BusinessAnalyticsService {
     const inWindow = orders.filter(
       (o) => isRealisedRevenue(o.data) && toMillis(o.data.createdAt) >= cutoff,
     );
-    // Bounded by the same REVENUE_ORDER_LIMIT scan as `inWindow` — this
-    // reuses the list already fetched rather than a second query, same
-    // "correct for today's volume" tradeoff the class doc comment
-    // already accepts for the current window.
+    // Reuses the same date-bounded read as `inWindow` rather than a
+    // second query — `loadOrdersInWindow` already fetches twice the
+    // requested window for exactly this comparison.
     const inPreviousWindow = orders.filter(
       (o) =>
         isRealisedRevenue(o.data) &&
@@ -409,113 +440,169 @@ class BusinessAnalyticsService {
    * visitor count carries, not specific to this one.
    */
   async getTraffic(businessId: string, days = 30): Promise<TrafficOverview> {
-    const windowMs = days * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - windowMs;
-    const previousCutoff = cutoff - windowMs;
-
-    const views = await pageViewRepository.listSince(businessId, new Date(previousCutoff));
-    const inWindow = views.filter((v) => toMillis(v.createdAt) >= cutoff);
-    const inPreviousWindow = views.filter((v) => toMillis(v.createdAt) < cutoff);
-
-    const byDay = new Map<string, { date: string; visits: number; visitorIds: Set<string> }>();
-    for (let i = 0; i < days; i += 1) {
-      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      byDay.set(date, { date, visits: 0, visitorIds: new Set() });
-    }
-
-    const pageCounts = new Map<string, number>();
-    const uniqueVisitors = new Set<string>();
-    for (const view of inWindow) {
-      uniqueVisitors.add(view.visitorId);
-      pageCounts.set(view.path, (pageCounts.get(view.path) ?? 0) + 1);
-
-      const date = new Date(toMillis(view.createdAt)).toISOString().slice(0, 10);
-      const bucket = byDay.get(date);
-      if (bucket) {
-        bucket.visits += 1;
-        bucket.visitorIds.add(view.visitorId);
-      }
-    }
-
-    const previousUniqueVisitors = new Set(inPreviousWindow.map((v) => v.visitorId));
-
-    const topPages = Array.from(pageCounts.entries())
-      .map(([path, visits]) => ({ path, visits }))
-      .sort((a, b) => b.visits - a.visits)
-      .slice(0, TOP_PAGES_LIMIT);
-
-    return {
-      totalVisits: inWindow.length,
-      uniqueVisitors: uniqueVisitors.size,
-      days: Array.from(byDay.values())
-        .map(({ date, visits, visitorIds }) => ({ date, visits, uniqueVisitors: visitorIds.size }))
-        .sort((a, b) => a.date.localeCompare(b.date)),
-      topPages,
-      previousPeriod: {
-        totalVisits: inPreviousWindow.length,
-        uniqueVisitors: previousUniqueVisitors.size,
-      },
-    };
+    const end = new Date();
+    // Midnight-aligned, not "now minus days*24h": the rollups this
+    // reads are one document per *calendar* day, so the window has to
+    // be calendar days too, or the boundary day gets counted twice —
+    // once by the day it falls in from midnight, once by however much
+    // of it the raw millisecond subtraction reached. Anchoring `start`
+    // to midnight of the day `days - 1` days ago gives exactly `days`
+    // calendar days ending today, matching what the byDay chart has
+    // always shown.
+    const start = new Date(
+      `${dateKey(new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000))}T00:00:00.000Z`,
+    );
+    return this.trafficBetween(businessId, start, end);
   }
 
   /**
    * Same as `getTraffic`, but for an explicit window that doesn't
    * necessarily end "now" — backs the admin Analytics page's
-   * day/week/month/custom-range traffic filter (`lib/analytics/trafficRange.ts`
-   * resolves the query params into the `range` passed here). Kept as
-   * its own method rather than folded into `getTraffic` so that
-   * method's existing rolling-N-days behavior (used by the admin
-   * dashboard homepage) stays untouched.
+   * day/week/month/custom-range traffic filter
+   * (`lib/analytics/trafficRange.ts` resolves the query params into the
+   * `range` passed here).
    */
   async getTrafficForRange(businessId: string, range: TrafficDateRange): Promise<TrafficOverview> {
-    const { start, end } = range;
+    return this.trafficBetween(businessId, range.start, range.end);
+  }
+
+  /**
+   * Traffic for `[start, end)`, read from the daily rollups
+   * (§ analytics rollups).
+   *
+   * What this replaces: a scan of every page view in the window, capped
+   * at 20,000 rows with no ordering. Production had 21,426 in the last
+   * thirty days, so Firestore returned an arbitrary subset and the page
+   * reported it as the total. Reading one small document per day counts
+   * every view instead, and a month costs thirty documents rather than
+   * twenty thousand.
+   *
+   * Three things this has to get right, each of which a naive rollup
+   * gets wrong:
+   *
+   *   - **Today has no rollup**, because today is not over. Its rows are
+   *     read raw — one day's traffic, which is bounded, rather than
+   *     sixty days of it.
+   *   - **Unique visitors is a union, not a sum.** Somebody who visits
+   *     on two days is one visitor for the range. The daily documents
+   *     carry counts; the visitor ids live in shards beside them, and
+   *     those are what get unioned.
+   *   - **A missing day is not a quiet day.** Any completed day without
+   *     a rollup is computed and stored on the spot, so the answer is
+   *     right even if the nightly job has never run.
+   */
+  private async trafficBetween(
+    businessId: string,
+    start: Date,
+    end: Date,
+  ): Promise<TrafficOverview> {
     const windowMs = end.getTime() - start.getTime();
     const previousStart = new Date(start.getTime() - windowMs);
-    const previousEnd = start;
 
-    const [inWindow, inPreviousWindow] = await Promise.all([
-      pageViewRepository.listInRange(businessId, start, end),
-      pageViewRepository.listInRange(businessId, previousStart, previousEnd),
+    const [current, previous] = await Promise.all([
+      this.readTrafficWindow(businessId, start, end),
+      this.readTrafficWindow(businessId, previousStart, start),
     ]);
 
-    const byDay = new Map<string, { date: string; visits: number; visitorIds: Set<string> }>();
+    const byDay = new Map<string, { date: string; visits: number; uniqueVisitors: number }>();
     for (const date of dateKeysBetween(start, end)) {
-      byDay.set(date, { date, visits: 0, visitorIds: new Set() });
+      byDay.set(date, { date, visits: 0, uniqueVisitors: 0 });
     }
-
-    const pageCounts = new Map<string, number>();
-    const uniqueVisitors = new Set<string>();
-    for (const view of inWindow) {
-      uniqueVisitors.add(view.visitorId);
-      pageCounts.set(view.path, (pageCounts.get(view.path) ?? 0) + 1);
-
-      const date = new Date(toMillis(view.createdAt)).toISOString().slice(0, 10);
-      const bucket = byDay.get(date);
+    for (const day of current.days) {
+      const bucket = byDay.get(day.date);
       if (bucket) {
-        bucket.visits += 1;
-        bucket.visitorIds.add(view.visitorId);
+        bucket.visits = day.visits;
+        bucket.uniqueVisitors = day.uniqueVisitors;
       }
     }
 
-    const previousUniqueVisitors = new Set(inPreviousWindow.map((v) => v.visitorId));
-
-    const topPages = Array.from(pageCounts.entries())
+    const topPages = Object.entries(current.byPath)
       .map(([path, visits]) => ({ path, visits }))
-      .sort((a, b) => b.visits - a.visits)
+      .sort((a, b) => b.visits - a.visits || a.path.localeCompare(b.path))
       .slice(0, TOP_PAGES_LIMIT);
 
     return {
-      totalVisits: inWindow.length,
-      uniqueVisitors: uniqueVisitors.size,
-      days: Array.from(byDay.values())
-        .map(({ date, visits, visitorIds }) => ({ date, visits, uniqueVisitors: visitorIds.size }))
-        .sort((a, b) => a.date.localeCompare(b.date)),
+      totalVisits: current.visits,
+      uniqueVisitors: current.visitors.size,
+      days: Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date)),
       topPages,
       previousPeriod: {
-        totalVisits: inPreviousWindow.length,
-        uniqueVisitors: previousUniqueVisitors.size,
+        totalVisits: previous.visits,
+        uniqueVisitors: previous.visitors.size,
       },
     };
+  }
+
+  /** One window's totals, assembled from stored rollups plus today's live rows. */
+  private async readTrafficWindow(
+    businessId: string,
+    start: Date,
+    end: Date,
+  ): Promise<{
+    visits: number;
+    visitors: Set<string>;
+    byPath: Record<string, number>;
+    days: { date: string; visits: number; uniqueVisitors: number }[];
+  }> {
+    const dates = dateKeysBetween(start, end);
+    const today = dateKey(new Date());
+    const completed = dates.filter((date) => date < today);
+
+    const stored: Map<string, TrafficDaily> = completed.length
+      ? await trafficDailyRepository.listRange(
+          businessId,
+          completed[0],
+          completed[completed.length - 1],
+        )
+      : new Map<string, TrafficDaily>();
+
+    const visits = { total: 0 };
+    const visitors = new Set<string>();
+    const byPath: Record<string, number> = {};
+    const days: { date: string; visits: number; uniqueVisitors: number }[] = [];
+
+    for (const date of completed) {
+      let rollup = stored.get(date);
+      if (!rollup) {
+        // Never rolled up: build it now and keep it, rather than
+        // reporting a zero for a day that had traffic.
+        await analyticsRollupService.rebuildTrafficDay(businessId, date);
+        const refreshed = await trafficDailyRepository.listRange(businessId, date, date);
+        rollup = refreshed.get(date);
+      }
+      if (!rollup) {
+        continue;
+      }
+      visits.total += rollup.visits;
+      for (const [path, count] of Object.entries(rollup.byPath ?? {})) {
+        byPath[path] = (byPath[path] ?? 0) + count;
+      }
+      days.push({ date, visits: rollup.visits, uniqueVisitors: rollup.uniqueVisitors });
+
+      if (rollup.visitorShardCount > 0) {
+        for (const id of await trafficDailyRepository.listVisitorIds(businessId, date)) {
+          visitors.add(id);
+        }
+      }
+    }
+
+    // Today, if the window reaches it — computed live, never stored.
+    if (dates.includes(today) && end.getTime() > Date.now() - 24 * 60 * 60 * 1000) {
+      const { rollup, visitorIds } = await analyticsRollupService.computeTrafficDay(
+        businessId,
+        today,
+      );
+      visits.total += rollup.visits;
+      for (const [path, count] of Object.entries(rollup.byPath)) {
+        byPath[path] = (byPath[path] ?? 0) + count;
+      }
+      for (const id of visitorIds) {
+        visitors.add(id);
+      }
+      days.push({ date: today, visits: rollup.visits, uniqueVisitors: rollup.uniqueVisitors });
+    }
+
+    return { visits: visits.total, visitors, byPath, days };
   }
 
   /**
@@ -553,15 +640,38 @@ class BusinessAnalyticsService {
    * quietly mixing them is how a funnel ends up with a stage that
    * exceeds the one above it.
    */
-  async getWebFunnel(businessId: string, days = 30): Promise<WebFunnel> {
+  async getWebFunnel(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<WebFunnel> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const [views, quotes, paySubmits, whatsapp, { orders }] = await Promise.all([
-      pageViewRepository.listSince(businessId, since),
+    /*
+     * `streamRange`, not `listSince` (§ analytics rollups). `listSince`
+     * caps at 20,000 with no ordering, and the 30-day window this
+     * funnel is asked for has matched as many as 21,426 page views in
+     * production — so the capped call would silently drop whichever
+     * ~1,400 rows Firestore felt like leaving out, and this funnel
+     * needs the *visitor identity* on each row (who reached
+     * `/checkout`), which a daily aggregate count can't answer. There
+     * is no rollup for that here — this queries the full range
+     * directly, which at today's volume is one paginated read.
+     */
+    async function loadAllViews() {
+      const views = [];
+      for await (const view of pageViewRepository.streamRange(businessId, since, new Date())) {
+        views.push(view);
+      }
+      return views;
+    }
+
+    const [views, quotes, paySubmits, whatsapp, orders] = await Promise.all([
+      loadAllViews(),
       analyticsEventRepository.listByEventSince(businessId, FUNNEL_EVENTS.deliveryQuoteServed, since),
       analyticsEventRepository.listByEventSince(businessId, FUNNEL_EVENTS.paySubmitted, since),
       analyticsEventRepository.listByEventSince(businessId, FUNNEL_EVENTS.whatsappOrderStarted, since),
-      orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT }),
+      loadOrdersInWindow(businessId, days, cache),
     ]);
 
     // A path may carry a query string (`/checkout?box=...`), so match
@@ -620,26 +730,52 @@ class BusinessAnalyticsService {
   }
 
   /**
-   * CAC for one calendar month: manually-entered spend ÷ customers
-   * whose *first-ever* order (within the bounded scan window) fell in
-   * that month. `spendKes`/`cacKes` are null when no spend has been
-   * entered yet — never a fabricated zero.
+   * Keep the `customerLifetime` rollup current before anything reads
+   * it (§ analytics rollups).
+   *
+   * Unlike `trafficDaily`, this is rebuilt whole rather than healed
+   * day by day — an order's *status* can change long after it was
+   * created (a refund removes revenue a previous rebuild already
+   * counted), so there is no "this slice is done, never touch it
+   * again" boundary the way a finished calendar day has one. At
+   * today's order volume a full rebuild is one paginated read, the
+   * same cost the old per-method scan already paid; past that, the
+   * honest fix is a scheduled rebuild the read no longer waits on, the
+   * same escalation `CustomerService`'s own doc comment already
+   * commits to for the same reason.
+   *
+   * Memoised per request through `cache`, because `getCac`,
+   * `getCacByChannel` and `getLtv` all need this fresh and the admin
+   * Analytics page calls all three in one render — without this, three
+   * calls would rebuild the same rollup three times.
    */
-  async getCac(businessId: string, month: string): Promise<CacResult> {
-    const spend = await marketingSpendRepository.findByMonth(businessId, month);
-    const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
+  private async ensureCustomerLifetime(
+    businessId: string,
+    cache: AnalyticsRequestCache,
+  ): Promise<void> {
+    await cache.memo(`customer-lifetime-rebuild:${businessId}`, async () => {
+      await analyticsRollupService.rebuildCustomerLifetime(businessId);
+      return true;
+    });
+  }
 
-    const firstOrderMonthByPhone = new Map<string, string>();
-    for (const { data } of orders) {
-      const orderMonth = new Date(toMillis(data.createdAt)).toISOString().slice(0, 7);
-      const phone = data.customer.phoneNumber;
-      const existing = firstOrderMonthByPhone.get(phone);
-      if (!existing || orderMonth < existing) {
-        firstOrderMonthByPhone.set(phone, orderMonth);
-      }
-    }
-
-    const newCustomers = Array.from(firstOrderMonthByPhone.values()).filter((m) => m === month).length;
+  /**
+   * CAC for one calendar month: manually-entered spend ÷ customers
+   * whose *first-ever* order fell in that month. `spendKes`/`cacKes`
+   * are null when no spend has been entered yet — never a fabricated
+   * zero.
+   */
+  async getCac(
+    businessId: string,
+    month: string,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<CacResult> {
+    const { start, end } = monthBounds(month);
+    await this.ensureCustomerLifetime(businessId, cache);
+    const [spend, newCustomers] = await Promise.all([
+      marketingSpendRepository.findByMonth(businessId, month),
+      customerLifetimeRepository.countAcquiredInRange(businessId, start, end),
+    ]);
     const spendKes = spend?.amountKes ?? null;
 
     return {
@@ -668,25 +804,25 @@ class BusinessAnalyticsService {
    * fabricated zero" discipline as `getCac` — a channel with no spend
    * entered gets a null CAC, not a division by zero pretending to be free.
    */
-  async getCacByChannel(businessId: string, month: string): Promise<ChannelCacResult[]> {
-    const spend = await marketingSpendRepository.findByMonth(businessId, month);
-    const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
+  async getCacByChannel(
+    businessId: string,
+    month: string,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<ChannelCacResult[]> {
+    const { start, end } = monthBounds(month);
+    await this.ensureCustomerLifetime(businessId, cache);
+    const [spend, acquired] = await Promise.all([
+      marketingSpendRepository.findByMonth(businessId, month),
+      customerLifetimeRepository.listAcquiredInRange(businessId, start, end),
+    ]);
 
-    const firstOrderByPhone = new Map<string, { month: string; channel: OrderChannel }>();
-    for (const { data } of orders) {
-      const orderMonth = new Date(toMillis(data.createdAt)).toISOString().slice(0, 7);
-      const phone = data.customer.phoneNumber;
-      const existing = firstOrderByPhone.get(phone);
-      if (!existing || orderMonth < existing.month) {
-        firstOrderByPhone.set(phone, { month: orderMonth, channel: deriveOrderChannel(data) });
-      }
-    }
-
+    // The documents rather than a count, because this split needs each
+    // customer's *first* channel — which the rollup froze at acquisition
+    // time, so a later order through another channel cannot rewrite it.
     const newCustomersByChannel = new Map<OrderChannel, number>();
-    for (const { month: firstMonth, channel } of firstOrderByPhone.values()) {
-      if (firstMonth === month) {
-        newCustomersByChannel.set(channel, (newCustomersByChannel.get(channel) ?? 0) + 1);
-      }
+    for (const customer of acquired) {
+      const channel = customer.firstOrderChannel as OrderChannel;
+      newCustomersByChannel.set(channel, (newCustomersByChannel.get(channel) ?? 0) + 1);
     }
 
     const channels: { channel: 'meta' | 'tiktok'; spendKes: number | null | undefined }[] = [
@@ -760,8 +896,12 @@ class BusinessAnalyticsService {
    * and bounded scan as `getRevenueOverview`, bucketed by
    * `deriveOrderChannel` instead of by day.
    */
-  async getRevenueByChannel(businessId: string, days = 30): Promise<RevenueByChannelResult> {
-    const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
+  async getRevenueByChannel(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<RevenueByChannelResult> {
+    const orders = await loadOrdersInWindow(businessId, days, cache);
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
     const inWindow = orders.filter(
@@ -791,11 +931,15 @@ class BusinessAnalyticsService {
    * Cross-references two bounded scans rather than reading each
    * attributed order individually — same discipline as `getCac`.
    */
-  async getCreatorRoi(businessId: string, days = 30): Promise<CreatorRoi[]> {
+  async getCreatorRoi(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<CreatorRoi[]> {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const [{ attributions }, { orders }] = await Promise.all([
+    const [{ attributions }, orders] = await Promise.all([
       referralAttributionRepository.listByBusiness(businessId, { limit: COMMISSION_ATTRIBUTION_LIMIT }),
-      orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT }),
+      loadOrdersInWindow(businessId, days, cache),
     ]);
 
     const revenueByOrderId = new Map(orders.map(({ id, data }) => [id, data.pricing.totalKes]));
@@ -849,12 +993,16 @@ class BusinessAnalyticsService {
    * — proof money actually moved back, same discipline `types/refund.ts`
    * already documents for `Order.status`.
    */
-  async getRefundRate(businessId: string, days = 30): Promise<RefundRateResult> {
+  async getRefundRate(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<RefundRateResult> {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const paidStatuses: Order['status'][] = ['confirmed', 'dispatched', 'delivered', 'refund_requested', 'refunded'];
 
-    const [{ orders }, { refunds }] = await Promise.all([
-      orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT }),
+    const [orders, { refunds }] = await Promise.all([
+      loadOrdersInWindow(businessId, days, cache),
       refundRepository.listByBusiness(businessId, { status: 'succeeded', limit: REFUND_SCAN_LIMIT }),
     ]);
 
@@ -889,8 +1037,12 @@ class BusinessAnalyticsService {
    * identity every other metric here uses (§ close the loop: no
    * `CustomerProfile` collection is ever actually written to).
    */
-  async getRepeatPurchaseRate(businessId: string, days = 30): Promise<RepeatPurchaseResult> {
-    const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
+  async getRepeatPurchaseRate(
+    businessId: string,
+    days = 30,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<RepeatPurchaseResult> {
+    const orders = await loadOrdersInWindow(businessId, days, cache);
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
     // A box nobody has paid for is not yet a purchase, so it is not
@@ -954,18 +1106,13 @@ class BusinessAnalyticsService {
    * from. All-time within the bounded scan, not windowed by days: a
    * customer's lifetime doesn't reset every 30 days.
    */
-  async getLtv(businessId: string): Promise<LtvResult> {
-    const { orders } = await orderRepository.listByBusiness(businessId, { limit: REVENUE_ORDER_LIMIT });
-    const revenueOrders = orders.filter(({ data }) => isRealisedRevenue(data));
-
-    const revenueByPhone = new Map<string, number>();
-    for (const { data } of revenueOrders) {
-      const phone = data.customer.phoneNumber;
-      revenueByPhone.set(phone, (revenueByPhone.get(phone) ?? 0) + data.pricing.totalKes);
-    }
-
-    const customerCount = revenueByPhone.size;
-    const totalRevenueKes = Array.from(revenueByPhone.values()).reduce((sum, kes) => sum + kes, 0);
+  async getLtv(
+    businessId: string,
+    cache: AnalyticsRequestCache = new NoRequestCache(),
+  ): Promise<LtvResult> {
+    await this.ensureCustomerLifetime(businessId, cache);
+    const { customerCount, totalRevenueKes } =
+      await customerLifetimeRepository.aggregateLifetime(businessId);
 
     return {
       customerCount,

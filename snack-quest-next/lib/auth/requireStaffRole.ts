@@ -64,6 +64,20 @@ export const ADMIN_AGENT_OR_WAREHOUSE: readonly Role[] = [
   'warehouse',
 ];
 
+/**
+ * The vending fleet's financial reads (`/api/vending/transactions`,
+ * `/api/vending/analytics`) — warehouse for day-to-day machine
+ * operations, finance for the money those operations move. Neither
+ * role alone covers both concerns a machine transaction actually
+ * touches (§ RBAC foundation, docs/VENDING_FOUNDATION.md).
+ */
+export const ADMIN_FINANCE_OR_WAREHOUSE: readonly Role[] = [
+  'admin',
+  'super_admin',
+  'finance',
+  'warehouse',
+];
+
 export function forbiddenResponse(): Response {
   return Response.json({ error: 'forbidden' }, { status: 403 });
 }

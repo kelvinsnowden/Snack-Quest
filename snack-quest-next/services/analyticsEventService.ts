@@ -4,6 +4,7 @@ import { analyticsEventRepository } from '@/repositories/analyticsEventRepositor
 import { RESCUE_OFFER_EVENTS } from '@/lib/analytics/rescueOfferEvents';
 import { FUNNEL_EVENTS } from '@/lib/analytics/funnelEvents';
 import { INVESTOR_EVENTS } from '@/lib/analytics/investorEvents';
+import { MACHINE_OWNER_EVENTS } from '@/lib/analytics/machineOwnerEvents';
 
 /**
  * Records one named funnel event (§ exit-intent rescue offer, extended
@@ -18,6 +19,7 @@ const KNOWN_EVENTS: readonly string[] = [
   ...Object.values(RESCUE_OFFER_EVENTS),
   ...Object.values(FUNNEL_EVENTS),
   ...Object.values(INVESTOR_EVENTS),
+  ...Object.values(MACHINE_OWNER_EVENTS),
 ];
 const MAX_METADATA_ENTRIES = 10;
 const MAX_METADATA_VALUE_LENGTH = 200;

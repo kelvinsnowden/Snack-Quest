@@ -26,6 +26,7 @@ than becoming a broken image. Drop a file at
 """
 
 import base64
+import hashlib
 import pathlib
 import re
 import sys
@@ -57,6 +58,18 @@ SHOT_ALT = {
                      '177.8K post views, 4.7K profile views, 11.4K likes, 144 comments, 278 shares.',
         'ttprofile': 'The @snackquests TikTok profile: 1,208 followers, 13.7K likes, '
                      'and a grid of videos with 74K, 37.8K and 13.5K views.',
+        'dm-a': 'An inbound direct message from a creator with 23,700 followers, '
+                'asking about PR.',
+        'dm-b': 'An inbound direct message from a creator with 1.2 million followers, '
+                'asking for a chance to advertise Snack Quest on their page.',
+        'dm-c': 'An inbound direct message from a creator with 31,700 followers, '
+                'asking for prices and offering an advertising video.',
+        'dm-d': 'An inbound direct message from a creator with 113,300 followers, '
+                'suggesting they could work together.',
+        'dm-e': 'A long inbound direct message from a creator with 172,100 followers, '
+                'proposing a Snack Quest tasting and review video with their sister.',
+        'dm-f': 'An inbound direct message from a verified food-review account '
+                'offering a collaboration at no charge.',
     },
     'zh': {
         'interior': 'Snack Quest 门店内景：按国别陈列的零食墙、“自选盲盒”自选墙、盲盒陈列台与休息区。',
@@ -71,6 +84,12 @@ SHOT_ALT = {
                      '播放量 17.8 万，主页访问 4,700，点赞 1.14 万，评论 144，转发 278。',
         'ttprofile': '@snackquests 的 TikTok 主页：1,208 粉丝，13.7 万点赞，'
                      '视频列表中有 7.4 万、3.78 万与 1.35 万播放的作品。',
+        'dm-a': '一位拥有 2.37 万粉丝的创作者主动发来私信，询问 PR 合作。',
+        'dm-b': '一位拥有 120 万粉丝的创作者主动发来私信，希望在自己的主页上推广 Snack Quest。',
+        'dm-c': '一位拥有 3.17 万粉丝的创作者主动发来私信，询问价格并提出可以拍摄推广视频。',
+        'dm-d': '一位拥有 11.33 万粉丝的创作者主动发来私信，提出可以合作。',
+        'dm-e': '一位拥有 17.21 万粉丝的创作者主动发来的长私信，提议和妹妹一起拍摄 Snack Quest 试吃测评视频。',
+        'dm-f': '一个已认证的美食测评账号主动发来私信，提出免费合作。',
     },
 }
 
@@ -78,10 +97,11 @@ LANGS = {
     'en': {
         'html_lang': 'en',
         'title': 'Snack Quest Investor Deck',
-        'desc': 'Snack Quest is building the home of global snack discovery in Africa. '
-                'This deck sets out the case for our first physical location in Nairobi.',
-        'social': 'The home of global snack discovery in Africa. '
-                  'The case for our first physical location in Nairobi.',
+        'desc': 'Snack Quest is building the discovery and distribution layer international '
+                'consumer brands use to reach African consumers. Raising KSh 8,000,000 to '
+                'prove the network.',
+        'social': 'The machine is the node. The network is the asset. Raising KSh 8,000,000 '
+                  'to prove a distributed retail network, starting with snacks.',
         'canonical': f'{SITE}/deck',
         'other_href': '/deck/zh',
         'other_label': '中文',
@@ -92,8 +112,9 @@ LANGS = {
     'zh': {
         'html_lang': 'zh-Hans',
         'title': 'Snack Quest 投资人介绍',
-        'desc': 'Snack Quest 正在把非洲打造成全球零食探索的目的地。本文件阐述我们在内罗毕开设首家实体门店的投资逻辑。',
-        'social': '全球零食探索在非洲的目的地。内罗毕首家实体门店的投资逻辑。',
+        'desc': 'Snack Quest 正在搭建国际消费品牌触达非洲消费者所需的发现与分销层。'
+                '我们正在募集 KSh 800 万，用以验证这张网络。',
+        'social': '机器是节点，网络才是资产。募集 KSh 800 万，从零食开始，验证一张分布式零售网络。',
         'canonical': f'{SITE}/deck/zh',
         'other_href': '/deck',
         'other_label': 'EN',
@@ -115,7 +136,7 @@ def data_uri(name: str) -> str:
     return f'data:{mime};base64,' + base64.b64encode(raw).decode()
 
 
-SLOT_RE = re.compile(r'<div data-shot="(?P<key>[a-z]+)" class="slot[^"]*">.*?</div>', re.S)
+SLOT_RE = re.compile(r'<div data-shot="(?P<key>[a-z-]+)" class="slot[^"]*">.*?</div>', re.S)
 
 
 def put_shots(html: str, lang: str, inline: bool) -> tuple[str, list[str]]:
@@ -232,7 +253,7 @@ def check_parity(en_body: str, zh_body: str) -> None:
         return len(re.findall(r'<section class="slide', b))
 
     def shots(b: str) -> list[str]:
-        return sorted(re.findall(r'data-shot="([a-z]+)"', b) +
+        return sorted(re.findall(r'data-shot="([a-z-]+)"', b) +
                       re.findall(r'__(LOGO|BOX|UNBOX)__', b))
 
     if slides(en_body) != slides(zh_body):
@@ -246,7 +267,53 @@ def check_parity(en_body: str, zh_body: str) -> None:
         )
 
 
+STAMP_RE = re.compile(r'<!-- build-stamp:([0-9a-f]{64}) -->\n$')
+
+
+def stamped(page: str) -> str:
+    """Sign a generated page with the hash of its own contents."""
+    return page + f'<!-- build-stamp:{hashlib.sha256(page.encode()).hexdigest()} -->\n'
+
+
+def refuse_if_hand_edited(path: pathlib.Path, force: bool) -> None:
+    """Never throw away an edit made to a generated file.
+
+    Twice now the published deck has been edited directly — once when the
+    raise changed, once when the whole thesis did — while `deck.src.html`
+    stood still. Both times the source was left an entire funding round
+    behind the page people were actually being sent, and a single run of
+    this script would have reverted the live deck without a word.
+
+    So every page written here carries a hash of itself. If the file on
+    disk still matches its own stamp, this build produced it and may
+    replace it. If the stamp is missing or stale, somebody edited the
+    output by hand, and the edit is the newer work: the build stops and
+    says so rather than overwriting it. `--force` is the way to say the
+    source has since caught up and the output is meant to be replaced.
+    """
+    if not path.exists():
+        return
+    text = path.read_text()
+    match = STAMP_RE.search(text)
+    if match and hashlib.sha256(STAMP_RE.sub('', text).encode()).hexdigest() == match.group(1):
+        return
+
+    where = path.relative_to(PUBLIC.parent.parent) if PUBLIC.parent.parent in path.parents else path
+    if force:
+        print(f'--force: replacing hand-edited {where}')
+        return
+    raise SystemExit(
+        f'REFUSING TO OVERWRITE: {where}\n'
+        f'  {"Its build stamp does not match its contents" if match else "It carries no build stamp"},'
+        ' so it was edited by hand after it was\n'
+        '  generated. Building now would throw that edit away.\n\n'
+        '  Fold the edit back into scripts/deck/deck.src.html (and\n'
+        '  deck.zh.body.html for the Chinese), then re-run with --force.'
+    )
+
+
 def main() -> int:
+    force = '--force' in sys.argv[1:]
     style, en_body = split_source()
     zh_body = (HERE / 'deck.zh.body.html').read_text()
     check_parity(en_body, zh_body)
@@ -255,17 +322,25 @@ def main() -> int:
         'en': (PUBLIC / 'index.html', en_body),
         'zh': (PUBLIC / 'zh' / 'index.html', zh_body),
     }
+    single_path = HERE / 'snack-quest-deck.html'
+
+    # Every output is checked before any of them is written, so a refusal
+    # leaves the set whole rather than half rebuilt.
+    for path, _ in outputs.values():
+        refuse_if_hand_edited(path, force)
+    refuse_if_hand_edited(single_path, force)
+
     missing: list[str] = []
     for lang, (path, body) in outputs.items():
         page, gaps = compose(lang, body, style, inline=False)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(page)
+        path.write_text(stamped(page))
         missing += gaps
         print(f'{lang:<3} {path.relative_to(PUBLIC.parent.parent)}  {len(page.encode()):>8,} bytes')
 
     # The single-file English copy, for publishing outside our own domain.
     single, _ = compose('en', en_body, style, inline=True)
-    (HERE / 'snack-quest-deck.html').write_text(single)
+    single_path.write_text(stamped(single))
     print(f'{"":<3} snack-quest-deck.html (inlined){len(single.encode()):>13,} bytes')
 
     if missing:

@@ -9,3 +9,6 @@ export const STAFF_SESSION_COOKIE = 'sq_staff_session';
 
 /** Same split, same reasoning, for the Creator Portal's own session (§ Creator Portal auth) — a separate cookie so a staff and a creator session can coexist in the same browser. */
 export const CREATOR_SESSION_COOKIE = 'sq_creator_session';
+
+/** Same split, same reasoning, for the Owner Portal's own session (§ PART 2 — OWNER PORTAL, § partner authentication) — a machine owner, a staff member, and a creator can all be signed in in the same browser at once. */
+export const PARTNER_SESSION_COOKIE = 'sq_partner_session';

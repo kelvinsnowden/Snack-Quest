@@ -32,6 +32,17 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('refunds'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('paymentIntents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('analyticsEvents'));
+  /*
+   * The rollups getTraffic/getLtv/getCac now read (§ analytics
+   * rollups). Without clearing these, a rollup built by an earlier
+   * test for a given calendar date survives into a later test that
+   * seeds fresh page views for that same date — most tests here use
+   * `daysAgo(1)`, so they collide on the same date whenever the suite
+   * runs inside one wall-clock day — and the later test silently reads
+   * the earlier test's stale numbers instead of its own.
+   */
+  await adminFirestore.recursiveDelete(adminFirestore.collection('trafficDaily'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('customerLifetime'));
 });
 
 function seedEvent(overrides: {

@@ -20,5 +20,24 @@ export interface AuditLog {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   ipAddress: string;
+  /**
+   * Which surface initiated this action (§ PART 9 — AUDIT LOG:
+   * "source"), e.g. `'admin_portal'`, `'owner_portal'`, `'device'`,
+   * `'cron'`. Defaults to `'admin_portal'` at the write boundary
+   * (`recordAuditLog`/`auditLogRepository.record`) for every one of
+   * this collection's pre-existing call sites, which were all staff
+   * acting through the admin UI — never retrofitted, never guessed
+   * per record.
+   */
+  source: string;
+  /**
+   * The machine this action concerns, when it concerns one
+   * (§ PART 9 — AUDIT LOG: "machine") — null for every action that
+   * isn't machine-scoped (most of this collection's pre-existing
+   * e-commerce/warehouse entries, and still most new ones: a price
+   * change on a snack item's global catalogue is real and auditable
+   * but touches no one machine in particular).
+   */
+  machineId: string | null;
   createdAt: Timestamp;
 }

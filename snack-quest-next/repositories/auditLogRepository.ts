@@ -6,7 +6,11 @@ import type { AuditLog } from '@/types';
 
 const COLLECTION = 'auditLogs';
 
-export type AuditLogEntryInput = Omit<AuditLog, 'createdAt'>;
+export type AuditLogEntryInput = Omit<AuditLog, 'createdAt' | 'source' | 'machineId'> & {
+  /** Defaults to `'admin_portal'` — see `AuditLog.source`'s own doc comment for why every pre-existing call site is safe to leave unchanged. */
+  source?: string;
+  machineId?: string | null;
+};
 
 /**
  * `auditLogs` — write-only from the server, never updated or deleted
@@ -20,6 +24,8 @@ class AuditLogRepository {
   async record(entry: AuditLogEntryInput): Promise<void> {
     await adminFirestore.collection(COLLECTION).add({
       ...entry,
+      source: entry.source ?? 'admin_portal',
+      machineId: entry.machineId ?? null,
       createdAt: FieldValue.serverTimestamp(),
     });
   }

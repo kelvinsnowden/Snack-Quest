@@ -58,3 +58,6 @@ emulator-data/
 # Built by scripts/deck/build.py for publishing outside our own domain;
 # the version served from /deck is public/deck/index.html.
 scripts/deck/snack-quest-deck.html
+
+# Left behind whenever build.py is imported rather than run.
+__pycache__/

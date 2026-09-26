@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 
 export type NotificationChannel = 'in_app' | 'email' | 'sms' | 'whatsapp';
-export type NotificationRecipientType = 'creator' | 'customer' | 'staff';
+export type NotificationRecipientType = 'creator' | 'customer' | 'staff' | 'partner';
 
 /**
  * `notifications/{notificationId}` — scoped per recipient, unlike the

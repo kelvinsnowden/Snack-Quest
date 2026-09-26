@@ -7,12 +7,16 @@ import {
   Boxes,
   ClipboardList,
   ClipboardCheck,
+  GitCompareArrows,
+  AlertTriangle,
   Activity,
+  Cpu,
   Flag,
   FolderOpen,
   HelpCircle,
   Ticket,
   LayoutDashboard,
+  Lightbulb,
   Mail,
   MailPlus,
   ChefHat,
@@ -29,6 +33,7 @@ import {
   ScrollText,
   Settings,
   Share2,
+  TrendingUp,
   Truck,
   UserCog,
   Users,
@@ -58,6 +63,7 @@ export type AdminNavGroup =
   | 'Overview'
   | 'Orders & delivery'
   | 'Catalogue & stock'
+  | 'Vending'
   | 'Customers'
   | 'Creators'
   | 'Money'
@@ -68,6 +74,7 @@ export const ADMIN_NAV_GROUP_ORDER: AdminNavGroup[] = [
   'Overview',
   'Orders & delivery',
   'Catalogue & stock',
+  'Vending',
   'Customers',
   'Creators',
   'Money',
@@ -114,6 +121,16 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/recipes', label: 'Box recipes', shortLabel: 'Recipes', icon: ChefHat, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/purchase-orders', label: 'Purchase orders', icon: ClipboardCheck, section: 'orders', group: 'Catalogue & stock' },
   { href: '/admin/suppliers', label: 'Suppliers', icon: Warehouse, section: 'orders', group: 'Catalogue & stock' },
+
+  { href: '/admin/vending', label: 'Vending Machines', shortLabel: 'Vending', icon: Cpu, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/alerts', label: 'Alert Center', shortLabel: 'Alerts', icon: AlertTriangle, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/restock', label: 'Restock Command Center', shortLabel: 'Restock', icon: PackageSearch, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/partners', label: 'Machine Owners', shortLabel: 'Owners', icon: Banknote, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence', label: 'Network Intelligence', shortLabel: 'Intelligence', icon: BarChart3, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/reconciliation', label: 'Payment Reconciliation', shortLabel: 'Reconciliation', icon: GitCompareArrows, section: 'vending', group: 'Vending' },
 
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers' },
   { href: '/admin/customers', label: 'Customers', icon: Users, section: 'marketing', group: 'Customers' },

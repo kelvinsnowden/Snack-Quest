@@ -11,7 +11,24 @@ import { EmptyState } from '@/components/ui/empty-state';
 
 export const metadata: Metadata = { title: 'Audit logs' };
 
-const ENTITY_TYPE_FILTERS = ['business', 'package', 'creatorProfile', 'withdrawal', 'marketingSpendEntry', 'storageObject'] as const;
+const ENTITY_TYPE_FILTERS = [
+  'business',
+  'package',
+  'creatorProfile',
+  'withdrawal',
+  'marketingSpendEntry',
+  'storageObject',
+  'machine',
+  'machineAssortment',
+  'machineSlot',
+  'restockTask',
+  'machineSettlement',
+  'machineSubscription',
+  'machineCommand',
+  'alert',
+  'camera',
+  'cameraSnapshot',
+] as const;
 
 const ENTITY_TYPE_LABELS: Record<(typeof ENTITY_TYPE_FILTERS)[number], string> = {
   business: 'Settings',
@@ -20,6 +37,16 @@ const ENTITY_TYPE_LABELS: Record<(typeof ENTITY_TYPE_FILTERS)[number], string> =
   withdrawal: 'Withdrawals',
   marketingSpendEntry: 'Analytics',
   storageObject: 'Storage',
+  machine: 'Machine config',
+  machineAssortment: 'Assortment',
+  machineSlot: 'Slots',
+  restockTask: 'Restock',
+  machineSettlement: 'Settlements',
+  machineSubscription: 'Subscriptions',
+  machineCommand: 'Commands',
+  alert: 'Alerts',
+  camera: 'Cameras',
+  cameraSnapshot: 'Camera snapshots',
 };
 
 export default async function AdminAuditLogsPage({
@@ -85,7 +112,9 @@ export default async function AdminAuditLogsPage({
                 <tr>
                   <th className="px-4 py-3 font-medium">Action</th>
                   <th className="px-4 py-3 font-medium">Entity</th>
+                  <th className="px-4 py-3 font-medium">Machine</th>
                   <th className="px-4 py-3 font-medium">Actor</th>
+                  <th className="px-4 py-3 font-medium">Source</th>
                   <th className="px-4 py-3 font-medium">IP</th>
                   <th className="px-4 py-3 font-medium">When</th>
                 </tr>
@@ -98,9 +127,11 @@ export default async function AdminAuditLogsPage({
                       {data.entityType}
                       <span className="ml-1 text-caption">({data.entityId})</span>
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">{data.machineId ?? '—'}</td>
                     <td className="px-4 py-3 text-foreground">
                       {data.actorId === 'system' ? 'System' : actorNameById.get(data.actorId) ?? data.actorId}
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">{data.source ?? 'admin_portal'}</td>
                     <td className="px-4 py-3 tabular-nums text-muted-foreground">{data.ipAddress}</td>
                     <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDateTime(data.createdAt)}</td>
                   </tr>

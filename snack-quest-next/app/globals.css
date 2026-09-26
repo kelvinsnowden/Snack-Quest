@@ -549,3 +549,26 @@ body {
 [hidden] {
   display: none !important;
 }
+
+/*
+ * The `/own` multi-step application form's own step transition
+ * (§ machine-owner lead-generation landing page, interactive
+ * qualification form). A plain CSS keyframe rather than a new
+ * animation-library dependency — one step's content swaps for the
+ * next by React key, and this is the enter animation for whatever
+ * mounts. Already covered by the `prefers-reduced-motion` block
+ * above, which zeroes every animation's duration site-wide.
+ */
+@keyframes own-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-own-step-in {
+  animation: own-step-in 0.32s ease-out both;
+}

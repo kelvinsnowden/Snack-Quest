@@ -1,3 +1,14 @@
+<!--
+  The English source of the investor deck. This file is not served.
+  `scripts/deck/build.py` reads it, lifts the stylesheet out for both
+  languages, swaps each image slot for the file in `public/deck/`, injects
+  the language bar, writes the head, and produces `/deck`, `/deck/zh` and
+  the single-file copy.
+
+  Edit this file and run the build. Editing `public/deck/index.html`
+  directly puts the two out of step -- which happened twice, and is why the
+  build now refuses to overwrite an output it did not itself produce.
+-->
 <title>Snack Quest Investor Deck</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -580,6 +591,10 @@
     gap: 0 14px;
     padding: 12px 0;
     border-bottom: 1px solid var(--edge);
+    /* Rows stretch to the tallest item in the grid row, so the note
+       would otherwise float in the middle of a short cell instead of
+       hanging under the label it belongs to. */
+    align-content: start;
   }
   .a-k { font-size: 15px; font-weight: 650; color: var(--ink); }
   .a-v {
@@ -596,6 +611,9 @@
      label into one word per line. Those stack instead. */
   .assumption.dual { grid-template-columns: 1fr; }
   .assumption.dual .a-v { text-align: left; white-space: normal; margin-top: 3px; }
+  /* Four items carrying a paragraph each want a 2x2, not three columns
+     and an orphan on the second row. */
+  .assumptions.wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
 
   .a-n {
     grid-column: 1 / -1;
@@ -975,27 +993,28 @@
         </div>
         <div class="card cool">
           <h3>Creator programme</h3>
-          <p>Referral links and commission tracking, built and ready for the creators already asking.</p>
+          <p>Live: 33 creators registered, each with a tracked referral link. 281 clicks so far. First boxes seeded 1 September and most videos are still being edited, so the programme has produced three attributed sales to date, against KSh&nbsp;900 of commission.</p>
         </div>
       </div>
 
-      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The first four days of trading</h3>
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The first thirty days of trading, 23 August &ndash; 21 September</h3>
       <div class="bignums">
         <div class="bignum">
-          <span class="bn-v">KSh&nbsp;4,875</span>
-          <span class="bn-k">Actual average order value</span>
+          <span class="bn-v">KSh&nbsp;4,279</span>
+          <span class="bn-k">Average paid order value</span>
         </div>
         <div class="bignum">
-          <span class="bn-v">4</span>
-          <span class="bn-k">Orders delivered, 23&ndash;26 Aug</span>
+          <span class="bn-v">24</span>
+          <span class="bn-k">Paid orders, from 24 customers</span>
         </div>
         <div class="bignum">
-          <span class="bn-v">KSh&nbsp;19,500</span>
+          <span class="bn-v">KSh&nbsp;102,700</span>
           <span class="bn-k">Revenue</span>
         </div>
       </div>
-      <p class="note" style="margin-top:14px;">Four orders is a small number and we are not going to dress it up. It is here because the shape matters more than the size, and the shape cuts both ways. The average order came in at <strong>KSh&nbsp;4,875</strong> against the <strong>KSh&nbsp;3,500</strong> the store model assumes, which is better than plan. Margin went the other way: <strong>25.9%</strong> gross across the four, against a 45% target, and one order sold below cost. Order-level margin ranged from &minus;21% to +39%. No repeat rate yet; four days does not produce one.</p>
-      <p class="note" style="margin-top:10px;">That spread is the honest headline. We do not yet know our own cost structure, and that is the single clearest reason this deck asks for KSh&nbsp;500,000 before it asks for KSh&nbsp;10M.</p>
+      <p class="note" style="margin-top:14px;">Twenty-four orders is still a small number and we are not going to dress it up. It is here because the shape matters more than the size. The average paid order came in at <strong>KSh&nbsp;4,279</strong> against the <strong>KSh&nbsp;3,500</strong> the store model assumes, which is ahead of plan. Margin went the other way: <strong>27.1%</strong> gross against a 45% target, on the five orders where goods cost is itemised. After delivery and packaging, contribution splits in two, and the split is the honest part: <strong>19.8%</strong> across the five orders where somebody held the receipts, <strong>35.6%</strong> across the eighteen costed by spreading a shopping trip evenly over the orders it served, <strong>31.9%</strong> blended over all twenty-three. We lead with the first. An even split is an estimate; a receipt is not. One early order sold below cost, and order-level contribution ranged from &minus;21% to +55%.</p>
+      <p class="note" style="margin-top:10px;">Two numbers we are not going to leave for you to find. <strong>Repeat purchase is zero</strong> &mdash; twenty-four orders, twenty-four different customers, and the oldest of them is thirty days old. The box is our retention thesis and it has not been tested yet. And a further <strong>eight boxes went out at no charge</strong> &mdash; seven on 1 September and one on the 16th &mdash; roughly KSh&nbsp;35,500 of stock at list price, seeded to creators. Those are excluded from every revenue figure above, and from the margin: they carry real stock against no sale, and counting them as orders would drag the average order value from KSh&nbsp;4,279 down to KSh&nbsp;3,209 while adding nothing to revenue.</p>
+      <p class="note" style="margin-top:10px;">Every order on this site is instrumented: goods cost, delivery cost and margin are recorded per order. That is how we can quote an 18-point margin gap rather than an estimate, and it is why these numbers move week to week &mdash; contribution read 19.7% over the first four orders, 19.0% over seven, 21.3% over ten, and 31.9% now that twenty-three carry a cost &mdash; it moves as more shopping trips are costed against the orders they served, and lately it has been moving up.</p>
 
       <div class="pull" style="margin-top:24px;">The machine works. What it does not have is a front door.</div>
     </div>
@@ -1148,17 +1167,77 @@
         </div>
         <div>
           <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Who we&rsquo;re building for</h3>
+          <p style="margin-bottom:12px;"><strong>Primary: urban Nairobi consumers aged 18&ndash;34 who discover food on social platforms and have discretionary spend.</strong> This is not a guess. Our twenty-four paying customers average KSh&nbsp;4,279 an order, which is a treat purchase, not pocket money, and our TikTok audience sits squarely in this band.</p>
           <div class="chips">
-            <span class="chip">Snack lovers</span>
-            <span class="chip">Gen Z &amp; younger consumers</span>
             <span class="chip">Gift buyers</span>
-            <span class="chip">Parents &amp; families</span>
             <span class="chip">Experience seekers</span>
+            <span class="chip">Parents &amp; families</span>
             <span class="chip">Corporate gifting <em style="color:var(--ink-faint);">(future)</em></span>
           </div>
-          <p class="note" style="margin-top:14px;">Target segments. Not all are proven yet. The first location is partly a test of which convert best.</p>
+          <p class="note" style="margin-top:14px;">Secondary segments, ranked by what we have seen so far rather than by potential. The first location is partly a test of which convert best.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+
+  <!-- ================= MARKET SIZE ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Market size</span>
+      <span class="caveat">Counted in occasions and customers, not city population</span>
+    </div>
+    <h2 class="title">Every day is somebody&rsquo;s birthday.</h2>
+    <p class="lede">We are not chasing a share of a market. We need a number of people and a reason for each of them to come back &mdash; so this is built from the order size we have actually measured, multiplied by the occasions a real customer has in a year.</p>
+    <div class="body">
+      <div class="equation">
+        <span class="eq-t"><b>KSh&nbsp;4,279</b> measured average order</span>
+        <span class="eq-o">&times;</span>
+        <span class="eq-t"><b>6</b> occasions a year</span>
+        <span class="eq-o">=</span>
+        <span class="eq-t eq-r"><b>~KSh&nbsp;25,700</b> per customer / year</span>
+      </div>
+
+      <div class="bignums" style="margin-top:22px;">
+        <div class="bignum">
+          <span class="bn-v">~KSh&nbsp;25,700</span>
+          <span class="bn-k">What one returning customer is worth in a year</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">~1,400</span>
+          <span class="bn-k">Customers needed for KSh&nbsp;36M a year &mdash; one store&rsquo;s target</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">24</span>
+          <span class="bn-k">Paying customers today. That is the distance, stated plainly.</span>
+        </div>
+      </div>
+
+      <hr class="rule">
+
+      <div class="grid g3">
+        <div class="card cool">
+          <h3>Gifting is the engine</h3>
+          <p>Somewhere in this city, today is somebody&rsquo;s birthday &mdash; and tomorrow it is somebody else&rsquo;s. Add Valentine&rsquo;s, Christmas, anniversaries, apologies, movie nights and the surprise sent for no reason at all. Gifting does not require the buyer to be a snack enthusiast, which is what makes it the widest door in. Our measured <strong>KSh&nbsp;4,279</strong> order is already a gift-sized purchase, not pocket money.</p>
+        </div>
+        <div class="card">
+          <h3>Campus, and the content that comes with it</h3>
+          <p>Students are the audience already watching us: dense, social, and the people who make the format spread. The plan is a series filmed across Nairobi&rsquo;s universities &mdash; the visit is the acquisition and the content at the same time, which is the same trick the TikTok account already pulls for free.</p>
+        </div>
+        <div class="card">
+          <h3>Children, and the parents who pay</h3>
+          <p>Odd flavours from other countries are a child&rsquo;s idea of an event. Children pull, parents pay, and the occasion repeats: birthdays, school holidays, rewards, treats. It is the least fashionable segment on this slide and probably the most reliable.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3>And what only a shop can sell</h3>
+        <p>Right now the smallest thing anybody can buy from us is a box. A walk-in buying one packet is a customer we currently turn away, because we have no product at that price and no way to hand it over. A store is not a bigger slice of the same demand &mdash; it is demand we cannot serve at all today, at a frequency a box will never have.</p>
+      </div>
+
+      <p class="note" style="margin-top:18px;">The honest reading of the numbers above. <strong>Six occasions a year is an assumption, not a result</strong> &mdash; repeat purchase is currently zero, and proving it is the whole point of Store&nbsp;#1. At three occasions rather than six the same KSh&nbsp;36M needs about <strong>2,800</strong> customers instead of 1,400, which is the sensitivity a partner should push on. And single-packet trade is deliberately left out of the arithmetic entirely, so the walk-in trade described above is upside this slide does not count.</p>
+      <p class="note" style="margin-top:10px;">We have deliberately not quoted a national snack-market figure, or counted the retail sites Nairobi could hold. A number that large tells you nothing about whether we can sell a KSh&nbsp;4,279 box, and a count of shopping centres is a supply answer to a demand question. Fourteen hundred people who come back six times is a target we can be held to.</p>
     </div>
   </section>
 
@@ -1198,15 +1277,33 @@
 
       <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The messages themselves</h3>
       <div class="proof">
-        <img src="/deck/shot-dm-b.webp" alt="An inbound direct message from a creator with 1.2 million followers, asking for a chance to advertise Snack Quest on their page.">
-        <img src="/deck/shot-dm-d.webp" alt="An inbound direct message from a creator with 113,300 followers, suggesting they could work together.">
-        <img src="/deck/shot-dm-c.webp" alt="An inbound direct message from a creator with 31,700 followers, asking for prices and offering an advertising video.">
-        <img src="/deck/shot-dm-a.webp" alt="An inbound direct message from a creator with 23,700 followers, asking about PR.">
-        <img src="/deck/shot-dm-f.webp" alt="An inbound direct message from a verified food-review account offering a collaboration at no charge.">
-        <img src="/deck/shot-dm-e.webp" alt="A long inbound direct message from a creator with 172,100 followers, proposing a Snack Quest tasting and review video with their sister.">
+        <div data-shot="dm-b" class="slot">
+          <span class="k">Inbound DM</span>
+          <span class="h">1.2M followers, asking to advertise us.</span>
+        </div>
+        <div data-shot="dm-d" class="slot">
+          <span class="k">Inbound DM</span>
+          <span class="h">113.3K followers, proposing we work together.</span>
+        </div>
+        <div data-shot="dm-c" class="slot">
+          <span class="k">Inbound DM</span>
+          <span class="h">31.7K followers, asking for prices.</span>
+        </div>
+        <div data-shot="dm-a" class="slot">
+          <span class="k">Inbound DM</span>
+          <span class="h">23.7K followers, asking about PR.</span>
+        </div>
+        <div data-shot="dm-f" class="slot">
+          <span class="k">Inbound DM</span>
+          <span class="h">Verified food-review account, no charge.</span>
+        </div>
+        <div data-shot="dm-e" class="slot">
+          <span class="k">Inbound DM</span>
+          <span class="h">172.1K followers, proposing a tasting video.</span>
+        </div>
       </div>
 
-      <div class="pull" style="margin-top:24px;">This is what stage one is buying. The supply of creators is already there and it is free. What is missing is the product to send them.</div>
+      <div class="pull" style="margin-top:24px;">The supply of creators is already there and it is free. What is missing is the product to send them, and a place to send them to.</div>
       <p class="note" style="margin-top:14px;">Names, handles and profile photographs are blacked out. These are private messages and the people who sent them have not agreed to appear in a fundraising document; the follower counts and the wording are untouched. Unredacted originals available on request.</p>
     </div>
   </section>
@@ -1215,8 +1312,8 @@
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head"><span class="eyebrow">What&rsquo;s holding us back</span></div>
-    <h2 class="title">Two constraints, and one location solves both.</h2>
-    <p class="lede">These are not demand problems. They are infrastructure problems, and that is precisely what makes them fixable with this raise.</p>
+    <h2 class="title">Three constraints. Not one of them is demand.</h2>
+    <p class="lede">Two are solved by a location and one by having stock money on the table. None of them is a question of whether people want the product, which is exactly what makes them fixable with this raise rather than with a better idea.</p>
     <div class="body">
       <div class="grid g2">
         <div class="card" style="border-color:var(--quest);">
@@ -1226,11 +1323,16 @@
         </div>
         <div class="card" style="border-color:var(--void);">
           <h3 style="color:var(--void);">Creator capacity</h3>
-          <p style="margin-bottom:12px;">Creators want to work with us in exchange for product. We don&rsquo;t yet have the physical space or operational capacity to host, shoot and fulfil at that volume.</p>
+          <p style="margin-bottom:12px;">Creators want to work with us in exchange for product. We don&rsquo;t yet have the physical space or operational capacity to host, shoot, broadcast and fulfil at that volume.</p>
           <p><strong>The store becomes the content and activation hub</strong>: visits, shoots, launches and UGC production in one place.</p>
         </div>
+        <div class="card" style="border-color:var(--quest);">
+          <h3 style="color:var(--quest);">An open door, and nothing to trade</h3>
+          <p style="margin-bottom:12px;">Exotic Snack Guys run the same format in the United States: 100+ locations, 49,600 followers, features on FOX, WGN, Yahoo and the Chicago Tribune, and an Instagram bio that reads <em>DM for collabs</em>. We approached them. They asked how they could help, and a proposal for a joint first opening is with them now.</p>
+          <p><strong>Stock money turns a favour into a transaction</strong>: asking an established brand to put its name beside ours is asking them to take a risk, while asking them to supply us at volume, paid upfront, is asking them to do business. The second is the far smaller ask, and the better first step.</p>
+        </div>
       </div>
-      <div class="pull" style="margin-top:24px;">The opportunity already exists. The constraint is our infrastructure and our ability to activate it at scale.</div>
+      <div class="pull" style="margin-top:24px;">The opportunity already exists. What is missing is the infrastructure to serve it and the cash to be worth dealing with.</div>
     </div>
   </section>
 
@@ -1238,11 +1340,36 @@
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head">
-      <span class="eyebrow">The raise</span>
-      <span class="stamp">Primary use of funds</span>
+      <span class="eyebrow">The insight</span>
+      <span class="stamp">Where this plan changed</span>
     </div>
-    <h2 class="title">The first Snack Quest location.</h2>
-    <p class="lede">This raise is to open one store. Not inventory, not general marketing, not working capital in the abstract. A physical location that proves the model and becomes the blueprint for every location after it.</p>
+    <h2 class="title">One store concentrates risk. A network creates data.</h2>
+    <p class="lede">The earlier version of this plan put the whole raise into one address. That is one location, one rent, one catchment and one set of assumptions &mdash; all tested at once, with no way to tell which of them was wrong.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div class="card">
+          <h3>One store</h3>
+          <p>Every variable moves together. If it works you do not know why; if it does not, you do not know which assumption broke. And the capital is spent before the first question is answered.</p>
+        </div>
+        <div class="card hot">
+          <h3>A discovery network</h3>
+          <p>Many locations, many customer environments, each one small enough to be wrong cheaply. Every one of them returns demand data before any large commitment is made.</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <p class="pull">I don&rsquo;t want to raise KSh&nbsp;8M to open a store. I want to raise KSh&nbsp;8M to build the system that makes the store replicable.</p>
+      <p class="note" style="margin-top:14px;">Nothing about the destination changed &mdash; the store format on the next slide is still the plan. What changed is what gets proved first, and how much it costs to be wrong.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Stage five</span>
+      <span class="stamp">Earned, not assumed</span>
+    </div>
+    <h2 class="title">The store is still coming. It is no longer the first bet.</h2>
+    <p class="lede">The format is designed and it is where this ends up. What changed is the order: a flagship opened on real location data is an informed expansion, while a flagship opened first is one address carrying every assumption at once.</p>
     <div class="body">
       <!--
         The franchise design. Captions name the commercial job each
@@ -1255,7 +1382,7 @@
           <span class="k">Interior, wide view</span>
           <span class="h">The wide interior render: the one showing the country walls, pick wall and seating corner together.</span>
         </div>
-        <figcaption><b>The format, specified.</b> Country walls, the Build Your Quest pick wall, a mystery-box table and a seating corner, laid out so a second location is a build, not a redesign.</figcaption>
+        <figcaption><b>The format, specified &mdash; concept visualisations, not photographs.</b> None of these five images is a built store; they are how the specified format is drawn. Country walls, the Build Your Quest pick wall, a mystery-box table and a seating corner, laid out so a second location is a build, not a redesign.</figcaption>
       </figure>
 
       <div class="panels" style="margin-bottom:26px;">
@@ -1264,28 +1391,28 @@
             <span class="k">Storefront</span>
             <span class="h">Top-left panel of the four-up: the corner storefront at night.</span>
           </div>
-          <figcaption><b>Acquisition.</b> A lit corner unit that reads as a destination from the street.</figcaption>
+          <figcaption><b>Acquisition.</b> <i>Visualisation.</i> A lit corner unit that reads as a destination from the street.</figcaption>
         </figure>
         <figure class="shot panel">
           <div data-shot="aisles" class="slot panel">
             <span class="k">Country walls</span>
             <span class="h">Top-right panel: the Korea / Japan / China / Thailand walls.</span>
           </div>
-          <figcaption><b>Discovery.</b> Korea, Japan, China and Thailand each get their own wall. Browsing as the product.</figcaption>
+          <figcaption><b>Discovery.</b> <i>Visualisation.</i> Korea, Japan, China and Thailand each get their own wall. Browsing as the product.</figcaption>
         </figure>
         <figure class="shot panel">
           <div data-shot="pickwall" class="slot panel">
             <span class="k">Build Your Quest wall</span>
             <span class="h">Bottom-left panel: the Build Your Quest / Pick 5 wall.</span>
           </div>
-          <figcaption><b>The box, in person.</b> Pick 5 off the wall: the online mechanic customers already know, made physical.</figcaption>
+          <figcaption><b>The box, in person.</b> <i>Visualisation.</i> Pick 5 off the wall: the online mechanic customers already know, made physical.</figcaption>
         </figure>
         <figure class="shot panel">
           <div data-shot="counter" class="slot panel">
             <span class="k">Counter &amp; creator corner</span>
             <span class="h">Bottom-right panel: the entrance and the lit counter.</span>
           </div>
-          <figcaption><b>Payment and content.</b> Pay in person, and a lit corner built to be filmed in.</figcaption>
+          <figcaption><b>Payment and live selling.</b> <i>Visualisation.</i> Pay in person, and a lit corner built to broadcast from &mdash; where a full-time host sells live every day the shop is open.</figcaption>
         </figure>
       </div>
 
@@ -1293,17 +1420,53 @@
       <div class="grid g4">
         <div class="card"><h3>Retail store</h3><p>Buy on the spot.</p></div>
         <div class="card"><h3>Discovery destination</h3><p>Browsing as entertainment.</p></div>
-        <div class="card"><h3>Social-first space</h3><p>Designed to be filmed in.</p></div>
+        <div class="card"><h3>Live-selling studio</h3><p>Staffed all day. A channel, not a backdrop.</p></div>
         <div class="card"><h3>Creator activation</h3><p>Visits, shoots, launches.</p></div>
         <div class="card"><h3>Pickup &amp; payment point</h3><p>Solves the trust gap.</p></div>
         <div class="card"><h3>Brand showroom</h3><p>The brand made physical.</p></div>
         <div class="card hot"><h3>Franchise blueprint</h3><p>The template for store two.</p></div>
       </div>
-      <p class="note" style="margin-top:18px;">Experiential retail, not a grocery shop. The store is a reason to visit, film and come back, not a shelf.</p>
+      <p class="note" style="margin-top:18px;">Experiential retail, not a grocery shop. The store is a reason to visit, film and come back &mdash; and on the nights it is closed it is a studio selling to the audience that already watches us, not a shelf sitting dark.</p>
     </div>
   </section>
 
   <!-- ================= 7. CREATOR ENGINE ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Discovery Machines</span>
+      <span class="stamp">The distribution node</span>
+    </div>
+    <h2 class="title">Every machine is a retail laboratory.</h2>
+    <p class="lede">A Discovery Machine is a small, stocked Snack Quest placed inside somebody else&rsquo;s footfall. It sells &mdash; but what it is really for is telling us which products move, where, at what price, to whom, and how often.</p>
+    <div class="body">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Five environments, five different customers</h3>
+      <div class="grid g3" style="margin-bottom:26px;">
+        <div class="card"><h3>Hotels &amp; BnBs</h3><p>Visitors with time, curiosity and no idea where to shop.</p></div>
+        <div class="card"><h3>Universities</h3><p>The exact demographic already watching this category on TikTok.</p></div>
+        <div class="card"><h3>Office complexes</h3><p>Repeat daily footfall from the same faces &mdash; the cleanest read on repeat purchase we can get.</p></div>
+        <div class="card"><h3>Hospitals</h3><p>Long waits, captive audience, almost no competing offer.</p></div>
+        <div class="card"><h3>Malls &amp; transport hubs</h3><p>Volume and impulse, against a rent we do not pay.</p></div>
+      </div>
+      <p class="note" style="margin-bottom:26px;"><b>And what each one costs us to be wrong:</b> a machine relocates, a lease does not. That asymmetry is the whole argument for testing this way round.</p>
+      <hr class="rule">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What every machine returns</h3>
+      <div class="chips" style="margin-bottom:22px;">
+        <span class="chip">Location economics</span>
+        <span class="chip">Product demand</span>
+        <span class="chip">Price elasticity</span>
+        <span class="chip">Best-selling SKUs</span>
+        <span class="chip">Sales velocity</span>
+        <span class="chip">Time of day</span>
+        <span class="chip">Restocking rhythm</span>
+        <span class="chip">Repeat purchase</span>
+        <span class="chip">Customer segment</span>
+      </div>
+      <p class="pull">The machine is the node. The network is the asset.</p>
+      <p class="note" style="margin-top:14px;"><b>Stated plainly: no machines are deployed yet.</b> This is the strategy this raise exists to test, beginning with one. Machine-level economics are unknown until that first unit has traded &mdash; and producing them is Phase&nbsp;1&rsquo;s job, not a number we are asserting here.</p>
+    </div>
+  </section>
+
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head"><span class="eyebrow">Distribution</span></div>
@@ -1335,7 +1498,7 @@
           <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Why it could become a moat</h3>
           <ul class="ticks">
             <li>Product-for-content keeps <b>cash cost per creator low</b>.</li>
-            <li>The store gives creators <b>a place to film</b>, not just a parcel.</li>
+            <li>The store gives creators <b>a place to film</b>, not just a parcel &mdash; and gives us a studio to <b>sell live</b> from every day, staffed by a full-time host, on the platforms the audience already watches us on.</li>
             <li>Every box is a <b>new episode</b>. The content never runs out.</li>
           </ul>
           <p class="note" style="margin-top:14px;">An emerging opportunity, not a proven moat. The first location is what lets us test it at volume.</p>
@@ -1459,11 +1622,58 @@
         <div class="card"><h3>Brand</h3><p>A recognisable consumer name.</p></div>
         <div class="card"><h3>Supply</h3><p>Relationships with international suppliers.</p></div>
       </div>
-      <p style="margin-top:22px;font-weight:650;">Expansion path: Nairobi &rarr; other Kenyan cities &rarr; East Africa &rarr; broader African markets.</p>
+      <p style="margin-top:22px;font-weight:650;">Expansion path: Nairobi &rarr; other Kenyan cities &rarr; East Africa &rarr; broader African markets.</p><p class="note" style="margin-top:12px;">The commercial point of a franchise format, as opposed to a chain: every location after the first is built with somebody else&rsquo;s capital. That is what makes it possible for this to be the only round we raise, and it is why the first store has to be a specified, repeatable format rather than one good shop.</p>
     </div>
   </section>
 
   <!-- ================= 12. BRAND DISTRIBUTION ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">How it scales</span>
+      <span class="stamp">Asset-light, later</span>
+    </div>
+    <h2 class="title">You own the asset. Snack Quest operates the business.</h2>
+    <p class="lede">Once the operating model is proven, a partner can fund a Discovery Machine and bring an approved location. We run everything that happens after that &mdash; which is how the network grows without Snack Quest funding every node.</p>
+    <div class="body">
+      <div class="grid g2" style="margin-bottom:24px;">
+        <div class="card">
+          <h3>The partner brings</h3>
+          <p>Capital for the machine, and a location we have approved. They carry the location risk &mdash; which is precisely the risk that is cheapest to correct, because a machine in the wrong place can be moved.</p>
+        </div>
+        <div class="card hot">
+          <h3>Snack Quest brings</h3>
+          <p>Sourcing, importation, product selection, branding, marketing, payment infrastructure, monitoring, restocking, customer support, operations, analytics and performance optimisation.</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Stated carefully</h3>
+      <p class="note">These are <b>partner-owned retail assets operated by Snack Quest under commercial agreements</b> &mdash; not an investment product, and nothing here promises a financial return. Commercial terms are not set, and the structure needs Kenyan legal review, including how it sits with the Capital Markets Authority, before it is offered to anybody. That review is a Phase&nbsp;3 dependency, not an afterthought.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Roadmap</span>
+      <span class="stamp">Milestones, not dates</span>
+    </div>
+    <h2 class="title">From one online shop to a distribution layer.</h2>
+    <p class="lede">Each stage is gated on the previous one producing evidence, which is why these are milestones rather than a calendar. We would rather arrive late at a stage we have earned than on time at one we have assumed.</p>
+    <div class="body">
+      <div class="assumptions wide">
+        <div class="assumption"><span class="a-k">Stage 1 &mdash; live now</span><span class="a-v">Online discovery</span><span class="a-n">Trading today: 24 paid orders, KSh&nbsp;102,700, a 62-snack catalogue and three live boxes.</span></div>
+        <div class="assumption"><span class="a-k">Stage 2 &mdash; this raise</span><span class="a-v">First machines</span><span class="a-n">One machine, then roughly five, across different environment types.</span></div>
+        <div class="assumption"><span class="a-k">Stage 3</span><span class="a-v">Proven location economics</span><span class="a-n">Machine-level numbers that are measured rather than modelled.</span></div>
+        <div class="assumption"><span class="a-k">Stage 4</span><span class="a-v">Partner-owned network</span><span class="a-n">Expansion without funding every node ourselves.</span></div>
+        <div class="assumption"><span class="a-k">Stage 5</span><span class="a-v">Flagship store</span><span class="a-n">Opened on real location data &mdash; the format on the earlier slide, sited by evidence.</span></div>
+        <div class="assumption"><span class="a-k">Stage 6</span><span class="a-v">Distribution</span><span class="a-n">Winning products move from retail arbitrage to direct supplier relationships.</span></div>
+        <div class="assumption"><span class="a-k">Stage 7</span><span class="a-v">African expansion</span><span class="a-n">The same layer, in a second market.</span></div>
+      </div>
+      <p class="note" style="margin-top:18px;">Stages one and two are the only ones this raise pays for. Everything from three onward is what the evidence from them is meant to unlock &mdash; stated as intent, not as a commitment with a date attached.</p>
+    </div>
+  </section>
+
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head">
@@ -1545,79 +1755,50 @@
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head">
       <span class="eyebrow">The next step</span>
-      <span class="stamp">Raising now</span>
+      <span class="stamp">What the money buys</span>
     </div>
-    <h2 class="title">KSh&nbsp;500,000 to buy the four numbers this plan is missing.</h2>
-    <p class="lede">Across our first four orders, margin ranged from &minus;21% to +39% and one sold below cost. We do not yet know our own cost structure, and nobody should build a KSh&nbsp;10M store on top of that. Creators have offered to work for product, which makes finding out unusually cheap.</p>
+    <h2 class="title">Stock we own the margin on, and a door customers can walk through.</h2>
+    <p class="lede">Thirty days of trading told us two things precisely. Demand is real and the average order is ahead of plan. Margin is not, and the reason is that we are buying snacks locally at close to retail and reselling them.</p>
     <div class="body">
-      <div class="headline-figure">
-        <span class="hf-num">KSh&nbsp;500,000</span>
-        <span class="hf-cap"><strong>for 10% equity in Snack Quest.</strong> An implied post-money valuation of KSh&nbsp;5,000,000.<span class="usd">About US$3,800 for a stake valued at US$38,000</span></span>
-      </div>
-
       <div class="grid g2">
         <div class="card">
-          <h3>What it buys</h3>
-          <div class="scroll" style="margin-top:10px;">
-            <table>
-              <tbody>
-                <tr class="lead"><td data-label="Allocation">Creator boxes and seeding</td><td class="n" data-label="Amount">KSh&nbsp;200,000</td></tr>
-                <tr><td data-label="Allocation">Stock to meet the resulting orders</td><td class="n" data-label="Amount">KSh&nbsp;110,000</td></tr>
-                <tr class="lead"><td data-label="Allocation">Pay-on-delivery float</td><td class="n" data-label="Amount">KSh&nbsp;100,000</td></tr>
-                <tr><td data-label="Allocation">Paid amplification of what performs</td><td class="n" data-label="Amount">KSh&nbsp;60,000</td></tr>
-                <tr><td data-label="Allocation">Delivery and fulfilment</td><td class="n" data-label="Amount">KSh&nbsp;20,000</td></tr>
-                <tr><td data-label="Allocation">Contingency</td><td class="n" data-label="Amount">KSh&nbsp;10,000</td></tr>
-                <tr class="total"><td data-label="Allocation"><strong>Total</strong></td><td class="n" data-label="Amount"><strong>KSh&nbsp;500,000</strong></td></tr>
-              </tbody>
-            </table>
-          </div>
+          <h3>Constraint one: margin</h3>
+          <p>We record <strong>27.1%</strong> gross against a <strong>45%</strong> target. The gap is not pricing and it is not delivery &mdash; delivery is a known formula under the Tushop terms. It is landed cost. Buying direct from Korea instead of from a local importer is the single lever, and it needs stock bought at volume.</p>
         </div>
-        <div class="card hot">
-          <h3>What it proves</h3>
-          <ul class="ticks" style="margin-top:12px;">
-            <li><b>Customer acquisition cost.</b> Currently a planning target. This makes it a measurement.</li>
-            <li><b>Repeat purchase rate.</b> Four days of trading cannot produce one. Sixty days of it can.</li>
-            <li><b>Whether margin can reach the model.</b> 25.9% gross today against a 45% target. Direct Korean sourcing at volume is the test.</li>
-            <li><b>Demand for paying in person.</b> The one number that decides whether the store is the right answer.</li>
-          </ul>
+        <div class="card">
+          <h3>Constraint two: trust</h3>
+          <p>177,800 people watched in 28 days; twenty-four have bought in total. The customers we lose are not uninterested; they will not pay online before they trust the brand. A physical location is a place to hand over cash and take the box away, and it removes that objection entirely.</p>
         </div>
       </div>
 
-      <!--
-        The test proves TikTok converts online. That is not the same as
-        proving a shop is needed — so the drop-off is instrumented too,
-        and it is the measurement that carries stage two.
-      -->
-      <p class="note" style="margin-top:14px;">Roughly 55 seeded boxes at our <em>measured</em> cost of goods, KSh&nbsp;3,610 on average across the first four orders, rather than an assumed one. The two highlighted lines are what make the test possible at all; the creators cost nothing in cash, having asked to be paid in product.</p>
+      <hr class="rule">
 
-      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The bar, set before we start</h3>
-      <div class="grid g4">
-        <div class="card"><h3>CAC under KSh&nbsp;1,500</h3><p>Against a KSh&nbsp;4,875 average order, that leaves the first order profitable on its own.</p></div>
-        <div class="card"><h3>Repeat above 20%</h3><p>Within 60 days of first purchase.</p></div>
-        <div class="card"><h3>Gross margin above 35%</h3><p>Against the 25.9% we have measured so far. Direct sourcing is the lever.</p></div>
-        <div class="card cool"><h3>1 in 3 choose collection</h3><p>Of customers offered pay-on-collection. The direct read on store demand.</p></div>
-      </div>
-
-
-      <!--
-        The two arguments that do not show up as line items. The second
-        is the important one: the constraint on this business is trust,
-        not interest, and a creator is the cheap way to borrow it.
-      -->
-      <div class="grid g2" style="margin-top:24px;">
-        <div class="card hot">
-          <h3>It funds paying on delivery</h3>
-          <p style="margin-bottom:10px;">Customers arrive in two groups: those happy to pay online, and those who will not until they trust us. Serving the second group means shipping before being paid, and that takes working capital we do not currently have.</p>
-          <p><strong>The float is what lets us offer it at all</strong>, and the number that decides the store case cannot be collected without the cash to collect it.</p>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">The bar we are setting before we start</h3>
+      <p class="note" style="margin-bottom:14px;">Stated in advance so the next conversation is arithmetic rather than argument. These are the four numbers this raise exists to produce.</p>
+      <div class="assumptions wide">
+        <div class="assumption">
+          <span class="a-k">Gross margin</span>
+          <span class="a-v">above 35%</span>
+          <span class="a-n">A floor, not the plan &mdash; the model on slide&nbsp;24 runs on <strong>45%</strong>. Against the 27.1% recorded so far, this is the level at which the business works even if only part of the import gain lands.</span>
         </div>
-        <div class="card cool">
-          <h3>It borrows trust we have not built</h3>
-          <p style="margin-bottom:10px;">The constraint on this business is trust, not interest. 177,800 people watched; four bought. A store closes that gap by being a real place you can walk into.</p>
-          <p><strong>A creator closes it by lending credibility they have already earned.</strong> Stage one tests borrowed trust; stage two builds trust we own. Same hypothesis, and the cheap version is worth running first.</p>
+        <div class="assumption">
+          <span class="a-k">Repeat purchase</span>
+          <span class="a-v">above 20%</span>
+          <span class="a-n">Within 60 days of first purchase. Zero today across twenty-four customers, because the oldest order is thirty days old.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Customer acquisition cost</span>
+          <span class="a-v">under KSh&nbsp;1,500</span>
+          <span class="a-n">A ceiling; the model runs on <strong>KSh&nbsp;500</strong> blended, because creators paid in product cost no cash. At 35% gross a KSh&nbsp;4,279 order carries about KSh&nbsp;1,500 &mdash; so even at the ceiling the first order washes its face and the second earns. That is why repeat sits beside it.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Pay-on-collection share</span>
+          <span class="a-v">1 in 3</span>
+          <span class="a-n">Of customers offered it. The direct read on whether the store answers the trust problem.</span>
         </div>
       </div>
-      <div class="pull" style="margin-top:24px;">If those four clear, the store case stops being an argument and becomes arithmetic. If they do not, nobody has spent KSh&nbsp;10M finding out.</div>
-      <p class="note" style="margin-top:14px;">We will also measure where people drop off: how many arrive from a creator video, reach checkout, and abandon at online payment. That figure is the evidence for a physical location, and it is the reason this test is designed to inform the store decision rather than replace it.</p>
+
+      <p class="note" style="margin-top:18px;">We already measure cost and margin on every single order &mdash; that is how the 27.1% is a recorded figure rather than an estimate. The same instrumentation reports these four, monthly, without anyone being asked for them.</p>
     </div>
   </section>
 
@@ -1626,55 +1807,42 @@
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head">
       <span class="eyebrow">Use of funds</span>
-      <span class="caveat">Stage two: the store round, once stage one clears the bar</span>
+      <span class="caveat">Staged against milestones</span>
     </div>
-    <h2 class="title">Every shilling points at the first location.</h2>
-    <p class="lede">Capital is deployed to open, launch and prove one store, and to build the operating record that makes the second one financeable.</p>
+    <h2 class="title">Three phases. Capital unlocks the next one only when the last has produced evidence.</h2>
+    <p class="lede">This is deliberately not a single allocation spent on day one. Each phase exists to answer a question, and the answer is what releases the next tranche &mdash; so a wrong assumption costs one phase rather than the whole raise.</p>
     <div class="body">
       <div class="headline-figure">
-        <span class="hf-num">KSh&nbsp;10M</span>
-        <span class="hf-cap">Total raise, allocated in full below</span>
+        <span class="hf-num">KSh&nbsp;8M</span>
+        <span class="hf-cap">Total raise, staged across the three phases below. The split between them is <b>still being set</b> &mdash; it is a function of what the first machine costs to buy and stock, which is Phase&nbsp;1&rsquo;s first finding.</span>
       </div>
-
-      <!--
-        Three lines carry the bulk of the raise: fit-out, opening
-        inventory and working capital. They are marked rather than
-        left for the reader to add up, because the shape of the
-        allocation is itself the argument &mdash; this is a shop being
-        opened, stocked and given room to trade, not a marketing
-        budget.
-      -->
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr><th>Allocation</th><th>What it covers</th><th style="text-align:right;">Amount</th></tr>
-          </thead>
-          <tbody>
-            <tr class="lead"><td data-label="Allocation"><strong>Store fit-out</strong></td><td data-label="What it covers">Build, shelving, lighting, experiential elements</td><td class="n" data-label="Amount">KSh&nbsp;1,800,000</td></tr>
-            <tr><td data-label="Allocation"><strong>Equipment</strong></td><td data-label="What it covers">Fixtures, storage, POS hardware and store equipment</td><td class="n" data-label="Amount">KSh&nbsp;700,000</td></tr>
-            <tr class="lead"><td data-label="Allocation"><strong>Initial inventory</strong></td><td data-label="What it covers">Opening assortment across countries, categories and price points</td><td class="n" data-label="Amount">KSh&nbsp;2,000,000</td></tr>
-            <tr><td data-label="Allocation"><strong>Branding &amp; signage</strong></td><td data-label="What it covers">Exterior, in-store identity and photo-ready moments</td><td class="n" data-label="Amount">KSh&nbsp;300,000</td></tr>
-            <tr><td data-label="Allocation"><strong>Payment infrastructure</strong></td><td data-label="What it covers">In-store payments, M-Pesa and payment-on-delivery/collection capability</td><td class="n" data-label="Amount">KSh&nbsp;150,000</td></tr>
-            <tr><td data-label="Allocation"><strong>Operational setup</strong></td><td data-label="What it covers">Deposits/startup costs, licensing, staffing, systems and initial operations</td><td class="n" data-label="Amount">KSh&nbsp;1,500,000</td></tr>
-            <tr><td data-label="Allocation"><strong>Creator activation</strong></td><td data-label="What it covers">Product seeding, creator visits, UGC shoots and launch collaborations</td><td class="n" data-label="Amount">KSh&nbsp;400,000</td></tr>
-            <tr><td data-label="Allocation"><strong>Launch marketing</strong></td><td data-label="What it covers">Opening campaign, first drops and customer acquisition</td><td class="n" data-label="Amount">KSh&nbsp;650,000</td></tr>
-            <tr class="lead"><td data-label="Allocation"><strong>Working capital</strong></td><td data-label="What it covers">Cash runway through the initial proving period</td><td class="n" data-label="Amount">KSh&nbsp;2,500,000</td></tr>
-            <tr class="total"><td data-label="Allocation"><strong>Total</strong></td><td data-label="What it covers"></td><td class="n" data-label="Amount"><strong>KSh&nbsp;10,000,000</strong></td></tr>
-          </tbody>
-        </table>
+      <div class="grid g3" style="margin-bottom:24px;">
+        <div class="card hot">
+          <h3>Phase 1 &mdash; Prove</h3>
+          <p>One Discovery Machine, hardware and integration, opening inventory, payments and monitoring, in one real location. <b>Question it answers:</b> what does a machine cost to run, and does it sell?</p>
+        </div>
+        <div class="card">
+          <h3>Phase 2 &mdash; Validate</h3>
+          <p>Roughly five machines across different environment types. <b>Question it answers:</b> which locations work, which products win, and what the machine-level economics actually are.</p>
+        </div>
+        <div class="card cool">
+          <h3>Phase 3 &mdash; Scale</h3>
+          <p>Standardised deployment, the partner-owned model, wider location network, direct supplier relationships, inventory and distribution. <b>Question it answers:</b> does this repeat without us funding every node?</p>
+        </div>
       </div>
-      <p class="note" style="margin-top:16px;">The three highlighted lines (fit-out, opening inventory and working capital) are KSh&nbsp;6.3M of the KSh&nbsp;10M between them.</p>
+      <hr class="rule">
+      <p class="note">Two figures on this slide are deliberately unset rather than estimated: the split of the KSh&nbsp;8M across the three phases, and machine-level unit economics. Both depend on the first machine&rsquo;s real numbers. Putting a figure on either today would be inventing the thing the raise exists to find out.</p>
     </div>
   </section>
 
-  <!-- ================= STORE-LEVEL ECONOMICS ================= -->
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
     <div class="slide-head">
       <span class="eyebrow">Store-level economics</span>
+      <span class="caveat">The stage-five model, not this raise</span>
       <span class="caveat">Base-case planning assumptions, to be validated with Store&nbsp;#1</span>
     </div>
-    <h2 class="title">A measurable path to attractive unit economics.</h2>
+    <h2 class="title">A measurable path to attractive unit economics &mdash; for the store, when we get there.</h2>
     <p class="lede">Management planning assumptions for the first location. Three inputs are now measured rather than assumed: average order value, gross margin and the delivery rate. Where the measurement disagrees with the target, both are shown. Store&nbsp;#1 exists to test whether they hold.</p>
     <div class="body">
       <!--
@@ -1685,7 +1853,7 @@
       -->
       <div class="bignums">
         <div class="bignum">
-          <span class="bn-v">KSh&nbsp;7.5M</span>
+          <span class="bn-v">KSh&nbsp;4.0M</span>
           <span class="bn-k">First-location setup</span>
         </div>
         <div class="bignum">
@@ -1724,33 +1892,33 @@
       <div class="assumptions">
         <div class="assumption">
           <span class="a-k">Store setup cost</span>
-          <span class="a-v">KSh&nbsp;7.5M</span>
-          <span class="a-n">Estimated capital to establish the first location, excluding the KSh&nbsp;2.5M held back as working capital.</span>
+          <span class="a-v">KSh&nbsp;4.0M</span>
+          <span class="a-n">What a first location costs to stock, build and launch: KSh&nbsp;2.5M of stock, KSh&nbsp;1M of fit-out and deposit, KSh&nbsp;0.5M of marketing. Modelled, not funded by this raise &mdash; the network is what proves the location before a figure like this is committed to one address. A leaner first location than earlier versions of this plan assumed, which is why the payback below is shorter.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Monthly fixed costs</span>
-          <span class="a-v">KSh&nbsp;650K</span>
-          <span class="a-n">Rent and occupancy, staff, utilities, security, technology, insurance and licensing, and baseline marketing, on a 600&ndash;700 sq ft first location.</span>
+          <span class="a-v">KSh&nbsp;330K</span>
+          <span class="a-n">Re-cut for the format we are actually taking, an average unit rather than the 600&ndash;700 sq ft the earlier KSh&nbsp;650K figure assumed. <strong>KSh&nbsp;295,000 of it is quoted</strong>: rent KSh&nbsp;80,000, two salaries at KSh&nbsp;30,000 each, baseline marketing KSh&nbsp;120,000, technology KSh&nbsp;30,000 and business fibre KSh&nbsp;5,000 for the live channel. The remaining KSh&nbsp;35,000 is estimated &mdash; utilities, security, and insurance and licensing amortised. Marketing is the second-largest line and the one most in our control. It is a daily rate, not a lump sum: KSh&nbsp;2,000 a day on TikTok and KSh&nbsp;2,000 on Meta, thirty days a month. At the KSh&nbsp;3.0M target that is KSh&nbsp;138 of ad spend per transaction &mdash; blended across organic and creator-driven sales too, so paid customer acquisition costs more than that, but it sits well inside the KSh&nbsp;500 target with room to move.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Inventory requirement</span>
-          <span class="a-v">KSh&nbsp;2.0M</span>
-          <span class="a-n">Matches the opening inventory allocation: enough assortment across countries, categories and price points.</span>
+          <span class="a-v">KSh&nbsp;2.5M</span>
+          <span class="a-n">Enough assortment across countries, categories and price points, bought at the volume that makes direct import work. Modelled for the stage-five store and not funded by this raise &mdash; the machines carry far less stock each, which is part of why they are the cheaper place to be wrong.</span>
         </div>
         <div class="assumption dual">
           <span class="a-k">Gross margin</span>
-          <span class="a-v">45% target &middot; 25.9% actual</span>
-          <span class="a-n">The widest gap in this model, and we are not going to bury it. Across the first four orders we recorded <strong>25.9%</strong> gross. Those snacks were bought locally at close to retail. The Korean sourcing line on slide&nbsp;04 is the identified lever: landed cost on direct import rather than local resale. Closing this gap is the main commercial job of stage one.</span>
+          <span class="a-v">45% target &middot; 27.1% actual</span>
+          <span class="a-n">The widest gap in this model, and we are not going to bury it. Across the five paid orders with itemised goods cost we recorded <strong>27.1%</strong> gross. Those snacks were bought locally at close to retail. The Korean sourcing line on slide&nbsp;04 is the identified lever: landed cost on direct import rather than local resale. Closing this gap is the main commercial job of this raise: every phase of it buys stock at import volume, and the margin those orders land at is the number Phase&nbsp;1 is meant to produce.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Average order value</span>
           <span class="a-v">KSh&nbsp;3,500</span>
-          <span class="a-n">A blended in-store assumption: single snacks sit below it, boxes and bundles pull it up. Held below the <strong>KSh&nbsp;4,875</strong> we have actually seen online, because in-store will include single-packet purchases that the website does not.</span>
+          <span class="a-n">A blended in-store assumption: single snacks sit below it, boxes and bundles pull it up. Held below the <strong>KSh&nbsp;4,279</strong> measured online, because in-store will include single-packet purchases that the website does not.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Customer acquisition cost</span>
           <span class="a-v">KSh&nbsp;500</span>
-          <span class="a-n">A planning target. The creator strategy is what could pull the blended figure down, because many micro-creators will work for product rather than cash.</span>
+          <span class="a-n">A planning target, and the aggressive end of the range &mdash; the bar on slide&nbsp;22 commits to <strong>KSh&nbsp;1,500</strong> as the ceiling. The creator strategy is what pulls the blended figure down toward this, because many micro-creators will work for product rather than cash.</span>
         </div>
         <div class="assumption">
           <span class="a-k">Repeat purchase rate</span>
@@ -1764,18 +1932,18 @@
         </div>
         <div class="assumption dual">
           <span class="a-k">Contribution margin</span>
-          <span class="a-v">~23% target &middot; 19.7% actual</span>
-          <span class="a-n">Modelled store-level contribution after cost of goods and variable selling and fulfilment costs, before financing and corporate overhead. Measured at <strong>19.7%</strong> over the first four orders, or KSh&nbsp;959 of contribution per order. The delivery component is now a known rate rather than an estimate: KSh&nbsp;35 per optimised km plus 3% of order value, under the Tushop terms.</span>
+          <span class="a-v">~23% target &middot; 19.8&ndash;31.9% actual</span>
+          <span class="a-n">Modelled store-level contribution after cost of goods and variable selling and fulfilment costs, before financing and corporate overhead. Measured two ways, because two things are being measured: <strong>19.8%</strong> across the five orders costed from receipts, and <strong>35.6%</strong> across the eighteen costed by allocating a shopping trip evenly &mdash; <strong>31.9%</strong> blended across all twenty-three that carry a cost. The receipted figure is the conservative one and the only one backed by a document, so the numbers below are run at both ends rather than at the average. The delivery component is now a known rate rather than an estimate: KSh&nbsp;35 per optimised km plus 3% of order value, under the Tushop terms.</span>
         </div>
         <div class="assumption dual">
           <span class="a-k">Break-even point</span>
-          <span class="a-v">KSh&nbsp;2.8M target &middot; KSh&nbsp;3.3M today</span>
-          <span class="a-n">The revenue at which contribution covers KSh&nbsp;650K of monthly fixed cost. At the 23% target margin that is KSh&nbsp;2.8M a month. At the 19.7% we have actually recorded it is <strong>KSh&nbsp;3.3M</strong>, above the KSh&nbsp;3.0M revenue target, meaning today&rsquo;s margin would not carry the store. Both numbers are shown because the distance between them is the risk.</span>
+          <span class="a-v">KSh&nbsp;1.4M target &middot; KSh&nbsp;1.0&ndash;1.7M today</span>
+          <span class="a-n">The revenue at which contribution covers KSh&nbsp;330K of monthly fixed cost. At the 23% target margin that is KSh&nbsp;1.4M a month. On what we have actually recorded it is <strong>KSh&nbsp;1.0M</strong> at the blended 31.9% and <strong>KSh&nbsp;1.7M</strong> at the receipted 19.8%. Every one of those sits under the KSh&nbsp;3.0M revenue target, which moves the risk: it is no longer whether the margin can carry the store, it is whether a shop this size can do 29 transactions a day. Break-even needs between 10 and 16 a day, depending on which end of our own measurement you believe.</span>
         </div>
-        <div class="assumption">
+        <div class="assumption dual">
           <span class="a-k">Payback period</span>
-          <span class="a-v">~11 months</span>
-          <span class="a-n">Modelled payback on the KSh&nbsp;7.5M setup at roughly KSh&nbsp;700K of monthly store-level contribution, which assumes the margin gap above is closed. At today&rsquo;s 19.7% it is not reached, which is the point of proving the margin before the store is built rather than after.</span>
+          <span class="a-v">~11 months target &middot; 6&ndash;15 today</span>
+          <span class="a-n">On the KSh&nbsp;4.0M setup, net of fixed costs rather than out of contribution alone &mdash; the earlier ~6 months divided setup by contribution and quietly ignored rent and wages. At KSh&nbsp;3.0M of revenue and the 23% target, contribution is KSh&nbsp;690K less KSh&nbsp;330K of fixed cost, so KSh&nbsp;360K a month clears KSh&nbsp;4.0M in about eleven. On what we have recorded it runs from KSh&nbsp;627K a month at the blended 31.9%, or about six, to KSh&nbsp;264K at the receipted 19.8%, or about fifteen. That nine-month spread is not noise between scenarios &mdash; it is the spread inside our own books, and closing it by costing every order from receipts is part of what this raise buys.</span>
         </div>
       </div>
 
@@ -1784,104 +1952,21 @@
   </section>
 
   <!-- ================= 15. MILESTONES ================= -->
+  <!-- ================= TEAM ================= -->
   <section class="slide">
     <span class="num" aria-hidden="true"></span>
-    <div class="slide-head"><span class="eyebrow">After investment</span></div>
-    <h2 class="title">What success looks like.</h2>
-    <p class="lede">A sequence, not a wish list. Each step makes the next one measurable. The first four are stage one, and they are what unlock the rest.</p>
-    <div class="body">
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Stage one: KSh&nbsp;500,000</h3>
-      <div class="wheel" style="margin-bottom:26px;">
-        <div class="spoke turn"><span class="s">1</span><span><b>Seed the creators</b> already asking to work for product</span></div>
-        <div class="spoke turn"><span class="s">2</span><span><b>Record cost on every order</b>: goods and delivery, no exceptions</span></div>
-        <div class="spoke turn"><span class="s">3</span><span><b>Run pay-on-collection</b> beside online payment, and count the split</span></div>
-        <div class="spoke turn"><span class="s">4</span><span><b>Report the four numbers</b> against the bar set in advance</span></div>
-      </div>
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Stage two: KSh&nbsp;10,000,000</h3>
-      <div class="wheel">
-        <div class="spoke"><span class="s">1</span><span><b>Secure the location</b></span></div>
-        <div class="spoke"><span class="s">2</span><span><b>Build and launch the first store</b></span></div>
-        <div class="spoke"><span class="s">3</span><span><b>Establish the operating model</b>: layout, assortment, staffing, procedures</span></div>
-        <div class="spoke turn"><span class="s">4</span><span><b>Activate the creator network</b> from a physical base</span></div>
-        <div class="spoke turn"><span class="s">5</span><span><b>Remove payment friction</b>: in-person and pay-on-collection</span></div>
-        <div class="spoke"><span class="s">6</span><span><b>Grow customer acquisition</b> through walk-in and content</span></div>
-        <div class="spoke"><span class="s">7</span><span><b>Drive repeat purchase</b> through boxes</span></div>
-        <div class="spoke"><span class="s">8</span><span><b>Close the store &harr; e-commerce retention loop</b></span></div>
-        <div class="spoke"><span class="s">9</span><span><b>Measure real unit economics</b></span></div>
-        <div class="spoke turn"><span class="s">10</span><span><b>Package the model for location two</b></span></div>
-      </div>
-      <p class="note" style="margin-top:18px;">Targets against each milestone will be set with the investor once the store economics are modelled.</p>
+    <div class="slide-head">
+      <span class="eyebrow">Team</span>
+      <span class="stamp">Two people</span>
     </div>
-  </section>
-
-  <!-- ================= 16. THE ASK ================= -->
-  <section class="slide">
-    <span class="num" aria-hidden="true"></span>
-    <div class="slide-head"><span class="eyebrow">The ask</span></div>
-    <h2 class="title">KSh&nbsp;500,000 for 10%. That is the whole offer.</h2>
+    <h2 class="title">A marketing operator who built the machine himself.</h2>
+    <p class="lede">Snack Quest is two people today: the founder, and one employee packing orders. Everything on the traction slide was built and is run by those two &mdash; so far around a day job the founder leaves on close.</p>
     <div class="body">
-      <div class="headline-figure">
-        <span class="hf-num">KSh&nbsp;500,000</span>
-        <span class="hf-cap"><strong>for 10% equity in Snack Quest.</strong> Straight equity, with no instrument to negotiate and no conditions to unpick. Seed the creators already asking, and come back with measured acquisition cost, repeat rate, contribution per order and demand for paying in person.</span>
-      </div>
-
-      <div class="bignums" style="margin-bottom:20px;">
-        <div class="bignum">
-          <span class="bn-v">KSh&nbsp;500,000</span>
-          <span class="bn-k">Investment<span class="usd">about US$3,800</span></span>
-        </div>
-        <div class="bignum">
-          <span class="bn-v">10%</span>
-          <span class="bn-k">Equity in Snack Quest</span>
-        </div>
-        <div class="bignum">
-          <span class="bn-v">KSh&nbsp;5,000,000</span>
-          <span class="bn-k">Implied post-money valuation<span class="usd">about US$38,000</span></span>
-        </div>
-      </div>
-
-      <p class="note" style="margin-bottom:22px;">Stage two, the KSh&nbsp;10,000,000 store round set out earlier in this deck, is deliberately left unpriced here. It will be raised on what stage one actually measures, not on what this deck assumes. The destination is shown in full so it is visible from the start; nobody is being asked to price a store on four orders of evidence.</p>
-      <div class="grid g2">
-        <div class="card">
-          <h3>The partner we&rsquo;re looking for</h3>
-          <p style="margin-bottom:10px;">Capital matters. So does knowing what to do next.</p>
-          <div class="chips">
-            <span class="chip">Consumer expertise</span>
-            <span class="chip">Retail expertise</span>
-            <span class="chip">FMCG relationships</span>
-            <span class="chip">Distribution</span>
-            <span class="chip">Introductions</span>
-            <span class="chip">Brand building</span>
-            <span class="chip">Expansion knowledge</span>
-          </div>
-        </div>
-      </div>
-
-      <hr class="rule">
-
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Why invest now</h3>
-      <div class="grid g2">
-        <ul class="ticks">
-          <li>An early-stage consumer brand with a <b>distinctive proposition</b>.</li>
-          <li>A clear, <b>physical expansion concept</b> rather than an abstract plan.</li>
-          <li><b>Inbound creator interest</b> before any spend.</li>
-          <li>A <b>specific conversion constraint</b> that retail solves.</li>
-        </ul>
-        <ul class="ticks">
-          <li>A genuine <b>physical + digital model</b>, not one pretending to be both.</li>
-          <li>Boxes create <b>retention and order-value upside</b>.</li>
-          <li>A potentially <b>repeatable franchise format</b>.</li>
-          <li>A path to becoming a <b>distribution channel</b> for international brands.</li>
-        </ul>
-      </div>
-
-      <hr class="rule">
-
       <div class="grid g2">
         <div>
-          <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">Founder</h3>
-          <p><strong>Kelvin Kimathi</strong>, Founder, Snack Quest.</p>
-          <p style="color:var(--ink-soft);font-size:15px;">Building the company from the ground up and hands-on across marketing, operations and customer experience. Focused on proving a repeatable retail and commerce model rather than scaling a story ahead of it.</p>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">Kelvin Kimathi &mdash; Founder</h3>
+          <p style="margin-bottom:10px;"><strong>A marketing operator who builds.</strong> Marketing manager at a Kenyan betting operator that launched in January, reporting to the Head of Marketing, and part of its growth from launch &mdash; running paid acquisition at scale in the most performance-driven advertising market in the country, where a campaign that does not pay back is switched off the same week.</p><p style="margin-bottom:10px;">The playbook there was affiliates first: use them to build trust, and the paid ads perform better on the back of it. That is the same order Snack Quest is being built in &mdash; 33 creators before the ad budget, not after it &mdash; and it is why the KSh&nbsp;4,000 a day on this plan is a rate he has spent before rather than a line invented for a deck.</p><p style="margin-bottom:10px;">Full-time on Snack Quest from close. Today it is split with the day job, and this raise is what buys the founder&rsquo;s whole week.</p>
+          <p style="color:var(--ink-soft);font-size:15px;">Built the storefront, the checkout and M-Pesa flow, the staff portals for packing and dispatch, the per-order margin capture, the customer SMS, the delivery integration and the creator programme. Negotiated the Korean sourcing line and the Tushop delivery terms. Runs the TikTok account that produced 177,800 views in 28 days without an agency or a production budget.</p>
         </div>
         <figure class="shot founder">
           <div data-shot="founder" class="slot">
@@ -1890,10 +1975,91 @@
           </div>
         </figure>
       </div>
+
+      <hr class="rule">
+
+      <div class="grid g3">
+        <div class="card">
+          <h3>What two people already cover</h3>
+          <p>Sourcing, storefront, payments, packing, dispatch, delivery partner management, customer messaging, content and the creator programme &mdash; on twenty-four paid orders in thirty days, with cost and margin recorded on every one.</p>
+        </div>
+        <div class="card">
+          <h3>What partners cover instead of headcount</h3>
+          <p>Delivery is Tushop: no riders to hire, insure or manage. Supply is a direct Korean sourcing relationship. Neither needed a hire, which is why the company is two people and not ten.</p>
+        </div>
+        <div class="card cool">
+          <h3>What this raise hires</h3>
+          <p>A store assistant, and a full-time live host who broadcasts from the studio corner all day, every day, across TikTok, Instagram and the rest. That second role is why the live channel is a channel and not an occasional post: it is somebody&rsquo;s whole job.</p><p style="margin-top:10px;">Packing and dispatch stay with the store assistant rather than becoming a third hire, because the packing lists, dispatch queue and courier booking are already built and running &mdash; that is what the operating spine on slide&nbsp;04 is. Two risks we would rather name than be asked: one host is a single point of failure on the channel, and a store assistant who both serves the floor and packs has a ceiling. Both are hires, not redesigns, and both come out of trading rather than this raise.</p>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:18px;">We are not going to present two people as a finished team. It is the honest position at this stage, and the relevant question is whether the two have built something real. Twenty-four paid orders, a live storefront, a named delivery partner and an instrumented margin figure are our answer to that.</p>
     </div>
   </section>
 
-  <!-- ================= CLOSING ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">After investment</span>
+    </div>
+    <h2 class="title">What success looks like.</h2>
+    <p class="lede">A sequence, not a wish list. Each step makes the next one measurable, and the four numbers on the bar are reported from the system that already records every order.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--quest);">First 90 days</h3>
+          <ul class="ticks">
+            <li><b>Place the first import order</b> and land it &mdash; the two-to-three month lead time starts on day one</li>
+            <li><b>Secure the location</b> and begin the fit-out</li>
+            <li><b>Seed the creators</b> already asking, and publish the first wave</li>
+            <li><b>Record cost and margin on every order</b>, as we do today, with no exceptions</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--void);">Months 4&ndash;12</h3>
+          <ul class="ticks">
+            <li><b>Open the store</b> and run pay-on-collection beside online payment</li>
+            <li><b>Prove the margin</b> on imported stock against the 35% bar</li>
+            <li><b>Count the collection split</b> &mdash; the direct read on the trust problem</li>
+            <li><b>Drive repeat purchase</b> through boxes, and measure it at 60 days</li>
+            <li><b>Close the store &harr; e-commerce loop</b>: acquire in person, retain online</li>
+            <li><b>Package the operating model</b> so location two is a build, not an experiment</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note" style="margin-top:18px;">Targets against each milestone will be set with the investor at close. The four on the bar &mdash; margin, repeat, acquisition cost and collection share &mdash; are fixed in advance and do not move.</p>
+    </div>
+  </section>
+
+  <!-- ================= 16. THE ASK ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">The ask</span>
+      <span class="stamp">KSh&nbsp;8M &middot; equity to be agreed</span>
+    </div>
+    <h2 class="title">KSh&nbsp;8,000,000 to prove the distribution network.</h2>
+    <div class="body">
+      <div class="headline-figure">
+        <span class="hf-num">KSh&nbsp;8,000,000</span>
+        <span class="hf-cap"><strong>Straight equity, staged in three phases.</strong> The equity percentage is <b>not set in this document</b> &mdash; it is the conversation this deck is meant to start, not a number presented as settled.</span>
+      </div>
+      <div class="grid g2" style="margin-bottom:22px;">
+        <div class="card hot">
+          <h3>What it is not</h3>
+          <p>It is not KSh&nbsp;8M to open a store. A store spends the whole raise answering one question about one address, and if the address is wrong the money is gone before anyone knows why.</p>
+        </div>
+        <div class="card">
+          <h3>What it is</h3>
+          <p>Capital to build the system that makes physical retail repeatable: machines in many environments, the demand data they return, the supply relationships that data unlocks, and the operating model that turns all of it into a network.</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <p class="pull">Instead of betting on one store, we are building a network.</p>
+      <p class="note" style="margin-top:16px;">What this buys an investor is not a shop. It is the demand, distribution and market-entry layer international consumer brands will need to reach African consumers &mdash; proved one node at a time, at a cost per experiment small enough to survive being wrong.</p>
+    </div>
+  </section>
+
   <section class="slide cover close">
     <div class="cover-grid">
       <div>
