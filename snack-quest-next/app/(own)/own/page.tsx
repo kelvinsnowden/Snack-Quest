@@ -47,14 +47,26 @@ export const metadata: Metadata = buildPageMetadata({
 
 const INK = 'bg-black';
 const INK_SOFT = 'bg-[#0c0c0c]';
-const CREAM = 'bg-[#fff8ee]';
 
-function Eyebrow({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
-  return (
-    <span className={`mb-4 inline-block text-xs font-bold tracking-[0.2em] uppercase ${dark ? 'text-primary' : 'text-primary'}`}>
-      {children}
-    </span>
-  );
+/**
+ * The reference design cycles through a full accent set — not just
+ * brand orange — across every icon grid on this page (location types,
+ * the offer stack, the portal checklist). `home-lime`/`secondary` are
+ * existing brand tokens; pink and blue are this page's own two
+ * one-off accents (same convention as its other literal hex values)
+ * added specifically for that variety.
+ */
+const ACCENT = {
+  orange: 'text-primary',
+  pink: 'text-[#ff3fa3]',
+  lime: 'text-home-lime',
+  blue: 'text-[#3aa9ff]',
+  purple: 'text-secondary',
+  green: 'text-[#2ecc71]',
+} as const;
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return <span className="mb-4 inline-block text-xs font-bold tracking-[0.2em] text-[#ff3fa3] uppercase">{children}</span>;
 }
 
 function Section({ id, className, children }: { id?: string; className?: string; children: React.ReactNode }) {
@@ -66,20 +78,16 @@ function Section({ id, className, children }: { id?: string; className?: string;
 }
 
 /** Headlines on this page render in caps deliberately — see the page's own doc comment: "Direct. Confident. Commercial. Specific. Slightly provocative" calls for a bolder register than the /invest page's sentence case. */
-function Statement({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
+function Statement({ children }: { children: React.ReactNode }) {
   return (
-    <h2
-      className={`font-display text-[clamp(1.9rem,6vw,3.25rem)] leading-[1.08] tracking-tight text-balance uppercase ${
-        dark ? 'text-[#1f1f1f]' : 'text-white'
-      }`}
-    >
+    <h2 className="font-display text-[clamp(1.9rem,6vw,3.25rem)] leading-[1.08] tracking-tight text-balance text-white uppercase">
       {children}
     </h2>
   );
 }
 
-function Lede({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
-  return <p className={`mt-5 max-w-2xl text-base leading-relaxed sm:text-lg ${dark ? 'text-[#1f1f1f]/70' : 'text-white/70'}`}>{children}</p>;
+function Lede({ children }: { children: React.ReactNode }) {
+  return <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/70 sm:text-lg">{children}</p>;
 }
 
 /** A quiet bordered card that carries one key statement, with an icon rather than a filled block — used everywhere this page needs to make a line stand out without another slab of colour. */
@@ -94,38 +102,38 @@ function EmphasisCard({ icon: Icon, children }: { icon: typeof ArrowRight; child
   );
 }
 
-const LOCATION_ICON: Record<string, typeof Building2> = {
-  mall: ShoppingBag,
-  office: Building2,
-  hotel: Hotel,
-  university: GraduationCap,
-  hospital: Landmark,
-  apartment: Building2,
-  bnb: Hotel,
-  transport_hub: TrainFront,
-  other: Building2,
+const LOCATION_META: Record<string, { icon: typeof Building2; accent: string }> = {
+  mall: { icon: ShoppingBag, accent: ACCENT.blue },
+  office: { icon: Building2, accent: ACCENT.orange },
+  university: { icon: GraduationCap, accent: ACCENT.lime },
+  hotel: { icon: Hotel, accent: ACCENT.pink },
+  hospital: { icon: Landmark, accent: ACCENT.blue },
+  apartment: { icon: Building2, accent: ACCENT.green },
+  bnb: { icon: Hotel, accent: ACCENT.purple },
+  transport_hub: { icon: TrainFront, accent: ACCENT.orange },
+  other: { icon: Building2, accent: ACCENT.orange },
 };
 
 const STACK_ITEMS = [
-  { icon: Package, title: 'Discovery Machine', body: 'The physical retail asset.' },
-  { icon: Globe, title: 'International Snack Supply', body: 'Products selected and replenished through Snack Quest.' },
-  { icon: Smartphone, title: 'Software', body: 'Your connected management layer.' },
-  { icon: CreditCard, title: 'Payments', body: 'Connected transaction infrastructure.' },
-  { icon: Truck, title: 'Restocking', body: 'Ongoing supply and inventory management.' },
-  { icon: Settings, title: 'Operations', body: 'We help run the operational layer.' },
-  { icon: Megaphone, title: 'Marketing', body: 'Brand support to drive awareness.' },
-  { icon: Camera, title: 'Data + Cameras', body: 'Sales, product data and remote monitoring.' },
+  { icon: Package, title: 'Discovery Machine', body: 'The physical retail asset.', accent: ACCENT.orange },
+  { icon: Globe, title: 'International Snack Supply', body: 'Products selected and replenished through Snack Quest.', accent: ACCENT.pink },
+  { icon: Smartphone, title: 'Software', body: 'Your connected management layer.', accent: ACCENT.pink },
+  { icon: CreditCard, title: 'Payments', body: 'Connected transaction infrastructure.', accent: ACCENT.orange },
+  { icon: Truck, title: 'Restocking', body: 'Ongoing supply and inventory management.', accent: ACCENT.green },
+  { icon: Settings, title: 'Operations', body: 'We help run the operational layer.', accent: ACCENT.orange },
+  { icon: Megaphone, title: 'Marketing', body: 'Brand support to drive awareness.', accent: ACCENT.orange },
+  { icon: Camera, title: 'Data + Cameras', body: 'Sales, product data and remote monitoring.', accent: ACCENT.pink },
 ] as const;
 
 const PORTAL_ITEMS = [
-  { icon: Package, label: 'Multiple machines' },
-  { icon: LineChart, label: 'Sales & transactions' },
-  { icon: Boxes, label: 'Inventory levels' },
-  { icon: Settings, label: 'Machine status' },
-  { icon: MapPin, label: 'Location management' },
-  { icon: TrendingUp, label: 'Product performance' },
-  { icon: Camera, label: 'Live camera monitoring' },
-  { icon: LineChart, label: 'Demand data' },
+  { icon: Package, label: 'Multiple machines', accent: ACCENT.orange },
+  { icon: LineChart, label: 'Sales & transactions', accent: ACCENT.green },
+  { icon: Boxes, label: 'Inventory levels', accent: ACCENT.blue },
+  { icon: Settings, label: 'Machine status', accent: ACCENT.orange },
+  { icon: MapPin, label: 'Location management', accent: ACCENT.pink },
+  { icon: TrendingUp, label: 'Product performance', accent: ACCENT.orange },
+  { icon: Camera, label: 'Live camera monitoring', accent: ACCENT.pink },
+  { icon: LineChart, label: 'Demand data', accent: ACCENT.blue },
 ] as const;
 
 const PROCESS_STEPS = [
@@ -170,7 +178,10 @@ export default function OwnPage() {
       <section className={`${INK} relative overflow-hidden px-5 pt-28 pb-16 sm:px-8 sm:pt-36 sm:pb-24`}>
         <div className="relative mx-auto grid w-full max-w-[1200px] gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
           <div>
-            <Statement>What if you could own the retail asset without building the retail operation?</Statement>
+            <Statement>
+              What if you could own the <span className="from-primary to-home-orange-glow bg-gradient-to-r bg-clip-text text-transparent">retail asset</span>{' '}
+              without building the <span className="text-home-lime">retail operation?</span>
+            </Statement>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-white/70 sm:text-lg">
               Buy a Snack Quest Discovery Machine. Secure the right location. We provide the system that keeps it running.
             </p>
@@ -199,7 +210,9 @@ export default function OwnPage() {
       {/* ── SECTION 2 — THE LOCATION MATTERS MOST ───────────── */}
       <Section id="locations" className={INK_SOFT}>
         <Eyebrow>01 · The opportunity</Eyebrow>
-        <Statement>The location is the most important part of the business.</Statement>
+        <Statement>
+          The <span className="text-primary">location</span> is the most important part of the business.
+        </Statement>
 
         <div className="mt-10 grid gap-8 sm:mt-12 lg:grid-cols-2 lg:gap-14">
           <div className="flex flex-col gap-4 text-base leading-relaxed text-white/75 sm:text-lg">
@@ -210,9 +223,10 @@ export default function OwnPage() {
           <div>
             <p className="mb-3 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">Places our machines can go</p>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-2">
-              {LOCATION_TYPES.filter((option) => option.value !== 'other').map((option) => (
-                <LocationPhotoCard key={option.value} icon={LOCATION_ICON[option.value]} label={option.label} />
-              ))}
+              {LOCATION_TYPES.filter((option) => option.value !== 'other').map((option) => {
+                const meta = LOCATION_META[option.value];
+                return <LocationPhotoCard key={option.value} icon={meta.icon} label={option.label} accentClassName={meta.accent} />;
+              })}
             </div>
           </div>
         </div>
@@ -227,37 +241,41 @@ export default function OwnPage() {
       </Section>
 
       {/* ── SECTION 3 — THE OFFER STACK ─────────────────────── */}
-      <Section id="stack" className={CREAM}>
-        <Eyebrow dark>02 · The offer</Eyebrow>
-        <Statement dark>You’re not just buying a machine.</Statement>
-        <Lede dark>You get a physical asset and a complete system around it.</Lede>
+      <Section id="stack" className={INK}>
+        <Eyebrow>02 · The offer</Eyebrow>
+        <Statement>
+          You’re not <span className="text-primary">just</span> buying a machine.
+        </Statement>
+        <Lede>You get a physical asset and a complete system around it.</Lede>
 
         <div className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 lg:grid-cols-4">
           {STACK_ITEMS.map((item) => (
-            <div key={item.title} className="rounded-2xl border border-[#1f1f1f]/10 bg-white p-5">
-              <span className="bg-primary/10 text-primary mb-3 flex size-10 items-center justify-center rounded-xl">
+            <div key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+              <span className={`mb-3 flex size-10 items-center justify-center rounded-xl bg-white/10 ${item.accent}`}>
                 <item.icon className="size-5" aria-hidden="true" />
               </span>
-              <p className="text-sm font-bold text-[#1f1f1f]">{item.title}</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#1f1f1f]/60">{item.body}</p>
+              <p className="text-sm font-bold text-white">{item.title}</p>
+              <p className="mt-1 text-xs leading-relaxed text-white/55">{item.body}</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-12 rounded-2xl border border-[#1f1f1f]/10 bg-[#1f1f1f] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
+        <EmphasisCard icon={Boxes}>
           <p className="font-display text-[clamp(1.5rem,4.5vw,2.5rem)] leading-tight text-white uppercase">
             You own the machine. We provide the operating layer.
           </p>
           <p className="mt-4 text-sm text-white/50 sm:text-base">
             Performance depends on your location, demand, product mix, pricing and operating conditions — not a guarantee we make you.
           </p>
-        </div>
+        </EmphasisCard>
       </Section>
 
       {/* ── SECTION 4 — THE OWNER PORTAL ────────────────────── */}
-      <Section id="portal" className={INK}>
+      <Section id="portal" className={INK_SOFT}>
         <Eyebrow>03 · Your dashboard</Eyebrow>
-        <Statement>Your machines. Your data. All in one place.</Statement>
+        <Statement>
+          Your machines. Your data. All <span className="text-primary">in</span> one place.
+        </Statement>
         <Lede>Manage one machine or several from your own owner portal.</Lede>
 
         <div className="mt-10 grid gap-8 sm:mt-12 lg:grid-cols-2 lg:items-center lg:gap-12">
@@ -266,7 +284,7 @@ export default function OwnPage() {
           <ul className="flex flex-col gap-2.5">
             {PORTAL_ITEMS.map((item) => (
               <li key={item.label} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                <item.icon className="text-primary size-4 shrink-0" aria-hidden="true" />
+                <item.icon className={`size-4 shrink-0 ${item.accent}`} aria-hidden="true" />
                 <span className="text-sm font-medium text-white/85">{item.label}</span>
               </li>
             ))}
@@ -279,7 +297,7 @@ export default function OwnPage() {
       </Section>
 
       {/* ── SECTION 5 — HOW IT WORKS / THE REPEAT ───────────── */}
-      <Section id="how-it-works" className={INK_SOFT}>
+      <Section id="how-it-works" className={INK}>
         <Eyebrow>04 · Scale it</Eyebrow>
         <Statement>The first machine is the test. The second is the repeat.</Statement>
 
@@ -326,14 +344,14 @@ export default function OwnPage() {
       </Section>
 
       {/* ── SECTION 6 — QUALIFICATION ────────────────────────── */}
-      <Section className={INK}>
+      <Section className={INK_SOFT}>
         <Eyebrow>05 · Is this for you?</Eyebrow>
         <Statement>This is for people who have capital, connections or both.</Statement>
 
         <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-3">
-          <QualifyCard icon={Wallet} title="Capital" body="You can comfortably acquire and deploy the machine." />
-          <QualifyCard icon={MapPin} title="Connections" body="You can access strong commercial locations." />
-          <QualifyCard icon={Rocket} title="Ambition" body="You want the option to build beyond one machine." />
+          <QualifyCard icon={Wallet} title="Capital" body="You can comfortably acquire and deploy the machine." accent="orange" />
+          <QualifyCard icon={MapPin} title="Connections" body="You can access strong commercial locations." accent="lime" />
+          <QualifyCard icon={Rocket} title="Ambition" body="You want the option to build beyond one machine." accent="purple" />
         </div>
 
         <EmphasisCard icon={ArrowRight}>
@@ -352,7 +370,7 @@ export default function OwnPage() {
       </Section>
 
       {/* ── SECTION 7 — FAQ ──────────────────────────────────── */}
-      <Section id="faq" className={INK_SOFT}>
+      <Section id="faq" className={INK}>
         <div className="mx-auto max-w-3xl">
           <Eyebrow>FAQ</Eyebrow>
           <Statement>Questions people ask before applying.</Statement>
@@ -369,7 +387,7 @@ export default function OwnPage() {
       </Section>
 
       {/* ── LEAD FORM ────────────────────────────────────────── */}
-      <Section id="apply" className={INK}>
+      <Section id="apply" className={INK_SOFT}>
         <div className="mx-auto max-w-3xl text-center">
           <Eyebrow>Apply</Eyebrow>
           <Statement>Let’s see what you can build.</Statement>
@@ -380,7 +398,7 @@ export default function OwnPage() {
       </Section>
 
       {/* ── FINAL SCREEN ─────────────────────────────────────── */}
-      <section className={`${INK_SOFT} relative flex min-h-[80vh] flex-col items-center justify-center overflow-hidden px-5 py-24 text-center sm:px-8`}>
+      <section className={`${INK} relative flex min-h-[80vh] flex-col items-center justify-center overflow-hidden px-5 py-24 text-center sm:px-8`}>
         <div className="mx-auto w-full max-w-xs sm:max-w-sm">
           <HeroImagePlaceholder />
         </div>
@@ -425,13 +443,26 @@ function TrustItem({ icon: Icon, title, detail }: { icon: typeof Package; title:
   );
 }
 
-function QualifyCard({ icon: Icon, title, body }: { icon: typeof Wallet; title: string; body: string }) {
+function QualifyCard({
+  icon: Icon,
+  title,
+  body,
+  accent,
+}: {
+  icon: typeof Wallet;
+  title: string;
+  body: string;
+  accent: 'orange' | 'lime' | 'purple';
+}) {
+  const border = accent === 'orange' ? 'border-primary/40' : accent === 'lime' ? 'border-home-lime/40' : 'border-secondary/40';
+  const tone = accent === 'orange' ? ACCENT.orange : accent === 'lime' ? ACCENT.lime : ACCENT.purple;
+  const chipBg = accent === 'orange' ? 'bg-primary/15' : accent === 'lime' ? 'bg-home-lime/15' : 'bg-secondary/15';
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-7 text-center sm:rounded-3xl">
-      <span className="bg-primary/15 text-primary mx-auto mb-4 flex size-11 items-center justify-center rounded-xl">
+    <div className={`rounded-2xl border ${border} bg-white/[0.04] p-7 text-center sm:rounded-3xl`}>
+      <span className={`mx-auto mb-4 flex size-11 items-center justify-center rounded-xl ${chipBg} ${tone}`}>
         <Icon className="size-5" aria-hidden="true" />
       </span>
-      <span className="font-display block text-2xl text-white uppercase">{title}</span>
+      <span className={`font-display block text-2xl uppercase ${tone}`}>{title}</span>
       <p className="mt-3 text-sm leading-relaxed text-white/70 sm:text-base">{body}</p>
     </div>
   );
