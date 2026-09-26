@@ -1,6 +1,29 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Building2, GraduationCap, Hotel, Landmark, ShoppingBag, TrainFront } from 'lucide-react';
+import {
+  ArrowRight,
+  Boxes,
+  Camera,
+  CreditCard,
+  Globe,
+  LineChart,
+  MapPin,
+  Megaphone,
+  Package,
+  Repeat as RepeatIcon,
+  Rocket,
+  Settings,
+  Smartphone,
+  TrendingUp,
+  Truck,
+  Wallet,
+  Building2,
+  GraduationCap,
+  Hotel,
+  Landmark,
+  ShoppingBag,
+  TrainFront,
+} from 'lucide-react';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { OwnNav } from '@/components/marketing/own/OwnNav';
 import { OwnCta } from '@/components/marketing/own/OwnCta';
@@ -8,6 +31,7 @@ import { MobileOwnBar } from '@/components/marketing/own/MobileOwnBar';
 import { ApplicationForm } from '@/components/marketing/own/ApplicationForm';
 import { HeroImagePlaceholder } from '@/components/marketing/own/HeroImagePlaceholder';
 import { DashboardImagePlaceholder } from '@/components/marketing/own/DashboardImagePlaceholder';
+import { LocationPhotoCard } from '@/components/marketing/own/LocationPhotoCard';
 import { LOCATION_TYPES } from '@/types/machineOwnerInterest';
 
 const TITLE = 'Own a Snack Quest Discovery Machine | Machine Ownership';
@@ -21,20 +45,16 @@ export const metadata: Metadata = buildPageMetadata({
   image: '/deck/og.jpg',
 });
 
-/**
- * Two light grounds, alternated section to section — the same
- * `--color-background` lavender-white the homepage hero itself sits on,
- * and plain white. No section on this page is black; the emphasis
- * boxes below use the brand's own orange CTA gradient for contrast
- * instead of a dark panel.
- */
-const LIGHT = 'bg-background';
-const WHITE = 'bg-white';
-/** The one bold accent surface on the page — same gradient as every CTA button, reused for "read this" callouts instead of a dark panel. */
-const EMPHASIS = 'bg-gradient-to-br from-primary to-home-orange-glow';
+const INK = 'bg-black';
+const INK_SOFT = 'bg-[#0c0c0c]';
+const CREAM = 'bg-[#fff8ee]';
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <span className="text-primary mb-4 inline-block text-xs font-bold tracking-[0.2em] uppercase">{children}</span>;
+function Eyebrow({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
+  return (
+    <span className={`mb-4 inline-block text-xs font-bold tracking-[0.2em] uppercase ${dark ? 'text-primary' : 'text-primary'}`}>
+      {children}
+    </span>
+  );
 }
 
 function Section({ id, className, children }: { id?: string; className?: string; children: React.ReactNode }) {
@@ -46,16 +66,32 @@ function Section({ id, className, children }: { id?: string; className?: string;
 }
 
 /** Headlines on this page render in caps deliberately — see the page's own doc comment: "Direct. Confident. Commercial. Specific. Slightly provocative" calls for a bolder register than the /invest page's sentence case. */
-function Statement({ children }: { children: React.ReactNode }) {
+function Statement({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
   return (
-    <h2 className="font-display text-foreground text-[clamp(1.9rem,6vw,3.25rem)] leading-[1.08] tracking-tight text-balance uppercase">
+    <h2
+      className={`font-display text-[clamp(1.9rem,6vw,3.25rem)] leading-[1.08] tracking-tight text-balance uppercase ${
+        dark ? 'text-[#1f1f1f]' : 'text-white'
+      }`}
+    >
       {children}
     </h2>
   );
 }
 
-function Lede({ children }: { children: React.ReactNode }) {
-  return <p className="text-foreground/70 mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">{children}</p>;
+function Lede({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
+  return <p className={`mt-5 max-w-2xl text-base leading-relaxed sm:text-lg ${dark ? 'text-[#1f1f1f]/70' : 'text-white/70'}`}>{children}</p>;
+}
+
+/** A quiet bordered card that carries one key statement, with an icon rather than a filled block — used everywhere this page needs to make a line stand out without another slab of colour. */
+function EmphasisCard({ icon: Icon, children }: { icon: typeof ArrowRight; children: React.ReactNode }) {
+  return (
+    <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
+      <span className="bg-primary/15 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
+        <Icon className="size-5" aria-hidden="true" />
+      </span>
+      {children}
+    </div>
+  );
 }
 
 const LOCATION_ICON: Record<string, typeof Building2> = {
@@ -70,6 +106,60 @@ const LOCATION_ICON: Record<string, typeof Building2> = {
   other: Building2,
 };
 
+const STACK_ITEMS = [
+  { icon: Package, title: 'Discovery Machine', body: 'The physical retail asset.' },
+  { icon: Globe, title: 'International Snack Supply', body: 'Products selected and replenished through Snack Quest.' },
+  { icon: Smartphone, title: 'Software', body: 'Your connected management layer.' },
+  { icon: CreditCard, title: 'Payments', body: 'Connected transaction infrastructure.' },
+  { icon: Truck, title: 'Restocking', body: 'Ongoing supply and inventory management.' },
+  { icon: Settings, title: 'Operations', body: 'We help run the operational layer.' },
+  { icon: Megaphone, title: 'Marketing', body: 'Brand support to drive awareness.' },
+  { icon: Camera, title: 'Data + Cameras', body: 'Sales, product data and remote monitoring.' },
+] as const;
+
+const PORTAL_ITEMS = [
+  { icon: Package, label: 'Multiple machines' },
+  { icon: LineChart, label: 'Sales & transactions' },
+  { icon: Boxes, label: 'Inventory levels' },
+  { icon: Settings, label: 'Machine status' },
+  { icon: MapPin, label: 'Location management' },
+  { icon: TrendingUp, label: 'Product performance' },
+  { icon: Camera, label: 'Live camera monitoring' },
+  { icon: LineChart, label: 'Demand data' },
+] as const;
+
+const PROCESS_STEPS = [
+  { icon: Package, step: 'Buy', body: 'Discovery Machine' },
+  { icon: MapPin, step: 'Place', body: 'Your location' },
+  { icon: Settings, step: 'Operate', body: 'Snack Quest management' },
+  { icon: LineChart, step: 'Learn', body: 'Sales + demand data' },
+  { icon: TrendingUp, step: 'Expand', body: 'Acquire another machine' },
+  { icon: RepeatIcon, step: 'Repeat', body: 'Multiple locations' },
+] as const;
+
+const FAQS = [
+  {
+    q: 'How much does a Discovery Machine cost?',
+    a: 'Capital ranges vary by setup. Tell us your starting point in the application and we’ll walk you through the real options.',
+  },
+  {
+    q: 'Do I need experience running a business?',
+    a: 'No. Snack Quest operates the machine day-to-day — you own the asset and the location relationship.',
+  },
+  {
+    q: 'What if I don’t have a location yet?',
+    a: 'That’s fine. Tell us what access you have — including relationships that could open doors — and we’ll help you think it through.',
+  },
+  {
+    q: 'How long does the application take?',
+    a: 'A few minutes. We review every application personally and follow up about next steps.',
+  },
+  {
+    q: 'Can I own more than one machine?',
+    a: 'Yes. Many owners start with one and expand once it’s performing, using the same operating layer.',
+  },
+] as const;
+
 export default function OwnPage() {
   return (
     <>
@@ -77,173 +167,139 @@ export default function OwnPage() {
       <MobileOwnBar />
 
       {/* ── SECTION 1 — THE HOOK ─────────────────────────────── */}
-      <section className={`${LIGHT} relative overflow-hidden px-5 pt-28 pb-16 sm:px-8 sm:pt-36 sm:pb-24`}>
-        {/* Same soft accent blobs as the homepage hero, so the two grounds read as the same brand surface. */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-          <div className="bg-secondary/15 absolute -top-32 -left-32 size-[500px] rounded-full blur-3xl" />
-          <div className="bg-primary/15 absolute top-32 -right-32 size-[420px] rounded-full blur-3xl" />
-        </div>
-
-        <div className="relative mx-auto w-full max-w-[1200px]">
-          <div className="mx-auto max-w-3xl text-center">
+      <section className={`${INK} relative overflow-hidden px-5 pt-28 pb-16 sm:px-8 sm:pt-36 sm:pb-24`}>
+        <div className="relative mx-auto grid w-full max-w-[1200px] gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
+          <div>
             <Statement>What if you could own the retail asset without building the retail operation?</Statement>
-            <p className="text-foreground/70 mx-auto mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-white/70 sm:text-lg">
               Buy a Snack Quest Discovery Machine. Secure the right location. We provide the system that keeps it running.
             </p>
+
+            <ul className="mt-10 grid grid-cols-3 gap-3 border-t border-white/10 pt-8 sm:gap-4">
+              <TrustItem icon={Package} title="You" detail="Own the machine" />
+              <TrustItem icon={MapPin} title="Connections" detail="Secure the location" />
+              <TrustItem icon={Settings} title="Snack Quest" detail="Runs the operation" />
+            </ul>
+
+            <div className="mt-10 flex flex-col items-start gap-3">
+              <OwnCta source="hero" size="lg" className="uppercase">
+                Apply to own a machine
+                <ArrowRight className="size-5" aria-hidden="true" />
+              </OwnCta>
+              <p className="text-sm text-white/45">For people with capital, location access, or both.</p>
+            </div>
           </div>
 
-          <div className="mx-auto mt-14 max-w-sm sm:mt-16">
-            <HeroImagePlaceholder />
-          </div>
-
-          <div className="mx-auto mt-14 grid max-w-3xl gap-4 sm:mt-16 sm:grid-cols-3">
-            <RoleCard label="You" body="Own the machine." accent="orange" />
-            <RoleCard label="Your connections" body="Secure the location." accent="lime" />
-            <RoleCard label="Snack Quest" body="Manages the retail operation." accent="purple" />
-          </div>
-
-          <div className="mt-12 flex flex-col items-center gap-3 sm:mt-14">
-            <OwnCta source="hero" size="lg" className="uppercase">
-              See if you qualify
-              <ArrowRight className="size-5" aria-hidden="true" />
-            </OwnCta>
-            <p className="text-foreground/45 text-sm">For people with capital, location access, or both.</p>
+          <div className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none">
+            <HeroImagePlaceholder variant="landscape" />
           </div>
         </div>
       </section>
 
       {/* ── SECTION 2 — THE LOCATION MATTERS MOST ───────────── */}
-      <Section id="location" className={WHITE}>
-        <Eyebrow>What actually drives this</Eyebrow>
-        <Statement>The machine isn’t the most important part. The location is.</Statement>
-
-        <div className="border-border mt-10 rounded-2xl border bg-white p-6 text-center shadow-sm sm:mt-12 sm:rounded-3xl sm:p-10">
-          <p className="text-primary text-xs font-bold tracking-[0.2em] uppercase">The single biggest factor</p>
-          <p className="font-display text-foreground mt-3 text-[clamp(1.5rem,4.5vw,2.25rem)] leading-tight uppercase">
-            The location is the most important part of this business.
-          </p>
-          <p className="font-display text-foreground/70 mt-4 text-[clamp(1.1rem,3.5vw,1.5rem)] leading-tight uppercase">
-            Right machine <span className="text-primary">+</span> right location <span className="text-primary">=</span> the
-            opportunity
-          </p>
-        </div>
+      <Section id="locations" className={INK_SOFT}>
+        <Eyebrow>01 · The opportunity</Eyebrow>
+        <Statement>The location is the most important part of the business.</Statement>
 
         <div className="mt-10 grid gap-8 sm:mt-12 lg:grid-cols-2 lg:gap-14">
-          <div className="text-foreground/75 flex flex-col gap-4 text-base leading-relaxed sm:text-lg">
+          <div className="flex flex-col gap-4 text-base leading-relaxed text-white/75 sm:text-lg">
             <p>A great machine in a weak location can struggle.</p>
             <p>A great location gives the machine access to the people who can actually buy from it.</p>
             <p>That’s why we’re looking for owners who can bring more than capital.</p>
           </div>
-          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-            {LOCATION_TYPES.filter((option) => option.value !== 'other').map((option) => {
-              const Icon = LOCATION_ICON[option.value];
-              return (
-                <div key={option.value} className="border-border flex items-center gap-2.5 rounded-xl border bg-white px-4 py-3">
-                  <Icon className="text-primary size-4 shrink-0" aria-hidden="true" />
-                  <span className="text-foreground/80 text-sm font-medium">{option.label}</span>
-                </div>
-              );
-            })}
+          <div>
+            <p className="mb-3 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">Places our machines can go</p>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-2">
+              {LOCATION_TYPES.filter((option) => option.value !== 'other').map((option) => (
+                <LocationPhotoCard key={option.value} icon={LOCATION_ICON[option.value]} label={option.label} />
+              ))}
+            </div>
           </div>
         </div>
 
-        <p className="text-foreground mt-10 max-w-2xl text-lg font-semibold sm:mt-12 sm:text-xl">
-          If you can open doors, we can help you build what goes behind them.
-        </p>
-        <p className="text-foreground/50 mt-4 max-w-2xl text-sm leading-relaxed sm:text-base">
-          Location performance depends on traffic, customer profile, product mix, pricing and operating conditions. We don’t promise
-          that any particular location will be profitable — your network is an advantage, not a guarantee.
-        </p>
+        <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:mt-12 sm:p-8">
+          <p className="text-lg font-semibold text-white sm:text-xl">If you can open doors, we can help you build what goes behind them.</p>
+          <p className="mt-3 text-sm leading-relaxed text-white/50 sm:text-base">
+            Location performance depends on traffic, customer profile, product mix, pricing and operating conditions. We don’t promise
+            that any particular location will be profitable — your network is an advantage, not a guarantee.
+          </p>
+        </div>
       </Section>
 
       {/* ── SECTION 3 — THE OFFER STACK ─────────────────────── */}
-      <Section id="stack" className={LIGHT}>
-        <Eyebrow>What you’re actually getting</Eyebrow>
-        <Statement>You’re not just buying a machine.</Statement>
+      <Section id="stack" className={CREAM}>
+        <Eyebrow dark>02 · The offer</Eyebrow>
+        <Statement dark>You’re not just buying a machine.</Statement>
+        <Lede dark>You get a physical asset and a complete system around it.</Lede>
 
-        <div className="mt-10 flex flex-col gap-3 sm:mt-12">
-          <StackRow title="Discovery Machine" body="The physical retail asset." />
-          <StackRow title="Snack Quest OS" body="Your connected management layer." />
-          <StackRow title="International snack supply" body="Products selected and replenished through Snack Quest." />
-          <StackRow title="Payments" body="Connected transaction infrastructure." />
-          <StackRow title="Management service" body="Snack Quest helps operate and manage the machine after deployment." />
-          <StackRow title="Data" body="Sales, products, transactions and machine performance." />
-          <StackRow title="Remote visibility" body="Owners can monitor their machines through their portal." />
+        <div className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 lg:grid-cols-4">
+          {STACK_ITEMS.map((item) => (
+            <div key={item.title} className="rounded-2xl border border-[#1f1f1f]/10 bg-white p-5">
+              <span className="bg-primary/10 text-primary mb-3 flex size-10 items-center justify-center rounded-xl">
+                <item.icon className="size-5" aria-hidden="true" />
+              </span>
+              <p className="text-sm font-bold text-[#1f1f1f]">{item.title}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#1f1f1f]/60">{item.body}</p>
+            </div>
+          ))}
         </div>
 
-        <div className={`${EMPHASIS} mt-12 rounded-2xl p-8 text-center shadow-[0_20px_60px_-15px_rgb(255_122_0/0.45)] sm:mt-14 sm:rounded-3xl sm:p-12`}>
+        <div className="mt-12 rounded-2xl border border-[#1f1f1f]/10 bg-[#1f1f1f] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
           <p className="font-display text-[clamp(1.5rem,4.5vw,2.5rem)] leading-tight text-white uppercase">
             You own the machine. We provide the operating layer.
           </p>
-          <p className="mt-4 text-sm text-white/80 sm:text-base">
+          <p className="mt-4 text-sm text-white/50 sm:text-base">
             Performance depends on your location, demand, product mix, pricing and operating conditions — not a guarantee we make you.
           </p>
         </div>
       </Section>
 
       {/* ── SECTION 4 — THE OWNER PORTAL ────────────────────── */}
-      <Section id="portal" className={WHITE}>
-        <Eyebrow>The differentiator</Eyebrow>
-        <Statement>Your machines. Your dashboard. Your data.</Statement>
-        <Lede>Own one machine or several. Every one of them connects to the same portal.</Lede>
+      <Section id="portal" className={INK}>
+        <Eyebrow>03 · Your dashboard</Eyebrow>
+        <Statement>Your machines. Your data. All in one place.</Statement>
+        <Lede>Manage one machine or several from your own owner portal.</Lede>
 
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:mt-12">
-          {['Machine 01', 'Machine 02', 'Machine 03', 'Machine 04'].map((label) => (
-            <span key={label} className="border-border text-foreground/70 rounded-full border bg-white px-4 py-1.5 text-xs font-semibold">
-              {label}
-            </span>
-          ))}
-          <ArrowRight className="text-primary size-4" aria-hidden="true" />
-          <span className="bg-primary/15 text-primary rounded-full px-4 py-1.5 text-xs font-bold tracking-[0.1em] uppercase">One Owner Portal</span>
+        <div className="mt-10 grid gap-8 sm:mt-12 lg:grid-cols-2 lg:items-center lg:gap-12">
+          <DashboardImagePlaceholder className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none" />
+
+          <ul className="flex flex-col gap-2.5">
+            {PORTAL_ITEMS.map((item) => (
+              <li key={item.label} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <item.icon className="text-primary size-4 shrink-0" aria-hidden="true" />
+                <span className="text-sm font-medium text-white/85">{item.label}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <div className="mt-8 sm:mt-10">
-          <DashboardImagePlaceholder />
-        </div>
-
-        <div className="mt-8 flex flex-wrap justify-center gap-2 sm:mt-10">
-          {['Sales', 'Inventory', 'Machine status', 'Location', 'Product performance', 'Transactions', 'Demand data', 'Camera monitoring'].map((item) => (
-            <span key={item} className="border-border text-foreground/60 rounded-full border bg-background px-3.5 py-1.5 text-xs font-medium">
-              {item}
-            </span>
-          ))}
-        </div>
-
-        <div className={`${EMPHASIS} mt-12 rounded-2xl p-8 text-center shadow-[0_20px_60px_-15px_rgb(255_122_0/0.45)] sm:mt-14 sm:rounded-3xl sm:p-12`}>
-          <p className="font-display text-[clamp(1.5rem,4.5vw,2.5rem)] leading-tight text-white uppercase">One portal. Every machine you own.</p>
-        </div>
+        <EmphasisCard icon={Boxes}>
+          <p className="font-display text-[clamp(1.3rem,4vw,2rem)] leading-tight text-white uppercase">One portal. Every machine you own.</p>
+        </EmphasisCard>
       </Section>
 
-      {/* ── SECTION 5 — THE REPEAT ──────────────────────────── */}
-      <Section id="repeat" className={LIGHT}>
-        <Eyebrow>The real opportunity</Eyebrow>
+      {/* ── SECTION 5 — HOW IT WORKS / THE REPEAT ───────────── */}
+      <Section id="how-it-works" className={INK_SOFT}>
+        <Eyebrow>04 · Scale it</Eyebrow>
         <Statement>The first machine is the test. The second is the repeat.</Statement>
 
-        <ol className="mt-10 flex flex-col gap-2.5 sm:mt-12">
-          {[
-            ['Buy', 'Discovery Machine'],
-            ['Place', 'Your location'],
-            ['Operate', 'Snack Quest management'],
-            ['Learn', 'Sales + demand data'],
-            ['Expand', 'Acquire another machine'],
-            ['Repeat', 'Multiple locations'],
-          ].map(([step, body], index, all) => (
-            <li key={step} className="flex items-start gap-4">
-              <span className="flex flex-col items-center self-stretch">
-                <span className="bg-primary/15 text-primary flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums">
-                  {index + 1}
-                </span>
-                {index === all.length - 1 ? null : <span aria-hidden="true" className="border-border mt-1 w-px flex-1 bg-border" />}
+        <ol className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 lg:grid-cols-3">
+          {PROCESS_STEPS.map((item, index) => (
+            <li key={item.step} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <span className="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-full">
+                <item.icon className="size-4.5" aria-hidden="true" />
               </span>
-              <span className="pt-1.5 pb-4">
-                <b className="text-foreground block text-sm font-bold tracking-[0.12em] uppercase sm:text-base">{step}</b>
-                <span className="text-foreground/60 mt-1 block text-sm sm:text-base">{body}</span>
+              <span>
+                <b className="block text-xs font-bold tracking-[0.12em] text-white/45 uppercase">
+                  {String(index + 1).padStart(2, '0')} · {item.step}
+                </b>
+                <span className="mt-0.5 block text-sm font-semibold text-white">{item.body}</span>
               </span>
             </li>
           ))}
         </ol>
 
-        <p className="text-foreground/75 mt-4 max-w-2xl text-base leading-relaxed sm:text-lg">
+        <p className="mt-8 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
           If your first machine performs well, you don’t have to start from zero again. You already have:
         </p>
         <ul className="mt-6 grid gap-2.5 sm:grid-cols-2">
@@ -256,63 +312,81 @@ export default function OwnPage() {
             'the data',
             'the experience',
           ].map((item) => (
-            <li key={item} className="border-border text-foreground/80 rounded-xl border bg-white px-4 py-3 text-sm sm:text-base">
+            <li key={item} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/80 sm:text-base">
               {item}
             </li>
           ))}
         </ul>
-        <p className="text-foreground/75 mt-6 max-w-2xl text-base leading-relaxed sm:text-lg">So the next machine can plug into the same system.</p>
 
-        <div className={`${EMPHASIS} mt-12 rounded-2xl p-8 text-center shadow-[0_20px_60px_-15px_rgb(255_122_0/0.45)] sm:mt-14 sm:rounded-3xl sm:p-12`}>
-          <p className="font-display text-[clamp(1.5rem,4.5vw,2.5rem)] leading-tight text-white uppercase">One machine can become a portfolio.</p>
-          <p className="mt-4 text-base text-white/85 sm:text-lg">Each additional machine plugs into the same Snack Quest operating layer.</p>
-          <p className="mt-4 text-sm text-white/70 sm:text-base">Expansion depends on capital, location access and machine performance.</p>
-        </div>
+        <EmphasisCard icon={TrendingUp}>
+          <p className="font-display text-[clamp(1.3rem,4vw,2rem)] leading-tight text-white uppercase">One machine can become a portfolio.</p>
+          <p className="max-w-md text-sm text-white/70 sm:text-base">Each additional machine plugs into the same Snack Quest operating layer.</p>
+          <p className="text-xs text-white/45 sm:text-sm">Expansion depends on capital, location access and machine performance.</p>
+        </EmphasisCard>
       </Section>
 
       {/* ── SECTION 6 — QUALIFICATION ────────────────────────── */}
-      <Section className={WHITE}>
-        <Eyebrow>The offer</Eyebrow>
-        <Statement>Who should own a Snack Quest machine?</Statement>
+      <Section className={INK}>
+        <Eyebrow>05 · Is this for you?</Eyebrow>
+        <Statement>This is for people who have capital, connections or both.</Statement>
 
         <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-3">
-          <QualifyCard title="Capital" body="You can comfortably acquire and deploy the machine." accent="orange" />
-          <QualifyCard title="Connections" body="You can access strong commercial locations." accent="lime" />
-          <QualifyCard title="Ambition" body="You want the option to build beyond one machine." accent="purple" />
+          <QualifyCard icon={Wallet} title="Capital" body="You can comfortably acquire and deploy the machine." />
+          <QualifyCard icon={MapPin} title="Connections" body="You can access strong commercial locations." />
+          <QualifyCard icon={Rocket} title="Ambition" body="You want the option to build beyond one machine." />
         </div>
 
-        <p className="font-display text-foreground mt-10 text-center text-[clamp(1.3rem,4vw,2rem)] leading-tight uppercase sm:mt-12">
-          If you have two of the three, we should talk.
-        </p>
+        <EmphasisCard icon={ArrowRight}>
+          <p className="font-display text-[clamp(1.2rem,3.5vw,1.75rem)] leading-tight text-white uppercase">
+            If you have two of the three, we should talk.
+          </p>
+        </EmphasisCard>
 
         <div className="mt-8 flex flex-col items-center gap-3 sm:mt-10">
           <OwnCta source="qualification" size="lg">
             Apply to become a machine owner
             <ArrowRight className="size-5" aria-hidden="true" />
           </OwnCta>
-          <p className="text-foreground/45 text-sm">Tell us what you have access to. We’ll determine whether the model fits.</p>
+          <p className="text-sm text-white/45">Tell us what you have access to. We’ll determine whether the model fits.</p>
+        </div>
+      </Section>
+
+      {/* ── SECTION 7 — FAQ ──────────────────────────────────── */}
+      <Section id="faq" className={INK_SOFT}>
+        <div className="mx-auto max-w-3xl">
+          <Eyebrow>FAQ</Eyebrow>
+          <Statement>Questions people ask before applying.</Statement>
+
+          <div className="mt-10 flex flex-col gap-3 sm:mt-12">
+            {FAQS.map((item) => (
+              <div key={item.q} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+                <p className="text-base font-bold text-white sm:text-lg">{item.q}</p>
+                <p className="mt-2 text-sm leading-relaxed text-white/65 sm:text-base">{item.a}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </Section>
 
       {/* ── LEAD FORM ────────────────────────────────────────── */}
-      <Section id="apply" className={LIGHT}>
+      <Section id="apply" className={INK}>
         <div className="mx-auto max-w-3xl text-center">
           <Eyebrow>Apply</Eyebrow>
           <Statement>Let’s see what you can build.</Statement>
         </div>
-        <div className="border-border mx-auto mt-10 w-full max-w-2xl rounded-2xl border bg-white p-6 shadow-sm sm:mt-12 sm:rounded-3xl sm:p-10">
+        <div className="mx-auto mt-10 w-full max-w-2xl rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:mt-12 sm:rounded-3xl sm:p-10">
           <ApplicationForm />
         </div>
       </Section>
 
       {/* ── FINAL SCREEN ─────────────────────────────────────── */}
-      <section className={`${WHITE} relative flex min-h-[80vh] flex-col items-center justify-center overflow-hidden px-5 py-24 text-center sm:px-8`}>
+      <section className={`${INK_SOFT} relative flex min-h-[80vh] flex-col items-center justify-center overflow-hidden px-5 py-24 text-center sm:px-8`}>
         <div className="mx-auto w-full max-w-xs sm:max-w-sm">
           <HeroImagePlaceholder />
         </div>
         <div className="relative mx-auto mt-12 max-w-3xl sm:mt-16">
           <Statement>Own the first one. Let the system help you build the next.</Statement>
-          <p className="text-foreground/70 mx-auto mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+          <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/70 sm:text-lg">
             Your capital buys the asset. Your connections create the opportunity. Snack Quest provides the operating layer.
           </p>
           <div className="mt-9 flex flex-col items-center gap-3">
@@ -320,15 +394,15 @@ export default function OwnPage() {
               Apply to become a machine owner
               <ArrowRight className="size-5" aria-hidden="true" />
             </OwnCta>
-            <p className="text-foreground/45 text-sm">Capital + location access preferred.</p>
+            <p className="text-sm text-white/45">Capital + location access preferred.</p>
           </div>
         </div>
       </section>
 
-      <footer className={`${LIGHT} border-border border-t px-5 py-8 text-center sm:px-8`}>
-        <p className="text-foreground/40 text-xs">
+      <footer className={`${INK} border-t border-white/10 px-5 py-8 text-center sm:px-8`}>
+        <p className="text-xs text-white/40">
           © {new Date().getFullYear()} Snack Quest ·{' '}
-          <Link href="/" className="hover:text-foreground/70 underline underline-offset-4">
+          <Link href="/" className="underline underline-offset-4 hover:text-white/70">
             snackquests.shop
           </Link>
         </p>
@@ -337,35 +411,28 @@ export default function OwnPage() {
   );
 }
 
-function RoleCard({ label, body, accent }: { label: string; body: string; accent: 'orange' | 'lime' | 'purple' }) {
-  const dot = accent === 'orange' ? 'bg-primary' : accent === 'lime' ? 'bg-home-lime' : 'bg-secondary';
+function TrustItem({ icon: Icon, title, detail }: { icon: typeof Package; title: string; detail: string }) {
   return (
-    <div className="border-border rounded-2xl border bg-white p-6 text-left shadow-sm">
-      <span aria-hidden="true" className={`mb-4 block size-2.5 rounded-full ${dot}`} />
-      <p className="text-foreground/55 text-xs font-bold tracking-[0.18em] uppercase">{label}</p>
-      <p className="text-foreground mt-2 text-lg font-semibold">{body}</p>
-    </div>
+    <li className="flex flex-col items-start gap-2">
+      <span className="border-primary/30 text-primary flex size-9 items-center justify-center rounded-full border">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <span>
+        <span className="block text-xs font-bold tracking-[0.1em] text-white/50 uppercase">{title}</span>
+        <span className="block text-sm font-semibold text-white">{detail}</span>
+      </span>
+    </li>
   );
 }
 
-function StackRow({ title, body }: { title: string; body: string }) {
+function QualifyCard({ icon: Icon, title, body }: { icon: typeof Wallet; title: string; body: string }) {
   return (
-    <div className="border-border flex flex-col gap-1 border-b pb-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
-      <span className="text-foreground text-base font-bold tracking-tight sm:text-lg">{title}</span>
-      <span className="text-foreground/65 text-sm sm:max-w-md sm:text-right sm:text-base">{body}</span>
-    </div>
-  );
-}
-
-function QualifyCard({ title, body, accent }: { title: string; body: string; accent: 'orange' | 'lime' | 'purple' }) {
-  // Bright lime reads fine as a small dot, but fails text contrast on a
-  // light card — this is the one manual shade on the page, kept dark
-  // enough for AA on white with no light-safe lime token to reuse.
-  const ring = accent === 'orange' ? 'text-primary' : accent === 'lime' ? 'text-[#6b8f00]' : 'text-secondary';
-  return (
-    <div className="border-border rounded-2xl border bg-white p-7 text-center shadow-sm sm:rounded-3xl">
-      <span className={`font-display block text-2xl uppercase ${ring}`}>{title}</span>
-      <p className="text-foreground/70 mt-3 text-sm leading-relaxed sm:text-base">{body}</p>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-7 text-center sm:rounded-3xl">
+      <span className="bg-primary/15 text-primary mx-auto mb-4 flex size-11 items-center justify-center rounded-xl">
+        <Icon className="size-5" aria-hidden="true" />
+      </span>
+      <span className="font-display block text-2xl text-white uppercase">{title}</span>
+      <p className="mt-3 text-sm leading-relaxed text-white/70 sm:text-base">{body}</p>
     </div>
   );
 }

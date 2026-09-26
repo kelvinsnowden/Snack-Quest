@@ -8,11 +8,9 @@ import { cn } from '@/lib/utils';
 import { OwnCta } from './OwnCta';
 
 const SECTIONS = [
-  { id: 'location', label: 'The Location' },
-  { id: 'stack', label: 'The Offer' },
-  { id: 'portal', label: 'Owner Portal' },
-  { id: 'repeat', label: 'Expansion' },
-  { id: 'apply', label: 'Qualify' },
+  { id: 'how-it-works', label: 'How it Works' },
+  { id: 'locations', label: 'Locations' },
+  { id: 'faq', label: 'FAQ' },
 ] as const;
 
 /**
@@ -43,21 +41,24 @@ export function OwnNav() {
     <header
       className={cn(
         'fixed inset-x-0 top-0 z-50 transition-colors duration-300',
-        scrolled || open ? 'border-border border-b bg-white/90 backdrop-blur' : 'bg-transparent',
+        scrolled || open ? 'border-b border-white/10 bg-black/90 backdrop-blur' : 'bg-transparent',
       )}
     >
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-5 py-3 sm:px-8">
         <Link href="/own" className="flex shrink-0 items-center gap-2.5">
           <Image src="/deck/logo.png" alt="" width={36} height={36} className="size-9 rounded-lg" priority />
-          <span className="font-display text-foreground text-[15px] leading-none tracking-tight sm:text-[17px]">Snack Quest</span>
+          <span className="font-display text-[15px] leading-none tracking-tight text-white sm:text-[17px]">Snack Quest</span>
         </Link>
 
         <nav aria-label="Sections" className="hidden items-center gap-1 lg:flex">
+          <a href="#" className="text-primary decoration-primary px-3.5 py-2 text-sm font-semibold underline decoration-2 underline-offset-8">
+            Own a Machine
+          </a>
           {SECTIONS.map((section) => (
             <a
               key={section.id}
               href={`#${section.id}`}
-              className="text-foreground/70 hover:text-foreground rounded-full px-3.5 py-2 text-sm font-medium transition-colors hover:bg-background"
+              className="rounded-full px-3.5 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
               {section.label}
             </a>
@@ -74,7 +75,7 @@ export function OwnNav() {
             aria-expanded={open}
             aria-controls="own-mobile-nav"
             aria-label={open ? 'Close menu' : 'Open menu'}
-            className="border-border text-foreground inline-flex size-10 items-center justify-center rounded-full border lg:hidden"
+            className="inline-flex size-10 items-center justify-center rounded-full border border-white/15 text-white lg:hidden"
           >
             {open ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
           </button>
@@ -82,14 +83,17 @@ export function OwnNav() {
       </div>
 
       {open ? (
-        <div id="own-mobile-nav" className="border-border border-t bg-white px-5 pb-5 lg:hidden">
+        <div id="own-mobile-nav" className="border-t border-white/10 px-5 pb-5 lg:hidden">
           <nav aria-label="Sections" className="flex flex-col py-2">
+            <a href="#" onClick={() => setOpen(false)} className="text-primary rounded-xl px-3 py-3 text-base font-semibold">
+              Own a Machine
+            </a>
             {SECTIONS.map((section) => (
               <a
                 key={section.id}
                 href={`#${section.id}`}
                 onClick={() => setOpen(false)}
-                className="text-foreground/70 hover:text-foreground rounded-xl px-3 py-3 text-base font-medium transition-colors hover:bg-background"
+                className="rounded-xl px-3 py-3 text-base font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
               >
                 {section.label}
               </a>

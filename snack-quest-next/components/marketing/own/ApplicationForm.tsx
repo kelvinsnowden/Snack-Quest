@@ -270,21 +270,21 @@ export function ApplicationForm() {
       {/* Progress */}
       <div className="mb-8 flex items-center gap-3">
         {canGoBack ? (
-          <button type="button" onClick={goBack} aria-label="Back" className="border-border text-foreground/60 hover:text-foreground flex size-9 shrink-0 items-center justify-center rounded-full border transition-colors hover:bg-background">
+          <button type="button" onClick={goBack} aria-label="Back" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white">
             <ArrowLeft className="size-4" aria-hidden="true" />
           </button>
         ) : (
           <span className="size-9 shrink-0" aria-hidden="true" />
         )}
         <div className="flex-1">
-          <div className="bg-border h-1.5 w-full overflow-hidden rounded-full">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
             <span
               className="from-primary to-home-orange-glow block h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ease-out"
               style={{ width: `${(progress / TOTAL_STEPS) * 100}%` }}
             />
           </div>
         </div>
-        <span className="text-foreground/50 shrink-0 text-xs font-semibold tabular-nums">
+        <span className="shrink-0 text-xs font-semibold tabular-nums text-white/50">
           {progress} / {TOTAL_STEPS}
         </span>
       </div>
@@ -324,9 +324,9 @@ export function ApplicationForm() {
 
 /* ── Shared primitives ──────────────────────────────────────────── */
 
-const HEADLINE_CLASS = 'font-display text-foreground text-2xl leading-tight uppercase sm:text-3xl';
+const HEADLINE_CLASS = 'font-display text-2xl leading-tight text-white uppercase sm:text-3xl';
 const FIELD_CLASS =
-  'w-full rounded-xl border border-border bg-background px-4 py-4 text-lg text-foreground placeholder:text-foreground/40 transition-colors focus:border-primary/70 focus:bg-white focus:outline-none';
+  'w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 py-4 text-lg text-white placeholder:text-white/40 transition-colors focus:border-primary/70 focus:bg-white/10 focus:outline-none';
 
 function ChoiceCard({
   label,
@@ -345,17 +345,17 @@ function ChoiceCard({
       onClick={onClick}
       className={cn(
         'flex w-full items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-left transition-all duration-200',
-        selected ? 'border-primary bg-primary/10 scale-[1.01]' : 'border-border bg-background hover:bg-white',
+        selected ? 'border-primary bg-primary/15 scale-[1.01]' : 'border-white/15 bg-white/[0.04] hover:bg-white/[0.08]',
       )}
     >
       <span>
-        <span className="text-foreground block text-base font-semibold sm:text-lg">{label}</span>
-        {description ? <span className="text-foreground/55 mt-0.5 block text-sm">{description}</span> : null}
+        <span className="block text-base font-semibold text-white sm:text-lg">{label}</span>
+        {description ? <span className="mt-0.5 block text-sm text-white/55">{description}</span> : null}
       </span>
       <span
         className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors',
-          selected ? 'border-primary bg-primary text-white' : 'border-border text-transparent',
+          selected ? 'border-primary bg-primary text-white' : 'border-white/25 text-transparent',
         )}
         aria-hidden="true"
       >
@@ -428,7 +428,7 @@ function GreetingStep({ onNext }: { onNext: () => void }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
       <h3 className={HEADLINE_CLASS}>Thank you for showing interest.</h3>
-      <p className="text-foreground/70 text-base sm:text-lg">Let’s see if the Discovery Machine model could be a fit for you.</p>
+      <p className="text-base text-white/70 sm:text-lg">Let’s see if the Discovery Machine model could be a fit for you.</p>
       <ContinueButton onClick={onNext} />
     </div>
   );
@@ -443,7 +443,7 @@ function CapitalStep({ selected, onSelect }: { selected: CapitalRange | null; on
           <ChoiceCard key={option.value} label={option.label} selected={selected === option.value} onClick={() => onSelect(option.value)} />
         ))}
       </div>
-      <p className="text-foreground/45 text-sm">No commitment. We’re simply understanding your starting point.</p>
+      <p className="text-sm text-white/45">No commitment. We’re simply understanding your starting point.</p>
     </div>
   );
 }
@@ -456,7 +456,7 @@ function LocationAccessStep({ selected, onSelect }: { selected: LocationAccess |
           <MapPin className="size-3.5" aria-hidden="true" />
           Location matters
         </span>
-        <p className="text-foreground/45 mb-1 text-xs font-bold tracking-[0.18em] uppercase">Now the important question</p>
+        <p className="mb-1 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">Now the important question</p>
         <h3 className={HEADLINE_CLASS}>Do you already have access to a strong location?</h3>
       </div>
       <div className="flex flex-col gap-2.5">
@@ -506,11 +506,11 @@ function LocationTypeStep({
               onClick={() => onToggle(option.value)}
               className={cn(
                 'flex flex-col items-center gap-2 rounded-2xl border px-3 py-5 text-center transition-all duration-200',
-                checked ? 'border-primary bg-primary/10 scale-[1.02]' : 'border-border bg-background hover:bg-white',
+                checked ? 'border-primary bg-primary/15 scale-[1.02]' : 'border-white/15 bg-white/[0.04] hover:bg-white/[0.08]',
               )}
             >
-              <Icon className={cn('size-6', checked ? 'text-primary' : 'text-foreground/50')} aria-hidden="true" />
-              <span className="text-foreground text-sm font-semibold">{option.label}</span>
+              <Icon className={cn('size-6', checked ? 'text-primary' : 'text-white/60')} aria-hidden="true" />
+              <span className="text-sm font-semibold text-white">{option.label}</span>
             </button>
           );
         })}
@@ -523,7 +523,7 @@ function LocationTypeStep({
 function InterestStep({ selected, onSelect }: { selected: OwnerProfile | null; onSelect: (value: OwnerProfile) => void }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
-      <p className="text-foreground/45 mb-1 text-xs font-bold tracking-[0.18em] uppercase">The opportunity</p>
+      <p className="mb-1 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">The opportunity</p>
       <h3 className={cn(HEADLINE_CLASS, '-mt-4')}>What are you looking to build?</h3>
       <div className="flex flex-col gap-2.5">
         {OWNER_PROFILES.map((option) => (
@@ -577,12 +577,12 @@ function ContactStep({
     >
       <div>
         <h3 className={HEADLINE_CLASS}>Where should we send the next step?</h3>
-        <p className="text-foreground/70 mt-2 text-base">Ready? Let’s see whether there’s a fit.</p>
+        <p className="mt-2 text-base text-white/70">Ready? Let’s see whether there’s a fit.</p>
       </div>
 
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-foreground/80 mb-2 block text-sm font-medium" htmlFor="own-whatsapp">
+          <label className="mb-2 block text-sm font-medium text-white/85" htmlFor="own-whatsapp">
             WhatsApp number
           </label>
           <input
@@ -598,8 +598,8 @@ function ContactStep({
           />
         </div>
         <div>
-          <label className="text-foreground/80 mb-2 block text-sm font-medium" htmlFor="own-email">
-            Email <span className="text-foreground/50 font-normal">(optional)</span>
+          <label className="mb-2 block text-sm font-medium text-white/85" htmlFor="own-email">
+            Email <span className="font-normal text-white/50">(optional)</span>
           </label>
           <input
             id="own-email"
@@ -614,14 +614,14 @@ function ContactStep({
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
         </p>
       ) : null}
 
       <ContinueButton onClick={onSubmit} disabled={!answers.whatsapp.trim() || submitting} label={submitting ? 'Checking…' : 'Check my fit'} />
       {submitting ? (
-        <span className="text-foreground/50 mx-auto -mt-3 flex items-center gap-2 text-sm">
+        <span className="mx-auto -mt-3 flex items-center gap-2 text-sm text-white/50">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         </span>
       ) : null}
@@ -644,8 +644,8 @@ function SuccessState({ answers }: { answers: Answers }) {
       <span className="bg-primary/15 text-primary flex size-16 items-center justify-center rounded-full">
         <Check className="size-8" strokeWidth={3} aria-hidden="true" />
       </span>
-      <h3 className="font-display text-foreground text-3xl uppercase sm:text-4xl">Application received.</h3>
-      <p className="text-foreground/70 max-w-md text-base leading-relaxed">
+      <h3 className="font-display text-3xl text-white uppercase sm:text-4xl">Application received.</h3>
+      <p className="max-w-md text-base leading-relaxed text-white/75">
         We’ve got the basics. Our team will review your capital + location profile and contact you about the next step.
       </p>
 
@@ -660,9 +660,9 @@ function SuccessState({ answers }: { answers: Answers }) {
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-border rounded-xl border bg-background px-4 py-3">
-      <p className="text-foreground/40 text-[10px] font-bold tracking-[0.18em] uppercase">{label}</p>
-      <p className="text-foreground mt-1 text-sm font-semibold">{value}</p>
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+      <p className="text-[10px] font-bold tracking-[0.18em] text-white/40 uppercase">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
     </div>
   );
 }
