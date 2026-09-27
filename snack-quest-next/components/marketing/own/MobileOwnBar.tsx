@@ -77,7 +77,7 @@ export function MobileOwnBar() {
   return (
     <div
       className={
-        'will-change-transform fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur transition-transform duration-300 sm:hidden ' +
+        'will-change-transform fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur transition-transform duration-500 ease-out sm:hidden ' +
         (visible ? 'translate-y-0' : 'translate-y-full')
       }
       aria-hidden={!visible}
