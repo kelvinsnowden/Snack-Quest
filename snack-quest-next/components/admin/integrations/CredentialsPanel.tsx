@@ -14,13 +14,32 @@ export interface CredentialRow {
   kind: 'api' | 'webhook';
   environment: 'sandbox' | 'production';
   label: string;
-  secretPrefix: string;
+  secretHint: string;
+  status: 'issued' | 'active' | 'rotating' | 'expired' | 'revoked';
+  scope: { type: 'manufacturer' } | { type: 'machine'; machineId: string; machineCode: string };
   issuedAt: string;
   lastUsedAt: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   revokedReason: string | null;
+  graceEndsAt: string | null;
+  supersededBy: string | null;
+  rotatedFrom: string | null;
 }
+
+export interface ScopeableMachine {
+  machineId: string;
+  machineCode: string;
+  environment: 'sandbox' | 'production';
+}
+
+const STATUS_BADGE: Record<CredentialRow['status'], { label: string; variant: 'success' | 'secondary' | 'warning' | 'outline' }> = {
+  issued: { label: 'Issued · not yet used', variant: 'secondary' },
+  active: { label: 'Active', variant: 'success' },
+  rotating: { label: 'Rotating out', variant: 'warning' },
+  expired: { label: 'Expired', variant: 'outline' },
+  revoked: { label: 'Revoked', variant: 'outline' },
+};
 
 function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -29,14 +48,26 @@ function formatDate(iso: string | null): string {
 /**
  * Signing credentials for one manufacturer. A new secret is shown here
  * once and never again — it is stored encrypted and no route returns it.
- * Rotation: issue a new key, have the manufacturer switch, then revoke
- * the old one; both work in between.
+ * Rotate issues a successor and keeps the old key working for a grace
+ * period (7 days by default) so the fleet can move over without an
+ * outage; revoke it early once "Last used" shows nothing still uses it.
  */
-export function CredentialsPanel({ manufacturerId, credentials, canIssueProduction }: { manufacturerId: string; credentials: CredentialRow[]; canIssueProduction: boolean }) {
+export function CredentialsPanel({
+  manufacturerId,
+  credentials,
+  canIssueProduction,
+  machines = [],
+}: {
+  manufacturerId: string;
+  credentials: CredentialRow[];
+  canIssueProduction: boolean;
+  machines?: ScopeableMachine[];
+}) {
   const router = useRouter();
   const [kind, setKind] = useState<'api' | 'webhook'>('api');
   const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
   const [label, setLabel] = useState('');
+  const [machineId, setMachineId] = useState('');
   const [issued, setIssued] = useState<{ keyId: string; secret: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,10 +79,11 @@ export function CredentialsPanel({ manufacturerId, credentials, canIssueProducti
     setError(null);
     setIssued(null);
     try {
-      const { credential } = await sendJson<{ credential: { keyId: string; secret: string } }>(`/api/vending/integrations/manufacturers/${manufacturerId}/credentials`, 'POST', { kind, environment, label });
+      const { credential } = await sendJson<{ credential: { keyId: string; secret: string } }>(`/api/vending/integrations/manufacturers/${manufacturerId}/credentials`, 'POST', { kind, environment, label, ...(machineId ? { machineId } : {}) });
       setIssued(credential);
       setCopied(false);
       setLabel('');
+      setMachineId('');
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not issue the credential.');
@@ -60,8 +92,25 @@ export function CredentialsPanel({ manufacturerId, credentials, canIssueProducti
     }
   }
 
+  async function rotate(keyId: string) {
+    if (!window.confirm(`Rotate ${keyId}? A new key is issued now; the old one keeps working for 7 days so the fleet can switch over.`)) return;
+    setBusy(keyId);
+    setError(null);
+    setIssued(null);
+    try {
+      const { credential } = await sendJson<{ credential: { keyId: string; secret: string } }>(`/api/vending/integrations/credentials/${encodeURIComponent(keyId)}/rotate`, 'POST', {});
+      setIssued(credential);
+      setCopied(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not rotate the credential.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function revoke(keyId: string) {
-    const reason = window.prompt(`Revoke ${keyId}? Requests signed with it will be rejected immediately. Reason:`);
+    const reason = window.prompt(`Revoke ${keyId}? Requests signed with it are rejected within 30 seconds. Reason:`);
     if (!reason) return;
     setBusy(keyId);
     setError(null);
@@ -102,7 +151,7 @@ export function CredentialsPanel({ manufacturerId, credentials, canIssueProducti
         </div>
       ) : null}
 
-      <form onSubmit={issue} className="grid gap-4 md:grid-cols-4">
+      <form onSubmit={issue} className="grid gap-4 md:grid-cols-5">
         <div className="flex flex-col gap-2">
           <Label htmlFor="cred-kind">Used for</Label>
           <select id="cred-kind" className="h-11 md:h-10 rounded-md border border-border bg-surface px-3 text-base sm:text-sm" value={kind} onChange={(event) => setKind(event.target.value as 'api' | 'webhook')}>
@@ -120,6 +169,19 @@ export function CredentialsPanel({ manufacturerId, credentials, canIssueProducti
         <div className="flex flex-col gap-2">
           <Label htmlFor="cred-label">Label</Label>
           <Input id="cred-label" placeholder="e.g. Firmware fleet key" value={label} onChange={(event) => setLabel(event.target.value)} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="cred-scope">Speaks for</Label>
+          <select id="cred-scope" className="h-11 md:h-10 rounded-md border border-border bg-surface px-3 text-base sm:text-sm" value={machineId} disabled={kind !== 'api'} onChange={(event) => setMachineId(event.target.value)}>
+            <option value="">All machines (manufacturer cloud)</option>
+            {machines
+              .filter((machine) => machine.environment === environment)
+              .map((machine) => (
+                <option key={machine.machineId} value={machine.machineId}>
+                  Only {machine.machineCode}
+                </option>
+              ))}
+          </select>
         </div>
         <div className="flex items-end">
           <Button type="submit" size="sm" loading={busy === 'issue'}>
@@ -150,7 +212,11 @@ export function CredentialsPanel({ manufacturerId, credentials, canIssueProducti
                 <tr key={credential.keyId} className="border-b border-border last:border-0">
                   <td className="py-2 pr-4">
                     <code className="font-mono text-xs">{credential.keyId}</code>
-                    <div className="text-caption text-muted-foreground">{credential.label} · secret {credential.secretPrefix}…</div>
+                    <div className="text-caption text-muted-foreground">
+                      {credential.label} · {credential.secretHint}
+                      {credential.scope.type === 'machine' ? ` · only ${credential.scope.machineCode}` : ''}
+                      {credential.rotatedFrom ? ` · replaces ${credential.rotatedFrom}` : ''}
+                    </div>
                   </td>
                   <td className="py-2 pr-4">
                     <Badge variant="outline">{credential.kind === 'api' ? 'API' : 'Webhook'}</Badge>{' '}
@@ -159,14 +225,24 @@ export function CredentialsPanel({ manufacturerId, credentials, canIssueProducti
                   <td className="py-2 pr-4 tabular-nums">{formatDate(credential.issuedAt)}</td>
                   <td className="py-2 pr-4 tabular-nums">{formatDate(credential.lastUsedAt)}</td>
                   <td className="py-2 pr-4">
-                    {credential.revokedAt ? <Badge variant="outline" title={credential.revokedReason ?? undefined}>Revoked</Badge> : <Badge variant="success">Active</Badge>}
+                    <Badge variant={STATUS_BADGE[credential.status].variant} title={credential.revokedReason ?? undefined}>
+                      {STATUS_BADGE[credential.status].label}
+                    </Badge>
+                    {credential.status === 'rotating' && credential.graceEndsAt ? (
+                      <div className="text-caption text-muted-foreground">works until {formatDate(credential.graceEndsAt)}</div>
+                    ) : null}
                   </td>
-                  <td className="py-2 text-right">
-                    {credential.revokedAt ? null : (
+                  <td className="py-2 text-right whitespace-nowrap">
+                    {credential.status === 'issued' || credential.status === 'active' ? (
+                      <Button size="sm" variant="ghost" loading={busy === credential.keyId} onClick={() => rotate(credential.keyId)}>
+                        Rotate
+                      </Button>
+                    ) : null}
+                    {credential.status !== 'revoked' && credential.status !== 'expired' ? (
                       <Button size="sm" variant="ghost" loading={busy === credential.keyId} onClick={() => revoke(credential.keyId)}>
                         Revoke
                       </Button>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               ))}

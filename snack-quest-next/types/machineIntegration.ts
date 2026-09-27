@@ -77,7 +77,22 @@ export interface MachineIntegration extends AuditFields {
     faults: string[];
     paymentDeviceOk: boolean | null;
     reportedAt: Timestamp;
+    /** When the machine says the snapshot was taken (plausibility-checked) — used to refuse an older snapshot arriving after a newer one. */
+    observedAt?: Timestamp | null;
   } | null;
+  /** When this integration was last (re)configured. Contact before this doesn't count towards liveness. */
+  configuredAt?: Timestamp | null;
+  /** Staff-declared downtime: orders refused, offline alerts suppressed, liveness OFFLINE (planned). */
+  maintenanceUntil?: Timestamp | null;
+  maintenanceReason?: string | null;
+  /** Expected heartbeat cadence for this machine; drives liveness. Defaults to 60 s. */
+  heartbeatIntervalSeconds?: number | null;
+  /** Latest expiry of any command queued for this machine — a poll after this has nothing to collect and skips the command queries. */
+  commandsQueuedUntil?: Timestamp | null;
+  /** Set while a customer is paying at this machine — the poll response asks for faster polling until then. */
+  expectOrdersUntil?: Timestamp | null;
+  previousFirmwareVersion?: string | null;
+  firmwareChangedAt?: Timestamp | null;
 }
 
 export const MACHINE_INTEGRATION_STATE_TRANSITIONS: Record<MachineIntegrationState, MachineIntegrationState[]> = {

@@ -154,7 +154,7 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
     });
     if (status >= 500) {
       // Ambiguous: the manufacturer may have started the vend before failing. Unknown, recoverable by lookup.
-      throw new HardwareTimeoutError(ADAPTER_KEY, `vend returned HTTP ${status}`);
+      throw new HardwareTimeoutError(ADAPTER_KEY, `vend returned HTTP ${status}`, 'transport.http_5xx');
     }
     const body = (json ?? {}) as { accepted?: unknown; reason?: unknown };
     if (status >= 400 || body.accepted === false) {

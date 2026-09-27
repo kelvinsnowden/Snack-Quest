@@ -29,12 +29,22 @@ export interface IntegrationPanelView {
     signals: Record<'heartbeat' | 'api_request' | 'dispense_success' | 'inventory_sync' | 'webhook', string | null>;
     errorCounts: Record<'connection' | 'authentication' | 'timeout' | 'protocol', number>;
     lastError: { kind: string; message: string; at: string } | null;
+    maintenanceUntil?: string | null;
+    maintenanceReason?: string | null;
   } | null;
   manufacturer: { id: string; name: string } | null;
   model: { id: string; name: string; certificationStatus: ModelCertificationStatus } | null;
   adapter: { key: string; label: string; direction: string; environment: string; maturity: string } | null;
   health: { state: IntegrationHealthState; reason: string } | null;
+  liveness: { state: 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN'; reason: string; planned: boolean; secondsSinceContact: number | null; canAcceptOrders: boolean } | null;
   activationBlockers: string[];
+}
+
+const LIVENESS_VARIANT = { ONLINE: 'success', DEGRADED: 'warning', OFFLINE: 'danger', UNKNOWN: 'outline' } as const;
+
+function livenessText(liveness: NonNullable<IntegrationPanelView['liveness']>): string {
+  const heard = liveness.secondsSinceContact === null ? 'never heard from' : `last heard ${liveness.secondsSinceContact < 120 ? `${liveness.secondsSinceContact}s` : `${Math.round(liveness.secondsSinceContact / 60)} min`} ago`;
+  return `${liveness.reason.replace(/_/g, ' ')} · ${heard} · ${liveness.canAcceptOrders ? 'taking orders' : 'not taking orders'}`;
 }
 
 export interface PanelOption {
@@ -157,6 +167,26 @@ export function MachineIntegrationPanel({
           {view.health ? <IntegrationHealthBadge state={view.health.state} /> : null}
           <Badge variant={integration.environment === 'production' ? 'danger' : 'secondary'}>{integration.environment}</Badge>
           {view.health ? <span className="text-sm text-muted-foreground">{view.health.reason}</span> : null}
+          {view.liveness ? (
+            <span className="flex w-full flex-wrap items-center gap-2">
+              <Badge variant={LIVENESS_VARIANT[view.liveness.state]}>Machine {view.liveness.state.toLowerCase()}{view.liveness.planned ? ' (maintenance)' : ''}</Badge>
+              <span className="text-sm text-muted-foreground">{livenessText(view.liveness)}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={busy === 'maintenance'}
+                onClick={() =>
+                  run('maintenance', async () => {
+                    const on = !view.liveness?.planned;
+                    await sendJson(`/api/vending/machines/${machineId}/integration/maintenance`, 'PUT', on ? { hours: 2, reason: 'maintenance' } : { hours: 0 });
+                    return on ? 'Maintenance for 2 hours: orders paused, offline alerts suppressed.' : 'Maintenance ended.';
+                  })
+                }
+              >
+                {view.liveness.planned ? 'End maintenance' : 'Start 2h maintenance'}
+              </Button>
+            </span>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">

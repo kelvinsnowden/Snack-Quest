@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import type {
   IntegrationErrorKind,
@@ -113,10 +113,21 @@ class MachineIntegrationRepository {
         activatedBy: null,
         suspendedAt: null,
         suspendedReason: null,
-        signals: previous?.signals ?? EMPTY_SIGNALS,
-        errorCounts: previous?.errorCounts ?? ZERO_ERRORS,
-        lastError: previous?.lastError ?? null,
-        lastReportedStatus: previous?.lastReportedStatus ?? null,
+        // A different manufacturer is a different integration: its health
+        // starts clean rather than inheriting the previous one's history.
+        ...(() => {
+          const sameIntegration = previous && previous.manufacturerId === config.manufacturerId && previous.manufacturerMachineId === config.manufacturerMachineId;
+          return {
+            signals: sameIntegration ? previous.signals : EMPTY_SIGNALS,
+            errorCounts: sameIntegration ? previous.errorCounts : ZERO_ERRORS,
+            lastError: sameIntegration ? previous.lastError : null,
+            lastReportedStatus: sameIntegration ? previous.lastReportedStatus : null,
+          };
+        })(),
+        configuredAt: now,
+        maintenanceUntil: previous?.maintenanceUntil ?? null,
+        maintenanceReason: previous?.maintenanceReason ?? null,
+        commandsQueuedUntil: previous?.commandsQueuedUntil ?? null,
         createdAt: previous?.createdAt ?? now,
         createdBy: previous?.createdBy ?? actor,
         updatedAt: now,
@@ -220,6 +231,38 @@ class MachineIntegrationRepository {
   }
 
   /** Best-effort bookkeeping on hot paths (every heartbeat) — a machine with no integration record is simply not tracked, never an error. */
+  async setMaintenance(businessId: string, machineId: string, until: Date | null, reason: string | null, actor: string): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists || (snapshot.data() as MachineIntegration).businessId !== businessId) {
+      throw new MachineIntegrationNotFoundError(machineId);
+    }
+    await ref.update({ maintenanceUntil: until ? Timestamp.fromDate(until) : null, maintenanceReason: reason, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+  }
+
+  /** Extends `commandsQueuedUntil` to cover a newly queued command (never shortens it). */
+  async noteCommandQueued(machineId: string, expiresAt: Date): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineId);
+    await adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists) {
+        return;
+      }
+      const current = (snapshot.data() as MachineIntegration).commandsQueuedUntil;
+      if (!current || current.toMillis() < expiresAt.getTime()) {
+        tx.update(ref, { commandsQueuedUntil: Timestamp.fromDate(expiresAt) });
+      }
+    });
+  }
+
+  async noteOrderExpected(machineId: string, until: Date): Promise<void> {
+    await this.updateIfExists(machineId, { expectOrdersUntil: Timestamp.fromDate(until) });
+  }
+
+  async recordFirmwareChange(machineId: string, previousVersion: string | null): Promise<void> {
+    await this.updateIfExists(machineId, { previousFirmwareVersion: previousVersion, firmwareChangedAt: FieldValue.serverTimestamp() });
+  }
+
   async recordSignal(machineId: string, kind: IntegrationSignalKind): Promise<void> {
     await this.updateIfExists(machineId, { [`signals.${kind}`]: FieldValue.serverTimestamp() });
   }
@@ -231,8 +274,27 @@ class MachineIntegrationRepository {
     });
   }
 
-  async setLastReportedStatus(machineId: string, status: Omit<NonNullable<MachineIntegration['lastReportedStatus']>, 'reportedAt'>): Promise<void> {
-    await this.updateIfExists(machineId, { lastReportedStatus: { ...status, reportedAt: FieldValue.serverTimestamp() } });
+  /**
+   * Stores a status snapshot unless a snapshot the machine says is newer
+   * is already stored — so an older report delivered late (a retry, an
+   * offline queue flushing out of order) never overwrites fresher state.
+   * Returns whether it was stored.
+   */
+  async setLastReportedStatus(machineId: string, status: Omit<NonNullable<MachineIntegration['lastReportedStatus']>, 'reportedAt' | 'observedAt'>, observedAt: Date): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists) {
+        return false;
+      }
+      const existing = (snapshot.data() as MachineIntegration).lastReportedStatus;
+      const existingObserved = existing?.observedAt ?? null;
+      if (existingObserved && existingObserved.toMillis() > observedAt.getTime()) {
+        return false;
+      }
+      tx.update(ref, { lastReportedStatus: { ...status, reportedAt: FieldValue.serverTimestamp(), observedAt: Timestamp.fromDate(observedAt) } });
+      return true;
+    });
   }
 
   async updateFirmware(machineId: string, facts: Partial<Pick<MachineIntegration, 'firmwareVersion' | 'controllerType' | 'controllerVersion' | 'integrationVersion'>>): Promise<void> {

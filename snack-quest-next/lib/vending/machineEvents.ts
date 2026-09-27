@@ -17,6 +17,12 @@ export function normalizeEventType(raw: string): MachineEventType {
   return isMachineEventType(candidate) ? candidate : 'UNKNOWN_EVENT';
 }
 
+/** For names arriving from outside: platform-only types are never accepted from a machine — they're kept as UNKNOWN_EVENT with the native name. */
+export function normalizeExternalEventType(raw: string): MachineEventType {
+  const type = normalizeEventType(raw);
+  return (PLATFORM_ONLY_EVENT_TYPES as readonly string[]).includes(type) ? 'UNKNOWN_EVENT' : type;
+}
+
 const TELEMETRY_TO_EVENT: Partial<Record<MachineTelemetryEventType, MachineEventType>> = {
   heartbeat: 'HEARTBEAT_RECEIVED',
   status: 'STATUS_REPORTED',
@@ -58,6 +64,8 @@ const SEVERITY: Record<MachineEventType, MachineEventSeverity> = {
   DOOR_CLOSED: 'info',
   CAMERA_OFFLINE: 'warning',
   PAYMENT_DEVICE_ERROR: 'critical',
+  DISPENSE_OUTCOME_CONFLICT: 'critical',
+  FIRMWARE_CHANGED: 'warning',
   UNKNOWN_EVENT: 'info',
 };
 
@@ -66,7 +74,10 @@ export function severityFor(type: MachineEventType): MachineEventSeverity {
 }
 
 /** Critical events that open an Alert Center alert when they arrive through the integration layer. */
-export const ALERTING_EVENT_TYPES: readonly MachineEventType[] = ['MACHINE_ERROR', 'TEMPERATURE_ALERT', 'PAYMENT_DEVICE_ERROR', 'CAMERA_OFFLINE', 'INVENTORY_MISMATCH'];
+export const ALERTING_EVENT_TYPES: readonly MachineEventType[] = ['MACHINE_ERROR', 'TEMPERATURE_ALERT', 'PAYMENT_DEVICE_ERROR', 'CAMERA_OFFLINE', 'INVENTORY_MISMATCH', 'DISPENSE_OUTCOME_CONFLICT', 'FIRMWARE_CHANGED'];
+
+/** Names only Snack Quest may emit — refused (kept as UNKNOWN_EVENT) when a machine or manufacturer sends them. */
+export const PLATFORM_ONLY_EVENT_TYPES: readonly MachineEventType[] = ['DISPENSE_OUTCOME_CONFLICT', 'FIRMWARE_CHANGED', 'INVENTORY_MISMATCH', 'DISPENSE_REQUESTED', 'DISPENSE_STARTED', 'DISPENSE_SUCCESS', 'DISPENSE_FAILED'];
 
 /** A device clock is believed only within this much of server time — anything further out is a broken or unset clock, not a fact. */
 const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;

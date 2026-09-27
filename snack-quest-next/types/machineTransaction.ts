@@ -101,6 +101,20 @@ export interface MachineTransaction {
   dispenseFailureStatus: DispenseResultStatus | null;
   /** The raw `machineTelemetryEvents` idempotency key this transaction's vend result was applied from — lets a duplicate device report be recognised and ignored rather than double-processed. Null until a vend result has actually been applied. */
   appliedTelemetryEventId: string | null;
+  /**
+   * Set when the machine reported an outcome that contradicts one
+   * already acted on — e.g. "dispensed" arriving after the refund
+   * decision. The physical fact is recorded (stock moves, an operator is
+   * alerted); the money side is never silently flipped. Absent on
+   * transactions written before conflicts were modelled.
+   */
+  outcomeConflict?: {
+    reportedStatus: DispenseResultStatus;
+    previousStatus: MachineTransactionStatus;
+    reportedAt: Timestamp;
+    source: string;
+    resolved: boolean;
+  } | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -130,8 +144,11 @@ export const MACHINE_TRANSACTION_STATUS_TRANSITIONS: Record<
   paid: ['vend_authorized', 'paid_vend_failed', 'manual_review'],
   vend_authorized: ['dispensed', 'paid_vend_failed', 'manual_review'],
   dispensed: [],
-  paid_vend_failed: ['refund_requested'],
-  refund_requested: ['refunded'],
+  // `manual_review` from the refund path covers one case only: the
+  // machine reported the product *was* dispensed after we had decided to
+  // refund. Until the money has actually gone back, a human decides.
+  paid_vend_failed: ['refund_requested', 'manual_review'],
+  refund_requested: ['refunded', 'manual_review'],
   refunded: [],
   // A late device report is more authoritative than the sweep's own
   // guess that nothing would ever arrive — if one does, it resolves

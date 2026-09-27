@@ -1,0 +1,51 @@
+# Runs the vending fast-recovery sweep every 5 minutes.
+#
+# Why this exists: Vercel Hobby schedules crons at most once a day, but a
+# customer whose payment succeeded and whose dispense stalled should be
+# refunded (or sent to review) in minutes, not tomorrow. Most recovery
+# already happens on the request path — on the machine's command poll and
+# on the kiosk's payment-status poll — and this sweep catches the rest.
+# See docs/MACHINE_INTEGRATION_LAYER.md §7.
+#
+# Configure two repository secrets:
+#   SNACK_QUEST_BASE_URL   e.g. https://www.snackquests.shop
+#   CRON_SECRET            the same value as the Vercel env var
+# Without them the job exits successfully doing nothing.
+#
+# GitHub's scheduler can delay runs under load; the endpoint is
+# idempotent, so late or overlapping runs are harmless. On Vercel Pro,
+# a */5 entry in vercel.json can replace this workflow.
+name: Vending fast recovery
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: vending-fast-recovery
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the fast-recovery endpoint
+        env:
+          BASE_URL: ${{ secrets.SNACK_QUEST_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "SNACK_QUEST_BASE_URL / CRON_SECRET not configured; skipping."
+            exit 0
+          fi
+          status=$(curl -sS -o response.json -w '%{http_code}' --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/cron/vending-fast-recovery")
+          cat response.json
+          echo
+          if [ "$status" != "200" ]; then
+            echo "Fast recovery returned HTTP $status"
+            exit 1
+          fi

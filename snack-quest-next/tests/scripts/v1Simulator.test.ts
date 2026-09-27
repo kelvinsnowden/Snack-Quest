@@ -150,7 +150,7 @@ describe('Model B: manufacturer integrates against the Snack Quest Machine API',
     });
     const transactionId = await sell();
     expect((await machineTransactionRepository.findById(BUSINESS_ID, transactionId))?.status).toBe('paid_vend_failed');
-    expect((await machineDispenseCommandRepository.findByTransactionId(BUSINESS_ID, transactionId))?.failureReason).toMatch(/offline/);
+    expect((await machineDispenseCommandRepository.findByTransactionId(BUSINESS_ID, transactionId))?.failureReason).toMatch(/cannot collect|not reachable|offline/);
   });
 
   it('while the machine is offline its reports simply do not arrive, and resume when it returns', async () => {

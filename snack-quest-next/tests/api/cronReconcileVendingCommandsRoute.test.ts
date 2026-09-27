@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { reconcileStuckCommandsMock, sweepTimedOutMock, probeMock, recordMock } = vi.hoisted(() => ({
+const { reconcileStuckCommandsMock, sweepTimedOutMock, probeMock, recordMock, recoverySweepMock } = vi.hoisted(() => ({
+  recoverySweepMock: vi.fn(),
   reconcileStuckCommandsMock: vi.fn(),
   sweepTimedOutMock: vi.fn(),
   probeMock: vi.fn(),
@@ -19,6 +20,10 @@ vi.mock('@/services/machineIntegrationService', () => ({
   machineIntegrationService: { probeActiveOutboundIntegrations: probeMock },
 }));
 
+vi.mock('@/services/dispenseRecoveryService', () => ({
+  dispenseRecoveryService: { sweep: recoverySweepMock },
+}));
+
 vi.mock('@/repositories/scheduledJobRunRepository', () => ({
   scheduledJobRunRepository: { record: recordMock },
 }));
@@ -32,6 +37,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sweepTimedOutMock.mockResolvedValue({ timedOut: 0 });
   probeMock.mockResolvedValue({ probed: 0, failed: 0 });
+  recoverySweepMock.mockResolvedValue({ examined: 0, recovered: {} });
   process.env.CRON_SECRET = 'test-cron-secret';
   process.env.SNACK_QUEST_BUSINESS_ID = 'snack-quest';
 });
@@ -80,7 +86,8 @@ describe('GET /api/cron/reconcile-vending-commands', () => {
     expect(reconcileStuckCommandsMock).toHaveBeenCalledWith('snack-quest');
     expect(sweepTimedOutMock).toHaveBeenCalledWith('snack-quest');
     expect(probeMock).toHaveBeenCalledWith('snack-quest');
-    expect(await response.json()).toEqual({ ok: true, expired: 2, dispenseTimedOut: 1, integrationsProbed: 3, integrationProbesFailed: 1 });
+    expect(recoverySweepMock).toHaveBeenCalledWith('snack-quest');
+    expect(await response.json()).toEqual({ ok: true, expired: 2, dispenseTimedOut: 1, integrationsProbed: 3, integrationProbesFailed: 1, recoveryExamined: 0 });
   });
 
   it('records a succeeded scheduled job run with the result summary', async () => {
@@ -93,7 +100,7 @@ describe('GET /api/cron/reconcile-vending-commands', () => {
         businessId: 'snack-quest',
         jobName: 'reconcile-vending-commands',
         status: 'succeeded',
-        resultSummary: { expired: 0, dispenseTimedOut: 0, integrationsProbed: 0, integrationProbesFailed: 0 },
+        resultSummary: { expired: 0, dispenseTimedOut: 0, integrationsProbed: 0, integrationProbesFailed: 0, recoveryExamined: 0 },
         error: null,
       }),
     );

@@ -20,17 +20,27 @@ export type MachineEventInput = Omit<MachineEvent, 'occurredAt' | 'receivedAt'> 
 
 /** `machineEvents` reads/writes — append-only, deduplicated per machine by `dedupeKey` with the same `create()` primitive every other idempotency ledger here uses. */
 class MachineEventRepository {
-  async recordIfNew(input: MachineEventInput): Promise<{ isNew: boolean; id: string }> {
+  /**
+   * Records an event once per dedupe key. On a repeat, `conflict` says
+   * whether the repeat carried *different* content (a different
+   * fingerprint) — the same event id reused for a different fact, which
+   * is a client bug to surface, never silently resolved.
+   */
+  async recordIfNew(input: MachineEventInput & { fingerprint?: string | null }): Promise<{ isNew: boolean; id: string; conflict: boolean }> {
     const id = docId(input.businessId, input.machineId, input.dedupeKey);
     try {
       await adminFirestore
         .collection(COLLECTION)
         .doc(id)
-        .create({ ...input, occurredAt: Timestamp.fromDate(input.occurredAt), receivedAt: Timestamp.fromDate(input.receivedAt) });
-      return { isNew: true, id };
+        .create({ ...input, fingerprint: input.fingerprint ?? null, occurredAt: Timestamp.fromDate(input.occurredAt), receivedAt: Timestamp.fromDate(input.receivedAt) });
+      return { isNew: true, id, conflict: false };
     } catch (error) {
       if (isAlreadyExistsError(error)) {
-        return { isNew: false, id };
+        if (!input.fingerprint) {
+          return { isNew: false, id, conflict: false };
+        }
+        const existing = (await adminFirestore.collection(COLLECTION).doc(id).get()).data() as { fingerprint?: string | null } | undefined;
+        return { isNew: false, id, conflict: Boolean(existing?.fingerprint && existing.fingerprint !== input.fingerprint) };
       }
       throw error;
     }

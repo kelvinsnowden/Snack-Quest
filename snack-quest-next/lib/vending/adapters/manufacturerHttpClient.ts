@@ -1,3 +1,4 @@
+import { classifyNetworkError, recoveryFor } from '../integrationErrors';
 import {
   HardwareAuthenticationError,
   HardwareTimeoutError,
@@ -18,8 +19,6 @@ export interface ManufacturerHttpClientConfig {
 }
 
 /** Connection-level failures that prove the request never reached the server. Anything else after sending is ambiguous. */
-const NOT_DELIVERED_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']);
-
 function errorCode(error: unknown): string | null {
   const cause = (error as { cause?: { code?: unknown } })?.cause;
   if (cause && typeof cause.code === 'string') {
@@ -71,7 +70,7 @@ export class ManufacturerHttpClient {
         const result = await this.once(method, path, options);
         // A 5xx on a read is worth another try; on a write it is ambiguous and returned as-is.
         if (method === 'GET' && result.status >= 500 && attempt < attempts - 1) {
-          lastError = new HardwareUnreachableError(this.config.adapterKey, `HTTP ${result.status}`);
+          lastError = new HardwareUnreachableError(this.config.adapterKey, `HTTP ${result.status}`, 'transport.http_5xx');
           continue;
         }
         return result;
@@ -104,19 +103,20 @@ export class ManufacturerHttpClient {
       });
     } catch (error) {
       if (controller.signal.aborted) {
-        throw new HardwareTimeoutError(this.config.adapterKey, `${method} ${path} exceeded ${this.timeoutMs}ms`);
+        throw new HardwareTimeoutError(this.config.adapterKey, `${method} ${path} exceeded ${this.timeoutMs}ms`, 'transport.timeout');
       }
-      const code = errorCode(error);
-      if (code && NOT_DELIVERED_CODES.has(code)) {
-        throw new HardwareUnreachableError(this.config.adapterKey, `${method} ${path}: ${code}`);
+      const failure = classifyNetworkError(error);
+      const detail = `${method} ${path}: ${errorCode(error) ?? (error instanceof Error ? error.message : 'network error')}`;
+      if (recoveryFor(failure).delivered === 'no') {
+        throw new HardwareUnreachableError(this.config.adapterKey, detail, failure);
       }
       // A reset or anything unclassified mid-request: it may have arrived.
-      throw new HardwareTimeoutError(this.config.adapterKey, `${method} ${path}: ${code ?? (error instanceof Error ? error.message : 'network error')}`);
+      throw new HardwareTimeoutError(this.config.adapterKey, detail, failure);
     } finally {
       clearTimeout(timer);
     }
     if (response.status === 401 || response.status === 403) {
-      throw new HardwareAuthenticationError(this.config.adapterKey, `HTTP ${response.status} from ${method} ${path}`);
+      throw new HardwareAuthenticationError(this.config.adapterKey, `HTTP ${response.status} from ${method} ${path}`, response.status === 403 ? 'auth.forbidden' : 'auth.invalid_credentials');
     }
     let json: unknown = null;
     try {

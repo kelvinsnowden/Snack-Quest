@@ -291,7 +291,8 @@ describe('device progress reports', () => {
     const dispenser = new DispenseCommandService(() => adapter);
     await dispenser.recordProgress(BUSINESS_ID, machineId, command!.commandRef, 'dispensing');
     const again = await dispenser.recordProgress(BUSINESS_ID, machineId, command!.commandRef, 'dispensing');
-    expect(again.status).toBe('dispensing');
+    expect(again.command.status).toBe('dispensing');
+    expect(again.changed).toBe(false);
   });
 
   it('refuses a queued command acknowledged after it expired, so the machine never dispenses it', async () => {

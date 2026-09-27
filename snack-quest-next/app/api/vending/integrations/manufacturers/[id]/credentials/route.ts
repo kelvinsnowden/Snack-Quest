@@ -30,6 +30,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         environment: requiredString(body, 'environment') as MachineIntegrationEnvironment,
         label: optionalString(body, 'label') ?? '',
         expiresAt,
+        machineId: optionalString(body, 'machineId'),
+        rateLimitPerMinute: typeof body.rateLimitPerMinute === 'number' ? body.rateLimitPerMinute : null,
       },
       session.uid,
     );
@@ -39,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       action: 'issue_integration_credential',
       entityType: 'integrationCredential',
       entityId: issued.keyId,
-      after: { manufacturerId: id, kind: issued.kind, environment: issued.environment },
+      after: { manufacturerId: id, kind: issued.kind, environment: issued.environment, scope: issued.scope, secretFingerprint: issued.secretFingerprint },
     });
     return Response.json({ credential: issued }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   });

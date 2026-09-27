@@ -112,6 +112,7 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
             manufacturerId={manufacturerId}
             credentials={toJsonSafe(credentials) as CredentialRow[]}
             canIssueProduction={manufacturer.onboardingStage === 'production'}
+            machines={machines.map(({ integration }) => ({ machineId: integration.machineId, machineCode: integration.machineCode, environment: integration.environment }))}
           />
         </CardContent>
       </Card>

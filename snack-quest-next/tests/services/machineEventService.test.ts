@@ -104,7 +104,7 @@ describe('machineEventService.recordExternal', () => {
       'webhook',
       'acme',
     );
-    expect(result).toEqual({ recorded: 3, duplicates: 0, unknownTypes: ['MOTOR_OVERCURRENT'], unmappedSlots: ['spiral_99'] });
+    expect(result).toEqual({ recorded: 3, duplicates: 0, unknownTypes: ['MOTOR_OVERCURRENT'], unmappedSlots: ['spiral_99'], conflictingEventIds: [] });
     const events = await eventsOf(machineId);
     expect(events.find((event) => event.type === 'SLOT_EMPTY')?.slotCode).toBe('A01');
     const unknown = events.find((event) => event.type === 'UNKNOWN_EVENT');

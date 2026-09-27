@@ -16,9 +16,14 @@ export type MachineInventoryMovementInput = Omit<MachineInventoryMovement, 'crea
  */
 class MachineInventoryMovementRepository {
   /** Records a movement inside the caller's transaction — used by `machineInventoryMovementService` alongside the slot-quantity update it always accompanies, so the two never disagree. */
-  createInTransaction(tx: Transaction, input: MachineInventoryMovementInput): void {
-    const ref = adminFirestore.collection(COLLECTION).doc();
+  /** With a `docId`, the movement's identity is fixed — the caller reads it first in the same transaction to make the movement idempotent. */
+  createInTransaction(tx: Transaction, input: MachineInventoryMovementInput, docId?: string): void {
+    const ref = docId ? adminFirestore.collection(COLLECTION).doc(docId) : adminFirestore.collection(COLLECTION).doc();
     tx.set(ref, { ...input, createdAt: FieldValue.serverTimestamp() });
+  }
+
+  refFor(docId: string) {
+    return adminFirestore.collection(COLLECTION).doc(docId);
   }
 
   async create(input: MachineInventoryMovementInput): Promise<string> {

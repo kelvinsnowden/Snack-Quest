@@ -1,4 +1,4 @@
-import { handleMachineRequest, v1Json } from '@/lib/vending/v1/machineApi';
+import { handleMachineRequest, v1Ok } from '@/lib/vending/v1/machineApi';
 import { machineApiService } from '@/services/machineApiService';
 
 /**
@@ -9,5 +9,5 @@ import { machineApiService } from '@/services/machineApiService';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ machineCode: string; commandId: string }> }): Promise<Response> {
   const { machineCode, commandId } = await params;
-  return handleMachineRequest(request, machineCode, async (context) => v1Json(await machineApiService.acknowledgeCommand(context, commandId)));
+  return handleMachineRequest(request, machineCode, 'command_ack', async (context) => v1Ok(context, await machineApiService.acknowledgeCommand(context, commandId)));
 }

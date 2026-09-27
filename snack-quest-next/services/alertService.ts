@@ -239,6 +239,24 @@ class AlertService {
       }
       const isInventory = data.type === 'INVENTORY_MISMATCH';
       const dedupeKey = `integration_event:${id}`;
+      if (data.type === 'DISPENSE_OUTCOME_CONFLICT' || data.type === 'FIRMWARE_CHANGED') {
+        await this.recordEvent(
+          {
+            businessId,
+            type: data.type === 'DISPENSE_OUTCOME_CONFLICT' ? 'dispense_conflict' : 'integration_issue',
+            machineId: data.machineId,
+            locationId: locationByMachine.get(data.machineId) ?? null,
+            dedupeKey,
+            title: data.type === 'DISPENSE_OUTCOME_CONFLICT' ? 'Dispense outcome contradicts a money decision' : 'Machine firmware changed',
+            detail:
+              data.type === 'DISPENSE_OUTCOME_CONFLICT'
+                ? `${String(data.data.description ?? 'Contradicting outcome reported')} (transaction ${String(data.data.transactionId ?? '—')}).`
+                : `Firmware ${String(data.data.previousFirmwareVersion ?? 'unknown')} → ${String(data.data.firmwareVersion ?? 'unknown')}${data.data.certifiedBefore === true ? ' — the model was certified before this change' : ''}.`,
+          },
+          dedupeKey,
+        );
+        continue;
+      }
       await this.recordEvent(
         {
           businessId,

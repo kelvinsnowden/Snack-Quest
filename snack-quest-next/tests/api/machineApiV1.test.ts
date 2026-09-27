@@ -163,26 +163,22 @@ describe('isolation', () => {
     expect((await response.json()).error.code).toBe('machine_not_found');
   });
 
-  it('a production key cannot reach a sandbox machine', async () => {
+  it('a production key cannot reach a sandbox machine — and says so to the machine\'s own manufacturer', async () => {
     const productionKey = await integrationCredentialRepository.issue({ businessId: BUSINESS_ID, manufacturerId: setup.manufacturerId, kind: 'api', environment: 'production', label: 'p', issuedBy: 'staff-1', expiresAt: null });
     const response = await heartbeat(signed(`/api/v1/machines/${setup.machineCode}/heartbeat`, { eventId: 'hb-1' }, { key: productionKey }), machineParams());
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe('environment_mismatch');
   });
 
-  it('a device credential reaches only its own machine', async () => {
+  it('refuses legacy device bearer credentials — v1 accepts only signed requests', async () => {
     const own = new Request(`http://localhost/api/v1/machines/${setup.machineCode}/heartbeat`, {
       method: 'POST',
       headers: { authorization: buildDeviceAuthHeader(setup.machineId, setup.deviceSecret) },
       body: JSON.stringify({ eventId: 'dev-hb-1' }),
     });
-    expect((await heartbeat(own, machineParams())).status).toBe(202);
-    const other = await provisionMachine(BUSINESS_ID);
-    const foreign = new Request(`http://localhost/api/v1/machines/${other.machineCode}/heartbeat`, {
-      method: 'POST',
-      headers: { authorization: buildDeviceAuthHeader(setup.machineId, setup.deviceSecret) },
-      body: JSON.stringify({ eventId: 'dev-hb-2' }),
-    });
-    expect((await heartbeat(foreign, { params: Promise.resolve({ machineCode: other.machineCode }) })).status).toBe(404);
+    const response = await heartbeat(own, machineParams());
+    expect(response.status).toBe(401);
+    expect((await response.json()).error.code).toBe('missing_signature');
   });
 });
 
@@ -211,21 +207,44 @@ describe('machine registration and description', () => {
 });
 
 describe('reporting', () => {
-  it('heartbeats are idempotent per eventId and count toward integration health', async () => {
+  it('heartbeats update liveness without writing an event per beat, and are safe to repeat', async () => {
     const path = `/api/v1/machines/${setup.machineCode}/heartbeat`;
+    expect((await (await heartbeat(signed(path, { eventId: 'hb-1' }), machineParams())).json()).data).toMatchObject({ accepted: true, reportOutcomes: [] });
     expect((await (await heartbeat(signed(path, { eventId: 'hb-1' }), machineParams())).json()).data.accepted).toBe(true);
-    expect((await (await heartbeat(signed(path, { eventId: 'hb-1' }), machineParams())).json()).data.accepted).toBe(false);
     const integration = await machineIntegrationRepository.findByMachineId(BUSINESS_ID, setup.machineId);
     expect(integration?.signals.heartbeat).not.toBeNull();
     expect(integration?.signals.api_request).not.toBeNull();
+    const types = (await machineEventRepository.listByMachine(BUSINESS_ID, setup.machineId)).map(({ data }) => data.type);
+    expect(types).not.toContain('HEARTBEAT_RECEIVED');
+    // First contact ever ends "never heard" — one transition event, not one per heartbeat.
+    expect(types.filter((type) => type === 'MACHINE_ONLINE').length).toBeLessThanOrEqual(1);
   });
 
-  it('a status report stores the snapshot and raises one event per fault', async () => {
-    await status(signed(`/api/v1/machines/${setup.machineCode}/status`, { eventId: 's-1', online: true, doorOpen: false, temperatureCelsius: 6, faults: ['E12', 'E40'], paymentDeviceOk: false }), machineParams());
+  it('a status report stores the snapshot and raises events only for what changed', async () => {
+    const send = (eventId: string, body: Record<string, unknown>) =>
+      status(signed(`/api/v1/machines/${setup.machineCode}/status`, { eventId, online: true, doorOpen: false, temperatureCelsius: 6, paymentDeviceOk: true, faults: [], ...body }), machineParams());
+    await send('s-1', { faults: ['E12', 'E40'], paymentDeviceOk: false });
     const integration = await machineIntegrationRepository.findByMachineId(BUSINESS_ID, setup.machineId);
     expect(integration?.lastReportedStatus).toMatchObject({ online: true, temperatureCelsius: 6, faults: ['E12', 'E40'], paymentDeviceOk: false });
-    const types = (await machineEventRepository.listByMachine(BUSINESS_ID, setup.machineId)).map(({ data }) => data.type).sort();
-    expect(types).toEqual(['MACHINE_ERROR', 'MACHINE_ERROR', 'PAYMENT_DEVICE_ERROR', 'STATUS_REPORTED']);
+    const countFaults = async () => (await machineEventRepository.listByMachine(BUSINESS_ID, setup.machineId)).filter(({ data }) => data.type === 'MACHINE_ERROR').length;
+    expect(await countFaults()).toBe(2);
+    // The same persistent faults reported again are not new facts.
+    await send('s-2', { faults: ['E12', 'E40'], paymentDeviceOk: false });
+    expect(await countFaults()).toBe(2);
+    // A new one is.
+    await send('s-3', { faults: ['E12', 'E40', 'E99'], paymentDeviceOk: false });
+    expect(await countFaults()).toBe(3);
+    const types = (await machineEventRepository.listByMachine(BUSINESS_ID, setup.machineId)).map(({ data }) => data.type);
+    expect(types.filter((type) => type === 'PAYMENT_DEVICE_ERROR').length).toBe(1);
+    expect(types).not.toContain('STATUS_REPORTED');
+  });
+
+  it('an older status snapshot delivered late never overwrites a newer one', async () => {
+    const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+    await status(signed(`/api/v1/machines/${setup.machineCode}/status`, { eventId: 'new', occurredAt: at(10), online: true, doorOpen: true }), machineParams());
+    const late = await status(signed(`/api/v1/machines/${setup.machineCode}/status`, { eventId: 'old', occurredAt: at(120), online: true, doorOpen: false }), machineParams());
+    expect((await late.json()).data).toEqual({ accepted: true, applied: false });
+    expect((await machineIntegrationRepository.findByMachineId(BUSINESS_ID, setup.machineId))?.lastReportedStatus?.doorOpen).toBe(true);
   });
 
   it('inventory mismatches come back in the manufacturer\'s slot names', async () => {

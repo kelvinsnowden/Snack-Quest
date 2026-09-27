@@ -33,11 +33,12 @@ export const SIGNING_HEADERS = {
   signature: 'x-sq-signature',
 } as const;
 
-export function sha256Hex(body: string): string {
-  return createHash('sha256').update(body, 'utf8').digest('hex');
+/** SHA-256 of the body **bytes**. A string is encoded as UTF-8 first; the server always hashes the raw bytes it received, never a re-serialization. */
+export function sha256Hex(body: string | Uint8Array): string {
+  return typeof body === 'string' ? createHash('sha256').update(body, 'utf8').digest('hex') : createHash('sha256').update(body).digest('hex');
 }
 
-export function canonicalRequest(parts: { timestamp: string; nonce: string; method: string; pathWithQuery: string; body: string }): string {
+export function canonicalRequest(parts: { timestamp: string; nonce: string; method: string; pathWithQuery: string; body: string | Uint8Array }): string {
   return [SIGNATURE_VERSION, parts.timestamp, parts.nonce, parts.method.toUpperCase(), parts.pathWithQuery, sha256Hex(parts.body)].join('\n');
 }
 
@@ -45,19 +46,22 @@ export function computeSignature(secret: string, canonical: string): string {
   return createHmac('sha256', secret).update(canonical, 'utf8').digest('hex');
 }
 
-/** Constant-time comparison of a presented `v1=<hex>` header against the expected hex digest. */
+/**
+ * Constant-time comparison of a presented `v1=<hex>` header against the
+ * expected hex digest. Hex case is not significant (some HMAC libraries
+ * emit uppercase); anything that isn't exactly 64 hex digits is refused
+ * before comparing.
+ */
 export function signatureMatches(presentedHeader: string, expectedHex: string): boolean {
   const prefix = `${SIGNATURE_VERSION}=`;
   if (!presentedHeader.startsWith(prefix)) {
     return false;
   }
-  const presented = Buffer.from(presentedHeader.slice(prefix.length), 'utf8');
-  const expected = Buffer.from(expectedHex, 'utf8');
-  if (presented.length !== expected.length) {
-    timingSafeEqual(expected, expected);
+  const presentedHex = presentedHeader.slice(prefix.length).trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(presentedHex)) {
     return false;
   }
-  return timingSafeEqual(presented, expected);
+  return timingSafeEqual(Buffer.from(presentedHex, 'utf8'), Buffer.from(expectedHex.toLowerCase(), 'utf8'));
 }
 
 /** Builds the four signing headers for a request — what a manufacturer's client does before every call. */
@@ -66,7 +70,7 @@ export function signRequest(input: {
   secret: string;
   method: string;
   pathWithQuery: string;
-  body: string;
+  body: string | Uint8Array;
   timestamp?: number;
   nonce?: string;
 }): Record<string, string> {

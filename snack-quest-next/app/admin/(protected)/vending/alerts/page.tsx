@@ -28,6 +28,8 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
   expiry_risk: 'Expiry risk',
   subscription_issue: 'Subscription issue',
   settlement_failure: 'Settlement failure',
+  dispense_conflict: 'Dispense conflict',
+  integration_issue: 'Integration issue',
 };
 
 /**

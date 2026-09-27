@@ -27,6 +27,8 @@ export interface WebhookIngestResult {
   dispenseOutcomesApplied: number;
   unmatchedMachines: string[];
   unknownEventTypes: string[];
+  /** Event ids already received with different content — the sender reused an id for a different fact. */
+  conflictingEventIds: string[];
 }
 
 /**
@@ -79,7 +81,7 @@ class ManufacturerWebhookService {
     if (!isNew) {
       const existing = await webhookEventRepository.findByProviderEventId(businessId, 'machine_manufacturer', providerEventId);
       if (existing?.status === 'processed') {
-        return { deliveryId: parsed.deliveryId, duplicate: true, eventsRecorded: 0, eventsDuplicate: 0, dispenseOutcomesApplied: 0, unmatchedMachines: [], unknownEventTypes: [] };
+        return { deliveryId: parsed.deliveryId, duplicate: true, eventsRecorded: 0, eventsDuplicate: 0, dispenseOutcomesApplied: 0, unmatchedMachines: [], unknownEventTypes: [], conflictingEventIds: [] };
       }
     }
 
@@ -94,7 +96,7 @@ class ManufacturerWebhookService {
   }
 
   private async process(businessId: string, manufacturerId: string, credential: IntegrationCredential, events: AdapterMachineEvent[]) {
-    const result = { eventsRecorded: 0, eventsDuplicate: 0, dispenseOutcomesApplied: 0, unmatchedMachines: [] as string[], unknownEventTypes: [] as string[] };
+    const result = { eventsRecorded: 0, eventsDuplicate: 0, dispenseOutcomesApplied: 0, unmatchedMachines: [] as string[], unknownEventTypes: [] as string[], conflictingEventIds: [] as string[] };
     const signalled = new Set<string>();
 
     for (const event of events) {
@@ -153,6 +155,7 @@ class ManufacturerWebhookService {
       result.eventsRecorded += recorded.recorded;
       result.eventsDuplicate += recorded.duplicates;
       result.unknownEventTypes.push(...recorded.unknownTypes);
+      result.conflictingEventIds.push(...recorded.conflictingEventIds);
     }
     return result;
   }

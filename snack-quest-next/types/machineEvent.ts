@@ -31,6 +31,10 @@ export const MACHINE_EVENT_TYPES = [
   'DOOR_CLOSED',
   'CAMERA_OFFLINE',
   'PAYMENT_DEVICE_ERROR',
+  /** Snack Quest-originated: a machine's outcome report contradicted a decision already acted on (e.g. "dispensed" after the refund decision). */
+  'DISPENSE_OUTCOME_CONFLICT',
+  /** Snack Quest-originated: the machine reported different firmware than last time. */
+  'FIRMWARE_CHANGED',
   'UNKNOWN_EVENT',
 ] as const;
 

@@ -17,7 +17,7 @@ import {
   IntegrationActivationError,
   IntegrationConfigurationError,
 } from '@/services/machineIntegrationService';
-import { CredentialIssuanceError, IntegrationCredentialNotFoundError } from '@/services/integrationCredentialService';
+import { CredentialIssuanceError, CredentialRotationConflictError, IntegrationCredentialNotFoundError } from '@/services/integrationCredentialService';
 import { SlotMappingError } from '@/services/machineSlotService';
 import type { StaffSession } from '@/services/staffAuthService';
 import type { Role } from '@/types';
@@ -115,7 +115,8 @@ function mapIntegrationError(error: unknown): Response | null {
   if (
     error instanceof IllegalOnboardingTransitionError ||
     error instanceof IllegalIntegrationStateTransitionError ||
-    error instanceof ManufacturerMachineIdInUseError
+    error instanceof ManufacturerMachineIdInUseError ||
+    error instanceof CredentialRotationConflictError
   ) {
     return respond(409);
   }

@@ -1,4 +1,5 @@
 import { paymentService } from '@/services/paymentService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { conversationService } from '@/services/conversationService';
 import { notificationService } from '@/services/notificationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
@@ -25,9 +26,7 @@ const JOB_NAME = 'reconcile-stk-payments';
  * here, same separation the STK callback route already keeps.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 

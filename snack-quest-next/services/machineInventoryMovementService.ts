@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
@@ -52,8 +54,22 @@ class MachineInventoryMovementService {
     expiresAt?: Date | null;
     note?: string | null;
     actor: string;
-  }): Promise<{ afterQuantity: number }> {
+    /**
+     * Makes the movement idempotent: the same key can move stock at most
+     * once, however many times it is retried (a sale uses
+     * `sale:{transactionId}`). A repeat returns `{ duplicate: true }`
+     * and changes nothing.
+     */
+    idempotencyKey?: string;
+  }): Promise<{ afterQuantity: number; duplicate?: boolean }> {
+    const movementDocId = input.idempotencyKey ? `mv_${createHash('sha256').update(`${input.businessId}:${input.idempotencyKey}`).digest('hex').slice(0, 40)}` : undefined;
     const result = await adminFirestore.runTransaction(async (tx) => {
+      if (movementDocId) {
+        const existing = await tx.get(machineInventoryMovementRepository.refFor(movementDocId));
+        if (existing.exists) {
+          return { afterQuantity: (existing.data() as MachineInventoryMovement).afterQuantity, slot: null, duplicate: true };
+        }
+      }
       const slot = await machineSlotRepository.getInTransaction(tx, input.machineId, input.slotId);
       if (!slot || slot.businessId !== input.businessId) {
         throw new SlotNotFoundError(input.machineId, input.slotId);
@@ -80,10 +96,13 @@ class MachineInventoryMovementService {
         expiresAt: input.expiresAt ? (Timestamp.fromDate(input.expiresAt) as unknown as MachineInventoryMovement['expiresAt']) : null,
         note: input.note ?? null,
         actor: input.actor,
-      });
+      }, movementDocId);
 
-      return { afterQuantity, slot: { ...slot, currentQuantity: afterQuantity } satisfies MachineSlot };
+      return { afterQuantity, slot: { ...slot, currentQuantity: afterQuantity } satisfies MachineSlot, duplicate: false };
     });
+    if (result.duplicate || !result.slot) {
+      return { afterQuantity: result.afterQuantity, duplicate: true };
+    }
 
     // Outside the transaction — a restock-task creation is its own
     // write and does not need to be atomic with the stock movement

@@ -1,10 +1,12 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineEventRepository } from '@/repositories/machineEventRepository';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
-import { normalizeEventType, resolveOccurredAt, sanitizeEventData, severityFor } from '@/lib/vending/machineEvents';
+import { normalizeExternalEventType, resolveOccurredAt, sanitizeEventData, severityFor } from '@/lib/vending/machineEvents';
 import { resolveSlotCode } from '@/lib/vending/slotMapping';
 import type { Machine, MachineEvent, MachineEventSource, MachineEventType } from '@/types';
 
@@ -44,7 +46,7 @@ const MACHINE_ORIGINATED: readonly MachineEventSource[] = ['v1_api', 'webhook'];
  * delivery.
  */
 class MachineEventService {
-  async record(input: RecordMachineEventInput, preloaded?: Machine): Promise<{ isNew: boolean; id: string }> {
+  async record(input: RecordMachineEventInput & { fingerprint?: string | null }, preloaded?: Machine): Promise<{ isNew: boolean; id: string; conflict: boolean }> {
     const machine = preloaded ?? (await machineRepository.findById(input.businessId, input.machineId));
     if (!machine) {
       throw new MachineNotFoundError(input.machineId);
@@ -65,6 +67,7 @@ class MachineEventService {
       nativeType: input.nativeType ?? null,
       data: sanitizeEventData(input.data),
       dedupeKey: input.dedupeKey,
+      fingerprint: input.fingerprint ?? null,
     });
 
     if (result.isNew && MACHINE_ORIGINATED.includes(input.source)) {
@@ -88,7 +91,7 @@ class MachineEventService {
     events: ExternalMachineEventInput[],
     source: MachineEventSource,
     namespace: string,
-  ): Promise<{ recorded: number; duplicates: number; unknownTypes: string[]; unmappedSlots: string[] }> {
+  ): Promise<{ recorded: number; duplicates: number; unknownTypes: string[]; unmappedSlots: string[]; conflictingEventIds: string[] }> {
     const slots = events.some((event) => event.manufacturerSlotId)
       ? await machineSlotRepository.listByMachine(businessId, machine.id)
       : [];
@@ -96,9 +99,10 @@ class MachineEventService {
     let duplicates = 0;
     const unknownTypes: string[] = [];
     const unmappedSlots: string[] = [];
+    const conflictingEventIds: string[] = [];
 
     for (const event of events) {
-      const type = normalizeEventType(event.type);
+      const type = normalizeExternalEventType(event.type);
       if (type === 'UNKNOWN_EVENT') {
         unknownTypes.push(event.type);
       }
@@ -109,12 +113,13 @@ class MachineEventService {
           unmappedSlots.push(event.manufacturerSlotId);
         }
       }
-      const { isNew } = await this.record(
+      const { isNew, conflict } = await this.record(
         {
           businessId,
           machineId: machine.id,
           type,
           source,
+          fingerprint: createHash('sha256').update(JSON.stringify([event.type, event.occurredAt ?? null, event.manufacturerSlotId ?? null, event.data ?? {}])).digest('hex'),
           dedupeKey: `${namespace}:${event.eventId}`,
           deviceTimestamp: event.occurredAt,
           slotCode,
@@ -125,11 +130,13 @@ class MachineEventService {
       );
       if (isNew) {
         recorded += 1;
+      } else if (conflict) {
+        conflictingEventIds.push(event.eventId);
       } else {
         duplicates += 1;
       }
     }
-    return { recorded, duplicates, unknownTypes, unmappedSlots };
+    return { recorded, duplicates, unknownTypes, unmappedSlots, conflictingEventIds };
   }
 
   async listForMachine(businessId: string, machineId: string, limit?: number): Promise<{ id: string; data: MachineEvent }[]> {

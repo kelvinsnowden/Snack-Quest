@@ -32,10 +32,10 @@ function isAlreadyExistsError(error: unknown): boolean {
 
 export type DispenseCommandClaim = Omit<
   MachineDispenseCommand,
-  'commandRef' | 'idempotencyKey' | 'status' | 'statusHistory' | 'delivery' | 'vendRef' | 'failureReason' | 'dispenseResultStatus' | 'expiresAt' | 'createdAt' | 'updatedAt'
+  'commandRef' | 'idempotencyKey' | 'status' | 'statusHistory' | 'delivery' | 'vendRef' | 'failureReason' | 'failureCode' | 'dispenseResultStatus' | 'expiresAt' | 'createdAt' | 'updatedAt'
 > & { expiresAt: Date };
 
-export type DispenseCommandFields = Partial<Pick<MachineDispenseCommand, 'delivery' | 'vendRef' | 'failureReason' | 'dispenseResultStatus'>>;
+export type DispenseCommandFields = Partial<Pick<MachineDispenseCommand, 'delivery' | 'vendRef' | 'failureReason' | 'failureCode' | 'dispenseResultStatus'>>;
 
 /**
  * `machineDispenseCommands` reads/writes. `claim` is the idempotency
@@ -57,6 +57,7 @@ class MachineDispenseCommandRepository {
       delivery: null,
       vendRef: null,
       failureReason: null,
+      failureCode: null,
       dispenseResultStatus: null,
       expiresAt: Timestamp.fromDate(input.expiresAt),
       createdAt: now,
@@ -158,6 +159,23 @@ class MachineDispenseCommandRepository {
       .map((doc) => doc.data() as MachineDispenseCommand)
       .filter((command) => command.delivery === 'queued' && command.expiresAt.toMillis() > now)
       .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
+  }
+
+  /** One machine's commands in any of these statuses — small sets (a machine has at most a handful in flight). */
+  async listForMachineInStatuses(businessId: string, machineId: string, statuses: DispenseCommandStatus[], limit = 20): Promise<MachineDispenseCommand[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('status', 'in', statuses)
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => doc.data() as MachineDispenseCommand);
+  }
+
+  async scheduleReconcile(businessId: string, transactionId: string, attempts: number, nextAt: Date | null): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(dispenseCommandDocId(transactionId));
+    await ref.update({ reconcileAttempts: attempts, nextReconcileAt: nextAt ? Timestamp.fromDate(nextAt) : null });
   }
 
   async listByStatusUpdatedBefore(businessId: string, status: DispenseCommandStatus, before: Date, limit = 200): Promise<MachineDispenseCommand[]> {

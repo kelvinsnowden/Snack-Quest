@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { machineRepository } from '@/repositories/machineRepository';
+import { machineModelRepository } from '@/repositories/machineModelRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineCommandRepository, MachineCommandNotFoundError } from '@/repositories/machineCommandRepository';
@@ -8,20 +9,34 @@ import { machineDispenseCommandRepository, DispenseCommandNotFoundError } from '
 import { machineEventService } from '@/services/machineEventService';
 import { machineInventorySyncService } from '@/services/machineInventorySyncService';
 import { machineIntegrationService } from '@/services/machineIntegrationService';
-import { machineTransactionService } from '@/services/machineTransactionService';
+import { machineTransactionService, type VendReportResult } from '@/services/machineTransactionService';
 import { dispenseCommandService } from '@/services/dispenseCommandService';
 import { machineCommandService, CommandExpiredError } from '@/services/machineCommandService';
 import { manufacturerSlotIdFor } from '@/lib/vending/slotMapping';
+import { scopeOf } from '@/lib/vending/credentialLifecycle';
+import { deriveMachineLiveness } from '@/lib/vending/machineLiveness';
+import { resolveOccurredAt } from '@/lib/vending/machineEvents';
 import { API_VERSION, ContractViolationError, type MachineApiContext } from '@/lib/vending/v1/machineApi';
 import { DISPENSE_EVENT_TYPES, type CommandStatusBody } from '@/lib/vending/v1/schemas';
 import type { DispenseResultStatus, VendResultReport } from '@/lib/vending/hardwareAdapter';
-import type { IntegrationCredential, Machine, MachineIntegration } from '@/types';
+import type { IntegrationCredential, Machine, MachineEventType, MachineIntegration } from '@/types';
 import type { z } from 'zod';
 import type { connectSchema, eventsSchema, heartbeatSchema, inventorySchema, statusSchema } from '@/lib/vending/v1/schemas';
 
 /** How often a machine should poll for commands and send heartbeats — advisory, returned in the machine description so it can change without a firmware update. */
 const RECOMMENDED_POLL_SECONDS = 10;
 const RECOMMENDED_HEARTBEAT_SECONDS = 60;
+/** While a customer is paying at this machine, ask it to poll this often. */
+const FAST_POLL_SECONDS = 2;
+const CONTACT_WRITE_INTERVAL_MS = 30_000;
+
+/** Latest contact of any kind, by Snack Quest's clock. */
+export function latestContact(integration: Pick<MachineIntegration, 'signals'>): Date | null {
+  const candidates = [integration.signals?.heartbeat, integration.signals?.api_request, integration.signals?.webhook]
+    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+    .map((value) => value.toDate());
+  return candidates.length === 0 ? null : new Date(Math.max(...candidates.map((date) => date.getTime())));
+}
 
 export class MachineNotProvisionedError extends Error {
   constructor(manufacturerMachineId: string) {
@@ -68,9 +83,17 @@ class MachineApiService {
     if (!integration || integration.environment !== credential.environment) {
       throw new MachineNotProvisionedError(body.manufacturerMachineId);
     }
+    const scope = scopeOf(credential);
+    if (scope.type === 'machine' && scope.machineId !== integration.machineId) {
+      // A unit's own key can only ever announce that unit.
+      throw new MachineNotProvisionedError(body.manufacturerMachineId);
+    }
     const machine = await machineRepository.findById(businessId, integration.machineId);
     if (!machine) {
       throw new MachineNotProvisionedError(body.manufacturerMachineId);
+    }
+    if (body.firmwareVersion && integration.firmwareVersion && body.firmwareVersion !== integration.firmwareVersion) {
+      await this.recordFirmwareChange(businessId, { ...machine, id: integration.machineId }, integration, body.firmwareVersion, requestId);
     }
     await machineIntegrationRepository.updateFirmware(integration.machineId, {
       firmwareVersion: body.firmwareVersion,
@@ -97,6 +120,31 @@ class MachineApiService {
     return this.describe(businessId, { ...machine, id: integration.machineId }, integration);
   }
 
+  /**
+   * Firmware changed since last connect. Recorded as an event (and an
+   * alert) — and flagged if the model was certified before the change,
+   * because certification was earned by the old firmware.
+   */
+  private async recordFirmwareChange(businessId: string, machine: Machine & { id: string }, integration: MachineIntegration, firmwareVersion: string, requestId: string): Promise<void> {
+    const model = await machineModelRepository.findById(businessId, integration.modelId);
+    await machineIntegrationRepository.recordFirmwareChange(integration.machineId, integration.firmwareVersion);
+    await machineEventService.record(
+      {
+        businessId,
+        machineId: integration.machineId,
+        type: 'FIRMWARE_CHANGED',
+        source: 'v1_api',
+        dedupeKey: `v1:firmware:${requestId}`,
+        data: {
+          previousFirmwareVersion: integration.firmwareVersion,
+          firmwareVersion,
+          certifiedBefore: model?.certificationStatus === 'certified',
+        },
+      },
+      machine,
+    );
+  }
+
   async describe(businessId: string, machine: Machine & { id: string }, integration: MachineIntegration | null): Promise<MachineDescription> {
     const [slots, { statuses }] = await Promise.all([
       machineSlotRepository.listByMachine(businessId, machine.id),
@@ -116,59 +164,113 @@ class MachineApiService {
     };
   }
 
-  async heartbeat(context: MachineApiContext, body: z.infer<typeof heartbeatSchema>): Promise<{ accepted: boolean }> {
-    const { isNew } = await machineEventService.record(
-      {
-        businessId: context.businessId,
-        machineId: context.machine.id,
-        type: 'HEARTBEAT_RECEIVED',
-        source: 'v1_api',
-        dedupeKey: `v1:${body.eventId}`,
-        deviceTimestamp: body.occurredAt,
-        data: body.uptimeSeconds === undefined ? {} : { uptimeSeconds: body.uptimeSeconds },
-      },
-      context.machine,
-    );
-    return { accepted: isNew };
+  /**
+   * Proof of life. Deliberately *not* stored as an event: at fleet scale
+   * heartbeats are the bulk of all traffic, and a sample every minute
+   * per machine is liveness data, not history. It updates the
+   * integration's contact signal (at most every 30 s) and produces an
+   * event only on a *transition* — a machine coming back after being
+   * offline or never heard. The response carries `reportOutcomes`: any
+   * of this machine's dispenses whose outcome Snack Quest still doesn't
+   * know, so a machine that stored its outcomes can resend them.
+   */
+  async heartbeat(context: MachineApiContext, body: z.infer<typeof heartbeatSchema>): Promise<{ accepted: true; reportOutcomes: { commandId: string; reason: string }[] }> {
+    await this.noteContact(context, body.eventId);
+    const outstanding = await dispenseCommandService.listNeedingOutcome(context.businessId, context.machine.id);
+    return {
+      accepted: true,
+      reportOutcomes: outstanding.map((command) => ({
+        commandId: command.commandRef,
+        reason: command.status === 'unknown' ? 'outcome_unknown' : command.status === 'timeout' ? 'no_outcome_received' : 'in_progress_too_long',
+      })),
+    };
   }
 
-  /** A full status snapshot. Stored as the machine's last reported state (what an inbound-only adapter answers status questions from) and translated into events — one per fault, one for a payment-device problem. */
-  async status(context: MachineApiContext, body: z.infer<typeof statusSchema>): Promise<{ accepted: boolean }> {
-    const { isNew } = await machineEventService.record(
-      {
-        businessId: context.businessId,
-        machineId: context.machine.id,
-        type: 'STATUS_REPORTED',
-        source: 'v1_api',
-        dedupeKey: `v1:${body.eventId}`,
-        deviceTimestamp: body.occurredAt,
-        data: { online: body.online, doorOpen: body.doorOpen ?? null, temperatureCelsius: body.temperatureCelsius ?? null, faultCount: body.faults?.length ?? 0 },
-      },
-      context.machine,
-    );
-    if (!isNew) {
-      return { accepted: false };
-    }
-    await machineIntegrationRepository.setLastReportedStatus(context.machine.id, {
+  /**
+   * A full status snapshot. Stored as the machine's last reported state
+   * (what an inbound-only adapter answers status questions from) —
+   * unless a snapshot the machine says is newer is already stored, so a
+   * late, out-of-order delivery never overwrites fresher state. Events
+   * are emitted for *changes* only (door, online, new faults, payment
+   * device), each deduplicated by the report's `eventId`.
+   */
+  async status(context: MachineApiContext, body: z.infer<typeof statusSchema>): Promise<{ accepted: true; applied: boolean }> {
+    await this.noteContact(context, body.eventId);
+    const observedAt = resolveOccurredAt(body.occurredAt, new Date());
+    const previous = context.integration.lastReportedStatus;
+    const next = {
       online: body.online,
       doorOpen: body.doorOpen ?? null,
       temperatureCelsius: body.temperatureCelsius ?? null,
       faults: body.faults ?? [],
       paymentDeviceOk: body.paymentDeviceOk ?? null,
+    };
+    const stored = await machineIntegrationRepository.setLastReportedStatus(context.machine.id, next, observedAt);
+    if (!stored) {
+      return { accepted: true, applied: false };
+    }
+    const emit = (type: MachineEventType, suffix: string, extra: { nativeType?: string; data?: Record<string, unknown> } = {}) =>
+      machineEventService.record(
+        { businessId: context.businessId, machineId: context.machine.id, type, source: 'v1_api', dedupeKey: `v1:${body.eventId}:${suffix}`, deviceTimestamp: body.occurredAt, ...extra },
+        context.machine,
+      );
+    if (!previous || previous.online !== next.online) {
+      if (previous || !next.online) {
+        await emit(next.online ? 'MACHINE_ONLINE' : 'MACHINE_OFFLINE', 'online');
+      }
+    }
+    if (next.doorOpen !== null && next.doorOpen !== (previous?.doorOpen ?? null)) {
+      await emit(next.doorOpen ? 'DOOR_OPENED' : 'DOOR_CLOSED', 'door');
+    }
+    const previousFaults = new Set(previous?.faults ?? []);
+    for (const code of next.faults.filter((fault) => !previousFaults.has(fault))) {
+      await emit('MACHINE_ERROR', `fault:${code}`, { nativeType: code, data: { code } });
+    }
+    if (next.paymentDeviceOk === false && previous?.paymentDeviceOk !== false) {
+      await emit('PAYMENT_DEVICE_ERROR', 'payment-device');
+    }
+    if (next.temperatureCelsius !== null && next.temperatureCelsius !== previous?.temperatureCelsius) {
+      await emit('TEMPERATURE_REPORTED', 'temperature', { data: { temperatureCelsius: next.temperatureCelsius } });
+    }
+    return { accepted: true, applied: true };
+  }
+
+  /**
+   * Contact bookkeeping shared by heartbeat and status: the heartbeat
+   * signal (throttled — liveness needs ~30 s resolution, not one write
+   * per request) and, when this contact ends a period of silence, a
+   * MACHINE_ONLINE event.
+   */
+  private async noteContact(context: MachineApiContext, eventId: string): Promise<void> {
+    const integration = context.integration;
+    const now = new Date();
+    const before = deriveMachineLiveness({
+      lastContactAt: latestContact(integration),
+      configuredAt: integration.configuredAt?.toDate() ?? null,
+      expectedIntervalSeconds: integration.heartbeatIntervalSeconds,
+      now,
     });
-    for (const code of body.faults ?? []) {
+    const lastHeartbeat = integration.signals?.heartbeat?.toMillis() ?? 0;
+    if (now.getTime() - lastHeartbeat >= CONTACT_WRITE_INTERVAL_MS) {
+      await machineIntegrationRepository.recordSignal(context.machine.id, 'heartbeat');
+    }
+    const lastSeen = context.machine.lastSeenAt?.toMillis?.() ?? 0;
+    if (now.getTime() - lastSeen >= 60_000) {
+      await machineRepository.updateLastSeen(context.machine.id, null);
+    }
+    if (before.state === 'OFFLINE' || before.state === 'UNKNOWN') {
       await machineEventService.record(
-        { businessId: context.businessId, machineId: context.machine.id, type: 'MACHINE_ERROR', source: 'v1_api', dedupeKey: `v1:${body.eventId}:fault:${code}`, deviceTimestamp: body.occurredAt, nativeType: code, data: { code } },
+        {
+          businessId: context.businessId,
+          machineId: context.machine.id,
+          type: 'MACHINE_ONLINE',
+          source: 'v1_api',
+          dedupeKey: `v1:${eventId}:back-online`,
+          data: { after: before.reason, silentSeconds: before.secondsSinceContact },
+        },
         context.machine,
       );
     }
-    if (body.paymentDeviceOk === false) {
-      await machineEventService.record(
-        { businessId: context.businessId, machineId: context.machine.id, type: 'PAYMENT_DEVICE_ERROR', source: 'v1_api', dedupeKey: `v1:${body.eventId}:payment-device`, deviceTimestamp: body.occurredAt },
-        context.machine,
-      );
-    }
-    return { accepted: true };
   }
 
   async inventory(context: MachineApiContext, body: z.infer<typeof inventorySchema>) {
@@ -194,6 +296,8 @@ class MachineApiService {
   }
 
   async events(context: MachineApiContext, body: z.infer<typeof eventsSchema>) {
+    // Batches are charged per event, so batching can't be used to slip past the event budget.
+    await context.charge('event_items', body.events.length);
     const moneyMoving = body.events.filter((event) => DISPENSE_EVENT_TYPES.includes(event.type.trim().toUpperCase()));
     if (moneyMoving.length > 0) {
       throw new ContractViolationError(
@@ -216,13 +320,30 @@ class MachineApiService {
     );
   }
 
-  /** Everything this machine should act on now — queued dispenses first (a customer is waiting), then maintenance commands. */
+  /**
+   * Everything this machine should act on now — queued dispenses first
+   * (a customer is waiting), then maintenance commands.
+   *
+   * Cheap when idle: if nothing queued for this machine can still be
+   * unexpired (`commandsQueuedUntil`), the command queries are skipped
+   * entirely. `nextPollSeconds` asks for fast polling only while a
+   * customer is paying at this machine. Expired, uncollected dispenses
+   * found here are resolved on the spot (customer refunded) rather than
+   * waiting for a sweep.
+   */
   async listCommands(context: MachineApiContext) {
+    const now = Date.now();
+    const expectOrders = (context.integration.expectOrdersUntil?.toMillis() ?? 0) > now;
+    const nextPollSeconds = expectOrders ? FAST_POLL_SECONDS : RECOMMENDED_POLL_SECONDS;
+    const queuedUntil = context.integration.commandsQueuedUntil;
+    if (queuedUntil !== undefined && queuedUntil !== null && queuedUntil.toMillis() < now - 30_000 && !expectOrders) {
+      return { commands: [], nextPollSeconds };
+    }
+    await dispenseCommandService.expireUncollectedForMachine(context.businessId, context.machine.id);
     const [dispenses, generic] = await Promise.all([
       dispenseCommandService.listQueuedForMachine(context.businessId, context.machine.id),
       machineCommandService.listPendingForMachine(context.businessId, context.machine.id),
     ]);
-    const now = Date.now();
     return {
       commands: [
         ...dispenses.map((command) => ({
@@ -243,12 +364,13 @@ class MachineApiService {
             expiresAt: data.expiresAt.toDate().toISOString(),
           })),
       ],
+      nextPollSeconds,
     };
   }
 
   async acknowledgeCommand(context: MachineApiContext, commandId: string): Promise<{ commandId: string; status: string }> {
     if (commandId.startsWith('DSP-')) {
-      const command = await dispenseCommandService.recordProgress(context.businessId, context.machine.id, commandId, 'acknowledged');
+      const { command } = await dispenseCommandService.recordProgress(context.businessId, context.machine.id, commandId, 'acknowledged');
       return { commandId, status: command.status };
     }
     const generic = await this.requireGenericCommand(context, commandId);
@@ -271,7 +393,7 @@ class MachineApiService {
    * `applyVendReport` every other channel uses, keyed by the caller's
    * `eventId`, so a retried report is a no-op.
    */
-  async reportCommandStatus(context: MachineApiContext, commandId: string, body: CommandStatusBody): Promise<{ commandId: string; applied: boolean }> {
+  async reportCommandStatus(context: MachineApiContext, commandId: string, body: CommandStatusBody): Promise<{ commandId: string; applied: boolean; result: VendReportResult | 'progress_recorded' | 'stale_progress' }> {
     if (!commandId.startsWith('DSP-')) {
       const generic = await this.requireGenericCommand(context, commandId);
       if (body.status !== 'completed' && body.status !== 'failed') {
@@ -281,7 +403,7 @@ class MachineApiService {
         success: body.status === 'completed',
         error: body.status === 'failed' ? (body.failureReason ?? body.failureCode) : null,
       });
-      return { commandId, applied: true };
+      return { commandId, applied: true, result: 'applied' };
     }
 
     const command = await machineDispenseCommandRepository.findByCommandRef(context.businessId, commandId);
@@ -292,8 +414,8 @@ class MachineApiService {
       throw new ContractViolationError('invalid_status_for_command', 'A dispense command reports "dispensing", "dispensed", "failed" or "unknown"');
     }
     if (body.status === 'dispensing') {
-      await dispenseCommandService.recordProgress(context.businessId, context.machine.id, commandId, 'dispensing');
-      return { commandId, applied: true };
+      const progress = await dispenseCommandService.recordProgress(context.businessId, context.machine.id, commandId, 'dispensing');
+      return progress.stale ? { commandId, applied: false, result: 'stale_progress' } : { commandId, applied: progress.changed, result: 'progress_recorded' };
     }
 
     const status: DispenseResultStatus = body.status === 'dispensed' ? 'success' : body.status === 'unknown' ? 'unknown' : body.failureCode;
@@ -305,15 +427,15 @@ class MachineApiService {
       deviceTimestamp: body.occurredAt ?? null,
       idempotencyKey: `v1:${body.eventId}`,
     };
-    const { applied } = await machineTransactionService.applyVendReport({
+    const { applied, result } = await machineTransactionService.applyVendReport({
       businessId: context.businessId,
       machineId: context.machine.id,
       report,
-      rawPayload: { commandId, ...body },
+      rawPayload: { commandId, requestId: context.requestId, ...body },
       source: 'v1_api',
       actor: `machine:${context.machine.machineCode}`,
     });
-    return { commandId, applied };
+    return { commandId, applied, result };
   }
 
   private async requireGenericCommand(context: MachineApiContext, commandRef: string) {

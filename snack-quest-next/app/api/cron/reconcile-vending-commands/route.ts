@@ -1,5 +1,7 @@
 import { machineCommandService } from '@/services/machineCommandService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { dispenseCommandService } from '@/services/dispenseCommandService';
+import { dispenseRecoveryService } from '@/services/dispenseRecoveryService';
 import { machineIntegrationService } from '@/services/machineIntegrationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
@@ -20,9 +22,7 @@ const JOB_NAME = 'reconcile-vending-commands';
  * sales traffic (`MachineIntegrationService.probeActiveOutboundIntegrations`).
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -35,7 +35,9 @@ export async function GET(request: Request): Promise<Response> {
       dispenseCommandService.sweepTimedOut(businessId),
       machineIntegrationService.probeActiveOutboundIntegrations(businessId),
     ]);
-    const result = { ...commands, dispenseTimedOut: dispenses.timedOut, integrationsProbed: probe.probed, integrationProbesFailed: probe.failed };
+    // Backstop for the fast-recovery tier, in case no external scheduler runs it.
+    const recovery = await dispenseRecoveryService.sweep(businessId);
+    const result = { ...commands, dispenseTimedOut: dispenses.timedOut, integrationsProbed: probe.probed, integrationProbesFailed: probe.failed, recoveryExamined: recovery.examined };
 
     await scheduledJobRunRepository.record({
       businessId,

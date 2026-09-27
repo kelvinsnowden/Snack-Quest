@@ -1,4 +1,5 @@
 import { analyticsRollupService } from '@/services/analyticsRollupService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
 import { dateKey } from '@/lib/analytics/dateKey';
@@ -36,9 +37,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * day has one.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 

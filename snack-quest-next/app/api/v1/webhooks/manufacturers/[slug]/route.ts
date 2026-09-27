@@ -1,4 +1,4 @@
-import { handleIntegrationRequest, v1Error, v1Json } from '@/lib/vending/v1/machineApi';
+import { ContractViolationError, handleIntegrationRequest, v1Ok } from '@/lib/vending/v1/machineApi';
 import { manufacturerWebhookService, WebhookRejectedError } from '@/services/manufacturerWebhookService';
 
 /**
@@ -15,13 +15,13 @@ import { manufacturerWebhookService, WebhookRejectedError } from '@/services/man
  */
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> {
   const { slug } = await params;
-  return handleIntegrationRequest(request, 'webhook', async ({ businessId, credential, body }) => {
+  return handleIntegrationRequest(request, 'webhook', 'webhook', async ({ businessId, credential, body, requestId }) => {
     try {
       const result = await manufacturerWebhookService.ingest(businessId, credential, slug, body);
-      return v1Json(result, result.duplicate ? 200 : 202);
+      return v1Ok({ requestId }, result, result.duplicate ? 200 : 202);
     } catch (error) {
       if (error instanceof WebhookRejectedError) {
-        return v1Error(error.status, error.code, error.message);
+        throw new ContractViolationError(error.code, error.message, error.status);
       }
       throw error;
     }

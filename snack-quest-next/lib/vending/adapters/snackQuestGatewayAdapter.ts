@@ -20,6 +20,7 @@ import {
   type VendingTelemetryReport,
 } from '../hardwareAdapter';
 import type { HardwareCapabilities } from '../protocol/capabilities';
+import { livenessOfIntegration as livenessOf } from '../machineLiveness';
 import type { MachineDispenseCommand, MachineIntegration } from '@/types';
 
 const ADAPTER_KEY = 'snack_quest_gateway';
@@ -94,15 +95,18 @@ export class SnackQuestGatewayAdapter implements VendingHardwareAdapter {
     };
   }
 
+  /**
+   * Queues a dispense only for a machine that can collect it: ONLINE and
+   * heard from within `ORDER_FRESHNESS_SECONDS` (lib/vending/machineLiveness.ts),
+   * comfortably inside the queued command's 2-minute life. Anything else
+   * is refused, so the customer is refunded at once rather than after
+   * the command expires.
+   */
   async authorizeVend(machineId: string, _slotCode: string, options: VendAuthorizationOptions = {}): Promise<VendAuthorizationResult> {
     const vendRef = options.commandRef ?? `sqg-${randomUUID()}`;
-    const integration = await this.store.integration(machineId);
-    const contact = lastContactMs(integration);
-    if (contact === null || Date.now() - contact > OFFLINE_AFTER_MS) {
-      return { vendRef, authorized: false, reason: 'machine offline — no contact from it recently, so it would not collect the dispense' };
-    }
-    if (integration?.lastReportedStatus && !integration.lastReportedStatus.online) {
-      return { vendRef, authorized: false, reason: 'machine last reported itself offline' };
+    const liveness = livenessOf(await this.store.integration(machineId));
+    if (!liveness.canAcceptOrders) {
+      return { vendRef, authorized: false, reason: `machine cannot collect a dispense right now (${liveness.state.toLowerCase()}: ${liveness.reason.replace(/_/g, ' ')})` };
     }
     return { vendRef, authorized: true, reason: null, delivery: 'queued' };
   }

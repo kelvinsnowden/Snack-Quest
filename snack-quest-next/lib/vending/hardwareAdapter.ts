@@ -36,6 +36,7 @@
  * one already covers every action the business layer needs.
  */
 
+import type { IntegrationFailureCode } from './integrationErrors';
 import type { HardwareCapabilities } from './protocol/capabilities';
 
 export interface VendingMachineStatusReport {
@@ -217,7 +218,7 @@ export class ProtocolNotConfiguredError extends Error {
  * "nothing happened" — the customer is refunded, never re-dispensed.
  */
 export class HardwareUnreachableError extends Error {
-  constructor(adapterKey: string, detail: string) {
+  constructor(adapterKey: string, detail: string, readonly code: IntegrationFailureCode = 'transport.network') {
     super(`${adapterKey}: machine unreachable — ${detail}`);
     this.name = 'HardwareUnreachableError';
   }
@@ -231,7 +232,7 @@ export class HardwareUnreachableError extends Error {
  * and the transaction goes to manual review.
  */
 export class HardwareTimeoutError extends Error {
-  constructor(adapterKey: string, detail: string) {
+  constructor(adapterKey: string, detail: string, readonly code: IntegrationFailureCode = 'transport.timeout') {
     super(`${adapterKey}: no response in time — ${detail}`);
     this.name = 'HardwareTimeoutError';
   }
@@ -239,7 +240,7 @@ export class HardwareTimeoutError extends Error {
 
 /** The manufacturer's API rejected Snack Quest's credentials. Classified separately so integration health can show an auth problem, not a generic outage. */
 export class HardwareAuthenticationError extends Error {
-  constructor(adapterKey: string, detail: string) {
+  constructor(adapterKey: string, detail: string, readonly code: IntegrationFailureCode = 'auth.invalid_credentials') {
     super(`${adapterKey}: credentials rejected — ${detail}`);
     this.name = 'HardwareAuthenticationError';
   }

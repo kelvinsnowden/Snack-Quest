@@ -191,29 +191,62 @@ class MachineTransactionRepository {
    * window; this removes that possibility rather than trusting every
    * call site to avoid it.
    */
+  /**
+   * Applies one transition atomically (compare-and-set in a Firestore
+   * transaction): two concurrent reports about the same vend can never
+   * both pass the transition check from the same starting state — the
+   * second sees the first's result and is refused or treated as a no-op.
+   *
+   * - `expectedFrom`: refuse unless the current status is one of these
+   *   (IllegalTransactionTransitionError otherwise).
+   * - `allowNoop`: already in `to` → `{ changed: false }` rather than an error.
+   */
   async moveStatus(
     businessId: string,
     transactionId: string,
     to: MachineTransactionStatus,
-    fields: Partial<Pick<MachineTransaction, 'paymentRef' | 'vendRef' | 'failureReason' | 'dispenseFailureStatus' | 'appliedTelemetryEventId'>> = {},
-  ): Promise<void> {
+    fields: Partial<Pick<MachineTransaction, 'paymentRef' | 'vendRef' | 'failureReason' | 'dispenseFailureStatus' | 'appliedTelemetryEventId' | 'outcomeConflict'>> = {},
+    options: { expectedFrom?: MachineTransactionStatus[]; allowNoop?: boolean } = {},
+  ): Promise<{ changed: boolean; from: MachineTransactionStatus }> {
     const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
-    const snapshot = await ref.get();
-    const data = snapshot.data() as MachineTransaction | undefined;
-    if (!data || data.businessId !== businessId) {
-      throw new MachineTransactionNotFoundError(transactionId);
-    }
-    const allowed = MACHINE_TRANSACTION_STATUS_TRANSITIONS[data.status] ?? [];
-    if (!allowed.includes(to)) {
-      throw new IllegalTransactionTransitionError(data.status, to);
-    }
-    const now = FieldValue.serverTimestamp();
-    await ref.update({
-      ...fields,
-      status: to,
-      updatedAt: now,
-      ...(to === 'paid' ? { paidAt: now } : {}),
-      ...(to === 'dispensed' ? { dispensedAt: now } : {}),
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineTransaction | undefined;
+      if (!data || data.businessId !== businessId) {
+        throw new MachineTransactionNotFoundError(transactionId);
+      }
+      if (data.status === to && options.allowNoop) {
+        return { changed: false, from: data.status };
+      }
+      if (options.expectedFrom && !options.expectedFrom.includes(data.status)) {
+        throw new IllegalTransactionTransitionError(data.status, to);
+      }
+      const allowed = MACHINE_TRANSACTION_STATUS_TRANSITIONS[data.status] ?? [];
+      if (!allowed.includes(to)) {
+        throw new IllegalTransactionTransitionError(data.status, to);
+      }
+      const now = FieldValue.serverTimestamp();
+      tx.update(ref, {
+        ...fields,
+        status: to,
+        updatedAt: now,
+        ...(to === 'paid' ? { paidAt: now } : {}),
+        ...(to === 'dispensed' ? { dispensedAt: now } : {}),
+      });
+      return { changed: true, from: data.status };
+    });
+  }
+
+  /** Records a contradicting outcome without changing status — for a conflict that arrives after the money has already moved (e.g. after `refunded`). */
+  async recordOutcomeConflict(businessId: string, transactionId: string, conflict: NonNullable<MachineTransaction['outcomeConflict']>): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
+    await adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineTransaction | undefined;
+      if (!data || data.businessId !== businessId) {
+        throw new MachineTransactionNotFoundError(transactionId);
+      }
+      tx.update(ref, { outcomeConflict: conflict, updatedAt: FieldValue.serverTimestamp() });
     });
   }
 

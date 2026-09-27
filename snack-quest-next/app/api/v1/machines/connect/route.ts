@@ -1,4 +1,4 @@
-import { handleIntegrationRequest, parseBody, v1Error, v1Json } from '@/lib/vending/v1/machineApi';
+import { ContractViolationError, handleIntegrationRequest, parseBody, v1Ok } from '@/lib/vending/v1/machineApi';
 import { connectSchema } from '@/lib/vending/v1/schemas';
 import { machineApiService, MachineNotProvisionedError } from '@/services/machineApiService';
 
@@ -11,13 +11,13 @@ import { machineApiService, MachineNotProvisionedError } from '@/services/machin
  * Never creates a machine.
  */
 export async function POST(request: Request): Promise<Response> {
-  return handleIntegrationRequest(request, 'api', async ({ businessId, credential, requestId, body }) => {
+  return handleIntegrationRequest(request, 'api', 'connect', async ({ businessId, credential, requestId, body }) => {
     try {
       const description = await machineApiService.connect(businessId, credential, parseBody(connectSchema, body), requestId);
-      return v1Json(description);
+      return v1Ok({ requestId }, description);
     } catch (error) {
       if (error instanceof MachineNotProvisionedError) {
-        return v1Error(404, 'machine_not_provisioned', error.message);
+        throw new ContractViolationError('machine_not_provisioned', error.message, 404);
       }
       throw error;
     }

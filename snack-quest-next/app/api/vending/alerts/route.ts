@@ -15,6 +15,8 @@ const ALERT_TYPES: AlertType[] = [
   'expiry_risk',
   'subscription_issue',
   'settlement_failure',
+  'dispense_conflict',
+  'integration_issue',
 ];
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 

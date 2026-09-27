@@ -3,7 +3,7 @@ import { readJsonObject, requiredString, withStaffRoles } from '@/lib/vending/ad
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
 
-/** Immediate revocation — the very next request signed with this key is rejected. */
+/** Revocation — immediate on this instance, and within the credential cache TTL (30 s) on every other (lib/vending/credentialCache.ts). */
 export async function POST(request: Request, { params }: { params: Promise<{ keyId: string }> }): Promise<Response> {
   const { keyId } = await params;
   return withStaffRoles(request, ADMIN_ONLY, async (session) => {

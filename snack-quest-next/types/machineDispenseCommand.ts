@@ -103,11 +103,16 @@ export interface MachineDispenseCommand {
   status: DispenseCommandStatus;
   statusHistory: { status: DispenseCommandStatus; at: Timestamp; detail: string | null }[];
   failureReason: string | null;
+  /** Machine-readable classification of why it failed or is unknown (lib/vending/integrationErrors.ts) — what recovery branches on. Null on success. */
+  failureCode: string | null;
   dispenseResultStatus: DispenseResultStatus | null;
   /** `system:payment`, `system:reconciliation`, or a staff uid. */
   requestedBy: string;
   /** A queued command the machine hasn't collected by now must never be executed — the customer has walked away and will be refunded. */
   expiresAt: Timestamp;
+  /** Pull reconciliation (outbound integrations): attempts so far, and when to ask the manufacturer again. Backs off; stops after the last step and leaves the case to a human. */
+  reconcileAttempts?: number;
+  nextReconcileAt?: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

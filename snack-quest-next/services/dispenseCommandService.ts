@@ -5,6 +5,7 @@ import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import {
   machineTransactionRepository,
   MachineTransactionNotFoundError,
+  IllegalTransactionTransitionError,
 } from '@/repositories/machineTransactionRepository';
 import {
   machineDispenseCommandRepository,
@@ -19,8 +20,10 @@ import {
   HardwareAuthenticationError,
   HardwareTimeoutError,
   HardwareUnreachableError,
+  ProtocolNotConfiguredError,
   type DispenseResultStatus,
 } from '@/lib/vending/hardwareAdapter';
+import { recoveryFor, type IntegrationFailureCode } from '@/lib/vending/integrationErrors';
 import { hasCapability } from '@/lib/vending/protocol/capabilities';
 import { manufacturerSlotIdFor } from '@/lib/vending/slotMapping';
 import {
@@ -34,6 +37,10 @@ import {
 const QUEUED_COMMAND_TTL_MS = 2 * 60 * 1000;
 /** An in-flight command with no outcome after this long is `timeout` — sized like the transaction sweep's own window. */
 const DEFAULT_IN_FLIGHT_TIMEOUT_MS = 15 * 60 * 1000;
+/** Slack after a queued command's expiry before it's declared uncollected — absorbs a poll that was in flight at the deadline. */
+const UNCOLLECTED_GRACE_MS = 30 * 1000;
+/** A dispense acknowledged or in progress this long without an outcome is one we ask the machine about. A vend takes seconds. */
+const IN_FLIGHT_REPORT_AFTER_MS = 3 * 60 * 1000;
 
 export type DispenseDispatchOutcome =
   /** Handed to the integration; the machine confirmed receipt (synchronous adapters). */
@@ -59,21 +66,19 @@ export class TransactionNotPaidError extends Error {
   }
 }
 
-function classifyHardwareError(error: unknown): { delivered: 'no' | 'maybe'; kind: IntegrationErrorKind; message: string } {
+function classifyHardwareError(error: unknown): { delivered: 'no' | 'maybe'; kind: IntegrationErrorKind; code: IntegrationFailureCode; message: string } {
   const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof HardwareUnreachableError) {
-    return { delivered: 'no', kind: 'connection', message };
+  // Adapters classify their own failures (lib/vending/integrationErrors.ts);
+  // anything unclassified is treated as "may have been delivered" — the
+  // conservative reading when a physical machine is on the other end.
+  let code: IntegrationFailureCode = 'unknown.outcome_undetermined';
+  if (error instanceof HardwareUnreachableError || error instanceof HardwareTimeoutError || error instanceof HardwareAuthenticationError) {
+    code = error.code;
+  } else if (error instanceof ProtocolNotConfiguredError) {
+    code = 'protocol.not_configured';
   }
-  if (error instanceof HardwareAuthenticationError) {
-    // Rejected at the door — the instruction was never accepted.
-    return { delivered: 'no', kind: 'authentication', message };
-  }
-  if (error instanceof HardwareTimeoutError) {
-    return { delivered: 'maybe', kind: 'timeout', message };
-  }
-  // Anything unclassified is treated as "may have been delivered" —
-  // the conservative reading when a physical machine is on the other end.
-  return { delivered: 'maybe', kind: 'protocol', message };
+  const policy = recoveryFor(code);
+  return { delivered: policy.delivered, kind: policy.healthKind, code, message };
 }
 
 /**
@@ -139,13 +144,13 @@ class DispenseCommandService {
 
     const gate = await this.integrations.dispenseGate(businessId, transaction.machineId);
     if (!gate.allowed) {
-      return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: gate.reason }, gate.reason, 'gate');
+      return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: gate.reason, failureCode: 'business.integration_inactive' }, gate.reason, 'gate');
     }
 
     const adapter = this.resolveAdapter(machine.manufacturer);
     if (!hasCapability(adapter.capabilities(), 'vend')) {
       const reason = `adapter "${machine.manufacturer}" cannot dispense`;
-      return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: reason }, reason, 'gate');
+      return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: reason, failureCode: 'protocol.unsupported_capability' }, reason, 'gate');
     }
 
     await machineDispenseCommandRepository.moveStatus(businessId, transactionId, 'authorized', {}, 'payment verified; integration gate open');
@@ -160,7 +165,9 @@ class DispenseCommandService {
       }
       const delivery = result.delivery ?? 'synchronous';
       if (delivery === 'queued') {
-        return this.finish(businessId, transactionId, 'sent', 'sent', { vendRef: result.vendRef, delivery }, 'queued for the machine to collect', 'machine');
+        const finished = await this.finish(businessId, transactionId, 'sent', 'sent', { vendRef: result.vendRef, delivery }, 'queued for the machine to collect', 'machine');
+        await machineIntegrationRepository.noteCommandQueued(transaction.machineId, finished.command.expiresAt.toDate());
+        return finished;
       }
       await machineIntegrationRepository.recordSignal(transaction.machineId, 'api_request');
       return this.finish(businessId, transactionId, 'acknowledged', 'acknowledged', { vendRef: result.vendRef, delivery }, 'accepted by the machine', 'machine');
@@ -168,7 +175,7 @@ class DispenseCommandService {
       const classified = classifyHardwareError(error);
       await machineIntegrationRepository.recordError(transaction.machineId, classified.kind, classified.message);
       if (classified.delivered === 'no') {
-        return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: classified.message }, classified.message, 'machine');
+        return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: classified.message, failureCode: classified.code }, classified.message, 'machine');
       }
       // No hardware reference came back. The command ref is what the
       // integration was sent as its idempotency key, so it is the one
@@ -178,7 +185,7 @@ class DispenseCommandService {
         transactionId,
         'unknown',
         'unknown',
-        { vendRef: command.commandRef, failureReason: `dispense outcome unknown: ${classified.message}`, dispenseResultStatus: 'unknown' },
+        { vendRef: command.commandRef, failureReason: `dispense outcome unknown: ${classified.message}`, failureCode: classified.code, dispenseResultStatus: 'unknown' },
         classified.message,
         'machine',
       );
@@ -196,13 +203,20 @@ class DispenseCommandService {
     machineId: string,
     commandRef: string,
     to: 'acknowledged' | 'dispensing',
-  ): Promise<MachineDispenseCommand> {
+  ): Promise<{ command: MachineDispenseCommand; changed: boolean; stale: boolean }> {
     const command = await this.requireOwnedCommand(businessId, machineId, commandRef);
     if (to === 'acknowledged' && command.status === 'sent' && command.expiresAt.toMillis() < Date.now()) {
       // Collected too late — refuse execution rather than dispense to
-      // someone who has already walked away.
-      await machineDispenseCommandRepository.moveStatus(businessId, command.transactionId, 'timeout', {}, 'acknowledged after expiry — machine must not dispense');
+      // someone who has already walked away. The money side follows
+      // straight away: a compliant machine never executes an
+      // unacknowledged command, so this is provably not dispensed.
+      await machineDispenseCommandRepository.moveStatus(businessId, command.transactionId, 'timeout', { failureCode: 'business.command_expired' }, 'acknowledged after expiry — machine must not dispense');
+      await this.refundUncollected(businessId, command, 'acknowledged after it expired; the machine was told not to dispense');
       throw new IllegalDispenseCommandTransitionError('timeout', 'acknowledged');
+    }
+    if (to === 'dispensing' && ['dispensing', 'dispensed', 'failed', 'timeout', 'unknown', 'rejected'].includes(command.status)) {
+      // A late or repeated progress report — the outcome already moved on. Harmless; acknowledged as stale.
+      return { command, changed: false, stale: command.status !== 'dispensing' };
     }
     const { changed, command: updated } = await machineDispenseCommandRepository.moveStatus(businessId, command.transactionId, to, {}, `machine reported ${to}`, { allowNoop: true });
     if (changed && to === 'dispensing') {
@@ -216,7 +230,25 @@ class DispenseCommandService {
         data: { commandRef: command.commandRef, transactionId: command.transactionId },
       });
     }
-    return updated;
+    return { command: updated, changed, stale: false };
+  }
+
+  /** The money side of a queued command that provably never executed: refund path, if the transaction is still waiting on it. */
+  private async refundUncollected(businessId: string, command: MachineDispenseCommand, reason: string): Promise<void> {
+    try {
+      await machineTransactionRepository.moveStatus(
+        businessId,
+        command.transactionId,
+        'paid_vend_failed',
+        { failureReason: reason, dispenseFailureStatus: 'timeout' },
+        { expectedFrom: ['paid', 'vend_authorized'], allowNoop: true },
+      );
+    } catch (error) {
+      // Already resolved some other way (a late outcome report won the race) — nothing to do.
+      if (!(error instanceof IllegalTransactionTransitionError)) {
+        throw error;
+      }
+    }
   }
 
   /**
@@ -249,6 +281,64 @@ class DispenseCommandService {
         throw error;
       }
     }
+  }
+
+  /**
+   * This machine's dispenses whose outcome Snack Quest still doesn't
+   * know — returned to the machine (heartbeat `reportOutcomes`) so one
+   * that stored its outcomes can resend them. The inbound counterpart of
+   * pull reconciliation.
+   */
+  async listNeedingOutcome(businessId: string, machineId: string): Promise<MachineDispenseCommand[]> {
+    const stuckBefore = Date.now() - IN_FLIGHT_REPORT_AFTER_MS;
+    const commands = await machineDispenseCommandRepository.listForMachineInStatuses(businessId, machineId, ['unknown', 'timeout', 'acknowledged', 'dispensing']);
+    return commands.filter((command) => command.status === 'unknown' || command.status === 'timeout' || command.updatedAt.toMillis() < stuckBefore);
+  }
+
+  /**
+   * Resolves this machine's queued dispenses that expired uncollected:
+   * command → timeout, customer → refund path. Provably not dispensed:
+   * the machine never acknowledged, and acknowledging after expiry is
+   * refused. Cheap — called on every command poll for that machine.
+   */
+  async expireUncollectedForMachine(businessId: string, machineId: string, now: number = Date.now()): Promise<number> {
+    const queued = await machineDispenseCommandRepository.listForMachineInStatuses(businessId, machineId, ['sent']);
+    let expired = 0;
+    for (const command of queued) {
+      if (command.delivery === 'queued' && command.expiresAt.toMillis() + UNCOLLECTED_GRACE_MS < now) {
+        expired += (await this.expireUncollected(businessId, command)) ? 1 : 0;
+      }
+    }
+    return expired;
+  }
+
+  /** @returns whether this call made the change (false if something else resolved it first). */
+  async expireUncollected(businessId: string, command: MachineDispenseCommand): Promise<boolean> {
+    try {
+      await machineDispenseCommandRepository.moveStatus(
+        businessId,
+        command.transactionId,
+        'timeout',
+        { failureCode: 'business.command_expired', failureReason: 'never collected by the machine before it expired', dispenseResultStatus: 'timeout' },
+        'expired uncollected — provably not dispensed',
+      );
+    } catch (error) {
+      if (error instanceof IllegalDispenseCommandTransitionError) {
+        return false;
+      }
+      throw error;
+    }
+    await this.refundUncollected(businessId, command, 'the machine never collected the dispense before it expired');
+    await machineEventService.record({
+      businessId,
+      machineId: command.machineId,
+      type: 'DISPENSE_FAILED',
+      source: 'dispense_ledger',
+      dedupeKey: `dispense:${command.commandRef}:expired`,
+      slotCode: command.slotCode,
+      data: { commandRef: command.commandRef, transactionId: command.transactionId, status: 'timeout', stage: 'machine', reason: 'never collected' },
+    });
+    return true;
   }
 
   /** Queued commands an inbound machine should execute now — for the v1 command poll. */

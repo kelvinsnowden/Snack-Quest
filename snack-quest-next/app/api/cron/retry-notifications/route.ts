@@ -1,4 +1,5 @@
 import { notificationService } from '@/services/notificationService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
 
@@ -23,9 +24,7 @@ const JOB_NAME = 'retry-notifications';
  * helper.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 

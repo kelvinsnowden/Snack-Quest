@@ -1,4 +1,5 @@
 import { withdrawalService } from '@/services/withdrawalService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { notificationService } from '@/services/notificationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
@@ -21,9 +22,7 @@ const JOB_NAME = 'reconcile-stuck-withdrawals';
  * here, same separation the STK reconciliation route already keeps.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 

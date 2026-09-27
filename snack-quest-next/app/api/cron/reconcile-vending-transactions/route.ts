@@ -1,4 +1,7 @@
 import { machineTransactionService } from '@/services/machineTransactionService';
+import { dispenseRecoveryService } from '@/services/dispenseRecoveryService';
+import { deepReconciliationService } from '@/services/deepReconciliationService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
 
@@ -33,9 +36,7 @@ const JOB_NAME = 'reconcile-vending-transactions';
  * actually happens, not something being planned for in the abstract.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -43,12 +44,24 @@ export async function GET(request: Request): Promise<Response> {
   const startedAtMs = Date.now();
 
   try {
+    // Provable recovery first (refund what was never sent or collected),
+    // so the blunt stuck-sale sweep below only sees what truly needs a human.
+    const recovery = await dispenseRecoveryService.sweep(businessId);
     const [stuckResult, pendingResult, unknownDispenses] = await Promise.all([
       machineTransactionService.reconcileStuckTransactions(businessId),
       machineTransactionService.reconcileStuckPendingTransactions(businessId),
       machineTransactionService.reconcileUnknownDispenses(businessId),
     ]);
-    const result = { ...stuckResult, ...pendingResult, dispensesResolved: unknownDispenses.resolved, dispensesStillUnknown: unknownDispenses.stillUnknown };
+    // Deep tier: money, dispense and stock ledgers checked against each other; discrepancies become alerts.
+    const ledger = await deepReconciliationService.run(businessId);
+    const result = {
+      ...stuckResult,
+      ...pendingResult,
+      dispensesResolved: unknownDispenses.resolved,
+      dispensesStillUnknown: unknownDispenses.stillUnknown,
+      recoveryExamined: recovery.examined,
+      ledgerDiscrepancies: ledger.discrepancies.length,
+    };
 
     await scheduledJobRunRepository.record({
       businessId,

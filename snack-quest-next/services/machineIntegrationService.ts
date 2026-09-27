@@ -25,6 +25,7 @@ import {
 import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
 import { deriveIntegrationHealth, type IntegrationHealth } from '@/lib/vending/integrationHealth';
 import { isProductionDeployment } from '@/lib/vending/deploymentEnvironment';
+import { livenessOfIntegration as livenessOf, type MachineLiveness } from '@/lib/vending/machineLiveness';
 import {
   MACHINE_INTEGRATION_STATE_TRANSITIONS,
   type IntegrationErrorKind,
@@ -68,6 +69,8 @@ export interface MachineIntegrationView {
   model: { id: string; name: string; certificationStatus: MachineModel['certificationStatus'] } | null;
   adapter: { key: string; label: string; direction: string; environment: string; maturity: string } | null;
   health: IntegrationHealth | null;
+  /** Is the machine itself reachable and able to take orders right now (distinct from integration health). */
+  liveness: MachineLiveness | null;
   capabilities: { capability: HardwareCapability; status: CapabilityStatus }[];
   activationBlockers: string[];
 }
@@ -264,13 +267,24 @@ class MachineIntegrationService {
    * registry must be active, from an active manufacturer, and — on the
    * production deployment — a production integration.
    */
-  async dispenseGate(businessId: string, machineId: string): Promise<DispenseGate> {
+  async dispenseGate(businessId: string, machineId: string, purpose: 'dispatch' | 'pre_payment' = 'dispatch'): Promise<DispenseGate> {
     const integration = await machineIntegrationRepository.findByMachineId(businessId, machineId);
     if (!integration) {
       return { allowed: true, integrated: false };
     }
     if (integration.state !== 'active') {
       return { allowed: false, reason: `machine integration is ${integration.state}, not active` };
+    }
+    if (integration.maintenanceUntil && integration.maintenanceUntil.toMillis() > Date.now()) {
+      return { allowed: false, reason: `machine is in maintenance${integration.maintenanceReason ? `: ${integration.maintenanceReason}` : ''}` };
+    }
+    if (purpose === 'pre_payment' && findAdapterRegistration(integration.adapterKey)?.direction === 'inbound') {
+      // An inbound machine collects its dispense by polling; don't take
+      // money for one that couldn't collect it within the command's life.
+      const liveness = livenessOf(integration);
+      if (!liveness.canAcceptOrders) {
+        return { allowed: false, reason: `machine is not reachable (${liveness.state.toLowerCase()}: ${liveness.reason.replace(/_/g, ' ')})` };
+      }
     }
     if (isProductionDeployment() && integration.environment !== 'production') {
       return { allowed: false, reason: 'sandbox integration on the production deployment' };
@@ -314,7 +328,7 @@ class MachineIntegrationService {
     const integration = await machineIntegrationRepository.findByMachineId(businessId, machineId);
     const { statuses } = await this.capabilitiesFor(businessId, machine);
     if (!integration) {
-      return { integration: null, manufacturer: null, model: null, adapter: null, health: null, capabilities: statuses, activationBlockers: [] };
+      return { integration: null, manufacturer: null, model: null, adapter: null, health: null, liveness: null, capabilities: statuses, activationBlockers: [] };
     }
     const [manufacturer, model] = await Promise.all([
       manufacturerRepository.findById(businessId, integration.manufacturerId),
@@ -331,6 +345,7 @@ class MachineIntegrationService {
         ? { key: registration.key, label: registration.label, direction: registration.direction, environment: registration.environment, maturity: registration.maturity }
         : null,
       health: deriveIntegrationHealth(integration),
+      liveness: livenessOf(integration),
       capabilities: statuses,
       activationBlockers: integration.state === 'active' ? [] : await this.activationBlockers(businessId, integration),
     };

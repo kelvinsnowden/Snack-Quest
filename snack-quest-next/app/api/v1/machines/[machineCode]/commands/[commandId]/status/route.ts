@@ -1,4 +1,4 @@
-import { handleMachineRequest, parseBody, v1Json } from '@/lib/vending/v1/machineApi';
+import { handleMachineRequest, parseBody, v1Ok } from '@/lib/vending/v1/machineApi';
 import { commandStatusSchema } from '@/lib/vending/v1/schemas';
 import { machineApiService } from '@/services/machineApiService';
 
@@ -10,7 +10,7 @@ import { machineApiService } from '@/services/machineApiService';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ machineCode: string; commandId: string }> }): Promise<Response> {
   const { machineCode, commandId } = await params;
-  return handleMachineRequest(request, machineCode, async (context) =>
-    v1Json(await machineApiService.reportCommandStatus(context, commandId, parseBody(commandStatusSchema, context.body))),
+  return handleMachineRequest(request, machineCode, 'command_status', async (context) =>
+    v1Ok(context, await machineApiService.reportCommandStatus(context, commandId, parseBody(commandStatusSchema, context.body))),
   );
 }

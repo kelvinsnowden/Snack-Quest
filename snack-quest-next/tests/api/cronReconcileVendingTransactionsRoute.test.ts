@@ -15,6 +15,14 @@ vi.mock('@/services/machineTransactionService', () => ({
   },
 }));
 
+vi.mock('@/services/dispenseRecoveryService', () => ({
+  dispenseRecoveryService: { sweep: vi.fn().mockResolvedValue({ examined: 0, recovered: {} }) },
+}));
+
+vi.mock('@/services/deepReconciliationService', () => ({
+  deepReconciliationService: { run: vi.fn().mockResolvedValue({ discrepancies: [] }) },
+}));
+
 vi.mock('@/repositories/scheduledJobRunRepository', () => ({
   scheduledJobRunRepository: { record: recordMock },
 }));
@@ -85,6 +93,8 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
       stillPending: 4,
       dispensesResolved: 0,
       dispensesStillUnknown: 0,
+      recoveryExamined: 0,
+      ledgerDiscrepancies: 0,
     });
   });
 
@@ -110,6 +120,8 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
           stillPending: 0,
           dispensesResolved: 0,
           dispensesStillUnknown: 0,
+          recoveryExamined: 0,
+          ledgerDiscrepancies: 0,
         },
         error: null,
       }),

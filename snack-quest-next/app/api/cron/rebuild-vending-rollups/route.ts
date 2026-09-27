@@ -1,4 +1,5 @@
 import { vendingRollupService } from '@/services/vendingRollupService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { machineRepository } from '@/repositories/machineRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
@@ -35,9 +36,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * the dashboards it feeds.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 

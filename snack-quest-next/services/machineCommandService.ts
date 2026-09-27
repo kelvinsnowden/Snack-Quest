@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineCommandRepository, MachineCommandNotFoundError } from '@/repositories/machineCommandRepository';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
@@ -70,14 +71,17 @@ class MachineCommandService {
       throw new CommandNotSupportedError(machine.manufacturer, input.commandType);
     }
 
+    const expiresAt = new Date(Date.now() + (input.ttlMs ?? DEFAULT_COMMAND_TTL_MS));
     const { id, commandRef } = await machineCommandRepository.create({
       businessId: input.businessId,
       machineId: input.machineId,
       commandType: input.commandType,
       payload: input.payload ?? null,
       requestedBy: input.requestedBy,
-      expiresAt: new Date(Date.now() + (input.ttlMs ?? DEFAULT_COMMAND_TTL_MS)),
+      expiresAt,
     });
+    // The v1 poll skips its queries when nothing queued can still be live; this keeps it from skipping this command.
+    await machineIntegrationRepository.noteCommandQueued(input.machineId, expiresAt);
 
     // Best-effort only — see CloudTransport's own doc comment. Polling
     // already delivers this command correctly with no transport at all.

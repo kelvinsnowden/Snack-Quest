@@ -39,7 +39,11 @@ export type AlertType =
   | 'inventory_discrepancy'
   | 'expiry_risk'
   | 'subscription_issue'
-  | 'settlement_failure';
+  | 'settlement_failure'
+  /** A machine's outcome report contradicted a money decision already made — see `MachineTransaction.outcomeConflict`. */
+  | 'dispense_conflict'
+  /** A machine integration is misbehaving at the protocol level: rate-limited, sending invalid requests, or on uncertified firmware. */
+  | 'integration_issue';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertStatus = 'open' | 'acknowledged' | 'resolved';
@@ -76,4 +80,6 @@ export const ALERT_SEVERITY_BY_TYPE: Record<AlertType, AlertSeverity> = {
   expiry_risk: 'warning',
   subscription_issue: 'warning',
   settlement_failure: 'critical',
+  dispense_conflict: 'critical',
+  integration_issue: 'warning',
 };
