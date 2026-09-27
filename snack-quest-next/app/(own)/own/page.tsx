@@ -161,8 +161,8 @@ export default function OwnPage() {
         <div className="relative mx-auto grid w-full max-w-[1200px] gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
           <div>
             <Statement>
-              What if you could own the <span className="from-primary to-home-orange-glow bg-gradient-to-r bg-clip-text text-transparent">retail asset</span>{' '}
-              without building the <span className="text-home-lime">retail operation?</span>
+              What if one machine could become the start of{' '}
+              <span className="from-primary to-home-orange-glow bg-gradient-to-r bg-clip-text text-transparent">your own retail network?</span>
             </Statement>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-white/70 sm:text-lg">
               Buy a Snack Quest Discovery Machine. Secure the right location. We provide the system that keeps it running.
