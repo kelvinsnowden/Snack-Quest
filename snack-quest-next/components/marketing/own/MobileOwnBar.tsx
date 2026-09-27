@@ -19,8 +19,36 @@ export function MobileOwnBar() {
   useEffect(() => {
     const ctas = Array.from(document.querySelectorAll<HTMLElement>('[data-own-cta]'));
     const onScreen = new Set<Element>();
+    let shown = false;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const update = () => setVisible(window.scrollY > 400 && onScreen.size === 0);
+    /*
+     * Hiding is debounced but showing isn't: during momentum scroll a
+     * CTA can flicker in and out of the `-10%` intersection margin for
+     * a single frame, and reacting to that immediately made the bar
+     * itself flicker on/off in sync. A short delay before hiding lets
+     * that kind of one-frame blip resolve first.
+     */
+    const apply = (next: boolean) => {
+      if (next) {
+        if (hideTimer) {
+          clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+        if (!shown) {
+          shown = true;
+          setVisible(true);
+        }
+      } else if (shown && !hideTimer) {
+        hideTimer = setTimeout(() => {
+          hideTimer = null;
+          shown = false;
+          setVisible(false);
+        }, 150);
+      }
+    };
+
+    const update = () => apply(window.scrollY > 400 && onScreen.size === 0);
 
     const observer =
       typeof IntersectionObserver !== 'undefined'
@@ -42,13 +70,14 @@ export function MobileOwnBar() {
     return () => {
       window.removeEventListener('scroll', update);
       observer?.disconnect();
+      if (hideTimer) clearTimeout(hideTimer);
     };
   }, []);
 
   return (
     <div
       className={
-        'fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur transition-transform duration-300 sm:hidden ' +
+        'will-change-transform fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur transition-transform duration-300 sm:hidden ' +
         (visible ? 'translate-y-0' : 'translate-y-full')
       }
       aria-hidden={!visible}

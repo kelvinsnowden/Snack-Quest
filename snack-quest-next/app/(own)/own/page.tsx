@@ -17,12 +17,6 @@ import {
   TrendingUp,
   Truck,
   Wallet,
-  Building2,
-  GraduationCap,
-  Hotel,
-  Landmark,
-  ShoppingBag,
-  TrainFront,
 } from 'lucide-react';
 import { buildPageMetadata } from '@/lib/seo/pageMetadata';
 import { OwnNav } from '@/components/marketing/own/OwnNav';
@@ -101,18 +95,6 @@ function EmphasisCard({ icon: Icon, children }: { icon: typeof ArrowRight; child
     </div>
   );
 }
-
-const LOCATION_META: Record<string, { icon: typeof Building2; accent: string }> = {
-  mall: { icon: ShoppingBag, accent: ACCENT.blue },
-  office: { icon: Building2, accent: ACCENT.orange },
-  university: { icon: GraduationCap, accent: ACCENT.lime },
-  hotel: { icon: Hotel, accent: ACCENT.pink },
-  hospital: { icon: Landmark, accent: ACCENT.blue },
-  apartment: { icon: Building2, accent: ACCENT.green },
-  bnb: { icon: Hotel, accent: ACCENT.purple },
-  transport_hub: { icon: TrainFront, accent: ACCENT.orange },
-  other: { icon: Building2, accent: ACCENT.orange },
-};
 
 const STACK_ITEMS = [
   { icon: Package, title: 'Discovery Machine', body: 'The physical retail asset.', accent: ACCENT.orange },
@@ -220,11 +202,13 @@ export default function OwnPage() {
             <p>A great location gives the machine access to the people who can actually buy from it.</p>
             <p>That’s why we’re looking for owners who can bring more than capital.</p>
           </div>
-          <LocationsCollagePhoto meta={LOCATION_META} />
+          <LocationsCollagePhoto />
         </div>
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:mt-12 sm:p-8">
-          <p className="text-lg font-semibold text-white sm:text-xl">If you can open doors, we can help you build what goes behind them.</p>
+          <p className="text-lg font-semibold text-white sm:text-xl">
+            If you can secure a good location for the machine, we will run the business for you.
+          </p>
           <p className="mt-3 text-sm leading-relaxed text-white/50 sm:text-base">
             Location performance depends on traffic, customer profile, product mix, pricing and operating conditions. We don’t promise
             that any particular location will be profitable — your network is an advantage, not a guarantee.

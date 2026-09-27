@@ -32,6 +32,9 @@ import {
 import { trackEvent } from '@/lib/analytics/trackEvent';
 import { MACHINE_OWNER_EVENTS } from '@/lib/analytics/machineOwnerEvents';
 import { cn } from '@/lib/utils';
+import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
+import { WHATSAPP_CTA_CLASS } from '@/components/marketing/design/ctaStyles';
 
 type StepId = 'name' | 'greeting' | 'capital' | 'locationAccess' | 'locationCount' | 'locationType' | 'interest' | 'portfolio' | 'contact' | 'success';
 
@@ -654,6 +657,16 @@ function SuccessState({ answers }: { answers: Answers }) {
         <SummaryTile label="Location" value={location} />
         <SummaryTile label="Interest" value={interest} />
       </div>
+
+      <a
+        href={buildWhatsAppOrderUrl("Hi Snack Quest! I just applied to own a Discovery Machine and wanted to follow up.")}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn('mt-2 inline-flex h-12 items-center justify-center gap-2 px-6 text-base font-bold', WHATSAPP_CTA_CLASS)}
+      >
+        <WhatsAppIcon className="size-4" />
+        Talk to us on WhatsApp
+      </a>
     </div>
   );
 }
