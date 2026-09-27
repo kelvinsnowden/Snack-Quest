@@ -12,6 +12,13 @@ type Handler = (request: Request, context: { params: Promise<Record<string, stri
  * gateway simulator.
  */
 export class InProcessV1Transport implements V1Transport {
+  /** A `fetch` that answers from the route handlers — hand it to the reference SDK. */
+  readonly fetch = async (url: string, init: { method: string; headers: Record<string, string>; body?: string }): Promise<Response> => {
+    const path = url.replace(/^https?:\/\/[^/]+/, '');
+    const { handler, params } = await this.route(init.method, path);
+    return handler(new Request(`http://localhost${path}`, { method: init.method, headers: init.headers, body: init.method === 'GET' ? undefined : init.body }), { params: Promise.resolve(params) });
+  };
+
   async send(method: 'GET' | 'POST', path: string, headers: Record<string, string>, body: string) {
     const { handler, params } = await this.route(method, path);
     const response = await handler(
