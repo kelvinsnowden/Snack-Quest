@@ -110,6 +110,40 @@ describe('machineSettlementService.computeGrossForPeriod', () => {
     expect(result.refundsKes).toBe(0);
   });
 
+  it('a refunded failed vend is reported but never deducted from the owner (it was never revenue)', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Acme Distribution', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSlot(adapter, partnerId, 5);
+    const periodStart = new Date(Date.now() - 60_000);
+    await dispenseOneSale(adapter, machineId);
+
+    const transactions = new MachineTransactionService(() => adapter);
+    const { id } = await transactions.createPending({ businessId: BUSINESS_ID, machineId, slotId: 'A01', paymentMethod: 'mpesa' });
+    await transactions.markPaymentVerified(BUSINESS_ID, id, `mpesa-ref-${id}`);
+    const { vendRef } = await transactions.authorizeVend(BUSINESS_ID, id);
+    await transactions.applyVendResult({ businessId: BUSINESS_ID, machineId, rawPayload: { vendRef, dispensed: false, status: 'jam', idempotencyKey: `vend-result-${id}` }, source: 'mock', actor: 'staff-1' });
+    await transactions.requestRefund(BUSINESS_ID, id);
+    await transactions.markRefunded(BUSINESS_ID, id);
+    const periodEnd = new Date(Date.now() + 60_000);
+
+    const result = await machineSettlementService.computeGrossForPeriod(BUSINESS_ID, machineId, periodStart, periodEnd);
+    expect(result).toMatchObject({ grossSalesKes: 350, refundsKes: 0, failedVendRefundsKes: 350, transactionCount: 1 });
+  });
+
+  it('a sale resolved after its period is counted in the period it completed in', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Acme Distribution', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSlot(adapter, partnerId, 5);
+    const id = await dispenseOneSale(adapter, machineId);
+    // Started last week, completed now (e.g. resolved from manual review).
+    await adminFirestore.collection('machineTransactions').doc(id).update({ createdAt: new Date(Date.now() - 7 * 24 * 3_600_000) });
+
+    const lastWeek = await machineSettlementService.computeGrossForPeriod(BUSINESS_ID, machineId, new Date(Date.now() - 8 * 24 * 3_600_000), new Date(Date.now() - 6 * 24 * 3_600_000));
+    const thisPeriod = await machineSettlementService.computeGrossForPeriod(BUSINESS_ID, machineId, new Date(Date.now() - 60_000), new Date(Date.now() + 60_000));
+    expect(lastWeek.grossSalesKes).toBe(0);
+    expect(thisPeriod.grossSalesKes).toBe(350);
+  });
+
   it('excludes transactions outside the requested window', async () => {
     const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Acme Distribution', actor: 'staff-1' });
     const adapter = new MockVendingAdapter();

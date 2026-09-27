@@ -26,24 +26,57 @@ export { MachineSettlementNotFoundError, IllegalSettlementTransitionError, Overl
  * §1 for why the two coexist rather than one replacing the other.
  */
 class MachineSettlementService {
-  /** Sums `dispensed` transactions in the period — the one figure this codebase can compute without anyone's agreement. */
-  async computeGrossForPeriod(businessId: string, machineId: string, periodStart: Date, periodEnd: Date): Promise<{ grossSalesKes: number; refundsKes: number; transactionCount: number }> {
+  /**
+   * Revenue for the period, attributed by **when each sale completed**
+   * (`dispensedAt`) — so a sale resolved from manual review after an
+   * earlier period was settled lands in the current period instead of
+   * being lost between the two.
+   *
+   * `refundsKes` is revenue *reversed*: money returned for a sale that
+   * was counted in `grossSalesKes`. Under today's state machine a
+   * completed sale is final, so nothing reverses it and this is 0 —
+   * `revenueReversalsForPeriod` is the single place a future chargeback
+   * or post-sale refund policy plugs in (an undefined business rule,
+   * deliberately not guessed). Refunds of *failed* vends are reported
+   * separately as `failedVendRefundsKes` and never deducted: that money
+   * was never revenue, so deducting it would charge the owner twice.
+   */
+  async computeGrossForPeriod(
+    businessId: string,
+    machineId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ grossSalesKes: number; refundsKes: number; transactionCount: number; failedVendRefundsKes: number; outcomeConflictCount: number }> {
     let grossSalesKes = 0;
-    let refundsKes = 0;
     let transactionCount = 0;
-    for await (const { data } of machineTransactionRepository.streamRange(businessId, {
-      machineId,
-      since: periodStart,
-      until: periodEnd,
-    })) {
-      if (data.status === 'dispensed') {
-        grossSalesKes += data.amountKes;
-        transactionCount += 1;
-      } else if (data.status === 'refunded') {
-        refundsKes += data.amountKes;
+    for await (const { data } of machineTransactionRepository.streamDispensedInRange(businessId, { machineId, since: periodStart, until: periodEnd })) {
+      grossSalesKes += data.amountKes;
+      transactionCount += 1;
+    }
+    let failedVendRefundsKes = 0;
+    let outcomeConflictCount = 0;
+    for await (const { data } of machineTransactionRepository.streamRange(businessId, { machineId, since: periodStart, until: periodEnd })) {
+      if (data.status === 'refunded') {
+        failedVendRefundsKes += data.amountKes;
+      }
+      if (data.outcomeConflict && !data.outcomeConflict.resolved) {
+        outcomeConflictCount += 1;
       }
     }
-    return { grossSalesKes, refundsKes, transactionCount };
+    const refundsKes = await this.revenueReversalsForPeriod({ businessId, machineId, periodStart, periodEnd });
+    return { grossSalesKes, refundsKes, transactionCount, failedVendRefundsKes, outcomeConflictCount };
+  }
+
+  /**
+   * Money returned for sales already counted as revenue. None exist
+   * today (a dispensed sale is terminal). When chargebacks or post-sale
+   * refunds are introduced, their owner-economics rule — who bears the
+   * loss — must be decided by the business and implemented here, and
+   * nowhere else.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the signature is the extension point; today's rule has no reversals to count.
+  async revenueReversalsForPeriod(_period: { businessId: string; machineId: string; periodStart: Date; periodEnd: Date }): Promise<number> {
+    return 0;
   }
 
   /**
@@ -104,7 +137,7 @@ class MachineSettlementService {
    * atomic with the write itself.
    */
   async createDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date; actor: string }): Promise<string> {
-    const [{ grossSalesKes, refundsKes }, { cogsKes, unpricedSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
+    const [{ grossSalesKes, refundsKes, failedVendRefundsKes, outcomeConflictCount }, { cogsKes, unpricedSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
       this.computeGrossForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
       this.computeCogsForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
       this.computeSubscriptionChargeForPeriod(input.businessId, input.machineId),
@@ -142,6 +175,8 @@ class MachineSettlementService {
       unpricedSaleCount,
       subscriptionChargedKes,
       distributableOwnerKes,
+      failedVendRefundsKes,
+      outcomeConflictCount,
       createdBy: input.actor,
     });
   }

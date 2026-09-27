@@ -147,6 +147,37 @@ class AlertRepository {
   }
 
   /**
+   * Claims the right to run the fleet-wide alert sweep for this
+   * business if nobody has in the last `minIntervalMs`. One small
+   * transactional read — this is what keeps the sweep off every page
+   * load: a hundred staff and owners refreshing at once cause one
+   * sweep, not a hundred.
+   */
+  async claimEvaluation(businessId: string, minIntervalMs: number, now = new Date()): Promise<boolean> {
+    const ref = adminFirestore.collection('alertEvaluationRuns').doc(businessId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const last = snapshot.get('lastRunAt') as FirebaseFirestore.Timestamp | undefined;
+      if (last && now.getTime() - last.toMillis() < minIntervalMs) {
+        return false;
+      }
+      tx.set(ref, { businessId, lastRunAt: now }, { merge: true });
+      return true;
+    });
+  }
+
+  /** Marks alerts as texted, so the notifier never texts the same alert twice (the outbound-message dedupe is the second line of defence). */
+  async markNotified(alertIds: string[]): Promise<void> {
+    for (let offset = 0; offset < alertIds.length; offset += 400) {
+      const batch = adminFirestore.batch();
+      for (const id of alertIds.slice(offset, offset + 400)) {
+        batch.update(adminFirestore.collection(COLLECTION).doc(id), { notifiedAt: FieldValue.serverTimestamp() });
+      }
+      await batch.commit();
+    }
+  }
+
+  /**
    * Every open/acknowledged alert, newest first. `type`/`severity`/
    * `machineId` are filtered in memory, not folded into the Firestore
    * query — the query itself only ever needs the one composite index

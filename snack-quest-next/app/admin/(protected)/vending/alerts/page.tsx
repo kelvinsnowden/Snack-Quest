@@ -40,7 +40,7 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
  */
 export default async function AdminVendingAlertsPage() {
   const session = await requireStaffSession();
-  await alertService.evaluateAndSync(session.businessId);
+  await alertService.evaluateIfStale(session.businessId);
   const alerts = await alertService.listOpen(session.businessId);
   const serialized = alerts
     .map(({ id, data }) => serializeAlert(id, data))

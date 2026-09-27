@@ -63,7 +63,7 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
   const { filter: filterParam } = await searchParams;
   const activeFilter = FLEET_FILTERS.some((f) => f.key === filterParam) ? (filterParam as FleetFilter) : null;
 
-  await alertService.evaluateAndSync(session.businessId);
+  await alertService.evaluateIfStale(session.businessId);
   const [machines, partners, openAlerts] = await Promise.all([
     machineRepository.listAllForBusiness(session.businessId),
     partnerRepository.listByBusiness(session.businessId),

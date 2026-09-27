@@ -2,7 +2,7 @@ import { verifyPartnerSessionFromRequest } from '@/lib/auth/partnerSession';
 import { ownerPortalService, PartnerDoesNotOwnMachineError, CameraNotFoundError } from '@/services/ownerPortalService';
 import { CameraCapabilityNotSupportedError } from '@/services/cameraService';
 
-/** GET — owner-scoped stream info. Never an authenticated URI (§ SECURITY) — see `CameraStreamInfo`'s own doc comment. */
+/** GET — the owner's live-view capability. Never the camera's host, port, path or credentials — see `OwnerLiveViewCapability`. */
 export async function GET(request: Request, { params }: { params: Promise<{ cameraId: string }> }): Promise<Response> {
   const session = await verifyPartnerSessionFromRequest(request);
   if (!session) {
@@ -11,8 +11,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ came
 
   const { cameraId } = await params;
   try {
-    const streamInfo = await ownerPortalService.getCameraStreamInfoForOwner(session.businessId, session.partnerId, cameraId);
-    return Response.json({ streamInfo });
+    const liveView = await ownerPortalService.getCameraStreamInfoForOwner(session.businessId, session.partnerId, cameraId);
+    return Response.json({ liveView });
   } catch (error) {
     if (error instanceof CameraNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });

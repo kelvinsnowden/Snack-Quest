@@ -16,7 +16,7 @@ vi.mock('@/services/alertService', async () => {
   const actual = await vi.importActual<typeof import('@/services/alertService')>('@/services/alertService');
   return {
     ...actual,
-    alertService: { evaluateAndSync: evaluateAndSyncMock, listOpen: listOpenMock, acknowledge: acknowledgeMock, resolve: resolveMock },
+    alertService: { evaluateIfStale: evaluateAndSyncMock, listOpen: listOpenMock, acknowledge: acknowledgeMock, resolve: resolveMock },
   };
 });
 

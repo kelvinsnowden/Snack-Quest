@@ -193,6 +193,11 @@ export interface OwnerMachineDetail {
  * or directly) so a partner can never reach another partner's
  * machine by trying a different id.
  */
+/** What an owner may do with a camera's live feed — see `getCameraStreamInfoForOwner`. */
+export type OwnerLiveViewCapability =
+  | { mode: 'unavailable'; cameraOnline: boolean; reason: string }
+  | { mode: 'relay_url'; url: string; expiresAt: string };
+
 class OwnerPortalService {
   async getDashboard(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboard> {
     const partner = await partnerService.findById(businessId, partnerId);
@@ -392,7 +397,7 @@ class OwnerPortalService {
     const ownedMachineIds = new Set(machines.map((m) => m.id));
     const machineCodeById = new Map(machines.map((m) => [m.id, m.machineCode]));
 
-    await alertService.evaluateAndSync(businessId);
+    await alertService.evaluateIfStale(businessId);
     const openAlerts = await alertService.listOpen(businessId);
 
     return openAlerts
@@ -640,9 +645,26 @@ class OwnerPortalService {
     return cameraService.listSnapshotsByCamera(businessId, cameraId);
   }
 
-  async getCameraStreamInfoForOwner(businessId: string, partnerId: string, cameraId: string) {
+  /**
+   * The owner's live-view *capability*, never the camera's address.
+   *
+   * A raw stream location (host, port, path — and on most cameras the
+   * credentials that go with it) would let an owner, or anyone they
+   * forward it to, reach the camera directly and bypass every Snack Quest
+   * access check. Live view for owners therefore needs a relay that
+   * issues short-lived, per-viewer URLs; until that relay exists the
+   * contract answers honestly with `unavailable` rather than leaking the
+   * address. When it ships, only this method changes: `{ mode:
+   * 'relay_url', url, expiresAt }`.
+   */
+  async getCameraStreamInfoForOwner(businessId: string, partnerId: string, cameraId: string): Promise<OwnerLiveViewCapability> {
     await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
-    return cameraService.getStreamInfo(businessId, cameraId);
+    const info = await cameraService.getStreamInfo(businessId, cameraId);
+    return {
+      mode: 'unavailable',
+      cameraOnline: info.available,
+      reason: 'Live view needs the Snack Quest streaming relay, which is not enabled yet. Snapshots are available.',
+    };
   }
 
   private async sumRollupsAcross(businessId: string, machineIds: string[], startDate: string, endDate: string): Promise<{ revenueKes: number; unitsSold: number; grossProfitKes: number }> {

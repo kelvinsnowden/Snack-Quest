@@ -305,3 +305,59 @@ describe('AlertService — acknowledge and resolve', () => {
     await expect(alertService.acknowledge(BUSINESS_ID, 'does-not-exist', 'staff-1')).rejects.toThrow(AlertNotFoundError);
   });
 });
+
+describe('AlertService — off the request path, and operators are told', () => {
+  it('evaluateIfStale runs the fleet sweep at most once per interval, however many pages load', async () => {
+    await adminFirestore.collection('alertEvaluationRuns').doc(BUSINESS_ID).delete();
+    const runs = await Promise.all(Array.from({ length: 5 }, () => alertService.evaluateIfStale(BUSINESS_ID, 60_000)));
+    expect(runs.filter(Boolean)).toHaveLength(1);
+    expect(await alertService.evaluateIfStale(BUSINESS_ID, 60_000)).toBe(false);
+    expect(await alertService.evaluateIfStale(BUSINESS_ID, 0)).toBe(true);
+  });
+
+  async function withRecipients(phones: string[]) {
+    await adminFirestore.collection('businesses').doc(BUSINESS_ID).set({ orderAlertRecipients: phones.map((phone) => ({ phone, label: 'Ops' })) }, { merge: true });
+  }
+
+  it('texts each new critical alert once, to every recipient, and never again', async () => {
+    await withRecipients(['254700000001', '254700000002']);
+    const adapter = new MockVendingAdapter();
+    await provisionActiveMachineWithSlot(adapter, 0);
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    const sent: { recipientRef: string; dedupeKey: string; params: Record<string, string> }[] = [];
+    const send = async (_b: string, input: { recipientRef: string; dedupeKey: string; params: Record<string, string> }) => { sent.push(input); };
+
+    expect(await alertService.notifyCritical(BUSINESS_ID, { send })).toEqual({ notified: 1, digest: false });
+    expect(sent.map((s) => s.recipientRef).sort()).toEqual(['254700000001', '254700000002']);
+    expect(sent[0].params.title).toMatch(/stock/i);
+    expect(await alertService.notifyCritical(BUSINESS_ID, { send })).toEqual({ notified: 0, digest: false });
+    expect(sent).toHaveLength(2);
+  });
+
+  it('a burst of critical alerts is one digest text, not one per machine', async () => {
+    await withRecipients(['254700000001']);
+    const adapter = new MockVendingAdapter();
+    for (let i = 0; i < 5; i += 1) {
+      await provisionActiveMachineWithSlot(adapter, 0);
+    }
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    const sent: { params: Record<string, string> }[] = [];
+    const result = await alertService.notifyCritical(BUSINESS_ID, { send: async (_b, input) => { sent.push(input); } });
+    expect(result).toEqual({ notified: 5, digest: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].params.title).toBe('5 critical alerts');
+  });
+
+  it('with no recipients configured it sends nothing and leaves the alerts to be texted later', async () => {
+    await withRecipients([]);
+    await adminFirestore.collection('businesses').doc(BUSINESS_ID).set({ adminOrderSmsPhone: null }, { merge: true });
+    const adapter = new MockVendingAdapter();
+    await provisionActiveMachineWithSlot(adapter, 0);
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    const sent: unknown[] = [];
+    expect((await alertService.notifyCritical(BUSINESS_ID, { send: async (_b, input) => { sent.push(input); } })).notified).toBe(0);
+    expect(sent).toHaveLength(0);
+    const [alert] = await alertService.listOpen(BUSINESS_ID, { severity: 'critical' });
+    expect(alert.data.notifiedAt ?? null).toBeNull();
+  });
+});

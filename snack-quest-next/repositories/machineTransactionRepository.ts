@@ -279,6 +279,39 @@ class MachineTransactionRepository {
   }
 
   /** Every transaction in a window, cursor-paged — the rollup primitive, same shape as `orderRepository.streamRange` (§ analytics rollups). */
+  /**
+   * Completed sales by *when they completed* (`dispensedAt`), not when
+   * they were started — what revenue attribution needs: a sale resolved
+   * from manual review days later belongs to the period it resolved in,
+   * never to a period that may already be settled.
+   */
+  async *streamDispensedInRange(businessId: string, options: { machineId: string; since: Date; until: Date; pageSize?: number }): AsyncGenerator<{ id: string; data: MachineTransaction }> {
+    const pageSize = options.pageSize ?? 500;
+    let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    for (;;) {
+      let query = adminFirestore
+        .collection(COLLECTION)
+        .where('businessId', '==', businessId)
+        .where('machineId', '==', options.machineId)
+        .where('status', '==', 'dispensed')
+        .where('dispensedAt', '>=', options.since)
+        .where('dispensedAt', '<', options.until)
+        .orderBy('dispensedAt')
+        .limit(pageSize);
+      if (cursor) {
+        query = query.startAfter(cursor);
+      }
+      const snapshot = await query.get();
+      for (const doc of snapshot.docs) {
+        yield { id: doc.id, data: doc.data() as MachineTransaction };
+      }
+      if (snapshot.docs.length < pageSize) {
+        return;
+      }
+      cursor = snapshot.docs[snapshot.docs.length - 1];
+    }
+  }
+
   async *streamRange(
     businessId: string,
     options: { since?: Date; until?: Date; machineId?: string; pageSize?: number } = {},

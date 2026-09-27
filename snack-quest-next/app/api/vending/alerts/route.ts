@@ -21,11 +21,10 @@ const ALERT_TYPES: AlertType[] = [
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 
 /**
- * § PART 6 — ALERT CENTER. Runs `evaluateAndSync` first, on every
- * call — the sweep is cheap and idempotent (it upserts/auto-resolves
- * against live state), so the Alert Center's own list is always at
- * most one page load stale, never a stored view that could drift
- * from what `machines`/`machineSlots`/etc. actually say right now.
+ * § PART 6 — ALERT CENTER. Re-runs the sweep first if nobody has in
+ * the last minute (`evaluateIfStale`) — the sweep reads the whole
+ * fleet, so it can't run on every request — so the list is at most a
+ * minute stale, never a stored view that drifts from live state.
  */
 export async function GET(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -43,7 +42,7 @@ export async function GET(request: Request): Promise<Response> {
   const type = typeParam && (ALERT_TYPES as string[]).includes(typeParam) ? (typeParam as AlertType) : undefined;
   const severity = severityParam && (ALERT_SEVERITIES as string[]).includes(severityParam) ? (severityParam as AlertSeverity) : undefined;
 
-  await alertService.evaluateAndSync(session.businessId);
+  await alertService.evaluateIfStale(session.businessId);
   const alerts = await alertService.listOpen(session.businessId, { type, severity, machineId });
   return Response.json({ alerts: alerts.map(({ id, data }) => serializeAlert(id, data)) });
 }

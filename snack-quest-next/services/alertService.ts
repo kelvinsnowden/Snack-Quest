@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineSubscriptionRepository } from '@/repositories/machineSubscriptionRepository';
@@ -13,17 +15,35 @@ import { vendingReconciliationService } from '@/services/vendingReconciliationSe
 import { LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { ALERT_SEVERITY_BY_TYPE, type Alert, type AlertSeverity, type AlertType } from '@/types';
+import { businessRepository } from '@/repositories/businessRepository';
+import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
+import { notificationService, TemplateNotFoundError, type NotificationService } from '@/services/notificationService';
+import { logger } from '@/lib/observability/logger';
 
 const DEFAULT_EXPIRY_WARNING_DAYS = 7;
 const DEFAULT_SETTLEMENT_STALE_AFTER_DAYS = 3;
 const DEFAULT_EVENT_LOOKBACK_DAYS = 14;
+/**
+ * Page loads re-run the sweep at most this often per business; the
+ * scheduled sweep runs regardless. 0 under the test runner (every test
+ * sees fresh alerts), unless `ALERT_EVALUATION_MIN_INTERVAL_MS` is set.
+ */
+function alertEvaluationMinIntervalMs(): number {
+  const configured = Number(process.env.ALERT_EVALUATION_MIN_INTERVAL_MS);
+  if (process.env.ALERT_EVALUATION_MIN_INTERVAL_MS && Number.isFinite(configured) && configured >= 0) {
+    return configured;
+  }
+  return process.env.NODE_ENV === 'test' ? 0 : 60_000;
+}
+/** More new critical alerts than this in one sweep are texted as one digest — a fleet-wide outage is one text, not a thousand. */
+export const CRITICAL_ALERT_DIGEST_THRESHOLD = 3;
 
 type ConditionDraft = Omit<AlertConditionInput, 'severity'>;
 
 /**
  * § PART 6 — ALERT CENTER. `evaluateAndSync` is the whole service: a
- * sweep, safe to call on every Alert Center page load (or from a
- * future cron, unchanged), that re-derives every alert type from the
+ * sweep, run by the fast-recovery cron and — at most once a minute —
+ * by page loads (`evaluateIfStale`), that re-derives every alert type from the
  * live state the rest of this codebase already keeps — never a
  * second, independently-maintained copy of "is this machine okay."
  * See `types/alert.ts` for the condition-alert vs event-alert split
@@ -46,6 +66,74 @@ class AlertService {
       this.evaluateExpiryRisk(businessId, locationByMachine),
       this.evaluateIntegrationEvents(businessId, locationByMachine),
     ]);
+  }
+
+  /**
+   * The sweep for request paths (Alert Center, network overview, owner
+   * alerts): runs only if nobody has in the last minute. The sweep reads
+   * the whole fleet, so running it per page view made every page load
+   * O(fleet) and multiplied with the number of people looking.
+   */
+  async evaluateIfStale(businessId: string, minIntervalMs = alertEvaluationMinIntervalMs()): Promise<boolean> {
+    if (!(await alertRepository.claimEvaluation(businessId, minIntervalMs))) {
+      return false;
+    }
+    await this.evaluateAndSync(businessId);
+    await this.notifyCritical(businessId).catch((error: unknown) => logger.error('critical alert notification failed', { businessId, error }));
+    return true;
+  }
+
+  /**
+   * Texts operators about open critical alerts they haven't been told
+   * about, using the same recipients as new-order texts. Each alert is
+   * texted once (`notifiedAt`, plus the outbound-message dedupe key);
+   * a burst becomes one digest. Best-effort: a failed text never fails
+   * the sweep, and with no recipients or no template it's a no-op that
+   * logs why.
+   */
+  async notifyCritical(businessId: string, notifications: Pick<NotificationService, 'send'> = notificationService): Promise<{ notified: number; digest: boolean }> {
+    const pending = (await alertRepository.listOpen(businessId, { severity: 'critical' })).filter(({ data }) => !data.notifiedAt);
+    if (pending.length === 0) {
+      return { notified: 0, digest: false };
+    }
+    const recipients = orderAlertRecipientsFor(await businessRepository.findById(businessId));
+    if (recipients.length === 0) {
+      logger.warn('critical alerts open but no alert recipients configured', { businessId, count: pending.length });
+      return { notified: 0, digest: false };
+    }
+    const digest = pending.length > CRITICAL_ALERT_DIGEST_THRESHOLD;
+    const messages = digest
+      ? [{
+          key: `digest-${createHash('sha256').update(pending.map(({ id }) => id).sort().join(',')).digest('hex').slice(0, 16)}`,
+          params: { title: `${pending.length} critical alerts`, machine: `${new Set(pending.map(({ data }) => data.machineId)).size} machines`, detail: 'Open the Alert Center.' },
+        }]
+      : await Promise.all(pending.map(async ({ id, data }) => ({
+          key: id,
+          params: { title: data.title, machine: data.machineId ? ((await machineRepository.findById(businessId, data.machineId))?.machineCode ?? data.machineId) : 'fleet', detail: data.detail.slice(0, 120) },
+        })));
+    try {
+      for (const message of messages) {
+        for (const recipient of recipients) {
+          await notifications.send(businessId, {
+            channel: 'sms',
+            templateCode: 'vending_critical_alert_sms',
+            recipientType: 'staff',
+            recipientId: message.key,
+            recipientRef: recipient.phone,
+            params: message.params,
+            dedupeKey: `vending-alert:${message.key}:${recipient.phone}`,
+          });
+        }
+      }
+    } catch (error) {
+      if (error instanceof TemplateNotFoundError) {
+        logger.warn('critical alert template not seeded; run scripts/seedNotificationTemplates.mjs', { businessId });
+        return { notified: 0, digest };
+      }
+      throw error;
+    }
+    await alertRepository.markNotified(pending.map(({ id }) => id));
+    return { notified: pending.length, digest };
   }
 
   private async open(draft: ConditionDraft): Promise<void> {

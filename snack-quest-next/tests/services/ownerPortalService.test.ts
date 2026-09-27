@@ -478,5 +478,15 @@ describe('OwnerPortalService camera-for-owner methods', () => {
 
     const { diagnostics } = await ownerPortalService.getCameraDiagnosticsForOwner(BUSINESS_ID, partnerA, cameraId);
     expect(diagnostics.registered).toBe(true);
+
+    // Live view is a capability, never the camera's address: an owner
+    // must not be able to reach the camera around Snack Quest.
+    const liveView = await ownerPortalService.getCameraStreamInfoForOwner(BUSINESS_ID, partnerA, cameraId);
+    expect(liveView.mode).toBe('unavailable');
+    const serialized = JSON.stringify(liveView);
+    for (const leak of ['mock-camera.local', '554', '/mock-stream', 'rtsp', 'host', 'port', 'streamPath']) {
+      expect(serialized).not.toContain(leak);
+    }
+    await expect(ownerPortalService.getCameraStreamInfoForOwner(BUSINESS_ID, partnerB, cameraId)).rejects.toThrow(PartnerDoesNotOwnMachineError);
   });
 });

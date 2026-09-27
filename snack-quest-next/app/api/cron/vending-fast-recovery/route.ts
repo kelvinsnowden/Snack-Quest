@@ -2,6 +2,7 @@ import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { dispenseRecoveryService } from '@/services/dispenseRecoveryService';
 import { machineTransactionService } from '@/services/machineTransactionService';
+import { alertService } from '@/services/alertService';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
 import { logger } from '@/lib/observability/logger';
 
@@ -12,7 +13,8 @@ const JOB_NAME = 'vending-fast-recovery';
  * sale stuck between payment and outcome that can be resolved provably
  * — refunds for dispenses never sent or never collected, review for
  * ones that may have dispensed — plus pull reconciliation of outbound
- * unknowns on their backoff schedule.
+ * unknowns on their backoff schedule, then the alert sweep and
+ * critical-alert texts.
  *
  * Built to run every 1–5 minutes and cheap when nothing is stuck (a few
  * index queries returning nothing). Vercel Hobby only schedules daily
@@ -33,7 +35,15 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const sweep = await dispenseRecoveryService.sweep(businessId);
     const pulled = await machineTransactionService.reconcileUnknownDispenses(businessId);
-    const result = { examined: sweep.examined, ...sweep.recovered, pulledResolved: pulled.resolved, pulledStillUnknown: pulled.stillUnknown };
+    // Alerts ride the same schedule, so an operator hears about a
+    // critical condition within one run, not when someone next opens
+    // the dashboard.
+    await alertService.evaluateAndSync(businessId);
+    const notified = await alertService.notifyCritical(businessId).catch((error: unknown) => {
+      logger.error('critical alert notification failed', { businessId, error });
+      return { notified: 0, digest: false };
+    });
+    const result = { examined: sweep.examined, ...sweep.recovered, pulledResolved: pulled.resolved, pulledStillUnknown: pulled.stillUnknown, alertsNotified: notified.notified };
     await scheduledJobRunRepository.record({ businessId, jobName: JOB_NAME, status: 'succeeded', durationMs: Date.now() - startedAtMs, resultSummary: result, error: null });
     return Response.json({ ok: true, ...result });
   } catch (error) {

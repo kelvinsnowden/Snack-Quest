@@ -339,6 +339,26 @@ const TEMPLATES = [
     version: 1,
     isActive: true,
   },
+  /**
+   * Critical vending alerts (machine offline, dispense outcome
+   * conflict, stockout…) texted to the same people who get new-order
+   * texts. Sent by `alertService.notifyCritical`; a burst of more than
+   * a few in one sweep is sent as one digest instead, so a fleet-wide
+   * outage is one text, not a thousand.
+   */
+  {
+    templateCode: 'vending_critical_alert_sms',
+    channel: 'sms',
+    subject: null,
+    heading: null,
+    bodyTemplate: 'Snack Quest ALERT: {{title}} ({{machine}}). {{detail}}',
+    ctaLabel: null,
+    ctaUrl: null,
+    requiredParams: ['title', 'machine', 'detail'],
+    htmlBodyTemplate: null,
+    version: 1,
+    isActive: true,
+  },
   {
     templateCode: 'order_dispatched_sms',
     channel: 'sms',

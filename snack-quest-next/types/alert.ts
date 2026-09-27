@@ -66,6 +66,8 @@ export interface Alert {
   resolvedBy: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /** When operators were texted about it (critical alerts only). Absent until then. */
+  notifiedAt?: Timestamp | null;
 }
 
 /** The severity `alertService` assigns each type — a fixed table, not a per-alert judgement call, so the same condition always reads the same urgency across the whole fleet. */
