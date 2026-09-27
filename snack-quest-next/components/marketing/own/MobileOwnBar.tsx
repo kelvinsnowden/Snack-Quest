@@ -4,35 +4,43 @@ import { useEffect, useState } from 'react';
 import { OwnCta } from './OwnCta';
 
 /**
- * The phone-sized CTA (§ machine-owner lead-generation landing page)
- * — mirrors `MobileInvestBar`'s own visibility rule exactly: hidden
- * over the hero (which has its own CTA), hidden again once the
- * application form is on screen.
+ * The phone-sized CTA (§ machine-owner lead-generation landing page).
+ *
+ * Hidden whenever any in-page CTA is already on screen — not just the
+ * application form — so it never stacks a second, identical button
+ * directly underneath one the visitor can already see (the page has
+ * several CTAs now: hero, qualification, apply, final). Every `OwnCta`
+ * instance carries `data-own-cta`, so this only has to watch that
+ * selector rather than name each section by id.
  */
 export function MobileOwnBar() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const form = document.getElementById('apply');
+    const ctas = Array.from(document.querySelectorAll<HTMLElement>('[data-own-cta]'));
+    const onScreen = new Set<Element>();
 
-    let formOnScreen = false;
+    const update = () => setVisible(window.scrollY > 400 && onScreen.size === 0);
+
     const observer =
-      form && typeof IntersectionObserver !== 'undefined'
+      typeof IntersectionObserver !== 'undefined'
         ? new IntersectionObserver(
-            ([entry]) => {
-              formOnScreen = entry.isIntersecting;
-              setVisible(window.scrollY > 600 && !formOnScreen);
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) onScreen.add(entry.target);
+                else onScreen.delete(entry.target);
+              }
+              update();
             },
-            { rootMargin: '0px 0px -20% 0px' },
+            { rootMargin: '0px 0px -10% 0px' },
           )
         : null;
-    observer?.observe(form!);
+    ctas.forEach((cta) => observer?.observe(cta));
 
-    const onScroll = () => setVisible(window.scrollY > 600 && !formOnScreen);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', update, { passive: true });
+    update();
     return () => {
-      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', update);
       observer?.disconnect();
     };
   }, []);
@@ -46,7 +54,7 @@ export function MobileOwnBar() {
       aria-hidden={!visible}
     >
       <OwnCta source="mobile_bar" className="w-full" size="md">
-        Apply to become a machine owner
+        Apply to own a machine
       </OwnCta>
     </div>
   );

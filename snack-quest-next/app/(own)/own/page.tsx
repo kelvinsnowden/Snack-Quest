@@ -32,6 +32,7 @@ import { ApplicationForm } from '@/components/marketing/own/ApplicationForm';
 import { MachinePhoto } from '@/components/marketing/own/MachinePhoto';
 import { OwnerPortalPhoto } from '@/components/marketing/own/OwnerPortalPhoto';
 import { LocationsCollagePhoto } from '@/components/marketing/own/LocationsCollagePhoto';
+import { FaqAccordion } from '@/components/marketing/own/FaqAccordion';
 
 const TITLE = 'Own a Snack Quest Discovery Machine | Machine Ownership';
 const DESCRIPTION =
@@ -70,7 +71,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 function Section({ id, className, children }: { id?: string; className?: string; children: React.ReactNode }) {
   return (
-    <section id={id} className={`scroll-mt-20 px-5 py-16 sm:px-8 sm:py-24 ${className ?? ''}`}>
+    <section id={id} className={`scroll-mt-20 px-5 py-12 sm:px-8 sm:py-24 ${className ?? ''}`}>
       <div className="mx-auto w-full max-w-[1200px]">{children}</div>
     </section>
   );
@@ -92,7 +93,7 @@ function Lede({ children }: { children: React.ReactNode }) {
 /** A quiet bordered card that carries one key statement, with an icon rather than a filled block — used everywhere this page needs to make a line stand out without another slab of colour. */
 function EmphasisCard({ icon: Icon, children }: { icon: typeof ArrowRight; children: React.ReactNode }) {
   return (
-    <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center sm:mt-14 sm:rounded-3xl sm:p-12">
+    <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center sm:mt-14 sm:gap-4 sm:rounded-3xl sm:p-12">
       <span className="bg-primary/15 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
         <Icon className="size-5" aria-hidden="true" />
       </span>
@@ -239,9 +240,9 @@ export default function OwnPage() {
         </Statement>
         <Lede>You get a physical asset and a complete system around it.</Lede>
 
-        <div className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid grid-cols-2 gap-2.5 sm:mt-12 sm:gap-3 lg:grid-cols-4">
           {STACK_ITEMS.map((item) => (
-            <div key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <div key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
               <span className={`mb-3 flex size-10 items-center justify-center rounded-xl bg-white/10 ${item.accent}`}>
                 <item.icon className="size-5" aria-hidden="true" />
               </span>
@@ -272,9 +273,9 @@ export default function OwnPage() {
         <div className="mt-10 grid gap-8 sm:mt-12 lg:grid-cols-2 lg:items-center lg:gap-12">
           <OwnerPortalPhoto className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none" />
 
-          <ul className="flex flex-col gap-2.5">
+          <ul className="grid grid-cols-2 gap-2.5">
             {PORTAL_ITEMS.map((item) => (
-              <li key={item.label} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+              <li key={item.label} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 sm:gap-3 sm:px-4">
                 <item.icon className={`size-4 shrink-0 ${item.accent}`} aria-hidden="true" />
                 <span className="text-sm font-medium text-white/85">{item.label}</span>
               </li>
@@ -292,9 +293,9 @@ export default function OwnPage() {
         <Eyebrow>04 · Scale it</Eyebrow>
         <Statement>The first machine is the test. The second is the repeat.</Statement>
 
-        <ol className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 lg:grid-cols-3">
+        <ol className="mt-10 grid grid-cols-2 gap-2.5 sm:mt-12 sm:gap-3 lg:grid-cols-3">
           {PROCESS_STEPS.map((item, index) => (
-            <li key={item.step} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <li key={item.step} className="flex flex-col items-start gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:flex-row sm:items-start sm:gap-3">
               <span className="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-full">
                 <item.icon className="size-4.5" aria-hidden="true" />
               </span>
@@ -311,7 +312,7 @@ export default function OwnPage() {
         <p className="mt-8 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
           If your first machine performs well, you don’t have to start from zero again. You already have:
         </p>
-        <ul className="mt-6 grid gap-2.5 sm:grid-cols-2">
+        <ul className="mt-6 grid grid-cols-2 gap-2 sm:gap-2.5">
           {[
             'the relationship with Snack Quest',
             'the management system',
@@ -321,7 +322,7 @@ export default function OwnPage() {
             'the data',
             'the experience',
           ].map((item) => (
-            <li key={item} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/80 sm:text-base">
+            <li key={item} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-xs text-white/80 sm:px-4 sm:py-3 sm:text-base">
               {item}
             </li>
           ))}
@@ -353,7 +354,7 @@ export default function OwnPage() {
 
         <div className="mt-8 flex flex-col items-center gap-3 sm:mt-10">
           <OwnCta source="qualification" size="lg">
-            Apply to become a machine owner
+            Apply to own a machine
             <ArrowRight className="size-5" aria-hidden="true" />
           </OwnCta>
           <p className="text-sm text-white/45">Tell us what you have access to. We’ll determine whether the model fits.</p>
@@ -366,14 +367,7 @@ export default function OwnPage() {
           <Eyebrow>FAQ</Eyebrow>
           <Statement>Questions people ask before applying.</Statement>
 
-          <div className="mt-10 flex flex-col gap-3 sm:mt-12">
-            {FAQS.map((item) => (
-              <div key={item.q} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-                <p className="text-base font-bold text-white sm:text-lg">{item.q}</p>
-                <p className="mt-2 text-sm leading-relaxed text-white/65 sm:text-base">{item.a}</p>
-              </div>
-            ))}
-          </div>
+          <FaqAccordion items={FAQS} />
         </div>
       </Section>
 
@@ -400,7 +394,7 @@ export default function OwnPage() {
           </p>
           <div className="mt-9 flex flex-col items-center gap-3">
             <OwnCta source="final" size="lg">
-              Apply to become a machine owner
+              Apply to own a machine
               <ArrowRight className="size-5" aria-hidden="true" />
             </OwnCta>
             <p className="text-sm text-white/45">Capital + location access preferred.</p>
