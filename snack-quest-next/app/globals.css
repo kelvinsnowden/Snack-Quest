@@ -102,7 +102,22 @@
  * toggle to go with it, not a media query that overrides the brand
  * without asking.
  */
-:root[data-theme='dark'] {
+/*
+ * `.theme-partner-dark` is a second, additive way to reach the same
+ * palette below — a scoped opt-in rather than the root-level one.
+ * The Owner/Partner Portal (§ Owner Portal dark redesign) is
+ * permanently dark by product design, not by OS/browser preference or
+ * a per-visitor toggle, so it stamps this class on its own layout
+ * wrapper instead of `data-theme` on `<html>` (which would flip the
+ * whole site — marketing pages, Admin, Warehouse — dark with it).
+ * Every `/partner/*` page already consumes nothing but the semantic
+ * `--color-*` tokens (`bg-background`, `text-foreground`, `bg-surface`,
+ * `bg-primary`, …), so scoping the same custom-property values to this
+ * one subtree is enough to re-theme the entire portal — existing pages
+ * needed no code changes at all.
+ */
+:root[data-theme='dark'],
+.theme-partner-dark {
   color-scheme: dark;
   --sq-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --sq-shadow-md: 0 12px 32px -12px rgb(0 0 0 / 0.5);
