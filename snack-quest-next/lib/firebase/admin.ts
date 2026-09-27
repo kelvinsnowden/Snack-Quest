@@ -112,7 +112,23 @@ export const adminFirestore: Firestore = lazy(() => {
    * because the alternative is a crash on absent optional data in the
    * one flow that takes money.
    */
-  firestore.settings({ ignoreUndefinedProperties: true });
+  /*
+   * Guarded by a `globalThis` flag, not just this module's own closure
+   * (§ "Firestore has already been initialized" crash). Next's bundler
+   * can end up evaluating this module more than once per process —
+   * once per chunk/runtime context that imports it — which gives each
+   * copy its own independent `instance` cache above but still resolves
+   * to the *same* underlying Firestore client (keyed by `firebase-admin`
+   * off the shared `App`). The second copy's first access then calls
+   * `.settings()` again on an already-configured client, which throws
+   * rather than being a no-op. `globalThis` is the one thing every
+   * duplicate module instance in the same process actually shares.
+   */
+  const globalFlags = globalThis as typeof globalThis & { __sqFirestoreSettingsApplied?: boolean };
+  if (!globalFlags.__sqFirestoreSettingsApplied) {
+    firestore.settings({ ignoreUndefinedProperties: true });
+    globalFlags.__sqFirestoreSettingsApplied = true;
+  }
   return firestore;
 });
 
