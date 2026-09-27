@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { reconcileStuckTransactionsMock, recordMock } = vi.hoisted(() => ({
+const { reconcileStuckTransactionsMock, reconcileStuckPendingTransactionsMock, recordMock } = vi.hoisted(() => ({
   reconcileStuckTransactionsMock: vi.fn(),
+  reconcileStuckPendingTransactionsMock: vi.fn(),
   recordMock: vi.fn(),
 }));
 
 vi.mock('@/services/machineTransactionService', () => ({
-  machineTransactionService: { reconcileStuckTransactions: reconcileStuckTransactionsMock },
+  machineTransactionService: {
+    reconcileStuckTransactions: reconcileStuckTransactionsMock,
+    reconcileStuckPendingTransactions: reconcileStuckPendingTransactionsMock,
+  },
 }));
 
 vi.mock('@/repositories/scheduledJobRunRepository', () => ({
@@ -57,18 +61,35 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
     expect(reconcileStuckTransactionsMock).not.toHaveBeenCalled();
   });
 
-  it('runs the sweep for the current business and reports the count', async () => {
+  it('runs both sweeps for the current business and reports the merged count', async () => {
     reconcileStuckTransactionsMock.mockResolvedValue({ movedToManualReview: 3 });
+    reconcileStuckPendingTransactionsMock.mockResolvedValue({
+      resolvedFailed: 1,
+      flaggedForManualReview: 2,
+      stillPending: 4,
+    });
 
     const response = await GET(request());
 
     expect(response.status).toBe(200);
     expect(reconcileStuckTransactionsMock).toHaveBeenCalledWith('snack-quest');
-    expect(await response.json()).toEqual({ ok: true, movedToManualReview: 3 });
+    expect(reconcileStuckPendingTransactionsMock).toHaveBeenCalledWith('snack-quest');
+    expect(await response.json()).toEqual({
+      ok: true,
+      movedToManualReview: 3,
+      resolvedFailed: 1,
+      flaggedForManualReview: 2,
+      stillPending: 4,
+    });
   });
 
-  it('records a succeeded scheduled job run with the result summary', async () => {
+  it('records a succeeded scheduled job run with the merged result summary', async () => {
     reconcileStuckTransactionsMock.mockResolvedValue({ movedToManualReview: 0 });
+    reconcileStuckPendingTransactionsMock.mockResolvedValue({
+      resolvedFailed: 0,
+      flaggedForManualReview: 0,
+      stillPending: 0,
+    });
 
     await GET(request());
 
@@ -77,14 +98,24 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
         businessId: 'snack-quest',
         jobName: 'reconcile-vending-transactions',
         status: 'succeeded',
-        resultSummary: { movedToManualReview: 0 },
+        resultSummary: {
+          movedToManualReview: 0,
+          resolvedFailed: 0,
+          flaggedForManualReview: 0,
+          stillPending: 0,
+        },
         error: null,
       }),
     );
   });
 
-  it('records a failed scheduled job run and rethrows when the sweep itself throws', async () => {
+  it('records a failed scheduled job run and rethrows when either sweep throws', async () => {
     reconcileStuckTransactionsMock.mockRejectedValue(new Error('Firestore unavailable'));
+    reconcileStuckPendingTransactionsMock.mockResolvedValue({
+      resolvedFailed: 0,
+      flaggedForManualReview: 0,
+      stillPending: 0,
+    });
 
     await expect(GET(request())).rejects.toThrow('Firestore unavailable');
 
