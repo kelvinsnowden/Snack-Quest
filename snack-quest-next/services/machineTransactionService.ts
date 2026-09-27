@@ -546,7 +546,10 @@ class MachineTransactionService {
       await machineEventService.record({
         businessId: input.businessId,
         machineId: input.machineId,
-        type: 'UNKNOWN_EVENT',
+        // Not a bug to shrug at: a machine saying it dispensed something we
+        // never ordered means product may have left without payment
+        // (tampering, a local cash sale, or a mis-mapped integration).
+        type: 'DISPENSE_UNRECOGNISED',
         source: 'dispense_ledger',
         dedupeKey: `unmatched-vend:${telemetryEventId}`,
         nativeType: 'UNRECOGNISED_DISPENSE_REPORT',

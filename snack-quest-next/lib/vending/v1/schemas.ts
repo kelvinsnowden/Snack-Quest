@@ -73,11 +73,32 @@ export const eventsSchema = z.object({
 });
 
 export const DISPENSE_FAILURE_CODES = ['failed', 'timeout', 'jam', 'no_product', 'sensor_failure', 'machine_offline'] as const;
+export type DispenseFailureCode = (typeof DISPENSE_FAILURE_CODES)[number];
+
+/**
+ * `failureCode` is a tolerant field: a manufacturer that adds its own
+ * code ("motor_overcurrent") must not have its outcome report refused —
+ * `status: "failed"` is the assertion that moves money, the code only
+ * says why. Unrecognised codes are recorded as `failed` with the
+ * native code kept in the reason. Codes that contradict the status
+ * ("unknown", "success", "dispensed") are still refused: a report that
+ * both says "failed" and "may have dispensed" must not be guessed at.
+ */
+const CONTRADICTORY_FAILURE_CODES = ['unknown', 'success', 'dispensed', 'ok'];
+const failureCode = z
+  .string()
+  .regex(/^[A-Za-z0-9_.:-]{1,64}$/, 'must be 1–64 characters of [A-Za-z0-9_.:-]')
+  .refine((code) => !CONTRADICTORY_FAILURE_CODES.includes(code.toLowerCase()), 'contradicts status "failed" — report status "unknown" instead');
+
+export function normalizeFailureCode(code: string): { code: DispenseFailureCode; native: string | null } {
+  const lower = code.toLowerCase();
+  return (DISPENSE_FAILURE_CODES as readonly string[]).includes(lower) ? { code: lower as DispenseFailureCode, native: null } : { code: 'failed', native: code };
+}
 
 export const commandStatusSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('dispensing'), eventId, occurredAt }),
   z.object({ status: z.literal('dispensed'), eventId, occurredAt }),
-  z.object({ status: z.literal('failed'), eventId, occurredAt, failureCode: z.enum(DISPENSE_FAILURE_CODES).default('failed'), failureReason: shortText.optional().nullable() }),
+  z.object({ status: z.literal('failed'), eventId, occurredAt, failureCode: failureCode.default('failed'), failureReason: shortText.optional().nullable() }),
   z.object({ status: z.literal('unknown'), eventId, occurredAt, failureReason: shortText.optional().nullable() }),
   z.object({ status: z.literal('completed'), eventId, occurredAt }),
 ]);

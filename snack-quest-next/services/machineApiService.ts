@@ -17,7 +17,7 @@ import { scopeOf } from '@/lib/vending/credentialLifecycle';
 import { deriveMachineLiveness } from '@/lib/vending/machineLiveness';
 import { resolveOccurredAt } from '@/lib/vending/machineEvents';
 import { API_VERSION, ContractViolationError, type MachineApiContext } from '@/lib/vending/v1/machineApi';
-import { DISPENSE_EVENT_TYPES, type CommandStatusBody } from '@/lib/vending/v1/schemas';
+import { DISPENSE_EVENT_TYPES, normalizeFailureCode, type CommandStatusBody } from '@/lib/vending/v1/schemas';
 import type { DispenseResultStatus, VendResultReport } from '@/lib/vending/hardwareAdapter';
 import type { IntegrationCredential, Machine, MachineEventType, MachineIntegration } from '@/types';
 import type { z } from 'zod';
@@ -418,12 +418,14 @@ class MachineApiService {
       return progress.stale ? { commandId, applied: false, result: 'stale_progress' } : { commandId, applied: progress.changed, result: 'progress_recorded' };
     }
 
-    const status: DispenseResultStatus = body.status === 'dispensed' ? 'success' : body.status === 'unknown' ? 'unknown' : body.failureCode;
+    const failure = body.status === 'failed' ? normalizeFailureCode(body.failureCode) : null;
+    const status: DispenseResultStatus = body.status === 'dispensed' ? 'success' : body.status === 'unknown' ? 'unknown' : failure!.code;
+    const reason = body.status === 'failed' || body.status === 'unknown' ? (body.failureReason ?? null) : null;
     const report: VendResultReport = {
       vendRef: command.vendRef ?? command.commandRef,
       dispensed: status === 'success',
       status,
-      failureReason: body.status === 'failed' || body.status === 'unknown' ? (body.failureReason ?? null) : null,
+      failureReason: failure?.native ? `[${failure.native}] ${reason ?? ''}`.trim() : reason,
       deviceTimestamp: body.occurredAt ?? null,
       idempotencyKey: `v1:${body.eventId}`,
     };

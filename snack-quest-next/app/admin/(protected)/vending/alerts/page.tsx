@@ -30,6 +30,7 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
   settlement_failure: 'Settlement failure',
   dispense_conflict: 'Dispense conflict',
   integration_issue: 'Integration issue',
+  manufacturer_outage: 'Manufacturer outage',
 };
 
 /**

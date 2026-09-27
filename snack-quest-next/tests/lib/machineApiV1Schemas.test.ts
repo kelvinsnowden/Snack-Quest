@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandStatusSchema, eventsSchema, heartbeatSchema, inventorySchema, statusSchema } from '@/lib/vending/v1/schemas';
+import { commandStatusSchema, normalizeFailureCode, eventsSchema, heartbeatSchema, inventorySchema, statusSchema } from '@/lib/vending/v1/schemas';
 
 describe('Machine API v1 request schemas', () => {
   it('accepts a minimal heartbeat and ignores unknown fields (additive changes are non-breaking)', () => {
@@ -32,6 +32,11 @@ describe('Machine API v1 request schemas', () => {
   it('command status: failed defaults its code, unknown has no code, dispensed needs only an event id', () => {
     expect(commandStatusSchema.parse({ status: 'failed', eventId: 'f-1' })).toMatchObject({ failureCode: 'failed' });
     expect(commandStatusSchema.safeParse({ status: 'failed', eventId: 'f-1', failureCode: 'unknown' }).success).toBe(false);
+    expect(commandStatusSchema.safeParse({ status: 'failed', eventId: 'f-1', failureCode: 'dispensed' }).success).toBe(false);
+    // A manufacturer's own new code is accepted, recorded as "failed", and kept.
+    expect(commandStatusSchema.parse({ status: 'failed', eventId: 'f-1', failureCode: 'motor_overcurrent' })).toMatchObject({ failureCode: 'motor_overcurrent' });
+    expect(normalizeFailureCode('motor_overcurrent')).toEqual({ code: 'failed', native: 'motor_overcurrent' });
+    expect(normalizeFailureCode('JAM')).toEqual({ code: 'jam', native: null });
     expect(commandStatusSchema.safeParse({ status: 'dispensed', eventId: 'd-1' }).success).toBe(true);
     expect(commandStatusSchema.safeParse({ status: 'teleported', eventId: 'd-1' }).success).toBe(false);
   });

@@ -75,6 +75,9 @@ export interface MachineIntegrationView {
   activationBlockers: string[];
 }
 
+/** How long a failed connection to an outbound manufacturer API stops new orders (see `dispenseGate`). */
+export const OUTBOUND_BREAKER_MS = 2 * 60_000;
+
 /**
  * CONFIGURE → TEST → ACTIVATE for one machine's integration
  * (§ ADMIN CONSOLE, § INTEGRATION HEALTH), and the single answer to
@@ -284,6 +287,18 @@ class MachineIntegrationService {
       const liveness = livenessOf(integration);
       if (!liveness.canAcceptOrders) {
         return { allowed: false, reason: `machine is not reachable (${liveness.state.toLowerCase()}: ${liveness.reason.replace(/_/g, ' ')})` };
+      }
+    }
+    if (purpose === 'pre_payment' && findAdapterRegistration(integration.adapterKey)?.direction === 'outbound') {
+      // A short circuit breaker: if the last call to the manufacturer's
+      // API failed to connect (or timed out) within the last couple of
+      // minutes and nothing has succeeded since, don't take the next
+      // customer's money only to refund it. After the window one order
+      // is let through as the probe; its success closes the breaker.
+      const error = integration.lastError;
+      const lastOk = integration.signals?.api_request?.toMillis() ?? 0;
+      if (error && (error.kind === 'connection' || error.kind === 'timeout') && error.at && Date.now() - error.at.toMillis() < OUTBOUND_BREAKER_MS && error.at.toMillis() > lastOk) {
+        return { allowed: false, reason: `manufacturer API unreachable (${error.kind}); retrying automatically` };
       }
     }
     if (isProductionDeployment() && integration.environment !== 'production') {

@@ -14,6 +14,10 @@ import { alertRepository, AlertNotFoundError, AlertNotOpenError, type AlertCondi
 import { vendingReconciliationService } from '@/services/vendingReconciliationService';
 import { LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { detectManufacturerSilence } from '@/lib/vending/machineLiveness';
+import { findAdapterRegistration } from '@/lib/vending/adapterRegistry';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import { manufacturerRepository } from '@/repositories/manufacturerRepository';
 import { ALERT_SEVERITY_BY_TYPE, type Alert, type AlertSeverity, type AlertType } from '@/types';
 import { businessRepository } from '@/repositories/businessRepository';
 import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
@@ -65,6 +69,7 @@ class AlertService {
       this.evaluateInventoryDiscrepancies(businessId, locationByMachine),
       this.evaluateExpiryRisk(businessId, locationByMachine),
       this.evaluateIntegrationEvents(businessId, locationByMachine),
+      this.evaluateManufacturerOutages(businessId),
     ]);
   }
 
@@ -319,13 +324,54 @@ class AlertService {
    * events are skipped: `evaluateFaults` already raises those from the
    * raw ledger, and one fault must not become two alerts.
    */
+  /**
+   * `manufacturer_outage` — most of one manufacturer's machines went
+   * silent together. N machines offline at once is one problem, not N:
+   * this names it (and the per-machine offline alerts still open, so
+   * nothing is hidden). Only machines that report in on their own
+   * (inbound adapters) count — an outbound machine is only contacted
+   * when someone buys, so its silence means nothing.
+   */
+  private async evaluateManufacturerOutages(businessId: string): Promise<void> {
+    const integrations = (await machineIntegrationRepository.listByBusiness(businessId)).filter(
+      (integration) => integration.state === 'active' && findAdapterRegistration(integration.adapterKey)?.direction === 'inbound',
+    );
+    const byManufacturer = new Map<string, (Date | null)[]>();
+    for (const integration of integrations) {
+      const contacts = [integration.signals?.heartbeat, integration.signals?.api_request, integration.signals?.webhook]
+        .filter((value): value is NonNullable<typeof value> => Boolean(value))
+        .map((value) => value.toMillis());
+      const list = byManufacturer.get(integration.manufacturerId) ?? [];
+      list.push(contacts.length > 0 ? new Date(Math.max(...contacts)) : null);
+      byManufacturer.set(integration.manufacturerId, list);
+    }
+    const open = new Set<string>();
+    for (const [manufacturerId, contacts] of byManufacturer) {
+      if (!detectManufacturerSilence(contacts)) continue;
+      const key = `manufacturer_outage:${manufacturerId}`;
+      open.add(key);
+      const manufacturer = await manufacturerRepository.findById(businessId, manufacturerId);
+      const heard = contacts.filter(Boolean).length;
+      await this.open({
+        businessId,
+        type: 'manufacturer_outage',
+        machineId: null,
+        locationId: null,
+        dedupeKey: key,
+        title: `${manufacturer?.name ?? manufacturerId}: machines went silent together`,
+        detail: `Most of this manufacturer's ${heard} reporting machines stopped reporting at about the same time. Orders to them are refused until they return; check the manufacturer's status before visiting machines.`,
+      });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'manufacturer_outage', open);
+  }
+
   private async evaluateIntegrationEvents(businessId: string, locationByMachine: Map<string, string | null>): Promise<void> {
     const since = new Date(Date.now() - DEFAULT_EVENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
     for await (const { id, data } of machineEventRepository.streamReceived(businessId, { since, types: ALERTING_EVENT_TYPES })) {
       if (data.source === 'telemetry') {
         continue;
       }
-      const isInventory = data.type === 'INVENTORY_MISMATCH';
+      const isInventory = data.type === 'INVENTORY_MISMATCH' || data.type === 'DISPENSE_UNRECOGNISED';
       const dedupeKey = `integration_event:${id}`;
       if (data.type === 'DISPENSE_OUTCOME_CONFLICT' || data.type === 'FIRMWARE_CHANGED') {
         await this.recordEvent(
@@ -352,8 +398,10 @@ class AlertService {
           machineId: data.machineId,
           locationId: locationByMachine.get(data.machineId) ?? null,
           dedupeKey,
-          title: isInventory ? 'Machine count disagrees with inventory' : `${data.type.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())} reported`,
-          detail: isInventory
+          title: data.type === 'DISPENSE_UNRECOGNISED' ? 'Machine reported a dispense Snack Quest never ordered' : isInventory ? 'Machine count disagrees with inventory' : `${data.type.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())} reported`,
+          detail: data.type === 'DISPENSE_UNRECOGNISED'
+            ? `Unrecognised vend ${String(data.data.vendRef ?? '—')} reported as "${String(data.data.status ?? '—')}" — check the slot count and the camera.`
+            : isInventory
             ? `Slot ${data.slotCode ?? String(data.data.manufacturerSlotId ?? 'unknown')}: ledger ${String(data.data.expected ?? '—')}, machine reported ${String(data.data.reported ?? '—')}.`
             : `${data.nativeType ?? data.type}${typeof data.data.code === 'string' ? ` (code ${data.data.code})` : ''}.`,
         },

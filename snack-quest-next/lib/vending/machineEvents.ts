@@ -66,6 +66,7 @@ const SEVERITY: Record<MachineEventType, MachineEventSeverity> = {
   PAYMENT_DEVICE_ERROR: 'critical',
   DISPENSE_OUTCOME_CONFLICT: 'critical',
   FIRMWARE_CHANGED: 'warning',
+  DISPENSE_UNRECOGNISED: 'warning',
   UNKNOWN_EVENT: 'info',
 };
 
@@ -74,10 +75,10 @@ export function severityFor(type: MachineEventType): MachineEventSeverity {
 }
 
 /** Critical events that open an Alert Center alert when they arrive through the integration layer. */
-export const ALERTING_EVENT_TYPES: readonly MachineEventType[] = ['MACHINE_ERROR', 'TEMPERATURE_ALERT', 'PAYMENT_DEVICE_ERROR', 'CAMERA_OFFLINE', 'INVENTORY_MISMATCH', 'DISPENSE_OUTCOME_CONFLICT', 'FIRMWARE_CHANGED'];
+export const ALERTING_EVENT_TYPES: readonly MachineEventType[] = ['MACHINE_ERROR', 'TEMPERATURE_ALERT', 'PAYMENT_DEVICE_ERROR', 'CAMERA_OFFLINE', 'INVENTORY_MISMATCH', 'DISPENSE_OUTCOME_CONFLICT', 'FIRMWARE_CHANGED', 'DISPENSE_UNRECOGNISED'];
 
 /** Names only Snack Quest may emit — refused (kept as UNKNOWN_EVENT) when a machine or manufacturer sends them. */
-export const PLATFORM_ONLY_EVENT_TYPES: readonly MachineEventType[] = ['DISPENSE_OUTCOME_CONFLICT', 'FIRMWARE_CHANGED', 'INVENTORY_MISMATCH', 'DISPENSE_REQUESTED', 'DISPENSE_STARTED', 'DISPENSE_SUCCESS', 'DISPENSE_FAILED'];
+export const PLATFORM_ONLY_EVENT_TYPES: readonly MachineEventType[] = ['DISPENSE_OUTCOME_CONFLICT', 'FIRMWARE_CHANGED', 'DISPENSE_UNRECOGNISED', 'INVENTORY_MISMATCH', 'DISPENSE_REQUESTED', 'DISPENSE_STARTED', 'DISPENSE_SUCCESS', 'DISPENSE_FAILED'];
 
 /** A device clock is believed only within this much of server time — anything further out is a broken or unset clock, not a fact. */
 const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;

@@ -296,7 +296,11 @@ async function authenticate(
   if (!result.ok) {
     log.info('v1 authentication failed', { status: result.status, code: result.code, keyId: request.headers.get('x-sq-key-id') });
     const extra: Record<string, string> = result.status === 429 ? { 'Retry-After': '60' } : {};
-    return { ok: false, response: v1Error(result.status, result.code, result.message, undefined, meta, extra), credential: result.credential };
+    // A drifted clock is the commonest way a healthy machine goes silent.
+    // Say what time it is, so a client can correct its offset and retry
+    // instead of failing until someone visits the machine.
+    const details = result.code === 'stale_timestamp' ? { serverTime: new Date().toISOString(), serverTimestamp: Math.floor(Date.now() / 1000) } : undefined;
+    return { ok: false, response: v1Error(result.status, result.code, result.message, details, meta, extra), credential: result.credential };
   }
   const authed: ResponseMeta = { ...meta, credential: result.credential, credentialStatus: result.credentialStatus };
   return {

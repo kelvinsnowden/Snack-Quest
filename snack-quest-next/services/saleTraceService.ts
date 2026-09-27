@@ -68,7 +68,7 @@ export interface SaleTrace {
 const EVENT_WINDOW_BEFORE_MS = 5 * 60_000;
 const EVENT_WINDOW_AFTER_MS = 30 * 60_000;
 /** Machine events worth showing in a trace even when they don't name the sale: they explain it. */
-const CONTEXT_EVENT_TYPES = new Set<string>(['MACHINE_OFFLINE', 'MACHINE_ONLINE', 'MACHINE_ERROR', 'DOOR_OPENED', 'DOOR_CLOSED', 'SLOT_EMPTY', 'INVENTORY_MISMATCH', 'PAYMENT_DEVICE_ERROR', 'FIRMWARE_CHANGED']);
+const CONTEXT_EVENT_TYPES = new Set<string>(['MACHINE_OFFLINE', 'MACHINE_ONLINE', 'MACHINE_ERROR', 'DOOR_OPENED', 'DOOR_CLOSED', 'SLOT_EMPTY', 'INVENTORY_MISMATCH', 'PAYMENT_DEVICE_ERROR', 'FIRMWARE_CHANGED', 'DISPENSE_UNRECOGNISED']);
 const LEDGER_ALERT_KINDS = ['dispensed_without_stock_movement', 'stock_moved_without_dispensed_sale', 'duplicate_stock_movement', 'command_transaction_mismatch', 'refund_owed_too_long', 'unresolved_outcome_conflict'];
 
 const iso = (value: { toDate(): Date } | null | undefined) => (value ? value.toDate().toISOString() : null);

@@ -4,6 +4,7 @@ import { manufacturerRegistryService } from '@/services/manufacturerRegistryServ
 import { machineIntegrationService } from '@/services/machineIntegrationService';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
 import { MachineSlotService } from '@/services/machineSlotService';
+import { machineService } from '@/services/machineService';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { defaultVendingAdapterResolver } from '@/lib/vending/adapterRegistry';
 import type { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
@@ -63,6 +64,10 @@ export async function activeMachine(
   options: { manufacturerMachineId?: string; environment?: MachineIntegrationEnvironment; quantity?: number; priceKes?: number; adapterKey?: string } = {},
 ): Promise<V1Machine> {
   const { machineId, machineCode } = await provisionMachine(businessId, options.adapterKey ?? 'mock');
+  // Installed and commissioned, as a machine taking real sales would be.
+  for (const status of ['installing', 'testing', 'active'] as const) {
+    await machineService.updateStatus(businessId, machineId, status, 'staff-1');
+  }
   const quantity = options.quantity ?? 5;
   mockHardware.seedSlot(machineId, 'A01', { quantity });
   const slots = new MachineSlotService(() => mockHardware);

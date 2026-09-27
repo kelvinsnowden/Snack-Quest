@@ -35,6 +35,8 @@ export const MACHINE_EVENT_TYPES = [
   'DISPENSE_OUTCOME_CONFLICT',
   /** Snack Quest-originated: the machine reported different firmware than last time. */
   'FIRMWARE_CHANGED',
+  /** Snack Quest-originated: a machine reported a dispense Snack Quest never ordered — product may have left unpaid. */
+  'DISPENSE_UNRECOGNISED',
   'UNKNOWN_EVENT',
 ] as const;
 
