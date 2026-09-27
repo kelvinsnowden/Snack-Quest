@@ -5,6 +5,12 @@ is the view from inside a machine's gateway — what it is responsible
 for, what it can call today, and, honestly, what a real one still
 needs that does not exist in this repository yet.
 
+For a real manufacturer's engineering team, send
+`docs/GATEWAY_INTEGRATION_API.md` instead of this file — it's the
+external-facing version of everything below (same endpoints, written
+without this codebase's internal cross-references), with a companion
+machine-readable spec at `docs/openapi/gateway-api.yaml`.
+
 ## 1. What a gateway is, here
 
 A "gateway" is whatever process sits at the physical machine and talks
