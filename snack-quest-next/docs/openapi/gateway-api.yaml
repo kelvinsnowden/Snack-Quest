@@ -1,0 +1,565 @@
+openapi: 3.0.3
+info:
+  title: Snack Quest — Machine Gateway API
+  version: "1.0.0"
+  description: >
+    The device-facing API a Discovery Machine's gateway calls to sell
+    products, report telemetry, and run remote commands. See
+    docs/GATEWAY_INTEGRATION_API.md for the full narrative guide —
+    this file is the machine-readable companion (importable into
+    Postman, codegen tools, etc.).
+servers:
+  - url: https://www.snackquests.shop
+    description: Production
+
+security:
+  - deviceBearer: []
+
+paths:
+  /api/vending/telemetry:
+    post:
+      summary: Report heartbeat, status, fault, or other non-financial telemetry
+      operationId: postTelemetry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelemetryReportRequest"
+      responses:
+        "200":
+          description: Recorded (or recognized as a duplicate of an earlier report)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetryReportResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/MachineNotFound"
+
+  /api/vending/machines/{machineId}/catalog:
+    get:
+      summary: Fetch this machine's own sellable product catalog
+      operationId: getCatalog
+      parameters:
+        - $ref: "#/components/parameters/MachineIdPath"
+      responses:
+        "200":
+          description: The current catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Not this machine's own id, or machine not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/vending/payments:
+    post:
+      summary: Start a purchase (one M-Pesa prompt, one or more items)
+      operationId: postPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiatePaymentRequest"
+      responses:
+        "201":
+          description: Payment initiated
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InitiatePaymentResponseSingle"
+                  - $ref: "#/components/schemas/InitiatePaymentResponseCart"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/MachineNotFound"
+        "409":
+          description: Slot is not currently sellable (disabled, unassigned, or out of stock)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/vending/payments/{transactionId}:
+    get:
+      summary: Poll for a payment/vend-authorization outcome
+      operationId: getPaymentStatus
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Not found, or not this machine's own transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/vending/transactions:
+    post:
+      summary: Report the outcome of a physical dispense attempt
+      operationId: postVendResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendResultRequest"
+      responses:
+        "200":
+          description: Applied (or recognized as a duplicate of an earlier report)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendResultResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/MachineNotFound"
+
+  /api/vending/commands:
+    get:
+      summary: Fetch this machine's own pending remote commands
+      operationId: getPendingCommands
+      responses:
+        "200":
+          description: Pending commands (usually empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingCommandsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/vending/commands/{id}/ack:
+    post:
+      summary: Acknowledge receipt of a pending command
+      operationId: ackCommand
+      parameters:
+        - $ref: "#/components/parameters/CommandIdPath"
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AckCommandResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/CommandNotFound"
+        "410":
+          description: Command expired before it was acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/vending/commands/{id}/complete:
+    post:
+      summary: Report the outcome of executing an acknowledged command
+      operationId: completeCommand
+      parameters:
+        - $ref: "#/components/parameters/CommandIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteCommandRequest"
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/CommandNotFound"
+        "409":
+          description: Command isn't currently in a state that can be completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    deviceBearer:
+      type: http
+      scheme: bearer
+      description: >
+        Value is "<machineId>:<secret>" — see docs/GATEWAY_INTEGRATION_API.md §3.
+        Not a standard opaque bearer token; the machine id is embedded in the
+        token itself.
+
+  parameters:
+    MachineIdPath:
+      name: machineId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Must equal the machineId your credential authenticated as.
+    CommandIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Missing, malformed, or invalid credential
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [missing_header, malformed_token, unknown_machine, invalid_secret]
+    BadRequest:
+      description: Malformed request body
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MachineNotFound:
+      description: Machine not found (should not happen with a valid credential)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    CommandNotFound:
+      description: Command not found, or not owned by this machine
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    TelemetryEventType:
+      type: string
+      enum:
+        - heartbeat
+        - status
+        - fault
+        - temperature
+        - door_open
+        - door_close
+        - connectivity_online
+        - connectivity_offline
+        - stock_update
+
+    TelemetryReportRequest:
+      type: object
+      required: [machineId, eventType, idempotencyKey]
+      properties:
+        machineId:
+          type: string
+        eventType:
+          $ref: "#/components/schemas/TelemetryEventType"
+        idempotencyKey:
+          type: string
+          description: Unique per distinct event; reuse the same key when retrying the same event.
+        deviceTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+          description: >
+            Event-specific. Only "fault" events have a currently-consumed
+            field: payload.code (string). All other event types' payloads
+            are stored verbatim and accept any shape, including {}.
+
+    TelemetryReportResponse:
+      type: object
+      properties:
+        isNew:
+          type: boolean
+        eventId:
+          type: string
+        eventType:
+          $ref: "#/components/schemas/TelemetryEventType"
+
+    ProductAvailabilityState:
+      type: string
+      enum: [available, sold_out, unavailable, coming_soon, hidden]
+
+    CatalogItem:
+      type: object
+      properties:
+        productId:
+          type: string
+        productCatalogue:
+          type: string
+          enum: [package, snackItem]
+        slotCode:
+          type: string
+          nullable: true
+          description: Use this value as slotId/slotIds in POST /api/vending/payments.
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        priceKes:
+          type: number
+        availabilityState:
+          $ref: "#/components/schemas/ProductAvailabilityState"
+        sellable:
+          type: boolean
+        displayOrder:
+          type: integer
+        promotionalState:
+          type: string
+
+    CatalogResponse:
+      type: object
+      properties:
+        catalogVersion:
+          type: string
+          description: Opaque — compare for equality only, never parse as a date.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogItem"
+
+    InitiatePaymentRequest:
+      type: object
+      required: [phoneNumber]
+      properties:
+        slotId:
+          type: string
+          description: Use for a single-item purchase. Mutually exclusive with slotIds.
+        slotIds:
+          type: array
+          items:
+            type: string
+          description: Use for a cart of one or more items. Mutually exclusive with slotId.
+        phoneNumber:
+          type: string
+          description: Kenyan MSISDN, with or without country code.
+
+    InitiatePaymentResponseSingle:
+      type: object
+      properties:
+        id:
+          type: string
+        transactionRef:
+          type: string
+        checkoutRequestId:
+          type: string
+        customerMessage:
+          type: string
+
+    InitiatePaymentResponseCart:
+      type: object
+      properties:
+        checkoutRequestId:
+          type: string
+        merchantRequestId:
+          type: string
+        customerMessage:
+          type: string
+        cartRef:
+          type: string
+        transactions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              transactionRef:
+                type: string
+              slotId:
+                type: string
+              amountKes:
+                type: number
+
+    MachineTransactionStatus:
+      type: string
+      enum:
+        - pending
+        - payment_failed
+        - paid
+        - vend_authorized
+        - dispensed
+        - paid_vend_failed
+        - refund_requested
+        - refunded
+        - manual_review
+
+    PaymentStatusResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/MachineTransactionStatus"
+        vendRef:
+          type: string
+          nullable: true
+          description: Set once status is vend_authorized — required for POST /api/vending/transactions.
+        failureReason:
+          type: string
+          nullable: true
+
+    DispenseResultStatus:
+      type: string
+      enum:
+        - success
+        - failed
+        - timeout
+        - unknown
+        - jam
+        - no_product
+        - sensor_failure
+        - machine_offline
+
+    VendResultRequest:
+      type: object
+      required: [vendRef, dispensed]
+      properties:
+        vendRef:
+          type: string
+          description: The value returned by GET /api/vending/payments/{id} when status became vend_authorized.
+        dispensed:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/DispenseResultStatus"
+        failureReason:
+          type: string
+          nullable: true
+        deviceTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+        idempotencyKey:
+          type: string
+          description: Recommended — reuse the same key when retrying the same report.
+
+    VendResultResponse:
+      type: object
+      properties:
+        applied:
+          type: boolean
+        transactionId:
+          type: string
+          nullable: true
+
+    MachineCommandStatus:
+      type: string
+      enum: [pending, acknowledged, completed, failed, expired]
+
+    MachineCommand:
+      type: object
+      properties:
+        id:
+          type: string
+        machineId:
+          type: string
+        commandRef:
+          type: string
+        commandType:
+          type: string
+          enum: [restart]
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        status:
+          $ref: "#/components/schemas/MachineCommandStatus"
+        requestedBy:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        acknowledgedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PendingCommandsResponse:
+      type: object
+      properties:
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/MachineCommand"
+
+    AckCommandResponse:
+      type: object
+      properties:
+        command:
+          $ref: "#/components/schemas/MachineCommand"
+
+    CompleteCommandRequest:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
