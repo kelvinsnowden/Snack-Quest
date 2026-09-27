@@ -27,6 +27,28 @@ import type { MachineTransaction, MachineTransactionPaymentMethod } from '@/type
  */
 const DEFAULT_STUCK_TRANSACTION_AFTER_MS = 15 * 60 * 1000;
 
+/**
+ * How long a transaction may sit `pending` — payment never confirmed
+ * one way or the other — before the reconciliation sweep asks Daraja
+ * directly (§ transaction timeout, mirroring
+ * `PaymentService.reconcileStuckIntents`'s own `queryStkStatus`
+ * fallback for the e-commerce checkout). A real STK push resolves
+ * within a couple of minutes at most; past that, the customer has
+ * either completed or abandoned the M-Pesa prompt and a lost/delayed
+ * Daraja callback is the more likely explanation than "still waiting."
+ */
+const DEFAULT_STUCK_PENDING_AFTER_MS = 5 * 60 * 1000;
+
+/**
+ * How long a `pending` transaction may go with Daraja's own query
+ * still returning no definitive verdict before the sweep gives up
+ * asking and hands it to a human instead of retrying forever. This
+ * cron runs daily (unlike the e-commerce path's per-poll recovery
+ * attempt), so a handful of hours is "the query itself is stuck," not
+ * "still within a normal retry budget."
+ */
+const DEFAULT_PENDING_QUERY_EXPIRE_AFTER_MS = 6 * 60 * 60 * 1000;
+
 export class SlotUnavailableForSaleError extends Error {
   constructor(machineId: string, slotCode: string, detail: string) {
     super(`Slot ${slotCode} on machine ${machineId} is not available for sale: ${detail}`);
@@ -502,6 +524,102 @@ class MachineTransactionService {
     }
 
     return { movedToManualReview };
+  }
+
+  /**
+   * The vending equivalent of `PaymentService.reconcileStuckIntents`'s
+   * `queryStkStatus` fallback — a lost or delayed Daraja callback
+   * leaves a vending transaction `pending` forever otherwise, with the
+   * customer already charged and the machine never authorized to
+   * dispense (§ transaction timeout; flagged as a gap in
+   * `DARAJA_PRODUCTION_VERIFICATION_AUDIT.md` §2.4 for e-commerce and
+   * since fixed there — this closes the same gap for vending, which
+   * never got it).
+   *
+   * Deliberately conservative on a confirmed-success query result, the
+   * same choice `reconcileStuckIntents` makes for orders and for the
+   * identical reason: Safaricom's STK Push Query response carries no
+   * `CallbackMetadata`, so there is no M-Pesa receipt number to record
+   * against this payment. Authorizing a real dispense — a physical
+   * side effect, not just a database write — on the strength of a
+   * query response with no receipt to audit later would be a *more*
+   * permissive standard than this codebase holds for merely creating
+   * an e-commerce order, which is not a defensible direction to move
+   * in. So a confirmed success here is flagged to `manual_review` for
+   * a human to reconcile against the M-Pesa statement, exactly like
+   * the e-commerce path — never auto-authorized.
+   *
+   * A confirmed *failure*, in contrast, is safe to apply automatically:
+   * it is exactly what a normal Daraja failure callback would have
+   * done, just arriving via a different transport.
+   */
+  async reconcileStuckPendingTransactions(
+    businessId: string,
+    options: { stuckAfterMs?: number; expireAfterMs?: number } = {},
+  ): Promise<{ resolvedFailed: number; flaggedForManualReview: number; stillPending: number }> {
+    const stuckAfterMs = options.stuckAfterMs ?? DEFAULT_STUCK_PENDING_AFTER_MS;
+    const expireAfterMs = options.expireAfterMs ?? DEFAULT_PENDING_QUERY_EXPIRE_AFTER_MS;
+    const cutoff = new Date(Date.now() - stuckAfterMs);
+    const now = Date.now();
+
+    let resolvedFailed = 0;
+    let flaggedForManualReview = 0;
+    let stillPending = 0;
+
+    const stuck = await machineTransactionRepository.listByStatusUpdatedBefore(businessId, 'pending', cutoff);
+    for (const { id, data } of stuck) {
+      if (!data.checkoutRequestId) {
+        // Never actually reached Daraja (creation failed before the STK
+        // push went out) — nothing to query for.
+        continue;
+      }
+
+      const ageMs = now - data.updatedAt.toMillis();
+      const query = await this.paymentGateway.queryStkStatus({ businessId, checkoutRequestId: data.checkoutRequestId });
+
+      if (query.responseCode !== '0') {
+        // Daraja itself has no definitive answer yet.
+        if (ageMs >= expireAfterMs) {
+          await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {
+            failureReason: `Stuck "pending" for ${Math.round(ageMs / 60000)} minutes with no definitive result from Daraja's own status query — needs manual investigation against the M-Pesa statement.`,
+          });
+          flaggedForManualReview += 1;
+        } else {
+          stillPending += 1;
+        }
+        continue;
+      }
+
+      // Distinct providerEventId from the real checkoutRequestId, the
+      // same reason `reconcileStuckIntents` uses one: a real callback
+      // that arrives later must still be free to process this
+      // transaction normally through its own idempotency slot.
+      const idempotency = await webhookEventRepository.recordIfNew({
+        businessId,
+        provider: 'daraja',
+        eventKind: 'vending_stk_query_reconciliation',
+        providerEventId: `${data.checkoutRequestId}:query-result`,
+        payload: { source: 'stk_push_query', ...query },
+        relatedEntityId: id,
+      });
+      if (!idempotency.isNew) {
+        // Already resolved by an earlier sweep run (or the real
+        // callback landed in the gap between listing and querying).
+        continue;
+      }
+
+      if (query.resultCode === 0) {
+        await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {
+          failureReason: `Daraja confirms this payment succeeded (checked via STK Push Query), but no callback ever arrived and the query response carries no M-Pesa receipt number. Confirm against the M-Pesa statement and resolve manually — never auto-authorized to dispense on this basis alone.`,
+        });
+        flaggedForManualReview += 1;
+      } else {
+        await this.markPaymentFailed(businessId, id);
+        resolvedFailed += 1;
+      }
+    }
+
+    return { resolvedFailed, flaggedForManualReview, stillPending };
   }
 
   /** The customer's money is owed back — recorded, never itself moved. See `docs/VENDING_FOUNDATION.md` for why the actual reversal is explicitly not wired here. */

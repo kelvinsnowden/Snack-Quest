@@ -41,7 +41,16 @@ export type WebhookEventKind =
    * tooling built against `stk_callback` never silently starts
    * counting vending payments it wasn't written for.
    */
-  | 'vending_stk_callback';
+  | 'vending_stk_callback'
+  /**
+   * The vending equivalent of `stk_query_reconciliation` — the
+   * `reconcileStuckPendingTransactions` sweep's own STK Push Query
+   * result for a `machineTransactions` payment stuck `pending`, kept
+   * distinct for the same reason `vending_stk_callback` is: reporting
+   * built against `stk_query_reconciliation` should never silently
+   * start counting a vending sweep it wasn't written for.
+   */
+  | 'vending_stk_query_reconciliation';
 
 export interface WebhookEvent {
   businessId: string;

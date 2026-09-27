@@ -7,11 +7,19 @@ const JOB_NAME = 'reconcile-vending-transactions';
 /**
  * The vending transaction-timeout sweep's real trigger
  * (§ transaction timeout, docs/VENDING_OS_BENCHMARK.md §C/§H,
- * `MachineTransactionService.reconcileStuckTransactions`) — same
- * Vercel Cron mechanism, same `CRON_SECRET` bearer auth, same
- * single-current-tenant scoping as `reconcile-stk-payments` (see that
- * route's own doc comment for why), applied to a second collection
- * rather than a new pattern.
+ * `MachineTransactionService.reconcileStuckTransactions` and
+ * `.reconcileStuckPendingTransactions`) — same Vercel Cron mechanism,
+ * same `CRON_SECRET` bearer auth, same single-current-tenant scoping
+ * as `reconcile-stk-payments` (see that route's own doc comment for
+ * why), applied to a second collection rather than a new pattern.
+ *
+ * Two distinct sweeps, both real gaps this closes: `paid`/
+ * `vend_authorized` transactions stuck waiting on a device report
+ * (`reconcileStuckTransactions`), and `pending` transactions stuck
+ * because Daraja's own callback was lost or delayed
+ * (`reconcileStuckPendingTransactions` — the vending equivalent of
+ * `PaymentService.reconcileStuckIntents`'s `queryStkStatus` fallback,
+ * which e-commerce already had and vending did not).
  *
  * Daily for now, matching every other cron in `vercel.json` — at zero
  * real transaction volume, a stuck transaction sitting undetected for
@@ -33,7 +41,11 @@ export async function GET(request: Request): Promise<Response> {
   const startedAtMs = Date.now();
 
   try {
-    const result = await machineTransactionService.reconcileStuckTransactions(businessId);
+    const [stuckResult, pendingResult] = await Promise.all([
+      machineTransactionService.reconcileStuckTransactions(businessId),
+      machineTransactionService.reconcileStuckPendingTransactions(businessId),
+    ]);
+    const result = { ...stuckResult, ...pendingResult };
 
     await scheduledJobRunRepository.record({
       businessId,
