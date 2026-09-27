@@ -6,6 +6,8 @@ import { machineSubscriptionRepository } from '@/repositories/machineSubscriptio
 import { machineSettlementRepository } from '@/repositories/machineSettlementRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
+import { machineEventRepository } from '@/repositories/machineEventRepository';
+import { ALERTING_EVENT_TYPES } from '@/lib/vending/machineEvents';
 import { alertRepository, AlertNotFoundError, AlertNotOpenError, type AlertConditionInput } from '@/repositories/alertRepository';
 import { vendingReconciliationService } from '@/services/vendingReconciliationService';
 import { LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
@@ -42,6 +44,7 @@ class AlertService {
       this.evaluateFaults(businessId, locationByMachine),
       this.evaluateInventoryDiscrepancies(businessId, locationByMachine),
       this.evaluateExpiryRisk(businessId, locationByMachine),
+      this.evaluateIntegrationEvents(businessId, locationByMachine),
     ]);
   }
 
@@ -215,6 +218,40 @@ class AlertService {
           detail: `Fault code ${code}.`,
         },
         `machine_fault:event:${id}`,
+      );
+    }
+  }
+
+  /**
+   * Event alerts for critical normalized events that arrived through
+   * the manufacturer integration layer (v1 Machine API, manufacturer
+   * webhooks, inventory sync) — the same `machine_fault` /
+   * `inventory_discrepancy` alert types, so the Alert Center needs no
+   * idea which manufacturer a machine came from. `telemetry`-sourced
+   * events are skipped: `evaluateFaults` already raises those from the
+   * raw ledger, and one fault must not become two alerts.
+   */
+  private async evaluateIntegrationEvents(businessId: string, locationByMachine: Map<string, string | null>): Promise<void> {
+    const since = new Date(Date.now() - DEFAULT_EVENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+    for await (const { id, data } of machineEventRepository.streamReceived(businessId, { since, types: ALERTING_EVENT_TYPES })) {
+      if (data.source === 'telemetry') {
+        continue;
+      }
+      const isInventory = data.type === 'INVENTORY_MISMATCH';
+      const dedupeKey = `integration_event:${id}`;
+      await this.recordEvent(
+        {
+          businessId,
+          type: isInventory ? 'inventory_discrepancy' : 'machine_fault',
+          machineId: data.machineId,
+          locationId: locationByMachine.get(data.machineId) ?? null,
+          dedupeKey,
+          title: isInventory ? 'Machine count disagrees with inventory' : `${data.type.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())} reported`,
+          detail: isInventory
+            ? `Slot ${data.slotCode ?? String(data.data.manufacturerSlotId ?? 'unknown')}: ledger ${String(data.data.expected ?? '—')}, machine reported ${String(data.data.reported ?? '—')}.`
+            : `${data.nativeType ?? data.type}${typeof data.data.code === 'string' ? ` (code ${data.data.code})` : ''}.`,
+        },
+        dedupeKey,
       );
     }
   }

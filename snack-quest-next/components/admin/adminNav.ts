@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Activity,
   Cpu,
+  Plug,
   Flag,
   FolderOpen,
   HelpCircle,
@@ -131,6 +132,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/reconciliation', label: 'Payment Reconciliation', shortLabel: 'Reconciliation', icon: GitCompareArrows, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/integrations', label: 'Machine Integrations', shortLabel: 'Integrations', icon: Plug, section: 'vending', group: 'Vending' },
 
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers' },
   { href: '/admin/customers', label: 'Customers', icon: Users, section: 'marketing', group: 'Customers' },

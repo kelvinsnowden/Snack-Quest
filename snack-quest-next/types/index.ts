@@ -72,3 +72,8 @@ export * from './partnerDailySummary';
 export * from './alert';
 export * from './camera';
 export * from './cameraSnapshot';
+export * from './manufacturer';
+export * from './machineIntegration';
+export * from './machineDispenseCommand';
+export * from './machineEvent';
+export * from './integrationCredential';

@@ -6,6 +6,7 @@ import { MachineTransactionService } from '@/services/machineTransactionService'
 import { machineTransactionRepository, IllegalTransactionTransitionError } from '@/repositories/machineTransactionRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
+import { TransactionNotPaidError } from '@/services/dispenseCommandService';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import { UnrecognisedHardwarePayloadError } from '@/lib/vending/hardwareAdapter';
 
@@ -171,7 +172,9 @@ describe('the payment/vend state machine', () => {
     const service = new MachineTransactionService(() => adapter);
     const { id } = await service.createPending({ businessId: BUSINESS_ID, machineId, slotId: 'A01', paymentMethod: 'mpesa' });
 
-    await expect(service.authorizeVend(BUSINESS_ID, id)).rejects.toThrow(IllegalTransactionTransitionError);
+    await expect(service.authorizeVend(BUSINESS_ID, id)).rejects.toThrow(TransactionNotPaidError);
+    // Refused before the hardware was ever contacted — the machine was never told to dispense.
+    expect(adapter.dispenseInstructionCount).toBe(0);
   });
 
   it('moves straight to paid_vend_failed when the adapter refuses authorization (e.g. offline)', async () => {

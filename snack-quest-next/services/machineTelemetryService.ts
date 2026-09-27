@@ -3,6 +3,9 @@ import 'server-only';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { eventTypeForTelemetry } from '@/lib/vending/machineEvents';
+import { machineEventService } from '@/services/machineEventService';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { MachineTelemetryEvent, MachineTelemetryEventType } from '@/types';
 
@@ -53,6 +56,23 @@ class MachineTelemetryService {
       // now, regardless of what it reports — even a fault event means
       // the machine successfully phoned home to report it.
       await machineRepository.updateLastSeen(input.machineId, null);
+      await machineIntegrationRepository.recordSignal(input.machineId, report.eventType === 'heartbeat' ? 'heartbeat' : 'api_request');
+      const normalized = eventTypeForTelemetry(report.eventType as MachineTelemetryEventType);
+      if (normalized) {
+        await machineEventService.record(
+          {
+            businessId: input.businessId,
+            machineId: input.machineId,
+            type: normalized,
+            source: 'telemetry',
+            dedupeKey: `telemetry:${report.idempotencyKey}`,
+            deviceTimestamp: report.deviceTimestamp,
+            nativeType: report.eventType,
+            data: report.payload,
+          },
+          machine,
+        );
+      }
       await machineTelemetryEventRepository.markProcessed(id);
     }
 

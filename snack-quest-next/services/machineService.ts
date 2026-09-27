@@ -6,7 +6,7 @@ import { machineLocationHistoryRepository } from '@/repositories/machineLocation
 import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
 import type { DispenseConfirmationStrategy, VendAuthorizationResult } from '@/lib/vending/hardwareAdapter';
-import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { defaultVendingAdapterResolver, isRegisteredAdapterKey, UnsupportedManufacturerError, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
 import { hasCapability } from '@/lib/vending/protocol/capabilities';
 import {
   MACHINE_STATUS_TRANSITIONS,
@@ -36,11 +36,22 @@ export class TestVendNotSupportedError extends Error {
   }
 }
 
+/** `SQ-MCH-000001` — Snack Quest's own machine identity, zero-padded so codes sort in registration order. */
+export function formatMachineCode(sequence: number): string {
+  return `SQ-MCH-${String(sequence).padStart(6, '0')}`;
+}
+
+function machineCodeCounterRef(businessId: string) {
+  return adminFirestore.collection('businesses').doc(businessId).collection('counters').doc('machines');
+}
+
 export interface ProvisionMachineInput {
   businessId: string;
-  machineCode: string;
+  /** Omit (or null) to have Snack Quest generate the next `SQ-MCH-nnnnnn`. Supplied only for machines whose code predates generation. */
+  machineCode?: string | null;
   serialNumber: string;
-  manufacturer: Machine['manufacturer'];
+  /** A registered adapter key — see `Machine.manufacturer`. */
+  manufacturer: string;
   model: string;
   hardwareVersion?: string | null;
   firmwareVersion?: string | null;
@@ -74,10 +85,14 @@ class MachineService {
    * secret exactly once; there is no way to retrieve it again, only
    * to rotate it via `rotateDeviceCredential`.
    */
-  async provisionDevice(input: ProvisionMachineInput): Promise<{ machineId: string; credential: IssuedDeviceCredential }> {
-    const existing = await machineRepository.findByMachineCode(input.businessId, input.machineCode);
+  async provisionDevice(input: ProvisionMachineInput): Promise<{ machineId: string; machineCode: string; credential: IssuedDeviceCredential }> {
+    if (!isRegisteredAdapterKey(input.manufacturer)) {
+      throw new UnsupportedManufacturerError(input.manufacturer);
+    }
+    const machineCode = input.machineCode ?? (await this.allocateMachineCode(input.businessId));
+    const existing = await machineRepository.findByMachineCode(input.businessId, machineCode);
     if (existing) {
-      throw new Error(`machineCode "${input.machineCode}" is already in use by machine ${existing.id}`);
+      throw new Error(`machineCode "${machineCode}" is already in use by machine ${existing.id}`);
     }
     if (input.ownerPartnerId) {
       const partner = await partnerRepository.findById(input.businessId, input.ownerPartnerId);
@@ -88,9 +103,11 @@ class MachineService {
 
     const machineId = await machineRepository.create({
       businessId: input.businessId,
-      machineCode: input.machineCode,
+      machineCode,
       serialNumber: input.serialNumber,
       manufacturer: input.manufacturer,
+      manufacturerId: null,
+      modelId: null,
       model: input.model,
       hardwareVersion: input.hardwareVersion ?? null,
       firmwareVersion: input.firmwareVersion ?? null,
@@ -114,7 +131,25 @@ class MachineService {
       issuedBy: input.actor,
     });
 
-    return { machineId, credential };
+    return { machineId, machineCode, credential };
+  }
+
+  /**
+   * The next `SQ-MCH-nnnnnn`, allocated in a transaction on
+   * `businesses/{id}/counters/machines` (the same counter pattern order
+   * numbers use) so two concurrent registrations can never mint the
+   * same code. A gap from a registration that later fails is harmless;
+   * a duplicate would not be.
+   */
+  private async allocateMachineCode(businessId: string): Promise<string> {
+    const ref = machineCodeCounterRef(businessId);
+    const sequence = await adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const next = ((snapshot.data()?.value as number | undefined) ?? 0) + 1;
+      tx.set(ref, { value: next }, { merge: true });
+      return next;
+    });
+    return formatMachineCode(sequence);
   }
 
   async rotateDeviceCredential(businessId: string, machineId: string, actor: string): Promise<IssuedDeviceCredential> {

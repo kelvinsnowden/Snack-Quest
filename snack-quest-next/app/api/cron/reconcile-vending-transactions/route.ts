@@ -19,7 +19,9 @@ const JOB_NAME = 'reconcile-vending-transactions';
  * because Daraja's own callback was lost or delayed
  * (`reconcileStuckPendingTransactions` — the vending equivalent of
  * `PaymentService.reconcileStuckIntents`'s `queryStkStatus` fallback,
- * which e-commerce already had and vending did not).
+ * which e-commerce already had and vending did not). A third pass asks
+ * outbound manufacturer integrations what happened to dispenses whose
+ * outcome is unknown (`reconcileUnknownDispenses`).
  *
  * Daily for now, matching every other cron in `vercel.json` — at zero
  * real transaction volume, a stuck transaction sitting undetected for
@@ -41,11 +43,12 @@ export async function GET(request: Request): Promise<Response> {
   const startedAtMs = Date.now();
 
   try {
-    const [stuckResult, pendingResult] = await Promise.all([
+    const [stuckResult, pendingResult, unknownDispenses] = await Promise.all([
       machineTransactionService.reconcileStuckTransactions(businessId),
       machineTransactionService.reconcileStuckPendingTransactions(businessId),
+      machineTransactionService.reconcileUnknownDispenses(businessId),
     ]);
-    const result = { ...stuckResult, ...pendingResult };
+    const result = { ...stuckResult, ...pendingResult, dispensesResolved: unknownDispenses.resolved, dispensesStillUnknown: unknownDispenses.stillUnknown };
 
     await scheduledJobRunRepository.record({
       businessId,

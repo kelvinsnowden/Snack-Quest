@@ -72,6 +72,18 @@ class MachineSlotRepository {
     await ref.update({ enabled, updatedAt: FieldValue.serverTimestamp() });
   }
 
+  /** Applies a whole machine's manufacturer slot mapping in one batch — all or nothing, so a half-applied mapping can never be live. The caller verifies business ownership of every slot first. */
+  async setManufacturerSlotIds(machineId: string, mappings: { slotCode: string; manufacturerSlotId: string | null }[]): Promise<void> {
+    const batch = adminFirestore.batch();
+    for (const mapping of mappings) {
+      batch.update(adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, mapping.slotCode)), {
+        manufacturerSlotId: mapping.manufacturerSlotId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
   /** Reads the slot inside a transaction — for `authorizeVend`/inventory movements, where the quantity read and the quantity written must be the same snapshot. */
   async getInTransaction(tx: Transaction, machineId: string, slotCode: string): Promise<MachineSlot | null> {
     const snapshot = await tx.get(adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode)));

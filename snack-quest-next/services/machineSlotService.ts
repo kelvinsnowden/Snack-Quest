@@ -4,7 +4,15 @@ import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { findSlotMappingConflicts } from '@/lib/vending/slotMapping';
 import type { MachineSlot } from '@/types';
+
+export class SlotMappingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SlotMappingError';
+  }
+}
 
 /** Below this fraction of capacity, a slot is considered low stock (§ RESTOCKING SYSTEM). Not yet a per-business setting — see `machineService`'s own connectivity-threshold precedent for the pattern a future one would follow. */
 export const LOW_STOCK_THRESHOLD_FRACTION = 0.2;
@@ -51,6 +59,45 @@ class MachineSlotService {
     });
     const adapter = this.resolveAdapter(machine.manufacturer);
     await adapter.setPrice(input.machineId, input.slotCode, input.priceKes);
+  }
+
+  /**
+   * Sets which manufacturer slot name each Snack Quest slot answers to
+   * (§ PRODUCT / SLOT MAPPING). Validated as a whole before anything is
+   * written: every slot must exist on this machine, and after applying
+   * the change no two slots may claim the same manufacturer name —
+   * otherwise translating their `spiral_07` back to our code would be
+   * ambiguous, and a dispense could go to the wrong spiral.
+   */
+  async setSlotMappings(
+    businessId: string,
+    machineId: string,
+    mappings: { slotCode: string; manufacturerSlotId: string | null }[],
+  ): Promise<MachineSlot[]> {
+    const machine = await machineRepository.findById(businessId, machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(machineId);
+    }
+    const slots = await machineSlotRepository.listByMachine(businessId, machineId);
+    const bySlotCode = new Map(slots.map((slot) => [slot.slotCode, slot]));
+    for (const mapping of mappings) {
+      if (!bySlotCode.has(mapping.slotCode)) {
+        throw new SlotMappingError(`Slot ${mapping.slotCode} is not configured on this machine`);
+      }
+      if (mapping.manufacturerSlotId !== null && !/^[A-Za-z0-9_.:-]{1,64}$/.test(mapping.manufacturerSlotId)) {
+        throw new SlotMappingError(`"${mapping.manufacturerSlotId}" is not a valid manufacturer slot id (letters, digits, _ . : - ; max 64)`);
+      }
+    }
+    const next = slots.map((slot) => {
+      const change = mappings.find((mapping) => mapping.slotCode === slot.slotCode);
+      return change ? { ...slot, manufacturerSlotId: change.manufacturerSlotId } : slot;
+    });
+    const conflicts = findSlotMappingConflicts(next);
+    if (conflicts.length > 0) {
+      throw new SlotMappingError(conflicts.join('; '));
+    }
+    await machineSlotRepository.setManufacturerSlotIds(machineId, mappings);
+    return machineSlotRepository.listByMachine(businessId, machineId);
   }
 
   async setPrice(businessId: string, machineId: string, slotCode: string, priceKes: number): Promise<void> {

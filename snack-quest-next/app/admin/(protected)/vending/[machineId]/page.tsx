@@ -18,8 +18,19 @@ import { cameraService } from '@/services/cameraService';
 import { serializeRestockTask, serializeCamera } from '@/lib/vending/serialize';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
-import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
-import { ALL_HARDWARE_CAPABILITIES, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
+import { HardwareAuthenticationError, HardwareTimeoutError, HardwareUnreachableError, ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
+import { ALL_HARDWARE_CAPABILITIES, HARDWARE_CAPABILITY_LABELS, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
+import { machineIntegrationService } from '@/services/machineIntegrationService';
+import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
+import { machineEventService } from '@/services/machineEventService';
+import { dispenseCommandService } from '@/services/dispenseCommandService';
+import { toJsonSafe } from '@/lib/vending/serializeIntegration';
+import {
+  MachineIntegrationPanel,
+  type IntegrationPanelView,
+  type PanelDispenseCommand,
+  type PanelEvent,
+} from '@/components/admin/integrations/MachineIntegrationPanel';
 import { findProtocolRegistryEntry } from '@/lib/vending/protocol/registry';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,22 +48,6 @@ import { AddCameraForm } from '@/components/admin/AddCameraForm';
 import { CameraActions } from '@/components/admin/CameraActions';
 import { formatDateTime } from '@/lib/orders/format';
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  vend: 'Vend',
-  slot_read: 'Slot read',
-  inventory_read: 'Inventory read',
-  inventory_write: 'Inventory write',
-  dispense_confirmation: 'Dispense confirmation',
-  heartbeat: 'Heartbeat',
-  telemetry: 'Telemetry',
-  faults: 'Faults',
-  temperature: 'Temperature',
-  door_status: 'Door status',
-  remote_price_update: 'Remote pricing',
-  remote_enable_disable: 'Remote enable/disable',
-  remote_restart: 'Remote restart',
-  audit_export: 'Audit export',
-};
 
 /** The four-way capability read (§ classifyCapabilityStatus) rendered as one badge look each — never collapsed back into a single ✓/○. */
 const CAPABILITY_STATUS_PRESENTATION: Record<CapabilityStatus, { label: string; icon: string; variant: 'success' | 'outline' | 'warning' | 'secondary' }> = {
@@ -92,7 +87,14 @@ async function runDiagnostics(manufacturer: string, machineId: string) {
     ]);
     return { registered: true as const, capabilities, live: { ok: true as const, status, slotCount: slots.length, faults } };
   } catch (error) {
-    if (error instanceof ProtocolNotConfiguredError) {
+    // Not wired, or wired but unreachable right now — either way an
+    // honest "couldn't read it", never a crashed page.
+    if (
+      error instanceof ProtocolNotConfiguredError ||
+      error instanceof HardwareUnreachableError ||
+      error instanceof HardwareTimeoutError ||
+      error instanceof HardwareAuthenticationError
+    ) {
       return { registered: true as const, capabilities, live: { ok: false as const, reason: error.message } };
     }
     throw error;
@@ -137,6 +139,14 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       cameraService.listByMachine(session.businessId, machineId),
     ]);
 
+  const [integrationView, registryManufacturers, registryModels, machineEvents, dispenseCommands] = await Promise.all([
+    machineIntegrationService.getView(session.businessId, machineId),
+    manufacturerRegistryService.listManufacturers(session.businessId),
+    manufacturerRegistryService.listModels(session.businessId),
+    machineEventService.listForMachine(session.businessId, machineId, 15),
+    dispenseCommandService.listForMachine(session.businessId, machineId, 10),
+  ]);
+
   const cameraRows = await Promise.all(
     cameras.map(async ({ id, data }) => ({ id, camera: serializeCamera(id, data), diagnostics: await cameraService.getDiagnostics(data) })),
   );
@@ -159,7 +169,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <div>
           <h1 className="text-2xl font-semibold text-foreground">{machine.machineCode}</h1>
           <p className="text-sm text-muted-foreground">
-            {machine.model} · {machine.manufacturer} · Serial {machine.serialNumber}
+            {machine.model} · adapter {machine.manufacturer} · Serial {machine.serialNumber}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -180,6 +190,25 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <DetailStat label="Firmware" value={machine.firmwareVersion ?? '—'} />
         <DetailStat label="Owner partner" value={machine.ownerPartnerId ?? 'Snack Quest'} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Integration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MachineIntegrationPanel
+            machineId={machineId}
+            view={toJsonSafe(integrationView) as IntegrationPanelView}
+            options={{
+              manufacturers: registryManufacturers.map(({ id, data }) => ({ id, name: data.name })),
+              models: registryModels.map(({ id, data }) => ({ id, manufacturerId: data.manufacturerId, name: data.name })),
+            }}
+            slots={slots.map((slot) => ({ slotCode: slot.slotCode, manufacturerSlotId: slot.manufacturerSlotId ?? null }))}
+            events={toJsonSafe(machineEvents.map(({ id, data }) => ({ id, type: data.type, severity: data.severity, occurredAt: data.occurredAt, source: data.source, slotCode: data.slotCode, nativeType: data.nativeType }))) as PanelEvent[]}
+            dispenseCommands={toJsonSafe(dispenseCommands.map((command) => ({ commandRef: command.commandRef, status: command.status, slotCode: command.slotCode, manufacturerSlotId: command.manufacturerSlotId, delivery: command.delivery, failureReason: command.failureReason, updatedAt: command.updatedAt }))) as PanelDispenseCommand[]}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -206,7 +235,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                   const presentation = CAPABILITY_STATUS_PRESENTATION[status];
                   return (
                     <Badge key={capability} variant={presentation.variant} title={presentation.label}>
-                      {presentation.icon} {CAPABILITY_LABELS[capability] ?? capability}
+                      {presentation.icon} {HARDWARE_CAPABILITY_LABELS[capability] ?? capability}
                     </Badge>
                   );
                 })}

@@ -21,7 +21,16 @@ import type { Timestamp } from 'firebase/firestore';
 export interface MachineSlot {
   businessId: string;
   machineId: string;
+  /** Snack Quest's own slot identifier — what transactions, inventory and the customer screen use. */
   slotCode: string;
+  /**
+   * The manufacturer's own name for this physical slot (`spiral_01`,
+   * `A1`, `motor-14`) — what their firmware, API and webhooks say.
+   * Translated to `slotCode` at the integration boundary
+   * (`lib/vending/slotMapping.ts`), never stored anywhere else. Null or
+   * absent means the manufacturer uses Snack Quest's slot code as-is.
+   */
+  manufacturerSlotId?: string | null;
   /** References `packages/{packageId}` or `snackItems/{snackItemId}` — whichever this business's catalogue uses for what this slot dispenses. Null for an empty, unassigned slot. */
   productId: string | null;
   productCatalogue: 'package' | 'snackItem' | null;

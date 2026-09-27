@@ -550,6 +550,46 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
+    // Manufacturer-agnostic integration layer (docs/MACHINE_INTEGRATION_LAYER.md).
+    // Every one of these describes infrastructure an owner never needs to
+    // see — manufacturer relationships, adapters, controller versions,
+    // health counters, credentials, raw command/event ledgers — so all are
+    // tenant-admin read only, and every write goes through a Service under
+    // the Admin SDK. `machines/{id}` (partner-readable) carries only the
+    // registry ids, never any of this.
+    match /manufacturers/{manufacturerId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineModels/{modelId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineIntegrations/{machineId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineIntegrationIdentities/{claimId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    // Holds signing secrets (encrypted when SECRET_ENCRYPTION_KEY is
+    // set). Staff see credential summaries through the admin API, which
+    // omits the secret; no client ever reads this collection directly.
+    match /integrationCredentials/{credentialId} {
+      allow read, write: if false;
+    }
+    match /integrationRequestNonces/{nonceId} {
+      allow read, write: if false;
+    }
+    match /machineDispenseCommands/{commandId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineEvents/{eventId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     // deviceCredentials: `secretHash` only, never plaintext (see
     // `repositories/deviceCredentialRepository.ts`) — still kept to
     // the same admin-read pattern as everything else here rather than

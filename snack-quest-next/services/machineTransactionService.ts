@@ -11,7 +11,14 @@ import {
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { machineInventoryMovementService } from '@/services/machineInventoryMovementService';
-import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { DispenseCommandService } from '@/services/dispenseCommandService';
+import { machineIntegrationService } from '@/services/machineIntegrationService';
+import { machineEventService } from '@/services/machineEventService';
+import { eventTypeForDispenseResult } from '@/lib/vending/machineEvents';
+import { defaultVendingAdapterResolver, findAdapterRegistration, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import type { VendResultReport } from '@/lib/vending/hardwareAdapter';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
 import type { MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
@@ -82,6 +89,9 @@ export class EmptyCartError extends Error {
  * duplicate check to reach either.
  */
 class MachineTransactionService {
+  /** Every dispense goes through the command ledger, built on this service's own adapter resolver so tests' injected adapters are the ones it reaches. */
+  private readonly dispenser: DispenseCommandService;
+
   constructor(
     private readonly resolveAdapter: VendingAdapterResolver = defaultVendingAdapterResolver,
     /**
@@ -92,7 +102,10 @@ class MachineTransactionService {
      * same three methods and this class never changes.
      */
     private readonly paymentGateway: PaymentGateway = darajaGateway,
-  ) {}
+    dispenser?: DispenseCommandService,
+  ) {
+    this.dispenser = dispenser ?? new DispenseCommandService(resolveAdapter);
+  }
 
   /** Step 1 of the payment flow: a pending transaction, before any money has moved. */
   async createPending(input: {
@@ -172,8 +185,17 @@ class MachineTransactionService {
     if (input.slotIds.length === 0) {
       throw new EmptyCartError();
     }
+    // The same gate the dispatcher applies after payment, applied
+    // before it: a machine whose integration isn't active can't
+    // dispense, so the customer is never asked to pay for it (and
+    // then refunded). The gate's internal reason (suspension,
+    // environment) is deliberately not part of the message.
+    const gate = await machineIntegrationService.dispenseGate(input.businessId, input.machineId);
+    if (!gate.allowed) {
+      throw new SlotUnavailableForSaleError(input.machineId, input.slotIds.join(','), 'machine is not accepting orders');
+    }
 
-    const created: { id: string; transactionRef: string; slotId: string; amountKes: number }[] = [];
+    const created:{ id: string; transactionRef: string; slotId: string; amountKes: number }[] = [];
     try {
       for (const slotId of input.slotIds) {
         const { id, transactionRef } = await this.createPending({
@@ -369,36 +391,43 @@ class MachineTransactionService {
   }
 
   /**
-   * Asks the hardware adapter to dispense — only reachable once the
-   * transaction is `paid`. An adapter refusal (offline, empty,
-   * disabled) moves straight to `paid_vend_failed`, because nothing
-   * was actually authorized to reverse.
+   * Turns a paid transaction into exactly one dispense instruction
+   * (§ MACHINE COMMAND SAFETY). Everything physical happens inside
+   * `DispenseCommandService.dispatchForTransaction`, which claims the
+   * command *before* contacting any hardware — so a retried callback or
+   * a concurrent caller finds the claim and never reaches the machine a
+   * second time. This method only maps the dispatch outcome onto the
+   * money side:
+   *
+   * - acknowledged / sent → `vend_authorized` (waiting on the outcome)
+   * - rejected (provably never executed) → `paid_vend_failed` (refund path)
+   * - unknown (may have dispensed) → `manual_review`, never a retry
+   * - duplicate → nothing; the first dispatch already moved the money side
    */
-  async authorizeVend(businessId: string, transactionId: string): Promise<{ authorized: boolean; vendRef: string }> {
-    const transaction = await machineTransactionRepository.findById(businessId, transactionId);
-    if (!transaction) {
-      throw new MachineTransactionNotFoundError(transactionId);
-    }
-    const machine = await machineRepository.findById(businessId, transaction.machineId);
-    if (!machine) {
-      throw new MachineNotFoundError(transaction.machineId);
-    }
+  async authorizeVend(businessId: string, transactionId: string): Promise<{ authorized: boolean; vendRef: string | null }> {
+    const { outcome, command } = await this.dispenser.dispatchForTransaction(businessId, transactionId, 'system:payment');
 
-    const adapter = this.resolveAdapter(machine.manufacturer);
-    const result = await adapter.authorizeVend(transaction.machineId, transaction.slotId);
-
-    if (!result.authorized) {
-      await machineTransactionRepository.moveStatus(businessId, transactionId, 'paid_vend_failed', {
-        vendRef: result.vendRef,
-        failureReason: result.reason,
-      });
-      return { authorized: false, vendRef: result.vendRef };
+    switch (outcome) {
+      case 'duplicate':
+        return { authorized: !['rejected', 'failed', 'unknown', 'timeout'].includes(command.status), vendRef: command.vendRef };
+      case 'acknowledged':
+      case 'sent':
+        await machineTransactionRepository.moveStatus(businessId, transactionId, 'vend_authorized', { vendRef: command.vendRef });
+        return { authorized: true, vendRef: command.vendRef };
+      case 'rejected':
+        await machineTransactionRepository.moveStatus(businessId, transactionId, 'paid_vend_failed', {
+          vendRef: command.vendRef,
+          failureReason: command.failureReason,
+        });
+        return { authorized: false, vendRef: command.vendRef };
+      case 'unknown':
+        await machineTransactionRepository.moveStatus(businessId, transactionId, 'manual_review', {
+          vendRef: command.vendRef,
+          failureReason: command.failureReason,
+          dispenseFailureStatus: 'unknown',
+        });
+        return { authorized: false, vendRef: command.vendRef };
     }
-
-    await machineTransactionRepository.moveStatus(businessId, transactionId, 'vend_authorized', {
-      vendRef: result.vendRef,
-    });
-    return { authorized: true, vendRef: result.vendRef };
   }
 
   /**
@@ -424,7 +453,26 @@ class MachineTransactionService {
     }
     const adapter = this.resolveAdapter(machine.manufacturer);
     const report = adapter.receiveVendResult(input.rawPayload); // throws UnrecognisedHardwarePayloadError, deliberately uncaught here
+    return this.applyVendReport({ ...input, report });
+  }
 
+  /**
+   * The single place a vend outcome — however it arrived (a pushed
+   * device report parsed by an adapter, a v1 API call, a pulled
+   * `getDispenseStatus` during reconciliation) — touches money and
+   * inventory. Idempotent by the report's own key: the ledger write in
+   * `machineTelemetryEvents` is claimed first, so a repeat of the same
+   * report stops before anything else.
+   */
+  async applyVendReport(input: {
+    businessId: string;
+    machineId: string;
+    report: VendResultReport;
+    rawPayload: unknown;
+    source: string;
+    actor: string;
+  }): Promise<{ applied: boolean; transactionId: string | null }> {
+    const { report } = input;
     const { isNew, id: telemetryEventId } = await machineTelemetryEventRepository.recordIfNew({
       businessId: input.businessId,
       machineId: input.machineId,
@@ -435,7 +483,7 @@ class MachineTransactionService {
       // `machineTransactionRepository.moveStatus` stamps with the
       // server's own receipt time.
       deviceTimestamp: parseDeviceTimestamp(report.deviceTimestamp),
-      payload: input.rawPayload as Record<string, unknown>,
+      payload: (typeof input.rawPayload === 'object' && input.rawPayload !== null ? input.rawPayload : { report }) as Record<string, unknown>,
       source: input.source,
     });
 
@@ -446,8 +494,8 @@ class MachineTransactionService {
     }
 
     const found = await machineTransactionRepository.findByVendRef(input.businessId, report.vendRef);
-    if (!found) {
-      await machineTelemetryEventRepository.markFailed(telemetryEventId, `no transaction found for vendRef ${report.vendRef}`);
+    if (!found || found.data.machineId !== input.machineId) {
+      await machineTelemetryEventRepository.markFailed(telemetryEventId, `no transaction found for vendRef ${report.vendRef} on this machine`);
       return { applied: false, transactionId: null };
     }
 
@@ -468,16 +516,17 @@ class MachineTransactionService {
     } else if (report.status === 'unknown') {
       // The device itself cannot say what happened — the same
       // "genuinely don't know, don't guess" case the timeout sweep
-      // already routes to `manual_review` for, reached here from an
-      // explicit report instead of silence (§ DISPENSE RESULT:
+      // already routes to `manual_review` for (§ DISPENSE RESULT:
       // "UNKNOWN vend results require reconciliation"). Inventory is
       // never touched — the same rule every other non-success status
       // already follows.
-      await machineTransactionRepository.moveStatus(input.businessId, found.id, 'manual_review', {
-        failureReason: report.failureReason,
-        dispenseFailureStatus: report.status,
-        appliedTelemetryEventId: telemetryEventId,
-      });
+      if (found.data.status !== 'manual_review') {
+        await machineTransactionRepository.moveStatus(input.businessId, found.id, 'manual_review', {
+          failureReason: report.failureReason,
+          dispenseFailureStatus: report.status,
+          appliedTelemetryEventId: telemetryEventId,
+        });
+      }
     } else {
       await machineTransactionRepository.moveStatus(input.businessId, found.id, 'paid_vend_failed', {
         failureReason: report.failureReason,
@@ -486,8 +535,76 @@ class MachineTransactionService {
       });
     }
 
+    await this.dispenser.recordOutcome(input.businessId, found.id, report.status, report.failureReason);
+    await machineEventService.record({
+      businessId: input.businessId,
+      machineId: input.machineId,
+      type: eventTypeForDispenseResult(report.status),
+      source: 'dispense_ledger',
+      dedupeKey: `dispense-result:${telemetryEventId}`,
+      deviceTimestamp: report.deviceTimestamp,
+      slotCode: found.data.slotId,
+      data: { transactionId: found.id, vendRef: report.vendRef, status: report.status, stage: 'machine', reason: report.failureReason },
+    });
     await machineTelemetryEventRepository.markProcessed(telemetryEventId);
     return { applied: true, transactionId: found.id };
+  }
+
+  /**
+   * Resolves dispenses whose outcome is `unknown` or `timeout` by
+   * asking the integration directly (§ RECONCILIATION). Only outbound
+   * integrations can be asked — an inbound machine's outcome only ever
+   * arrives by the machine reporting it. A definitive answer is applied
+   * through `applyVendReport`, exactly like a pushed report; anything
+   * short of definitive (still pending, still dispensing, unknown, or
+   * the manufacturer unreachable) leaves the case with a human.
+   */
+  async reconcileUnknownDispenses(businessId: string): Promise<{ resolved: number; stillUnknown: number }> {
+    let resolved = 0;
+    let stillUnknown = 0;
+    const now = new Date();
+    for (const status of ['unknown', 'timeout'] as const) {
+      for (const command of await machineDispenseCommandRepository.listByStatusUpdatedBefore(businessId, status, now)) {
+        if (findAdapterRegistration(command.adapterKey)?.direction !== 'outbound') {
+          stillUnknown += 1;
+          continue;
+        }
+        const vendRef = command.vendRef ?? command.commandRef;
+        let report: Awaited<ReturnType<ReturnType<VendingAdapterResolver>['getDispenseStatus']>>;
+        try {
+          report = await this.resolveAdapter(command.adapterKey).getDispenseStatus(command.machineId, vendRef);
+        } catch (error) {
+          await machineIntegrationRepository.recordError(command.machineId, 'connection', error instanceof Error ? error.message : 'status lookup failed');
+          stillUnknown += 1;
+          continue;
+        }
+        if (report.state === 'pending' || report.state === 'dispensing' || report.state === 'unknown') {
+          stillUnknown += 1;
+          continue;
+        }
+        const { applied } = await this.applyVendReport({
+          businessId,
+          machineId: command.machineId,
+          report: {
+            vendRef,
+            dispensed: report.state === 'success',
+            status: report.state,
+            failureReason: report.failureReason,
+            deviceTimestamp: null,
+            idempotencyKey: `pull:${command.commandRef}:${report.state}`,
+          },
+          rawPayload: { reconciledFrom: 'getDispenseStatus', commandRef: command.commandRef, state: report.state },
+          source: 'reconciliation',
+          actor: 'system:dispense-reconciliation',
+        });
+        if (applied) {
+          resolved += 1;
+        } else {
+          stillUnknown += 1;
+        }
+      }
+    }
+    return { resolved, stillUnknown };
   }
 
   /**

@@ -1,4 +1,6 @@
 import { machineCommandService } from '@/services/machineCommandService';
+import { dispenseCommandService } from '@/services/dispenseCommandService';
+import { machineIntegrationService } from '@/services/machineIntegrationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
 
@@ -10,6 +12,12 @@ const JOB_NAME = 'reconcile-vending-commands';
  * `reconcile-vending-transactions`: Vercel Cron, `CRON_SECRET` bearer
  * auth, single-current-tenant scoping, applied to a third collection
  * rather than a new pattern.
+ *
+ * Also runs the two integration-layer sweeps that share its cadence:
+ * dispense commands stuck in flight become `timeout`
+ * (`DispenseCommandService.sweepTimedOut`), and every active outbound
+ * integration is re-tested so its health reflects reality even with no
+ * sales traffic (`MachineIntegrationService.probeActiveOutboundIntegrations`).
  */
 export async function GET(request: Request): Promise<Response> {
   const expectedSecret = process.env.CRON_SECRET;
@@ -22,7 +30,12 @@ export async function GET(request: Request): Promise<Response> {
   const startedAtMs = Date.now();
 
   try {
-    const result = await machineCommandService.reconcileStuckCommands(businessId);
+    const [commands, dispenses, probe] = await Promise.all([
+      machineCommandService.reconcileStuckCommands(businessId),
+      dispenseCommandService.sweepTimedOut(businessId),
+      machineIntegrationService.probeActiveOutboundIntegrations(businessId),
+    ]);
+    const result = { ...commands, dispenseTimedOut: dispenses.timedOut, integrationsProbed: probe.probed, integrationProbesFailed: probe.failed };
 
     await scheduledJobRunRepository.record({
       businessId,

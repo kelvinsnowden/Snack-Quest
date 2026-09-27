@@ -60,6 +60,7 @@ export const en = {
       '/admin/vending/intelligence/products': 'Product Intelligence',
       '/admin/vending/intelligence/recommendations': 'Recommendations',
       '/admin/vending/reconciliation': 'Payment Reconciliation',
+      '/admin/vending/integrations': 'Machine Integrations',
       '/admin/conversations': 'Conversations',
       '/admin/customers': 'Customers',
       '/admin/reviews': 'Reviews',

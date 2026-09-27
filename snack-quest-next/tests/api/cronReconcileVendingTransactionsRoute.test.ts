@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { reconcileStuckTransactionsMock, reconcileStuckPendingTransactionsMock, recordMock } = vi.hoisted(() => ({
+const { reconcileStuckTransactionsMock, reconcileStuckPendingTransactionsMock, reconcileUnknownDispensesMock, recordMock } = vi.hoisted(() => ({
   reconcileStuckTransactionsMock: vi.fn(),
   reconcileStuckPendingTransactionsMock: vi.fn(),
+  reconcileUnknownDispensesMock: vi.fn(),
   recordMock: vi.fn(),
 }));
 
@@ -10,6 +11,7 @@ vi.mock('@/services/machineTransactionService', () => ({
   machineTransactionService: {
     reconcileStuckTransactions: reconcileStuckTransactionsMock,
     reconcileStuckPendingTransactions: reconcileStuckPendingTransactionsMock,
+    reconcileUnknownDispenses: reconcileUnknownDispensesMock,
   },
 }));
 
@@ -24,6 +26,7 @@ const ORIGINAL_BUSINESS_ID = process.env.SNACK_QUEST_BUSINESS_ID;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reconcileUnknownDispensesMock.mockResolvedValue({ resolved: 0, stillUnknown: 0 });
   process.env.CRON_SECRET = 'test-cron-secret';
   process.env.SNACK_QUEST_BUSINESS_ID = 'snack-quest';
 });
@@ -80,6 +83,8 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
       resolvedFailed: 1,
       flaggedForManualReview: 2,
       stillPending: 4,
+      dispensesResolved: 0,
+      dispensesStillUnknown: 0,
     });
   });
 
@@ -103,6 +108,8 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
           resolvedFailed: 0,
           flaggedForManualReview: 0,
           stillPending: 0,
+          dispensesResolved: 0,
+          dispensesStillUnknown: 0,
         },
         error: null,
       }),

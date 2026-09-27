@@ -16,12 +16,17 @@ import { alertService } from '@/services/alertService';
 import { machineSlotService, LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
 import { restockTaskService } from '@/services/restockTaskService';
 import { cameraService, CameraNotFoundError } from '@/services/cameraService';
-import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
+import { machineEventRepository } from '@/repositories/machineEventRepository';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
-import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
+import {
+  HardwareAuthenticationError,
+  HardwareTimeoutError,
+  HardwareUnreachableError,
+  ProtocolNotConfiguredError,
+} from '@/lib/vending/hardwareAdapter';
 import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
-import type { Location, Machine, MachineConnectivityStatus, MachineSubscription } from '@/types';
+import type { Location, Machine, MachineConnectivityStatus, MachineEventType, MachineSubscription } from '@/types';
 
 export { PartnerDoesNotOwnMachineError, CameraNotFoundError };
 
@@ -446,10 +451,10 @@ class OwnerPortalService {
     const connectivity = deriveConnectivityStatus(machine.lastSeenAt);
     const controllerOnline = connectivity === 'online';
 
-    const [openAlerts, cameras, telemetryEvents, recentDispensed] = await Promise.all([
+    const [openAlerts, cameras, machineEvents, recentDispensed] = await Promise.all([
       alertService.listOpen(businessId, { machineId }),
       cameraService.listByMachine(businessId, machineId),
-      machineTelemetryEventRepository.listByMachine(businessId, machineId, { limit: 10 }),
+      machineEventRepository.listByMachine(businessId, machineId, 20),
       machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
     ]);
 
@@ -463,7 +468,16 @@ class OwnerPortalService {
       temperatureCelsius = status.temperatureCelsius;
       doorOpen = status.doorOpen;
     } catch (error) {
-      if (!(error instanceof UnsupportedManufacturerError) && !(error instanceof ProtocolNotConfiguredError)) {
+      // A live reading the hardware couldn't give right now is shown as
+      // unknown, never a crash of the owner's page — whichever
+      // manufacturer's integration it came from.
+      if (
+        !(error instanceof UnsupportedManufacturerError) &&
+        !(error instanceof ProtocolNotConfiguredError) &&
+        !(error instanceof HardwareUnreachableError) &&
+        !(error instanceof HardwareTimeoutError) &&
+        !(error instanceof HardwareAuthenticationError)
+      ) {
         throw error;
       }
     }
@@ -480,12 +494,19 @@ class OwnerPortalService {
     }
 
     const events: OwnerMachineHealthEvent[] = [
-      ...telemetryEvents.map(({ id, data }) => ({
-        id,
-        label: TELEMETRY_EVENT_LABEL[data.eventType] ?? data.eventType,
-        detail: data.processingError,
-        occurredAt: data.receivedAt.toDate().toISOString(),
-      })),
+      // The normalized event stream every integration writes — so an
+      // owner sees the same kind of history whichever manufacturer built
+      // the machine. Only owner-meaningful types, in owner language;
+      // never the manufacturer's native event names or the channel.
+      ...machineEvents
+        .filter(({ data }) => OWNER_EVENT_LABEL[data.type] !== undefined)
+        .slice(0, 10)
+        .map(({ id, data }) => ({
+          id,
+          label: OWNER_EVENT_LABEL[data.type] as string,
+          detail: data.type === 'MACHINE_ERROR' && typeof data.data.code === 'string' ? `Code ${data.data.code}` : null,
+          occurredAt: data.occurredAt.toDate().toISOString(),
+        })),
       ...recentDispensed.transactions.map(({ id, data }) => ({
         id,
         label: 'Vend completed',
@@ -714,12 +735,22 @@ function percentChange(current: number, previous: number): number | null {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-const TELEMETRY_EVENT_LABEL: Record<string, string> = {
-  heartbeat: 'Heartbeat received',
-  fault: 'Fault reported',
-  vend_result: 'Dispense result received',
-  door_status: 'Door status changed',
-  temperature: 'Temperature reading',
+/** Owner-facing wording per normalized event. Types absent here (dispense internals already shown as sales, unknown native events) are not shown to owners. */
+const OWNER_EVENT_LABEL: Partial<Record<MachineEventType, string>> = {
+  MACHINE_ONLINE: 'Machine came online',
+  MACHINE_OFFLINE: 'Machine went offline',
+  HEARTBEAT_RECEIVED: 'Heartbeat received',
+  STATUS_REPORTED: 'Status reported',
+  MACHINE_ERROR: 'Fault reported',
+  TEMPERATURE_REPORTED: 'Temperature reading',
+  TEMPERATURE_ALERT: 'Temperature alarm',
+  DOOR_OPENED: 'Door opened',
+  DOOR_CLOSED: 'Door closed',
+  SLOT_EMPTY: 'A slot ran empty',
+  SLOT_LOW: 'A slot is running low',
+  INVENTORY_MISMATCH: 'Stock count needs checking',
+  CAMERA_OFFLINE: 'Camera offline',
+  PAYMENT_DEVICE_ERROR: 'Payment device problem',
 };
 
 export const ownerPortalService = new OwnerPortalService();

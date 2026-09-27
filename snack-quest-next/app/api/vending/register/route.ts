@@ -1,9 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineService } from '@/services/machineService';
-import type { Machine } from '@/types';
-
-const VALID_MANUFACTURERS: Machine['manufacturer'][] = ['mock', 'shengma', 'other'];
+import { isRegisteredAdapterKey, listAdapterRegistrations } from '@/lib/vending/adapterRegistry';
 
 /**
  * Provisions a new physical Discovery Machine (§ MACHINE INSTALLATION
@@ -40,14 +38,15 @@ export async function POST(request: Request): Promise<Response> {
     ownerPartnerId,
   } = (body ?? {}) as Record<string, unknown>;
 
-  if (typeof machineCode !== 'string' || !machineCode) {
-    return Response.json({ error: 'machineCode is required' }, { status: 400 });
+  if (machineCode !== undefined && machineCode !== null && (typeof machineCode !== 'string' || !machineCode)) {
+    return Response.json({ error: 'machineCode must be a non-empty string when provided (omit it to have one generated)' }, { status: 400 });
   }
   if (typeof serialNumber !== 'string' || !serialNumber) {
     return Response.json({ error: 'serialNumber is required' }, { status: 400 });
   }
-  if (typeof manufacturer !== 'string' || !VALID_MANUFACTURERS.includes(manufacturer as Machine['manufacturer'])) {
-    return Response.json({ error: `manufacturer must be one of: ${VALID_MANUFACTURERS.join(', ')}` }, { status: 400 });
+  if (!isRegisteredAdapterKey(manufacturer)) {
+    const keys = listAdapterRegistrations().map((entry) => entry.key);
+    return Response.json({ error: `manufacturer must be a registered adapter key: ${keys.join(', ')}` }, { status: 400 });
   }
   if (typeof model !== 'string' || !model) {
     return Response.json({ error: 'model is required' }, { status: 400 });
@@ -63,18 +62,18 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const { machineId, credential } = await machineService.provisionDevice({
+    const { machineId, machineCode: assignedMachineCode, credential } = await machineService.provisionDevice({
       businessId: session.businessId,
-      machineCode,
+      machineCode: (machineCode as string | null | undefined) ?? null,
       serialNumber,
-      manufacturer: manufacturer as Machine['manufacturer'],
+      manufacturer,
       model,
       hardwareVersion: (hardwareVersion as string | null) ?? null,
       firmwareVersion: (firmwareVersion as string | null) ?? null,
       ownerPartnerId: (ownerPartnerId as string | null) ?? null,
       actor: session.uid,
     });
-    return Response.json({ machineId, credential }, { status: 201 });
+    return Response.json({ machineId, machineCode: assignedMachineCode, credential }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'could not register machine' }, { status: 400 });
   }

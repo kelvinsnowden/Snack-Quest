@@ -10,7 +10,8 @@ import type { Timestamp } from 'firebase/firestore';
  * duplicate, never reprocess. Server-only — no client ever reads or
  * writes this collection.
  */
-export type WebhookProvider = 'daraja' | 'whatchimp' | 'textsms';
+/** `machine_manufacturer` — a vending-machine manufacturer's signed webhook (`/api/v1/webhooks/manufacturers/{slug}`); `providerEventId` is `{manufacturerId}:{deliveryId}`. */
+export type WebhookProvider = 'daraja' | 'whatchimp' | 'textsms' | 'machine_manufacturer';
 
 export type WebhookEventStatus = 'received' | 'processed' | 'failed';
 
@@ -50,7 +51,9 @@ export type WebhookEventKind =
    * built against `stk_query_reconciliation` should never silently
    * start counting a vending sweep it wasn't written for.
    */
-  | 'vending_stk_query_reconciliation';
+  | 'vending_stk_query_reconciliation'
+  /** One delivery from a machine manufacturer's webhook — the ledger entry that makes a redelivery a no-op and a failed delivery retryable. */
+  | 'machine_webhook';
 
 export interface WebhookEvent {
   businessId: string;

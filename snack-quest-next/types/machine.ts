@@ -50,17 +50,29 @@ export type MachineConnectivityStatus = 'online' | 'stale' | 'offline' | 'unknow
  */
 export interface Machine extends AuditFields {
   businessId: string;
-  /** Snack Quest's own human-readable identifier — "SQ-M001" — stable for the machine's whole life, unlike a serial a manufacturer might reuse. */
+  /**
+   * Snack Quest's own identifier — `SQ-MCH-000001` for every machine
+   * registered since the integration layer (generated, never taken
+   * from a manufacturer), `SQ-M001`-style for earlier ones. Stable for
+   * the machine's whole life and the only machine identifier the
+   * external Machine API ever exposes.
+   */
   machineCode: string;
   serialNumber: string;
   /**
-   * Which `VendingHardwareAdapter` this machine talks through
-   * (§ hardware abstraction) — `'mock'` until a real manufacturer
-   * integration exists. Never read to special-case behaviour outside
-   * the adapter layer; the whole point of the abstraction is that
-   * nothing above it needs to know.
+   * The registered adapter key (`lib/vending/adapterRegistry.ts`) this
+   * machine talks through — `'mock'`, `'shengma'`,
+   * `'snack_quest_gateway'`, … The field keeps its original persisted
+   * name; semantically it is *which adapter*, not the vendor's name
+   * (that is `manufacturerId` → `manufacturers/{id}.name`). Set from the
+   * machine's integration once one is configured. Never read to
+   * special-case behaviour outside the adapter layer.
    */
-  manufacturer: 'mock' | 'shengma' | 'other';
+  manufacturer: string;
+  /** `manufacturers/{id}` — null for a machine registered before the manufacturer registry existed, until an integration is configured for it. Optional because documents written before this field existed don't carry it. */
+  manufacturerId?: string | null;
+  /** `machineModels/{id}` — same lifecycle as `manufacturerId`. */
+  modelId?: string | null;
   model: string;
   hardwareVersion: string | null;
   firmwareVersion: string | null;

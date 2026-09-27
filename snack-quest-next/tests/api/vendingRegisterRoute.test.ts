@@ -65,9 +65,18 @@ describe('POST /api/vending/register', () => {
     );
   });
 
-  it('400s a missing machineCode', async () => {
+  it('lets Snack Quest generate the machine code when none is supplied, and returns it', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    provisionDeviceMock.mockResolvedValue({ machineId: 'm-1', machineCode: 'SQ-MCH-000001', credential: { secret: 's' } });
     const response = await registerRoute(jsonRequest({ ...VALID_BODY, machineCode: undefined }));
+    expect(response.status).toBe(201);
+    expect(provisionDeviceMock).toHaveBeenCalledWith(expect.objectContaining({ machineCode: null }));
+    expect(await response.json()).toMatchObject({ machineCode: 'SQ-MCH-000001' });
+  });
+
+  it('400s an empty-string machineCode', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    const response = await registerRoute(jsonRequest({ ...VALID_BODY, machineCode: '' }));
     expect(response.status).toBe(400);
     expect(provisionDeviceMock).not.toHaveBeenCalled();
   });
