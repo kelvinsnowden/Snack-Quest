@@ -100,7 +100,7 @@ export function OwnNav() {
             ))}
           </nav>
           <OwnCta source="nav" className="w-full sm:hidden" onNavigate={() => setOpen(false)}>
-            Apply to become a machine owner
+            Apply to own a machine
           </OwnCta>
         </div>
       ) : null}

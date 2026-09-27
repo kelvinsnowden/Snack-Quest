@@ -28,6 +28,7 @@ export function OwnCta({
   return (
     <a
       href="#apply"
+      data-own-cta="true"
       onClick={() => {
         trackEvent(MACHINE_OWNER_EVENTS.ctaClicked, { source });
         onNavigate?.();
