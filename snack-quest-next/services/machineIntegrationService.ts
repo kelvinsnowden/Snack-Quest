@@ -3,6 +3,7 @@ import 'server-only';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { manufacturerRepository, ManufacturerNotFoundError } from '@/repositories/manufacturerRepository';
 import { machineModelRepository, MachineModelNotFoundError } from '@/repositories/machineModelRepository';
+import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
 import {
   machineIntegrationRepository,
   MachineIntegrationNotFoundError,
@@ -137,6 +138,17 @@ class MachineIntegrationService {
     }
     if (input.environment === 'production' && registration.environment === 'sandbox_only') {
       throw new IntegrationConfigurationError(`Adapter "${adapterKey}" is sandbox-only and cannot back a production integration`);
+    }
+
+    const current = await machineIntegrationRepository.findByMachineId(businessId, input.machineId);
+    if (current && (current.manufacturerId !== input.manufacturerId || current.manufacturerMachineId !== input.manufacturerMachineId.trim())) {
+      // Re-pointing a machine at another manufacturer (or unit) while a
+      // dispense is in flight would hand that dispense's outcome to an
+      // integration that never sent it. Let it finish or expire first.
+      const inFlight = await machineDispenseCommandRepository.listForMachineInStatuses(businessId, input.machineId, ['requested', 'authorized', 'sent', 'acknowledged', 'dispensing']);
+      if (inFlight.length > 0) {
+        throw new IntegrationConfigurationError(`${inFlight.length} dispense(s) are still in flight on this machine (${inFlight.map((c) => c.commandRef).join(', ')}); wait for them to finish or expire before changing its manufacturer`);
+      }
     }
 
     await machineIntegrationRepository.configure(
