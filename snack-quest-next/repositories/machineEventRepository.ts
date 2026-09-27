@@ -57,6 +57,20 @@ class MachineEventRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineEvent }));
   }
 
+  /** One machine's events by when they happened, oldest first — a trace's view of what the machine said around a sale. */
+  async listByMachineInRange(businessId: string, machineId: string, since: Date, until: Date, limit = 200): Promise<{ id: string; data: MachineEvent }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('occurredAt', '>=', since)
+      .where('occurredAt', '<=', until)
+      .orderBy('occurredAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineEvent })).reverse();
+  }
+
   /** Every event received in a window, paged — the primitive behind reliability analytics and the alert sweep. */
   async *streamReceived(businessId: string, options: { since: Date; until?: Date; types?: readonly MachineEventType[] }): AsyncGenerator<{ id: string; data: MachineEvent }> {
     let query = adminFirestore

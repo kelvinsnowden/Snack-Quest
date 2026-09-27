@@ -124,6 +124,26 @@ class MachineTransactionRepository {
    * cart's own item order" back (as opposed to an arbitrary but
    * still complete and correct set) can rely on it.
    */
+  /** By M-Pesa receipt — what a customer quotes when they complain. */
+  async findByPaymentRef(businessId: string, paymentRef: string): Promise<{ id: string; data: MachineTransaction } | null> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('paymentRef', '==', paymentRef).limit(1).get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as MachineTransaction };
+  }
+
+  /** One machine's sales started in a window — "I paid at about 14:32 at machine X". */
+  async listByMachineCreatedInRange(businessId: string, machineId: string, since: Date, until: Date, limit = 20): Promise<{ id: string; data: MachineTransaction }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('createdAt', '>=', since)
+      .where('createdAt', '<=', until)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
+  }
+
   async listByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)

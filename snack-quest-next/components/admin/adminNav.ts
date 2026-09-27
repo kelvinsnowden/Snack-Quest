@@ -8,6 +8,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   GitCompareArrows,
+  Search,
   AlertTriangle,
   Activity,
   Cpu,
@@ -131,6 +132,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/trace', label: 'Trace a Sale', shortLabel: 'Trace', icon: Search, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/reconciliation', label: 'Payment Reconciliation', shortLabel: 'Reconciliation', icon: GitCompareArrows, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/integrations', label: 'Machine Integrations', shortLabel: 'Integrations', icon: Plug, section: 'vending', group: 'Vending' },
 

@@ -41,6 +41,11 @@ export class DiscrepancyReasonRequiredError extends Error {
  * would catch it if something else ever wrote to `currentQuantity`
  * outside this path.
  */
+
+/** The document id an idempotent movement is stored under — deterministic, so a retry lands on the same document and a trace can find it without a query. */
+export function movementDocIdFor(businessId: string, idempotencyKey: string): string {
+  return `mv_${createHash('sha256').update(`${businessId}:${idempotencyKey}`).digest('hex').slice(0, 40)}`;
+}
 class MachineInventoryMovementService {
   async recordMovement(input: {
     businessId: string;
@@ -62,7 +67,7 @@ class MachineInventoryMovementService {
      */
     idempotencyKey?: string;
   }): Promise<{ afterQuantity: number; duplicate?: boolean }> {
-    const movementDocId = input.idempotencyKey ? `mv_${createHash('sha256').update(`${input.businessId}:${input.idempotencyKey}`).digest('hex').slice(0, 40)}` : undefined;
+    const movementDocId = input.idempotencyKey ? movementDocIdFor(input.businessId, input.idempotencyKey) : undefined;
     const result = await adminFirestore.runTransaction(async (tx) => {
       if (movementDocId) {
         const existing = await tx.get(machineInventoryMovementRepository.refFor(movementDocId));
