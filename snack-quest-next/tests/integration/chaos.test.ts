@@ -80,6 +80,29 @@ class QueryableGateway implements PaymentGateway {
   }
 }
 
+describe('the dispatcher dies between queuing the dispense and recording it on the sale', () => {
+  it('the machine already collected, dispensed and reported: the report is matched through the command ledger and the sale completes once', async () => {
+    const { id } = await machineTransactionService.createPending({ businessId: BUSINESS_ID, machineId: machine.machineId, slotId: 'A01', paymentMethod: 'mpesa' });
+    await machineTransactionService.markPaymentVerified(BUSINESS_ID, id, 'RCHAOS2');
+    await machineTransactionService.authorizeVend(BUSINESS_ID, id);
+    const commandRef = (await machineDispenseCommandRepository.findByTransactionId(BUSINESS_ID, id))!.commandRef;
+    // The crash: the command is visible to the machine, but the sale never moved past "paid" and never learned its vend reference.
+    await adminFirestore.collection('machineTransactions').doc(id).update({ status: 'paid', vendRef: null });
+
+    const client = v1(key, machine.machineCode);
+    expect((await client.commands()).data.commands.map((command) => command.commandId)).toContain(commandRef);
+    expect((await client.ack(commandRef)).status).toBe(200);
+    const report = await client.report(commandRef, { status: 'dispensed', eventId: `chaos-${id}` });
+    expect(report.data).toMatchObject({ applied: true, result: 'applied' });
+
+    expect((await machineTransactionRepository.findById(BUSINESS_ID, id))?.status).toBe('dispensed');
+    const movements = await adminFirestore.collection('machineInventoryMovements').where('sourceTransactionId', '==', id).get();
+    expect(movements.size).toBe(1);
+    const unrecognised = await adminFirestore.collection('machineEvents').where('machineId', '==', machine.machineId).where('type', '==', 'DISPENSE_UNRECOGNISED').get();
+    expect(unrecognised.size).toBe(0);
+  });
+});
+
 describe("Safaricom's payment callback never arrives", () => {
   let gateway: QueryableGateway;
   let service: MachineTransactionService;

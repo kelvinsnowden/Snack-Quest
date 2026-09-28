@@ -19,7 +19,13 @@ export class SimulatorCertificationSubject implements CertificationSubject {
     await this.machine.heartbeat();
     await this.machine.reportStatus();
     await this.machine.reportInventory();
+    // Like a real machine's outbox: anything owed from before goes first.
+    await this.machine.resendOwedReports();
     await this.machine.pollAndExecute();
+  }
+
+  async deferNextReport(): Promise<void> {
+    this.machine.inject.deferNextReport = true;
   }
 
   async emitDoorEvents(): Promise<void> {

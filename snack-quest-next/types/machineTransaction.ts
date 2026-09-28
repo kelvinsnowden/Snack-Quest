@@ -55,7 +55,19 @@ export type MachineTransactionStatus =
    */
   | 'manual_review';
 
-export type MachineTransactionPaymentMethod = 'mpesa' | 'cash' | 'other';
+/**
+ * `diagnostic` is a staff test vend (the admin "Test vend" action): it
+ * goes through the same dispense ledger as a sale — so it is delivered,
+ * tracked and never duplicated the same way — but no customer paid for
+ * it (amount 0). It is never a sale: not revenue, not units sold, not a
+ * refund owed, and its stock leaves as `waste`, not `sale`.
+ */
+export type MachineTransactionPaymentMethod = 'mpesa' | 'cash' | 'other' | 'diagnostic';
+
+/** Whether a transaction is a customer's purchase — everything that counts sales, revenue or refunds owed must skip the rest. */
+export function isCustomerSale(transaction: Pick<MachineTransaction, 'paymentMethod'>): boolean {
+  return transaction.paymentMethod !== 'diagnostic';
+}
 
 export interface MachineTransaction {
   businessId: string;
@@ -141,7 +153,12 @@ export const MACHINE_TRANSACTION_STATUS_TRANSITIONS: Record<
   // authorization outright (offline, slot empty, slot disabled) never
   // reaches "authorized" at all, and the customer's money still needs
   // the same refund path either way.
-  paid: ['vend_authorized', 'paid_vend_failed', 'manual_review'],
+  // `dispensed` directly from `paid`: the command ledger is written before
+  // the sale, so if the dispatcher dies between queuing the dispense and
+  // recording it here, the machine can collect, dispense and report while
+  // the sale still says `paid`. That report — matched to a dispatched
+  // command — is the truth, and must not be refused.
+  paid: ['vend_authorized', 'dispensed', 'paid_vend_failed', 'manual_review'],
   vend_authorized: ['dispensed', 'paid_vend_failed', 'manual_review'],
   dispensed: [],
   // `manual_review` from the refund path covers one case only: the

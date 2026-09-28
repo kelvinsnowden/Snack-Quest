@@ -26,7 +26,7 @@ import type { VendResultReport } from '@/lib/vending/hardwareAdapter';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
 import { paymentInitiationRepository, type PaymentInitiationResult } from '@/repositories/paymentInitiationRepository';
-import type { MachineDispenseCommand, MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
+import { isCustomerSale, type MachineDispenseCommand, type MachineTransaction, type MachineTransactionPaymentMethod } from '@/types';
 
 /**
  * How long a transaction may sit `paid`/`vend_authorized` before the
@@ -101,6 +101,13 @@ export class IdempotencyKeyReusedError extends Error {
  * - `unknown_vend` — no dispatched vend matches it on this machine.
  */
 export type VendReportResult = 'applied' | 'duplicate' | 'already_recorded' | 'conflict' | 'unknown_vend';
+
+export class DiagnosticVendRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DiagnosticVendRequestError';
+  }
+}
 
 export class EmptyCartError extends Error {
   constructor() {
@@ -364,6 +371,76 @@ class MachineTransactionService {
   }
 
   /**
+   * A staff test vend (the admin "Test vend" action), through the same
+   * dispense ledger as a sale: claimed before any machine is contacted,
+   * delivered the way this machine's integration delivers every dispense
+   * (queued for a Model B machine to collect, sent to a Model A API), and
+   * resolved by the machine's own report. So a test vend reaches the
+   * machine for real, is recorded, and is never sent twice.
+   *
+   * `requestId` is the caller's id for this one intended vend (the admin
+   * console generates it when the operator confirms): the transaction id
+   * is derived from it and created atomically, so a double click or a
+   * retried request finds the first vend and doesn't dispense again.
+   *
+   * No customer paid: amount 0, payment method `diagnostic`. It isn't a
+   * sale anywhere (`isCustomerSale`), and its stock leaves as `waste`.
+   */
+  async startDiagnosticVend(input: { businessId: string; machineId: string; slotCode: string; requestId: string; actor: string }): Promise<{
+    transactionId: string;
+    transactionRef: string;
+    replay: boolean;
+    authorized: boolean;
+    commandRef: string | null;
+    commandStatus: MachineDispenseCommand['status'] | null;
+    failureReason: string | null;
+  }> {
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(input.requestId)) {
+      throw new DiagnosticVendRequestError('requestId must be 8–64 characters of [A-Za-z0-9_-]');
+    }
+    const machine = await machineRepository.findById(input.businessId, input.machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(input.machineId);
+    }
+    const slot = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotCode);
+    if (!slot) {
+      throw new SlotUnavailableForSaleError(input.machineId, input.slotCode, 'slot not configured');
+    }
+    const id = `diag_${createHash('sha256').update(`${input.businessId}\u0000${input.machineId}\u0000${input.requestId}`).digest('hex').slice(0, 32)}`;
+    const { transactionRef, created } = await machineTransactionRepository.create(
+      {
+        businessId: input.businessId,
+        machineId: input.machineId,
+        slotId: input.slotCode,
+        productId: slot.productId ?? '',
+        productCatalogue: slot.productCatalogue ?? 'package',
+        amountKes: 0,
+        currency: 'KES',
+        paymentMethod: 'diagnostic',
+      },
+      { id },
+    );
+    let authorized = false;
+    if (created) {
+      await machineTransactionRepository.moveStatus(input.businessId, id, 'paid', { paymentRef: `DIAGNOSTIC:${input.actor}` });
+      authorized = (await this.authorizeVend(input.businessId, id)).authorized;
+    }
+    const command = await machineDispenseCommandRepository.findByTransactionId(input.businessId, id);
+    if (!created) {
+      authorized = Boolean(command) && !['rejected', 'failed', 'unknown', 'timeout'].includes(command!.status);
+    }
+    return {
+      transactionId: id,
+      transactionRef,
+      replay: !created,
+      authorized,
+      commandRef: command?.commandRef ?? null,
+      commandStatus: command?.status ?? null,
+      failureReason: command?.failureReason ?? null,
+    };
+  }
+
+  /**
    * Step 3: react to Safaricom's own verdict on the STK push from
    * step 2 (§ M-PESA ARCHITECTURE). This is the *only* thing that can
    * move a vending transaction into `paid` — a device never can, and
@@ -432,8 +509,13 @@ class MachineTransactionService {
       return { handled: true, transactionIds, outcome: 'duplicate' };
     }
 
+    // Only items still waiting on this payment are settled by it. An item
+    // already resolved some other way (e.g. by the stuck-payment sweep) is
+    // left alone rather than aborting the rest of the cart half-way.
+    const waiting = group.filter((t) => t.data.status === 'pending');
+
     if (callback.resultCode !== 0) {
-      for (const { id } of group) {
+      for (const { id } of waiting) {
         await this.markPaymentFailed(businessId, id);
       }
       return { handled: true, transactionIds, outcome: 'failed' };
@@ -444,7 +526,7 @@ class MachineTransactionService {
       // Real money moved, but not the amount this cart was created
       // for — never fabricate a match. A human has to look; see
       // `MachineTransactionStatus.manual_review`'s own doc comment.
-      for (const { id, data } of group) {
+      for (const { id, data } of waiting) {
         await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {
           failureReason: `Daraja confirmed KES ${callback.amountKes} against a KES ${totalAmountKes} cart (this item: KES ${data.amountKes})`,
         });
@@ -452,7 +534,7 @@ class MachineTransactionService {
       return { handled: true, transactionIds, outcome: 'amount_mismatch' };
     }
 
-    for (const { id } of group) {
+    for (const { id } of waiting) {
       await this.markPaymentVerified(businessId, id, callback.mpesaReceiptNumber ?? '');
       await this.authorizeVend(businessId, id);
     }
@@ -595,7 +677,7 @@ class MachineTransactionService {
       // resume it. Every step below is idempotent, so resuming is safe.
     }
 
-    const found = await machineTransactionRepository.findByVendRef(input.businessId, report.vendRef);
+    const found = await this.findTransactionForReport(input.businessId, report.vendRef);
     if (!found || found.data.machineId !== input.machineId) {
       await machineTelemetryEventRepository.markFailed(telemetryEventId, `no transaction found for vendRef ${report.vendRef} on this machine`);
       await machineEventService.record({
@@ -659,6 +741,27 @@ class MachineTransactionService {
     return { applied: result === 'applied', transactionId: found.id, result };
   }
 
+  /**
+   * The sale a vend report is about. Usually the transaction carries the
+   * vend reference; but the command ledger is written first, so if the
+   * dispatcher died between making the command visible and recording the
+   * reference on the transaction (the recovery sweep repairs that within
+   * minutes), a machine that already dispensed and reported is still
+   * matched — through the command, which always names its transaction.
+   */
+  private async findTransactionForReport(businessId: string, vendRef: string): Promise<{ id: string; data: MachineTransaction } | null> {
+    const direct = await machineTransactionRepository.findByVendRef(businessId, vendRef);
+    if (direct) {
+      return direct;
+    }
+    const command = (await machineDispenseCommandRepository.findByCommandRef(businessId, vendRef)) ?? (await machineDispenseCommandRepository.findByVendRef(businessId, vendRef));
+    if (!command) {
+      return null;
+    }
+    const transaction = await machineTransactionRepository.findById(businessId, command.transactionId);
+    return transaction ? { id: command.transactionId, data: transaction } : null;
+  }
+
   private async applyDecision(
     input: { businessId: string; machineId: string; report: VendResultReport; source: string; actor: string },
     transactionId: string,
@@ -677,7 +780,7 @@ class MachineTransactionService {
       // the attempt that made the move reports `applied`.
       case 'complete_sale': {
         const { changed } = await machineTransactionRepository.moveStatus(input.businessId, found.id, 'dispensed', { dispenseFailureStatus: null, appliedTelemetryEventId: telemetryEventId }, { expectedFrom: [current], allowNoop: true });
-        await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor);
+        await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor, found.data);
         result = changed ? 'applied' : 'duplicate';
         break;
       }
@@ -709,7 +812,7 @@ class MachineTransactionService {
           // Self-healing: an earlier attempt may have recorded the sale
           // and died before moving stock. The movement is keyed per sale,
           // so ensuring it exists is safe however many times it runs.
-          await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor);
+          await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor, found.data);
         }
         break;
       case 'conflict': {
@@ -721,7 +824,7 @@ class MachineTransactionService {
           await machineTransactionRepository.recordOutcomeConflict(input.businessId, found.id, conflict);
         }
         if (decision.recordStock) {
-          await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor);
+          await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor, found.data);
         }
         await machineEventService.record({
           businessId: input.businessId,
@@ -746,13 +849,14 @@ class MachineTransactionService {
    * inventory mismatch for a human, never as negative stock and never as
    * a failed report.
    */
-  private async recordSaleMovement(businessId: string, machineId: string, transactionId: string, slotId: string, actor: string): Promise<void> {
+  private async recordSaleMovement(businessId: string, machineId: string, transactionId: string, slotId: string, actor: string, transaction: Pick<MachineTransaction, 'paymentMethod'>): Promise<void> {
     try {
       await machineInventoryMovementService.recordMovement({
         businessId,
         machineId,
         slotId,
-        reason: 'sale',
+        // A diagnostic vend removed the product without selling it.
+        reason: isCustomerSale(transaction) ? 'sale' : 'waste',
         quantityDelta: -1,
         sourceTransactionId: transactionId,
         actor,

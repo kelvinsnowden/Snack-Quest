@@ -8,7 +8,7 @@ import { machineEventRepository } from '@/repositories/machineEventRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { movementDocIdFor } from '@/services/machineInventoryMovementService';
-import type { MachineDispenseCommand, MachineTransaction } from '@/types';
+import { isCustomerSale, type MachineDispenseCommand, type MachineTransaction } from '@/types';
 
 /**
  * "A customer paid at 14:32 and didn't get their snack" — answered from
@@ -166,6 +166,11 @@ class SaleTraceService {
 
   private verdict(sale: MachineTransaction, command: MachineDispenseCommand | null): { verdict: SaleVerdict; summary: string } {
     const reason = sale.failureReason ? ` Reason: ${sale.failureReason}.` : '';
+    if (!isCustomerSale(sale)) {
+      // A staff test vend: nobody paid, so nothing is owed — but the physical outcome still matters.
+      const physical = sale.status === 'dispensed' ? 'the machine confirmed it dispensed' : sale.status === 'manual_review' ? 'the outcome is unknown — it may have dispensed' : sale.status === 'paid' || sale.status === 'vend_authorized' ? `the dispense is ${command ? command.status : 'not yet sent'}` : 'it was not dispensed';
+      return { verdict: sale.status === 'dispensed' ? 'delivered' : sale.status === 'manual_review' ? 'under_review' : sale.status === 'paid' || sale.status === 'vend_authorized' ? 'in_progress' : 'not_paid', summary: `Staff test vend (no customer, no payment): ${physical}.${reason}` };
+    }
     switch (sale.status) {
       case 'dispensed':
         return { verdict: 'delivered', summary: `The machine confirmed it dispensed this item at ${iso(sale.dispensedAt)}. If the customer says otherwise, check the camera snapshot and the slot.` };

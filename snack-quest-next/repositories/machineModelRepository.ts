@@ -64,7 +64,7 @@ class MachineModelRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineModel }));
   }
 
-  async update(businessId: string, modelId: string, update: MachineModelUpdate & Partial<Pick<MachineModel, 'certificationStatus' | 'revokedReason'>>, actor: string): Promise<void> {
+  async update(businessId: string, modelId: string, update: MachineModelUpdate & Partial<Pick<MachineModel, 'certificationStatus' | 'revokedReason' | 'revokedAt'>>, actor: string): Promise<void> {
     const ref = await this.requireRef(businessId, modelId);
     await ref.update({ ...update, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
   }

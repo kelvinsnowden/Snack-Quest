@@ -155,5 +155,7 @@ export interface MachineModel extends AuditFields {
   certifiedAt: Timestamp | null;
   certifiedBy: string | null;
   revokedReason: string | null;
+  /** When certification was last revoked. Re-certifying needs a harness run (`contract_suite`) recorded after this — evidence from before the revocation doesn't count. */
+  revokedAt?: Timestamp | null;
   notes: string | null;
 }

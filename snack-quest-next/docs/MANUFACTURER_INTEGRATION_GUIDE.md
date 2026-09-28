@@ -266,7 +266,11 @@ await sq.events(machineCode, { events: [{ eventId: newEventId('ev'), type: 'DOOR
   or `Z`. A timestamp without one is ignored and the time Snack Quest
   received the report is used instead (spec §7).
 - The heartbeat answer may list `reportOutcomes`: dispenses Snack Quest
-  is still waiting to hear about. Answer from your stored outcomes.
+  is still waiting to hear about. Answer each from your persistent store
+  exactly as the table in spec §5.3 says. In short: re-send a stored
+  outcome, and report `failed` ("not executed") only if your store
+  proves the command never ran. If the record is lost, report `unknown`.
+- Each inventory report lists a slot at most once.
 
 ### 5.3 The dispense loop
 
@@ -453,6 +457,7 @@ re-certified.
 - [ ] Unsent reports survive a reboot and are sent when the machine reconnects
 - [ ] Unknown command types acknowledged and reported `failed` ("unsupported command")
 - [ ] `stale_timestamp`, `429` and `5xx` handled per §5.4
-- [ ] Sandbox control endpoints deployed (Model B) or API probe passing (Model A)
+- [ ] `reportOutcomes` answered per spec §5.3 (`unknown` when your record is lost, never `failed`)
+- [ ] Sandbox control endpoints deployed, including `hold`, `retransmit`, `request-log` and `defer-report` (Model B), or API probe passing (Model A)
 
 *Questions: contact your Snack Quest integration engineer.*

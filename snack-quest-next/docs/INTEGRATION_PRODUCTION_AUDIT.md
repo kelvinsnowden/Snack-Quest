@@ -31,6 +31,24 @@ the evidence. Areas the audit found sound are listed at the end.
 
 Verified sound in this pass (no change): nonce claimed only after signature verification (a request without the secret can't burn a nonce); atomic nonce `create()`; dispense claim-before-act; compare-and-set money transitions; environment and manufacturer isolation on every v1 lookup; secrets encrypted at rest (AES-256-GCM) and shown once; list APIs return an explicit field list; logs redacted; Firestore rules deny client writes on every integration collection; owner health goes through adapters and never returns manufacturer fields; slot mapping changes are audit-logged and conflict-checked; dispense commands capture the manufacturer slot id at dispatch, so a later remap can't redirect them.
 
+## Third pass — adversarial production-readiness review
+
+Found by reading the code paths end to end (payment → dispatch → delivery →
+outcome → stock → refund), not from earlier reports. Severity: B = blocker,
+H = hardening.
+
+| ID | Sev | Gap found | Fix | Evidence |
+|---|---|---|---|---|
+| R-01 | B | On the production deployment a machine **with no integration record** passed the dispense gate: it could take M-Pesa money and "dispense" through whatever adapter its `manufacturer` field named — including the simulator (`mock`), which completes sales nobody received. The sandbox-only rule was enforced only on the integration path | No integration record → refused on the production deployment (pre-payment and dispatch); unchanged in development and tests | `machineIntegrationService.test.ts` |
+| R-02 | B | Admin **"Test vend" bypassed the dispense ledger**: called the adapter directly with no command reference. For a Model B machine it reported "authorized" while queuing nothing (false diagnostic); for any adapter it left a physical vend with no record, no stock movement, no outcome tracking and no double-click protection | Diagnostic vend through the ledger (`startDiagnosticVend`): deterministic transaction id from a per-click `requestId` (a retry never dispenses twice), real command delivery, tracked outcome; amount 0, `paymentMethod: diagnostic`, excluded from revenue/units/settlement/refunds-owed, stock leaves as `waste` | `diagnosticVend.test.ts`, `vendingMachineTestVendRoute.test.ts` |
+| R-03 | B | A machine's genuine **`dispensed` report for a sale still `paid`** (dispatcher died between queuing the command and recording it on the sale) was refused `409 invalid_command_state` — which tells the machine to stop — because the pure outcome table allowed `paid → dispensed` but the state machine didn't; the report also couldn't be matched (sale had no vend reference) | `paid → dispensed` allowed; reports resolved through the command ledger when the sale lacks the reference | `chaos.test.ts` (dispatcher dies…) |
+| R-04 | H | M-Pesa callback for a cart aborted half-way if one item had already been resolved another way | Only items still `pending` are settled | `machineTransactionPaymentFlow.test.ts` |
+| R-05 | H | Contract gap: what to answer in heartbeat `reportOutcomes` for a command never executed, or whose record was lost | Spec §5.3 table (`failed` only when the store proves it never ran; `unknown` when the record is lost) | spec |
+| R-06 | H | Inventory report could list a slot twice (second count silently ignored); counts above capacity treated as ordinary mismatches | 422 on a repeated slot; `exceeds_capacity` reason | `slotMappingAndInventory.test.ts` |
+| R-07 | H | Certification didn't test what §12 claimed: "re-delivered command executed once" and offline recovery were untested; `inventory`/`webhooks` could be marked not applicable for models that have them; re-certification after revocation reused the old harness pass | Harness checks DUPLICATE DELIVERY and OFFLINE RECOVERY (control endpoint `/defer-next-report`); not-applicable refused where the model/manufacturer has the feature; `revokedAt` + fresh `contract_suite` required | `certificationHarness.test.ts` (15 checks, two new seeded bugs caught), `manufacturerRegistryService.test.ts`, `manufacturerContract.test.ts` |
+| R-08 | H | A frequent job that was **never wired up** (e.g. fast-recovery workflow secrets missing) showed `never_run` forever: no alert, `/api/cron/health` 200 | `overdue` (and `job_failure` alert, health 503) once other jobs' records show the scheduler has been running longer than its window | `scheduledJobs.test.ts` |
+| R-09 | H | A chunked request body (no Content-Length) was buffered whole before the 256 KB check | Incremental read, refused at the limit | `requestBodyLimit.test.ts` |
+
 ## Known limitations after this pass
 
 Stated here so no report or document claims otherwise:
@@ -44,5 +62,6 @@ Stated here so no report or document claims otherwise:
 | A connect timeout is classified "maybe delivered" | A vend that provably never left can go to review instead of refund | Conservative by design (never a wrongful refund); resolved by the pull lookup |
 | No external watchdog unless one is configured | If the scheduler itself stops, nothing inside Snack Quest notices | `/api/cron/health` returns 503 when a job is overdue or failing: point an external uptime monitor at it |
 | Model A cannot reach production | `reference_http` is sandbox-only and the harness is Model B-shaped | Documented to manufacturers; a production adapter + harness extension per Model A manufacturer |
-| Certification needs all three optional control endpoints | A manufacturer that can't implement hold / retransmit / request-log can't be certified | Documented as required in `MANUFACTURER_CERTIFICATION.md` |
+| Certification needs all four optional control endpoints | A manufacturer that can't implement hold / retransmit / request-log / defer-report can't be certified | Documented as required in `MANUFACTURER_CERTIFICATION.md` |
+| Re-acknowledging a command still `acknowledged` returns 200 | Needed so a machine whose ack response was lost can proceed; a firmware that acks every held copy and then executes them all would dispense twice | The machine's own commandId store is the guard (spec §6); certification's DUPLICATE DELIVERY check catches the batching bug |
 

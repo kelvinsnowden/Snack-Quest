@@ -158,6 +158,30 @@ describe('models and certification', () => {
     expect((await manufacturerRegistryService.requireModel(BUSINESS_ID, modelId)).certificationStatus).toBe('revoked');
   });
 
+  it('inventory cannot be "not applicable" for a model that declares inventory reporting, nor webhooks for a webhook manufacturer', async () => {
+    const withInventory = await createManufacturerWithModel(BUSINESS_ID, { capabilities: ['vend', 'inventory_read', 'heartbeat'] });
+    await expect(
+      manufacturerRegistryService.recordCertificationCheck(BUSINESS_ID, withInventory.modelId, 'inventory', { outcome: 'not_applicable', evidence: 'skip it' }, 'staff-1'),
+    ).rejects.toThrow(/declares inventory reporting/);
+    const webhookMaker = await createManufacturerWithModel(BUSINESS_ID, { integrationType: 'webhook', capabilities: ['vend', 'heartbeat'] });
+    await expect(
+      manufacturerRegistryService.recordCertificationCheck(BUSINESS_ID, webhookMaker.modelId, 'webhooks', { outcome: 'not_applicable', evidence: 'skip it' }, 'staff-1'),
+    ).rejects.toThrow(/delivers by webhook/);
+    // Recorded before the model declared inventory (or written directly): still outstanding at certification time.
+    expect(outstandingCertificationChecks({ inventory: { outcome: 'not_applicable', evidence: 'x', verifiedBy: 's', verifiedAt: null as never } }, { inventoryRequired: true })).toContain('inventory');
+  });
+
+  it('after a revocation, the old harness run no longer certifies — a new one is needed', async () => {
+    const { modelId } = await createManufacturerWithModel(BUSINESS_ID);
+    await certifyModel(BUSINESS_ID, modelId);
+    await manufacturerRegistryService.revokeCertification(BUSINESS_ID, modelId, 'field defect: double dispense on firmware 4.3', 'staff-1');
+    await expect(manufacturerRegistryService.certifyModel(BUSINESS_ID, modelId, 'staff-1')).rejects.toMatchObject({ outstanding: ['contract_suite'] });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await manufacturerRegistryService.recordCertificationCheck(BUSINESS_ID, modelId, 'contract_suite', { outcome: 'passed', evidence: 'harness run cert_new' }, 'system:certification', { source: 'harness' });
+    await manufacturerRegistryService.certifyModel(BUSINESS_ID, modelId, 'staff-1');
+    expect((await manufacturerRegistryService.requireModel(BUSINESS_ID, modelId)).certificationStatus).toBe('certified');
+  });
+
   it('a failed check after certification revokes it', async () => {
     const { modelId } = await createManufacturerWithModel(BUSINESS_ID);
     await certifyModel(BUSINESS_ID, modelId);

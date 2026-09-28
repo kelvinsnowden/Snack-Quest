@@ -281,14 +281,24 @@ class MachineIntegrationService {
 
   /**
    * The gate every dispense passes through (`dispenseCommandService`).
-   * A machine with no integration record is a pre-registry machine and
-   * keeps working exactly as before; any machine that *has* joined the
-   * registry must be active, from an active manufacturer, and — on the
-   * production deployment — a production integration.
+   * Any machine in the registry must be active, from an active
+   * manufacturer, and — on the production deployment — a production
+   * integration.
+   *
+   * A machine with **no** integration record is refused on the production
+   * deployment. Nothing checks such a machine's adapter against the
+   * registry's sandbox-only rule, and none can really dispense: the
+   * simulator (`mock`) would "complete" a sale nobody received, a stub
+   * refuses, and an inbound machine can't authenticate to collect its
+   * command. Everywhere else (development, tests, the simulator) it still
+   * works as a pre-registry machine.
    */
   async dispenseGate(businessId: string, machineId: string, purpose: 'dispatch' | 'pre_payment' = 'dispatch'): Promise<DispenseGate> {
     const integration = await machineIntegrationRepository.findByMachineId(businessId, machineId);
     if (!integration) {
+      if (isProductionDeployment()) {
+        return { allowed: false, reason: 'machine has no integration record; only integrated machines sell on the production deployment' };
+      }
       return { allowed: true, integrated: false };
     }
     if (integration.state !== 'active') {

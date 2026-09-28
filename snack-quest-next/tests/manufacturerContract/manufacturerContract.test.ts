@@ -74,12 +74,13 @@ async function controlServer(sim: V1SimulatedMachine, token: string): Promise<st
       const reply = (body: unknown) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body ?? null));
       try {
         switch (`${req.method} ${req.url}`) {
-          case 'GET /capabilities': return reply({ supports: ['hold', 'retransmit', 'request-log'] });
+          case 'GET /capabilities': return reply({ supports: ['hold', 'retransmit', 'request-log', 'defer-report'] });
           case 'POST /cycle': await inner.cycle(); return reply({ ok: true });
           case 'POST /door-events': await inner.emitDoorEvents(); return reply({ ok: true });
           case 'POST /empty-slot': await inner.emptySlot(JSON.parse(raw).slotId); return reply({ ok: true });
           case 'POST /hold-next-commands': await inner.pollWithoutExecuting(); return reply({ ok: true });
           case 'POST /retransmit-last-report': return reply(await inner.retransmitLastReport());
+          case 'POST /defer-next-report': await inner.deferNextReport(); return reply({ ok: true });
           case 'GET /request-log': return reply(inner.requestLog());
           default: res.writeHead(404).end();
         }

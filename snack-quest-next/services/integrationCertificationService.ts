@@ -53,7 +53,9 @@ export type HarnessCheckId =
   | 'failure_handling'
   | 'idempotency'
   | 'replay_protection'
-  | 'timeout_handling';
+  | 'timeout_handling'
+  | 'duplicate_delivery'
+  | 'offline_recovery';
 
 export const HARNESS_CHECKS: readonly { id: HarnessCheckId; label: string }[] = [
   { id: 'connect', label: 'CONNECT' },
@@ -69,6 +71,8 @@ export const HARNESS_CHECKS: readonly { id: HarnessCheckId; label: string }[] = 
   { id: 'idempotency', label: 'IDEMPOTENCY' },
   { id: 'replay_protection', label: 'REPLAY PROTECTION' },
   { id: 'timeout_handling', label: 'TIMEOUT HANDLING' },
+  { id: 'duplicate_delivery', label: 'DUPLICATE DELIVERY' },
+  { id: 'offline_recovery', label: 'OFFLINE RECOVERY' },
 ];
 
 export interface HarnessCheckResult {
@@ -111,6 +115,8 @@ export interface CertificationSubject {
   pollWithoutExecuting?(): Promise<void>;
   /** Re-send the last outcome report as if its response was lost. Omit if the subject can't be driven this way. */
   retransmitLastReport?(): Promise<{ status: number; result: string | null }>;
+  /** Complete the next dispense but hold back its outcome report, as if the network dropped at that moment; send it on a later cycle. Omit if the subject can't be driven this way. */
+  deferNextReport?(): Promise<void>;
   /** Nonces and timestamps of every request the subject made, if it can expose them. */
   requestLog?(): { nonce: string; timestamp: number }[];
 }
@@ -124,6 +130,8 @@ export class CertificationNotAllowedError extends Error {
 
 const TERMINAL: MachineDispenseCommand['status'][] = ['dispensed', 'failed', 'rejected', 'timeout', 'unknown'];
 const MAX_CYCLES_PER_STEP = 3;
+/** Ledger stock the test slot needs before a run — see `testSlot`. */
+export const MIN_TEST_SLOT_STOCK = 4;
 
 /** Harness check → model checklist key(s) it is evidence for. The rest of the checklist stays with humans. */
 const CHECKLIST_EVIDENCE: Partial<Record<CertificationCheckKey, HarnessCheckId[]>> = {
@@ -135,9 +143,9 @@ const CHECKLIST_EVIDENCE: Partial<Record<CertificationCheckKey, HarnessCheckId[]
   dispense_command: ['command_polling', 'acknowledgement'],
   dispense_confirmation: ['dispense'],
   failed_dispense: ['failure_handling'],
-  idempotency: ['idempotency'],
+  idempotency: ['idempotency', 'duplicate_delivery'],
   payment_flow: ['dispense'],
-  reconciliation: ['timeout_handling'],
+  reconciliation: ['timeout_handling', 'offline_recovery'],
 };
 
 class IntegrationCertificationService {
@@ -170,12 +178,31 @@ class IntegrationCertificationService {
       ? await subject.retransmitLastReport().catch((error: unknown) => ({ status: 0, result: `could not retransmit: ${error instanceof Error ? error.message : String(error)}` }))
       : null;
 
-    // 3. A sale the machine can't fulfil.
+    // 3. The same command delivered twice: fetched and held, then delivered again by the next poll. Executed once.
+    let duplicateSale: string | null = null;
+    if (subject.pollWithoutExecuting) {
+      duplicateSale = await this.sandboxSale(businessId, machineId, slot.slotCode, runId, 4);
+      await subject.pollWithoutExecuting();
+      await this.cycleUntilTerminal(businessId, duplicateSale, subject);
+    }
+
+    // 4. Offline recovery: the machine dispenses, the outcome report can't be sent, and it is delivered on a later cycle.
+    let offline: { sale: string; statusWhileOffline: string | null } | null = null;
+    if (subject.deferNextReport) {
+      const offlineSale = await this.sandboxSale(businessId, machineId, slot.slotCode, runId, 5);
+      await subject.deferNextReport();
+      await subject.cycle();
+      const whileOffline = await machineDispenseCommandRepository.findByTransactionId(businessId, offlineSale);
+      await this.cycleUntilTerminal(businessId, offlineSale, subject);
+      offline = { sale: offlineSale, statusWhileOffline: whileOffline?.status ?? null };
+    }
+
+    // 5. A sale the machine can't fulfil.
     await subject.emptySlot(slot.manufacturerSlotId);
     const failingSale = await this.sandboxSale(businessId, machineId, slot.slotCode, runId, 2);
     await this.cycleUntilTerminal(businessId, failingSale, subject);
 
-    // 4. A command that expires while the machine holds it.
+    // 6. A command that expires while the machine holds it.
     let expiredSale: string | null = null;
     if (subject.pollWithoutExecuting) {
       expiredSale = await this.sandboxSale(businessId, machineId, slot.slotCode, runId, 3);
@@ -195,6 +222,8 @@ class IntegrationCertificationService {
       sale,
       failingSale,
       expiredSale,
+      duplicateSale,
+      offline,
       retransmit,
       requestLog: subject.requestLog?.() ?? null,
     });
@@ -224,8 +253,9 @@ class IntegrationCertificationService {
 
   private async testSlot(businessId: string, machineId: string): Promise<{ slotCode: string; manufacturerSlotId: string }> {
     const slots = await machineSlotRepository.listByMachine(businessId, machineId);
-    const slot = slots.find((candidate) => candidate.enabled !== false && (candidate.currentQuantity ?? 0) >= 3);
-    if (!slot) throw new CertificationNotAllowedError('the machine needs one enabled slot with at least 3 items on the ledger');
+    // Three sales dispense (the sale, the duplicate delivery, offline recovery) before the slot is emptied; the later sales need one more on the ledger.
+    const slot = slots.find((candidate) => candidate.enabled !== false && (candidate.currentQuantity ?? 0) >= MIN_TEST_SLOT_STOCK);
+    if (!slot) throw new CertificationNotAllowedError(`the machine needs one enabled slot with at least ${MIN_TEST_SLOT_STOCK} items on the ledger (and physically loaded)`);
     return { slotCode: slot.slotCode, manufacturerSlotId: manufacturerSlotIdFor(slot) };
   }
 
@@ -253,6 +283,8 @@ class IntegrationCertificationService {
       sale: string;
       failingSale: string;
       expiredSale: string | null;
+      duplicateSale: string | null;
+      offline: { sale: string; statusWhileOffline: string | null } | null;
       retransmit: { status: number; result: string | null } | null;
       requestLog: { nonce: string; timestamp: number }[] | null;
     },
@@ -287,6 +319,13 @@ class IntegrationCertificationService {
     const liveness = livenessOfIntegration(integration);
     const nonces = run.requestLog?.map((entry) => entry.nonce) ?? [];
     const skewed = run.requestLog?.filter((entry) => Math.abs(entry.timestamp - Date.now() / 1000) > 300) ?? [];
+    const duplicate = run.duplicateSale ? await machineTransactionRepository.findById(businessId, run.duplicateSale) : null;
+    const duplicateCommand = run.duplicateSale ? await machineDispenseCommandRepository.findByTransactionId(businessId, run.duplicateSale) : null;
+    // Distinct outcome reports (one per eventId) the machine sent for a command: a machine that executed a command twice reports it twice.
+    const outcomeReports = async (commandRef: string) =>
+      (await adminFirestore.collection('machineTelemetryEvents').where('machineId', '==', machineId).where('eventType', '==', 'vend_result').where('payload.commandId', '==', commandRef).get()).size;
+    const offlineSale = run.offline ? await machineTransactionRepository.findById(businessId, run.offline.sale) : null;
+    const offlineCommand = run.offline ? await machineDispenseCommandRepository.findByTransactionId(businessId, run.offline.sale) : null;
     const expired = run.expiredSale ? await machineTransactionRepository.findById(businessId, run.expiredSale) : null;
     const expiredCommand = run.expiredSale ? await machineDispenseCommandRepository.findByTransactionId(businessId, run.expiredSale) : null;
 
@@ -298,7 +337,7 @@ class IntegrationCertificationService {
       result('inventory', since(integration.signals?.inventory_sync), since(integration.signals?.inventory_sync) ? 'inventory report received and compared against the ledger' : 'no inventory report received'),
       result('events', doorEvents.length >= 2, `${doorEvents.length} door event(s) recorded`),
       result('command_polling', Boolean(saleCommand && saleCommand.status !== 'sent'), saleCommand ? `dispense ${saleCommand.commandRef} is "${saleCommand.status}"` : 'no dispense command was created'),
-      result('acknowledgement', Boolean(saleCommand) && [saleCommand, failingCommand, expiredCommand].every(ackedBeforeOutcome), `history: ${history(saleCommand).join(' → ')}; failed sale: ${history(failingCommand).join(' → ')}`),
+      result('acknowledgement', Boolean(saleCommand) && [saleCommand, failingCommand, expiredCommand, duplicateCommand, offlineCommand].every(ackedBeforeOutcome), `history: ${history(saleCommand).join(' → ')}; failed sale: ${history(failingCommand).join(' → ')}`),
       result('dispense', sale?.status === 'dispensed' && (await saleMovements(run.sale)) === 1, `sale is "${sale?.status}", ${await saleMovements(run.sale)} stock movement(s)`),
       result(
         'failure_handling',
@@ -318,6 +357,24 @@ class IntegrationCertificationService {
             `expired command ended "${expiredCommand?.status}", sale "${expired?.status}"${expired?.outcomeConflict ? ' — the machine reported an outcome for a command it was told not to run' : ''}`,
           )
         : result('timeout_handling', null, 'subject cannot hold a command without executing it (control endpoint POST /hold-next-commands); the contract suite cannot pass without it'),
+      run.duplicateSale && duplicateCommand
+        ? await (async () => {
+            const reports = await outcomeReports(duplicateCommand.commandRef);
+            const movements = await saleMovements(run.duplicateSale!);
+            return result(
+              'duplicate_delivery',
+              duplicate?.status === 'dispensed' && movements === 1 && reports === 1,
+              `command ${duplicateCommand.commandRef} delivered twice: sale "${duplicate?.status}", ${reports} outcome report(s) (must be 1 — two means it ran twice), ${movements} stock movement(s)`,
+            );
+          })()
+        : result('duplicate_delivery', null, 'subject cannot hold a command without executing it (control endpoint POST /hold-next-commands); the contract suite cannot pass without it'),
+      run.offline
+        ? result(
+            'offline_recovery',
+            offlineSale?.status === 'dispensed' && (await saleMovements(run.offline.sale)) === 1 && !['dispensed', 'failed', 'unknown'].includes(run.offline.statusWhileOffline ?? ''),
+            `outcome held back: dispense was "${run.offline.statusWhileOffline}" while offline, then "${offlineCommand?.status}"; sale "${offlineSale?.status}" — the stored report must be delivered once the machine is back`,
+          )
+        : result('offline_recovery', null, 'subject cannot hold back an outcome report (control endpoint POST /defer-next-report); the contract suite cannot pass without it'),
     ];
   }
 

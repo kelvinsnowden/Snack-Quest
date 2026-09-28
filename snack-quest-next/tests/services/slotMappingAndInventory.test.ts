@@ -103,6 +103,19 @@ describe('inventory reports', () => {
     expect(await report(5, iso(1000), 'r-ok')).toMatchObject({ stale: false, mismatches: [] });
   });
 
+  it('a count above what the slot can hold is flagged as impossible (sensor or mapping fault), not as an ordinary difference', async () => {
+    const capacity = (await adminFirestore.collection('machineSlots').doc(`${machine.machineId}__A01`).get()).get('capacity') as number;
+    await report(capacity + 50, iso(1000), 'r-impossible');
+    const events = await adminFirestore.collection('machineEvents').where('machineId', '==', machine.machineId).where('type', '==', 'INVENTORY_MISMATCH').get();
+    expect(events.docs.map((doc) => doc.get('data.reason'))).toContain('exceeds_capacity');
+  });
+
+  it('a report listing the same slot twice is refused (422) — two counts for one slot cannot both be true', async () => {
+    const result = await v1(key, machine.machineCode).inventory({ reportId: 'r-dup-slot', slots: [{ slotId: 'spiral_01', quantity: 5 }, { slotId: 'spiral_01', quantity: 2 }] });
+    expect(result.status).toBe(422);
+    expect(result.error?.code).toBe('validation_failed');
+  });
+
   it('a disagreeing count is a mismatch, never written to the ledger', async () => {
     expect((await report(3, iso(1000), 'r-diff')).mismatches).toEqual([{ slotCode: 'A01', expected: 5, reported: 3 }]);
     expect((await adminFirestore.collection('machineSlots').doc(`${machine.machineId}__A01`).get()).get('currentQuantity')).toBe(5);

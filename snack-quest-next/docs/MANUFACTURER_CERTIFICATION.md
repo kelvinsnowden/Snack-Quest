@@ -37,15 +37,20 @@ it:
 | Dispense command | Commands collected, **acknowledged before** any outcome, never executed after a refused acknowledgement | harness (COMMAND POLLING + ACKNOWLEDGEMENT) or engineer |
 | Dispense confirmation | A paid sale ends `dispensed`, with one stock movement | harness (DISPENSE) or engineer |
 | Failed dispense | A sale from an empty slot ends `failed`: the customer is refunded and no stock moves | harness (FAILURE HANDLING) or engineer |
-| Idempotency | A re-sent outcome report is recognised as the same report and counted once | harness (IDEMPOTENCY) or engineer |
+| Idempotency | A re-sent outcome report is recognised as the same report and counted once; a command delivered twice is executed and reported once | harness (IDEMPOTENCY + DUPLICATE DELIVERY) or engineer |
 | Error handling | 4xx vs 5xx behaviour per spec §4.2 | engineer |
 | Webhooks | Signed deliveries, redelivery, deduplication. *Not applicable* without webhooks | engineer |
 | Payment flow | A paid sandbox sale is dispensed and confirmed end to end | harness (DISPENSE) or engineer |
-| Reconciliation | A command that expired while the machine held it is never executed; the sale is refunded | harness (TIMEOUT HANDLING) or engineer |
+| Reconciliation | A command that expired while the machine held it is never executed; an outcome report that couldn't be sent is kept and delivered on a later cycle | harness (TIMEOUT HANDLING + OFFLINE RECOVERY) or engineer |
 | Automated contract suite | A complete harness run against your model, verdict CERTIFIED | **harness only** |
 
 The last check is why the harness matters. A model can't be certified
-on hand-recorded evidence alone.
+on hand-recorded evidence alone. Two more rules:
+
+- *Not applicable* is refused for **Inventory** when the model declares
+  inventory reporting, and for **Webhooks** when you deliver by webhook.
+- After a certification is **revoked**, re-certifying needs a new
+  harness run: a pass recorded before the revocation no longer counts.
 
 ---
 
@@ -59,7 +64,7 @@ to run on Snack Quest's production deployment.
 
 - Your sandbox machine is registered and its sandbox integration is
   active.
-- One enabled slot holds at least 3 items on Snack Quest's ledger.
+- One enabled slot holds at least 4 items on Snack Quest's ledger, and is physically loaded with at least 3 (three sales dispense before the slot is emptied).
 - Your sandbox control endpoints (§3) are deployed and reachable over
   HTTPS.
 
@@ -72,10 +77,20 @@ machine with `POST /cycle` whenever the machine needs to act:
    collect the command, acknowledge it, dispense, and report `dispensed`.
    The harness then asks the machine to **retransmit** its last outcome
    report unchanged.
-3. **A sale it can't fulfil.** The harness asks the machine to make the
+3. **A command delivered twice.** The harness sells again and asks the
+   machine to **hold** the next command (fetch it, don't act yet); the
+   next cycle's poll delivers the same command again. The machine must
+   execute and report it **once**: two outcome reports for one command
+   mean it ran twice.
+4. **Offline recovery.** The harness sells again and asks the machine to
+   **defer** the next outcome report, as if the network dropped just as
+   it would be sent. The machine dispenses and keeps the report; after
+   that cycle Snack Quest must not yet have the outcome, and the next
+   cycle must deliver it.
+5. **A sale it can't fulfil.** The harness asks the machine to make the
    test slot **empty**, then sells from it. The machine must acknowledge,
    try, and report `failed` (`no_product`).
-4. **A command that expires in the machine's hands.** The harness sells
+6. **A command that expires in the machine's hands.** The harness sells
    again and asks the machine to **hold** the next command: fetch it,
    don't act on it yet. The harness expires the command on the server,
    then runs a cycle. The machine must try to acknowledge, receive
@@ -91,6 +106,7 @@ are:
 CONNECT  AUTHENTICATION  HEARTBEAT  STATUS  INVENTORY  EVENTS
 COMMAND POLLING  ACKNOWLEDGEMENT  DISPENSE  FAILURE HANDLING
 IDEMPOTENCY  REPLAY PROTECTION  TIMEOUT HANDLING
+DUPLICATE DELIVERY  OFFLINE RECOVERY
 ```
 
 **The verdict** is CERTIFIED only if every check passed. Each check that
@@ -132,16 +148,17 @@ drive your sandbox machine (real or emulated) through the script above.
 
 | Endpoint | Does | Answers |
 |---|---|---|
-| `GET /capabilities` | Lists the optional controls this machine supports | `{ "supports": ["hold", "retransmit", "request-log"] }` |
+| `GET /capabilities` | Lists the optional controls this machine supports | `{ "supports": ["hold", "retransmit", "request-log", "defer-report"] }` |
 | `POST /cycle` | One normal cycle: connect if needed, heartbeat, status, inventory, then poll → acknowledge → dispense → report for every command, exactly as the machine does on its own | `2xx` when the cycle is finished |
 | `POST /door-events` | Open and close the service door (or emit `DOOR_OPENED` then `DOOR_CLOSED` exactly as the door would) | `2xx` |
 | `POST /empty-slot` with body `{ "slotId": "motor-07" }` | Make that slot empty, so the next dispense from it fails with `no_product` | `2xx` |
 | `POST /hold-next-commands` | Poll now and keep the commands without acknowledging or executing them; the next `/cycle` handles them normally (acknowledge first, and don't execute if refused) | `2xx` |
 | `POST /retransmit-last-report` | Re-send the last outcome report unchanged (same body, same `eventId`, freshly signed) | `{ "status": <HTTP status Snack Quest answered>, "result": <data.result from that answer> }` |
 | `GET /request-log` | Every signed request the machine has sent to Snack Quest | `[ { "nonce": "…", "timestamp": 1790500000 }, … ]` |
+| `POST /defer-next-report` | The next dispense completes normally, but its outcome report is not sent — kept in the machine's store as if the network dropped — and sent on a later cycle | `2xx` |
 
-**All three optional controls (`hold`, `retransmit`, `request-log`) are
-required for a CERTIFIED run.** They're optional only in that the
+**All four optional controls (`hold`, `retransmit`, `request-log`,
+`defer-report`) are required for a CERTIFIED run.** They're optional only in that the
 harness still runs without them, reporting what it could verify, which
 is useful while you build.
 

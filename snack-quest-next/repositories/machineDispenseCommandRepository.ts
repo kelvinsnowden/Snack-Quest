@@ -94,6 +94,17 @@ class MachineDispenseCommandRepository {
     return snapshot.empty ? null : (snapshot.docs[0].data() as MachineDispenseCommand);
   }
 
+  /** By the integration's own reference for the vend (set when the adapter returned one different from the command ref). */
+  async findByVendRef(businessId: string, vendRef: string): Promise<MachineDispenseCommand | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('vendRef', '==', vendRef)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : (snapshot.docs[0].data() as MachineDispenseCommand);
+  }
+
   /** For adapters: a command by its public reference, scoped by the (globally unique) machine id rather than a tenant. */
   async findForMachine(machineId: string, commandRef: string): Promise<MachineDispenseCommand | null> {
     const snapshot = await adminFirestore

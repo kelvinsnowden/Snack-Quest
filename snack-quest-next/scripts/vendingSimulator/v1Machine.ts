@@ -41,6 +41,8 @@ export interface SandboxFaults {
   duplicateCommandDelivery: boolean;
   /** The next outcome report is delivered, but its response is lost — the machine must re-send it unchanged. */
   loseNextReportResponse: boolean;
+  /** The network drops just as the next outcome report would be sent: the machine keeps it and sends it later (`resendOwedReports`). */
+  deferNextReport: boolean;
 
   // Integration bugs — for proving the certification harness catches them.
   /** Dispenses without acknowledging first (or regardless of the ack's answer). */
@@ -51,6 +53,10 @@ export interface SandboxFaults {
   freshEventIdOnRetry: boolean;
   /** Signs every request with this nonce (a broken random source). */
   fixedNonce: string | null;
+  /** Doesn't dedupe on commandId, and batches its work: acknowledges every command it holds, then executes them all — so a command delivered twice is acknowledged twice (the second ack is answered 200: the command is still only acknowledged) and executed twice. */
+  ignoreDuplicateDelivery: boolean;
+  /** Loses an outcome report it couldn't send, instead of keeping it (no persistent outbox). */
+  forgetDeferredReport: boolean;
 }
 
 export interface V1Transport {
@@ -138,10 +144,13 @@ export class V1SimulatedMachine {
     heartbeatFailure: false,
     duplicateCommandDelivery: false,
     loseNextReportResponse: false,
+    deferNextReport: false,
     executeWithoutAck: false,
     reportDispensedWhenEmpty: false,
     freshEventIdOnRetry: false,
     fixedNonce: null,
+    ignoreDuplicateDelivery: false,
+    forgetDeferredReport: false,
   };
   /** Every attempt the machine made, in order — nonce, timestamp, status, request id. */
   readonly requestLog: AttemptLog[] = [];
@@ -277,7 +286,8 @@ export class V1SimulatedMachine {
     const polled = await this.machineCall<{ commands: { commandId: string; type: string; slotId?: string }[] }>('GET', 'commands');
     const commands = polled.body?.data?.commands ?? [];
     for (const command of this.inject.duplicateCommandDelivery ? [...commands, ...commands] : commands) {
-      if (this.persistent.executed.has(command.commandId) || this.localQueue.some((queued) => queued.commandId === command.commandId)) {
+      const seen = this.persistent.executed.has(command.commandId) || this.localQueue.some((queued) => queued.commandId === command.commandId);
+      if (seen && !this.inject.ignoreDuplicateDelivery) {
         this.duplicatesSuppressed += 1;
         continue;
       }
@@ -290,6 +300,18 @@ export class V1SimulatedMachine {
   async pollAndExecute(): Promise<V1CommandExecution[]> {
     await this.pollOnly();
     const executions: V1CommandExecution[] = [];
+    if (this.inject.ignoreDuplicateDelivery) {
+      // The batching bug: acknowledge everything held, then execute everything acknowledged.
+      const batch = this.localQueue.splice(0);
+      const acks: number[] = [];
+      for (const command of batch) acks.push((await this.machineCall('POST', `commands/${command.commandId}/ack`)).status);
+      for (const [index, command] of batch.entries()) {
+        if (acks[index] !== 200 || command.type !== 'dispense') continue;
+        this.persistent.executed.set(command.commandId, { report: null, reported: false });
+        executions.push(await this.executeDispense(command.commandId, command.slotId ?? ''));
+      }
+      return executions;
+    }
     while (this.localQueue.length > 0) {
       const command = this.localQueue.shift()!;
       let ackStatus = 200;
@@ -332,6 +354,12 @@ export class V1SimulatedMachine {
     }
     const record = this.persistent.executed.get(commandId);
     if (record) record.report = body;
+    if (this.inject.deferNextReport) {
+      // The link drops: the outcome stays owed in flash (unless the firmware is buggy and keeps nothing).
+      this.inject.deferNextReport = false;
+      if (record && this.inject.forgetDeferredReport) record.report = null;
+      return { commandId, type: 'dispense', acknowledgedStatus: 200, reportedStatus: null, outcome: `${String(body.status)} (report deferred)` };
+    }
     const report = await this.report(`commands/${commandId}/status`, body);
     if (record && report.status === 200) record.reported = true;
     return { commandId, type: 'dispense', acknowledgedStatus: 200, reportedStatus: report.status, outcome: String(body.status) };

@@ -5,9 +5,8 @@ import { machineRepository, MachineNotFoundError } from '@/repositories/machineR
 import { machineLocationHistoryRepository } from '@/repositories/machineLocationHistoryRepository';
 import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
-import type { DispenseConfirmationStrategy, VendAuthorizationResult } from '@/lib/vending/hardwareAdapter';
-import { defaultVendingAdapterResolver, isRegisteredAdapterKey, UnsupportedManufacturerError, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
-import { hasCapability } from '@/lib/vending/protocol/capabilities';
+import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
+import { isRegisteredAdapterKey, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import {
   MACHINE_STATUS_TRANSITIONS,
   type Machine,
@@ -26,13 +25,6 @@ export class PartnerDoesNotOwnMachineError extends Error {
   constructor(partnerId: string, machineId: string) {
     super(`Partner ${partnerId} does not own machine ${machineId}`);
     this.name = 'PartnerDoesNotOwnMachineError';
-  }
-}
-
-export class TestVendNotSupportedError extends Error {
-  constructor(manufacturer: string) {
-    super(`"${manufacturer}" machines do not declare support for "vend" — a test vend cannot be attempted`);
-    this.name = 'TestVendNotSupportedError';
   }
 }
 
@@ -76,8 +68,6 @@ export interface ProvisionMachineInput {
  * business meaning of what it then asks to do.
  */
 class MachineService {
-  constructor(private readonly resolveAdapter: VendingAdapterResolver = defaultVendingAdapterResolver) {}
-
   /**
    * Creates the machine record and issues its first device credential
    * in one call — the whole provisioning act (§ MACHINE INSTALLATION
@@ -230,29 +220,6 @@ class MachineService {
 
   async listByPartner(businessId: string, partnerId: string) {
     return machineRepository.listByPartner(businessId, partnerId);
-  }
-
-  /**
-   * A real, live `authorizeVend` call against the machine's own
-   * resolved adapter — the diagnostics page's "Test vend" action
-   * (§ DIAGNOSTICS PAGE: "Require elevated permission for actual test
-   * vend"). This is not a simulation and not a queued command: it is
-   * the exact call `machineTransactionService` makes after a real
-   * payment verifies, run here on demand, which really does dispense
-   * product from a live machine — the reason the route calling this
-   * gates it to `ADMIN_ONLY` rather than the read-only diagnostics
-   * roles every other diagnostic field only needs.
-   */
-  async testVend(businessId: string, machineId: string, slotCode: string): Promise<VendAuthorizationResult> {
-    const machine = await machineRepository.findById(businessId, machineId);
-    if (!machine) {
-      throw new MachineNotFoundError(machineId);
-    }
-    const adapter = this.resolveAdapter(machine.manufacturer);
-    if (!hasCapability(adapter.capabilities(), 'vend')) {
-      throw new TestVendNotSupportedError(machine.manufacturer);
-    }
-    return adapter.authorizeVend(machineId, slotCode);
   }
 
   async fleetStatusSummary(businessId: string): Promise<Record<MachineStatus, number> & { total: number }> {

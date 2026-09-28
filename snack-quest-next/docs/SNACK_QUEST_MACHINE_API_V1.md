@@ -538,9 +538,18 @@ Connect is safe to call on every boot.
 
 `reportOutcomes` lists dispenses of yours whose outcome Snack Quest is
 still waiting for (`outcome_unknown`, `no_outcome_received`,
-`in_progress_too_long`; more reasons may be added). If you have the
-outcome stored, re-send its report (same `eventId`). It is usually
-empty.
+`in_progress_too_long`; more reasons may be added). It is usually
+empty. Answer each one with `POST …/commands/{commandId}/status`:
+
+| What your persistent store says about the command | Report |
+|---|---|
+| You have its outcome stored | Re-send that report unchanged (same `eventId`) |
+| You executed it, but the outcome was never determined (e.g. power lost mid-vend) | `unknown`, with the reason |
+| You never executed it (its acknowledgement never returned `200`) | `failed`, `failureReason: "not executed"` |
+| You have no record of it (storage lost or reset) | `unknown`, `failureReason: "no record"` — never `failed`: you can't prove it didn't run |
+
+Only a machine whose store survived can assert "not executed": that
+report sends the customer's money down the refund path.
 
 Send one every `heartbeatIntervalSeconds` (60 s by default). Snack
 Quest derives the machine's **liveness** from the last contact of any
@@ -606,7 +615,7 @@ What the machine *physically* counts, if it can (capability
 }
 ```
 
-1–500 slots and quantities of 0–10,000.
+1–500 slots and quantities of 0–10,000. Each `slotId` appears **at most once** per report; a report listing a slot twice is refused with `422 validation_failed`. A count above the slot's capacity is recorded as a sensor or mapping fault, never as stock.
 
 **Response `200`**
 
@@ -1084,11 +1093,11 @@ exactly how each is verified.
 | Dispense command | Commands collected, acknowledged **before** dispensing, never executed after a refused acknowledgement |
 | Dispense confirmation | `dispensed` only when the product physically dropped |
 | Failed dispense | A jammed or empty slot reports `failed` with the right code |
-| Idempotency | A re-sent report is recognised as the same report; a command re-polled or re-delivered is executed once |
+| Idempotency | A re-sent report is recognised as the same report; a command delivered twice (fetched, held, then delivered again) is executed and reported once |
 | Error handling | 4xx vs 5xx behaviour per §4.2 |
 | Webhooks | Signed deliveries, retries, deduplication (*not applicable* without webhooks) |
 | Payment flow | A paid sandbox sale dispenses and is confirmed end to end |
-| Reconciliation | An expired command is never executed; unknown outcomes are reported, not guessed |
+| Reconciliation | An expired command is never executed; an outcome report that couldn't be sent (network down) is kept and delivered later; unknown outcomes are reported, not guessed |
 | Automated contract suite | A complete, passing run of the certification harness against your model |
 
 Everything not marked *not applicable* is required. The last check can
@@ -1097,15 +1106,17 @@ only be recorded by the harness itself, never ticked by hand.
 **The automated certification harness.** Most of the checklist is
 verified by a harness Snack Quest runs against your machine in the
 sandbox. It drives a fixed script — connect, heartbeat, status,
-inventory, door events, a real sandbox sale, a sale from a slot you've
-emptied, a retransmitted outcome report, and a command that expires
-while your machine holds it — and judges each step from what Snack
-Quest recorded, not from what the machine claims:
+inventory, door events, a real sandbox sale, a retransmitted outcome
+report, a command delivered twice, a sale whose outcome report is held
+back as if the network dropped, a sale from a slot you've emptied, and
+a command that expires while your machine holds it — and judges each
+step from what Snack Quest recorded, not from what the machine claims:
 
 ```
 CONNECT ✓  AUTHENTICATION ✓  HEARTBEAT ✓  STATUS ✓  INVENTORY ✓  EVENTS ✓
 COMMAND POLLING ✓  ACKNOWLEDGEMENT ✓  DISPENSE ✓  FAILURE HANDLING ✓
-IDEMPOTENCY ✓  REPLAY PROTECTION ✓  TIMEOUT HANDLING ✓        → CERTIFIED
+IDEMPOTENCY ✓  REPLAY PROTECTION ✓  TIMEOUT HANDLING ✓
+DUPLICATE DELIVERY ✓  OFFLINE RECOVERY ✓                      → CERTIFIED
 ```
 
 Any failed check means **NOT CERTIFIED**, with the failure spelled out

@@ -139,15 +139,32 @@ class ScheduledJobService {
     );
   }
 
-  /** Per-job health from the run records — nothing inferred, nothing invented: a job with no runs says `never_run`. */
+  /**
+   * Per-job health from the run records — nothing invented: a job with no
+   * runs says `never_run`. One inference, from the records themselves: a
+   * frequent job (every hour or more often) that has never run while
+   * *other* jobs' records show the scheduler has been running for longer
+   * than that job's overdue window is `overdue`, not "never run" — it was
+   * never wired up (e.g. the fast-recovery workflow's secrets are missing),
+   * and stuck sales would wait for the daily sweep.
+   */
   async health(businessId: string, now = Date.now()): Promise<JobHealth[]> {
-    return Promise.all(
+    const perJob = await Promise.all(
       (Object.keys(SCHEDULED_JOBS) as ScheduledJobName[]).map(async (jobName) => {
         const { everyMs, leaseMs, trigger } = SCHEDULED_JOBS[jobName];
         const runs = (await scheduledJobRunRepository.listRecentForJob(businessId, jobName, 20)).map(({ data }) => data);
-        return { jobName, expectedEveryMs: everyMs, trigger, ...classify(runs, everyMs, leaseMs, now) };
+        return { health: { jobName, expectedEveryMs: everyMs, trigger, ...classify(runs, everyMs, leaseMs, now) }, runs };
       }),
     );
+    const startedTimes = perJob.flatMap(({ runs }) => runs.map((run) => run.startedAt?.toMillis()).filter((at): at is number => typeof at === 'number'));
+    const schedulerSince = startedTimes.length > 0 ? Math.min(...startedTimes) : null;
+    return perJob.map(({ health }) => {
+      const everyMs = health.expectedEveryMs;
+      if (health.state === 'never_run' && everyMs <= 60 * 60 * 1000 && schedulerSince !== null && now - schedulerSince > everyMs * 2 + Math.min(everyMs, 60 * 60 * 1000)) {
+        return { ...health, state: 'overdue' as const, lastError: `never run, although other scheduled jobs have been running since ${new Date(schedulerSince).toISOString()} — check its trigger (${health.trigger})` };
+      }
+      return health;
+    });
   }
 }
 

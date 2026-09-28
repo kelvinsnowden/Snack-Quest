@@ -564,6 +564,7 @@ components:
           type: array
           minItems: 1
           maxItems: 500
+          description: Each slotId at most once per report (a repeated slot is 422 validation_failed).
           items:
             type: object
             required: [slotId, quantity]

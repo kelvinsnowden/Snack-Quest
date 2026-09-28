@@ -164,9 +164,28 @@ async function readRawBody(request: Request): Promise<Uint8Array | { status: num
   if (declared > MAX_BODY_BYTES) {
     return { status: 413, code: 'payload_too_large', message: `Request bodies are limited to ${MAX_BODY_BYTES} bytes` };
   }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > MAX_BODY_BYTES) {
-    return { status: 413, code: 'payload_too_large', message: `Request bodies are limited to ${MAX_BODY_BYTES} bytes` };
+  // Read incrementally and stop at the limit: a body sent without a
+  // Content-Length (chunked) is never buffered past MAX_BODY_BYTES.
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { status: 413, code: 'payload_too_large', message: `Request bodies are limited to ${MAX_BODY_BYTES} bytes` };
+      }
+      chunks.push(value);
+    }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
   // Content-Type is deliberately not enforced: the body is always parsed
   // as JSON and the signature covers its exact bytes, so a client whose

@@ -1,4 +1,5 @@
 import 'server-only';
+import { Timestamp } from 'firebase-admin/firestore';
 
 import { invalidateManufacturerStatus } from '@/lib/vending/credentialCache';
 import { manufacturerRepository, ManufacturerNotFoundError } from '@/repositories/manufacturerRepository';
@@ -65,16 +66,38 @@ function assertCapabilities(capabilities: unknown): string[] {
 }
 
 /** Every check outstanding for certification — neither passed nor legitimately not applicable. Pure, exported for the admin UI and tests. */
-export function outstandingCertificationChecks(checklist: MachineModel['certificationChecklist']): CertificationCheckKey[] {
+/** What a particular model must prove, beyond the checklist's own rules. */
+export interface CertificationRequirements {
+  /** The model declares inventory reporting, so "inventory: not applicable" can't stand. */
+  inventoryRequired?: boolean;
+  /** The manufacturer delivers by webhook, so "webhooks: not applicable" can't stand. */
+  webhooksRequired?: boolean;
+  /** Certification was revoked at this time: the harness run must be newer. */
+  revokedAt?: { toMillis(): number } | null;
+}
+
+export function certificationRequirementsFor(model: Pick<MachineModel, 'declaredCapabilities' | 'revokedAt'>, manufacturer: Pick<Manufacturer, 'integrationType'> | null): CertificationRequirements {
+  return {
+    inventoryRequired: model.declaredCapabilities.includes('inventory_read'),
+    webhooksRequired: manufacturer?.integrationType === 'webhook' || manufacturer?.integrationType === 'hybrid',
+    revokedAt: model.revokedAt ?? null,
+  };
+}
+
+export function outstandingCertificationChecks(checklist: MachineModel['certificationChecklist'], requirements: CertificationRequirements = {}): CertificationCheckKey[] {
   return CERTIFICATION_CHECKS.filter(({ key, mayBeNotApplicable }) => {
     const result = checklist[key];
     if (!result) {
       return true;
     }
+    if (key === 'contract_suite' && requirements.revokedAt && (!result.verifiedAt || result.verifiedAt.toMillis() <= requirements.revokedAt.toMillis())) {
+      return true; // evidence from before the revocation
+    }
     if (result.outcome === 'passed') {
       return false;
     }
-    return !(result.outcome === 'not_applicable' && mayBeNotApplicable);
+    const notApplicableAllowed = mayBeNotApplicable && !(key === 'inventory' && requirements.inventoryRequired) && !(key === 'webhooks' && requirements.webhooksRequired);
+    return !(result.outcome === 'not_applicable' && notApplicableAllowed);
   }).map(({ key }) => key);
 }
 
@@ -252,6 +275,7 @@ class ManufacturerRegistryService {
     if (certificationRevoked) {
       next.certificationStatus = 'revoked';
       next.revokedReason = 'Declared capabilities or adapter changed after certification — re-certify against the new contract.';
+      next.revokedAt = Timestamp.now() as MachineModel['revokedAt'];
     }
     await machineModelRepository.update(businessId, modelId, next, actor);
     return { certificationRevoked };
@@ -284,6 +308,12 @@ class ManufacturerRegistryService {
     if (result.outcome === 'not_applicable' && !check.mayBeNotApplicable) {
       throw new RegistryValidationError(`"${check.label}" is required for every model and cannot be marked not applicable`);
     }
+    if (result.outcome === 'not_applicable') {
+      const requirements = certificationRequirementsFor(model, await manufacturerRepository.findById(businessId, model.manufacturerId));
+      if ((key === 'inventory' && requirements.inventoryRequired) || (key === 'webhooks' && requirements.webhooksRequired)) {
+        throw new RegistryValidationError(`"${check.label}" applies to this model (${key === 'inventory' ? 'it declares inventory reporting' : 'its manufacturer delivers by webhook'}) and cannot be marked not applicable`);
+      }
+    }
     if (!result.evidence.trim()) {
       throw new RegistryValidationError('evidence is required for every certification check');
     }
@@ -303,7 +333,7 @@ class ManufacturerRegistryService {
 
   async certifyModel(businessId: string, modelId: string, actor: string): Promise<void> {
     const model = await this.requireModel(businessId, modelId);
-    const outstanding = outstandingCertificationChecks(model.certificationChecklist);
+    const outstanding = outstandingCertificationChecks(model.certificationChecklist, certificationRequirementsFor(model, await manufacturerRepository.findById(businessId, model.manufacturerId)));
     if (outstanding.length > 0) {
       throw new CertificationIncompleteError(outstanding);
     }
@@ -315,7 +345,7 @@ class ManufacturerRegistryService {
     if (!reason.trim()) {
       throw new RegistryValidationError('A reason is required to revoke certification');
     }
-    await machineModelRepository.update(businessId, modelId, { certificationStatus: 'revoked', revokedReason: reason.trim() }, actor);
+    await machineModelRepository.update(businessId, modelId, { certificationStatus: 'revoked', revokedReason: reason.trim(), revokedAt: Timestamp.now() as MachineModel['revokedAt'] }, actor);
   }
 
   async listManufacturers(businessId: string) {

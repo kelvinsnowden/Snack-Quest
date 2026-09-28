@@ -10,7 +10,7 @@ import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { machineSubscriptionRepository } from '@/repositories/machineSubscriptionRepository';
 import { creditEarningsInTransaction } from '@/repositories/partnerRepository';
-import type { MachineSettlement } from '@/types';
+import { isCustomerSale, type MachineSettlement } from '@/types';
 
 export { MachineSettlementNotFoundError, IllegalSettlementTransitionError, OverlappingSettlementPeriodError };
 
@@ -50,6 +50,7 @@ class MachineSettlementService {
     let grossSalesKes = 0;
     let transactionCount = 0;
     for await (const { data } of machineTransactionRepository.streamDispensedInRange(businessId, { machineId, since: periodStart, until: periodEnd })) {
+      if (!isCustomerSale(data)) continue; // a staff test vend: no revenue, not a sale
       grossSalesKes += data.amountKes;
       transactionCount += 1;
     }

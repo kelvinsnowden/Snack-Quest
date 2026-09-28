@@ -49,10 +49,16 @@ export class IllegalTransactionTransitionError extends Error {
  * Service method that happens to update a status.
  */
 class MachineTransactionRepository {
-  async create(input: MachineTransactionInput): Promise<{ id: string; transactionRef: string }> {
+  /**
+   * @param options.id A caller-chosen document id, created atomically —
+   *   a second create with the same id returns the existing transaction
+   *   with `created: false` instead of making another one (idempotent
+   *   creation, e.g. a retried diagnostic vend).
+   */
+  async create(input: MachineTransactionInput, options: { id?: string } = {}): Promise<{ id: string; transactionRef: string; created: boolean }> {
     const now = FieldValue.serverTimestamp();
     const transactionRef = `TXN-${randomUUID().slice(0, 8).toUpperCase()}`;
-    const ref = await adminFirestore.collection(COLLECTION).add({
+    const data = {
       ...input,
       transactionRef,
       status: 'pending' satisfies MachineTransactionStatus,
@@ -67,8 +73,21 @@ class MachineTransactionRepository {
       appliedTelemetryEventId: null,
       createdAt: now,
       updatedAt: now,
-    });
-    return { id: ref.id, transactionRef };
+    };
+    if (options.id) {
+      const ref = adminFirestore.collection(COLLECTION).doc(options.id);
+      try {
+        await ref.create(data);
+        return { id: options.id, transactionRef, created: true };
+      } catch (error) {
+        if ((error as { code?: unknown }).code !== 6) throw error; // ALREADY_EXISTS
+        const existing = (await ref.get()).data() as MachineTransaction | undefined;
+        if (!existing || existing.businessId !== input.businessId) throw error;
+        return { id: options.id, transactionRef: existing.transactionRef, created: false };
+      }
+    }
+    const ref = await adminFirestore.collection(COLLECTION).add(data);
+    return { id: ref.id, transactionRef, created: true };
   }
 
   async findById(businessId: string, transactionId: string): Promise<MachineTransaction | null> {

@@ -100,7 +100,9 @@ class MachineInventorySyncService {
       }
       if (report.quantity !== slot.currentQuantity) {
         result.mismatches.push({ slotCode, expected: slot.currentQuantity, reported: report.quantity });
-        await record('INVENTORY_MISMATCH', `mismatch:${slotCode}`, slotCode, { reason: 'count_differs', expected: slot.currentQuantity, reported: report.quantity });
+        // More than the slot can physically hold is a sensor or mapping fault, not a count to reconcile against.
+        const impossible = slot.capacity > 0 && report.quantity > slot.capacity;
+        await record('INVENTORY_MISMATCH', `mismatch:${slotCode}`, slotCode, { reason: impossible ? 'exceeds_capacity' : 'count_differs', expected: slot.currentQuantity, reported: report.quantity, capacity: slot.capacity });
       }
       if (report.quantity <= 0) {
         result.emptySlots.push(slotCode);

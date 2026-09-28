@@ -6,7 +6,7 @@ import { machineAssortmentRepository } from '@/repositories/machineAssortmentRep
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { dateKey } from '@/lib/analytics/dateKey';
 import { trailingWindow, classifyDataQuality, type DataQuality } from '@/services/machineAssortmentIntelligenceService';
-import type { Machine } from '@/types';
+import { isCustomerSale, type Machine } from '@/types';
 
 const MAX_MACHINES_PER_BUSINESS = 10000;
 
@@ -177,7 +177,7 @@ class ProductIntelligenceService {
     const daysWithSales = new Set<string>();
 
     for await (const { data } of machineTransactionRepository.streamRange(businessId, { machineId, since, until })) {
-      if (data.status !== 'dispensed') {
+      if (data.status !== 'dispensed' || !isCustomerSale(data)) {
         continue;
       }
       const at = data.createdAt.toDate();

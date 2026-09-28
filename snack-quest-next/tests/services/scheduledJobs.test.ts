@@ -106,6 +106,21 @@ describe('health', () => {
     expect(daily([run('skipped', 1), run('succeeded', 3)])).toBe('ok');
   });
 
+  it('a frequent job that never ran, while the scheduler has been running other jobs, is overdue — not silently "never run"', async () => {
+    // Fresh deployment: nothing has run anywhere yet — honestly "never run", not an alarm.
+    expect((await scheduledJobService.health(BUSINESS_ID)).find((job) => job.jobName === 'vending-fast-recovery')?.state).toBe('never_run');
+    // A day later the daily jobs are running, but the 5-minute recovery sweep was never wired up.
+    await adminFirestore.collection('scheduledJobRuns').add({ businessId: BUSINESS_ID, jobName: 'reconcile-vending-transactions', status: 'succeeded', startedAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), finishedAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), durationMs: 5, resultSummary: {}, errors: [], error: null });
+    const health = await scheduledJobService.health(BUSINESS_ID);
+    const fast = health.find((job) => job.jobName === 'vending-fast-recovery');
+    expect(fast).toMatchObject({ state: 'overdue', lastError: expect.stringMatching(/never run/) });
+    // Daily jobs that simply haven't had their first day yet are not accused.
+    expect(health.find((job) => job.jobName === 'rebuild-vending-rollups')?.state).toBe('never_run');
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    const alerts = await adminFirestore.collection('alerts').where('businessId', '==', BUSINESS_ID).where('dedupeKey', '==', 'job_failure:vending-fast-recovery').get();
+    expect(alerts.size).toBe(1);
+  });
+
   it('a failed job raises one job_failure alert, cleared by the next good run', async () => {
     await scheduledJobService.run(BUSINESS_ID, 'reconcile-stk-payments', async (job) => {
       await job.step('reconcile', async () => { throw new Error('daraja down'); });

@@ -26,7 +26,7 @@ import {
 } from '@/lib/vending/hardwareAdapter';
 import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
-import type { Location, Machine, MachineConnectivityStatus, MachineEventType, MachineSubscription } from '@/types';
+import { isCustomerSale, type Location, type Machine, type MachineConnectivityStatus, type MachineEventType, type MachineSubscription } from '@/types';
 
 export { PartnerDoesNotOwnMachineError, CameraNotFoundError };
 
@@ -250,7 +250,8 @@ class OwnerPortalService {
 
     const [performanceEntries, lastSalePage, restockRows, settlements, location] = await Promise.all([
       Promise.all(OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, days))),
-      machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 1 }),
+      // A few, not one: a staff test vend is dispensed too, and isn't a sale.
+      machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
       restockTaskRepository.listByMachine(businessId, machineId, 1),
       machineSettlementService.listByMachine(businessId, machineId),
       machine.locationId ? locationService.findById(businessId, machine.locationId) : Promise.resolve(null),
@@ -260,7 +261,7 @@ class OwnerPortalService {
       OWNER_PERFORMANCE_WINDOWS_DAYS.map((days, index) => [days, performanceEntries[index]]),
     ) as Record<(typeof OWNER_PERFORMANCE_WINDOWS_DAYS)[number], OwnerMachineSummary>;
 
-    const lastSale = lastSalePage.transactions[0] ?? null;
+    const lastSale = lastSalePage.transactions.find(({ data }) => isCustomerSale(data)) ?? null;
     const lastRestockRow = restockRows[0] ?? null;
     const lifetimeDistributableProfitKes = settlements
       .filter(({ data }) => data.status === 'finalized' || data.status === 'paid')
@@ -422,7 +423,7 @@ class OwnerPortalService {
     const perMachine = await Promise.all(
       machines.map(({ id }) => machineTransactionRepository.listByBusiness(businessId, { machineId: id, status: 'dispensed', limit })),
     );
-    const transactions = perMachine.flatMap((page) => page.transactions);
+    const transactions = perMachine.flatMap((page) => page.transactions).filter(({ data }) => isCustomerSale(data));
     transactions.sort((a, b) => (b.data.dispensedAt?.toMillis() ?? 0) - (a.data.dispensedAt?.toMillis() ?? 0));
     const top = transactions.slice(0, limit);
 
@@ -512,7 +513,7 @@ class OwnerPortalService {
           detail: data.type === 'MACHINE_ERROR' && typeof data.data.code === 'string' ? `Code ${data.data.code}` : null,
           occurredAt: data.occurredAt.toDate().toISOString(),
         })),
-      ...recentDispensed.transactions.map(({ id, data }) => ({
+      ...recentDispensed.transactions.filter(({ data }) => isCustomerSale(data)).map(({ id, data }) => ({
         id,
         label: 'Vend completed',
         detail: `KES ${data.amountKes.toLocaleString('en-KE')}`,

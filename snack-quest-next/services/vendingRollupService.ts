@@ -11,7 +11,7 @@ import { machineAssortmentRepository } from '@/repositories/machineAssortmentRep
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { dateKey, dayBounds } from '@/lib/analytics/dateKey';
-import type { MachineDailySummary, PartnerDailySummary, NetworkDailySummary } from '@/types';
+import { isCustomerSale, type MachineDailySummary, type PartnerDailySummary, type NetworkDailySummary } from '@/types';
 
 /**
  * `machineDailySummary`/`partnerDailySummary` rollups (§ ANALYTICS,
@@ -68,6 +68,9 @@ class VendingRollupService {
       until: end,
       pageSize: TRANSACTION_PAGE_SIZE,
     })) {
+      if (!isCustomerSale(data)) {
+        continue; // a staff test vend: not a sale, not a transaction the owner had
+      }
       transactionCount += 1;
       if (data.status === 'dispensed') {
         dispensedCount += 1;

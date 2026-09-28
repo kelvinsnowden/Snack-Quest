@@ -1,3 +1,4 @@
+import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
@@ -242,6 +243,25 @@ describe('handleMpesaCallback', () => {
     expect(transaction?.status).toBe('vend_authorized');
     expect(transaction?.paymentRef).toBe('RECEIPT1');
     expect(transaction?.vendRef).toBeTruthy();
+  });
+
+  it('a cart item already resolved another way is left alone; the rest of the cart is still settled and dispensed', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockResolvedValue({ merchantRequestId: 'mr-cart-2', checkoutRequestId: 'ws_CO_cart_2', responseCode: '0', responseDescription: 'Success', customerMessage: 'Enter your PIN' });
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await addSecondSlot(adapter, machineId);
+    const service = new MachineTransactionService(() => adapter, gateway);
+    const cart = await service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01', 'B01'], phoneNumber: '254712345678' });
+    const [first, second] = cart.transactions;
+    // e.g. the stuck-payment sweep already sent one item to a human.
+    await machineTransactionRepository.moveStatus(BUSINESS_ID, first.id, 'manual_review', { failureReason: 'test' });
+
+    const outcome = await service.handleMpesaCallback(BUSINESS_ID, { checkoutRequestId: 'ws_CO_cart_2', merchantRequestId: 'mr-cart-2', resultCode: 0, resultDesc: 'Success', amountKes: 500, mpesaReceiptNumber: 'RECEIPT-CART-2' });
+
+    expect(outcome).toMatchObject({ handled: true, outcome: 'succeeded' });
+    expect((await service.findById(BUSINESS_ID, first.id))?.status).toBe('manual_review');
+    expect((await service.findById(BUSINESS_ID, second.id))?.status).toBe('vend_authorized');
   });
 
   it('marks payment_failed on a failed callback, and never authorizes a vend', async () => {

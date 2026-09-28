@@ -169,6 +169,20 @@ describe('dispenseGate', () => {
     expect(await service.dispenseGate(BUSINESS_ID, machineId)).toEqual({ allowed: true, integrated: false });
   });
 
+  it('refuses a machine with no integration record on the production deployment — it would sell through an unchecked adapter (e.g. the simulator)', async () => {
+    const { machineId } = await provisionMachine(BUSINESS_ID); // manufacturer "mock": the simulator
+    const previous = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'production';
+    try {
+      for (const purpose of ['pre_payment', 'dispatch'] as const) {
+        expect(await service.dispenseGate(BUSINESS_ID, machineId, purpose)).toMatchObject({ allowed: false, reason: expect.stringMatching(/no integration record/) });
+      }
+    } finally {
+      if (previous === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = previous;
+    }
+  });
+
   it('blocks a configured-but-not-active integration', async () => {
     const { machineId } = await configuredMachine();
     expect(await service.dispenseGate(BUSINESS_ID, machineId)).toEqual({ allowed: false, reason: 'machine integration is configured, not active' });

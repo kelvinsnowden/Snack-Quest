@@ -35,6 +35,9 @@ reference.
 | 20 | Machine clock 20 min off | — | — | Refused with server time; corrected retry succeeds | — | — | Client corrects offset | `commandPollingSemantics`, `horribleDay` P |
 | 21 | One machine floods / forged requests flood | Others unaffected | — | Throttled (`429`) on that endpoint only; forger's IP cut off | — | — | Automatic | `rateLimitDistributed`, `horribleDay` N, O |
 | 22 | Two customers buy the last item at once | One gets it; the other is told it failed | Other → refund path (no reservation at checkout: both are charged, one refunded) | Second dispense reports `no_product` | One sale | — | Automatic | `concurrency` last item |
+| 24 | Dispatcher dies after queuing the command, before recording it on the sale | — | Sale still `paid` | Collects, dispenses, reports normally | Sale completes | — | Report matched through the command ledger; recovery aligns anyway | `chaos` dispatcher dies |
+| 25 | Staff test vend double-clicked / retried | — | None (no customer) | Dispenses once | Not a sale | Waste movement, audit log | Same requestId returns the first vend | `diagnosticVend` |
+| 26 | Fast-recovery trigger never configured | Stuck sales wait for the daily sweep | Delayed | — | — | `job_failure` alert, `/api/cron/health` 503 | Configure the workflow secrets | `scheduledJobs` |
 | 23 | SMS gateway down during a critical alert | — | — | — | — | Alert still in the Alert Center; job recorded partial | Next run re-texts (1 h cooldown per condition) | `cronVendingFastRecoveryRoute`, `integrationAlerts` cooldown |
 
 Known limits (not failures of the above, but true): no stock reservation

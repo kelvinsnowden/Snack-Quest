@@ -7,17 +7,18 @@ import { validateManufacturerBaseUrl } from '@/lib/vending/outboundUrl';
  * manufacturer must build for automated certification
  * (docs/MANUFACTURER_CERTIFICATION.md §"Sandbox control endpoints"):
  *
- *   GET  {controlUrl}/capabilities        → { "supports": ["hold", "retransmit", "request-log"] }
+ *   GET  {controlUrl}/capabilities        → { "supports": ["hold", "retransmit", "request-log", "defer-report"] }
  *   POST {controlUrl}/cycle               → run one normal cycle (connect if needed, heartbeat, status, inventory, poll → ack → dispense → report)
  *   POST {controlUrl}/door-events         → open and close the door
  *   POST {controlUrl}/empty-slot          { "slotId": "…" } → make that slot physically empty
  *   POST {controlUrl}/hold-next-commands  → next cycle fetches commands but does not execute them   ("hold")
  *   POST {controlUrl}/retransmit-last-report → re-send the last outcome report unchanged → { status, result } ("retransmit")
  *   GET  {controlUrl}/request-log         → [{ nonce, timestamp }] of every signed request   ("request-log")
+ *   POST {controlUrl}/defer-next-report   → the next dispense completes, but its outcome report is held back (as if the link dropped) and sent on a later cycle   ("defer-report")
  *
- * All with `Authorization: Bearer {controlToken}`. The last three are
+ * All with `Authorization: Bearer {controlToken}`. The last four are
  * advertised in `/capabilities`; a step the machine can't be driven
- * through is `not_verified`, never passed, so a run without all three
+ * through is `not_verified`, never passed, so a run without all four
  * can't be CERTIFIED (and can't record `contract_suite`).
  */
 export async function connectHttpControlledSubject(
@@ -47,6 +48,7 @@ export async function connectHttpControlledSubject(
     emptySlot: async (slotId) => void (await call('POST', '/empty-slot', { slotId })),
   };
   if (supports.has('hold')) subject.pollWithoutExecuting = async () => void (await call('POST', '/hold-next-commands'));
+  if (supports.has('defer-report')) subject.deferNextReport = async () => void (await call('POST', '/defer-next-report'));
   if (supports.has('retransmit')) subject.retransmitLastReport = async () => (await call('POST', '/retransmit-last-report')) as { status: number; result: string | null };
   let log: { nonce: string; timestamp: number }[] = [];
   if (supports.has('request-log')) {

@@ -51,7 +51,17 @@ export const inventorySchema = z.object({
   slots: z
     .array(z.object({ slotId, quantity: z.number().int().min(0).max(10_000) }))
     .min(1)
-    .max(500),
+    .max(500)
+    // One count per slot: two different counts for the same slot in one report can't both be true.
+    .superRefine((slots, ctx) => {
+      const seen = new Set<string>();
+      slots.forEach((slot, index) => {
+        if (seen.has(slot.slotId)) {
+          ctx.addIssue({ code: 'custom', path: [index, 'slotId'], message: `slot "${slot.slotId}" appears more than once in this report` });
+        }
+        seen.add(slot.slotId);
+      });
+    }),
 });
 
 /** Money-moving outcomes are never accepted as generic events — they have their own endpoint with its own rules. */

@@ -52,7 +52,7 @@ describe('certification harness', () => {
     const report = await integrationCertificationService.run(BUSINESS_ID, machine.machineId, new SimulatorCertificationSubject(simulator()));
     expect(report.failures).toEqual([]);
     expect(report.verdict).toBe('CERTIFIED');
-    expect(report.checks).toHaveLength(13);
+    expect(report.checks).toHaveLength(15);
     expect((await adminFirestore.collection('integrationCertificationRuns').doc(report.runId).get()).get('verdict')).toBe('CERTIFIED');
   }, 60_000);
 
@@ -62,6 +62,8 @@ describe('certification harness', () => {
     ['re-sends a report under a new event id', (sim) => (sim.inject.freshEventIdOnRetry = true), ['idempotency']],
     ['never heartbeats', (sim) => (sim.inject.heartbeatFailure = true), ['heartbeat']],
     ['reuses nonces', (sim) => (sim.inject.fixedNonce = 'the-same-nonce-every-time'), ['replay_protection']],
+    ['executes a command delivered twice (acknowledges everything it holds, then executes it all)', (sim) => (sim.inject.ignoreDuplicateDelivery = true), ['duplicate_delivery']],
+    ['loses an outcome report it could not send (no persistent outbox)', (sim) => (sim.inject.forgetDeferredReport = true), ['offline_recovery']],
   ];
 
   for (const [bug, seed, expected] of bugs) {
@@ -81,7 +83,7 @@ describe('certification harness', () => {
     const partial = { kind: 'manufacturer_machine' as const, cycle: () => full.cycle(), emitDoorEvents: () => full.emitDoorEvents(), emptySlot: (slot: string) => full.emptySlot(slot) };
     const report = await integrationCertificationService.run(BUSINESS_ID, machine.machineId, partial);
     expect(report.verdict).toBe('NOT CERTIFIED');
-    expect(report.checks.filter((check) => check.outcome === 'not_verified').map((check) => check.id).sort()).toEqual(['idempotency', 'replay_protection', 'timeout_handling']);
+    expect(report.checks.filter((check) => check.outcome === 'not_verified').map((check) => check.id).sort()).toEqual(['duplicate_delivery', 'idempotency', 'offline_recovery', 'replay_protection', 'timeout_handling']);
   }, 60_000);
 
   /** A manufacturer's machine driven through the harness interface (here, one built on the reference firmware). */
@@ -94,6 +96,7 @@ describe('certification harness', () => {
       emptySlot: (slot: string) => inner.emptySlot(slot),
       pollWithoutExecuting: () => inner.pollWithoutExecuting(),
       retransmitLastReport: () => inner.retransmitLastReport(),
+      deferNextReport: () => inner.deferNextReport(),
       requestLog: () => inner.requestLog(),
     };
   };
