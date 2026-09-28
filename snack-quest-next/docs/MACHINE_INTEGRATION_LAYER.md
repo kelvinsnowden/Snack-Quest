@@ -192,23 +192,33 @@ is accepted only for a sandbox credential in local development.
 | Call | Semantics |
 |---|---|
 | `GET /v1/machines/{mfrMachineId}` | `{ online, doorOpen?, temperatureC?, faults?, paymentDeviceOk?, serial?, model?, firmware? }`. 404 → unknown machine |
-| `PUT /v1/machines/{mfrMachineId}/vends/{commandRef}` body `{ slot }`, header `Idempotency-Key: {commandRef}` | Create-or-return the vend. `2xx { accepted: true }` means it's accepted; `{ accepted: false, reason }` or 4xx means refused. **PUT on our reference is what makes a retry safe** |
+| `PUT /v1/machines/{mfrMachineId}/vends/{commandRef}` body `{ slot }`, header `Idempotency-Key: {commandRef}` | Create-or-return the vend. `2xx { accepted: true }` means accepted; `2xx`/`422 { accepted: false, reason }` or `400`/`404` means refused. `409` is **not** a refusal (a vend under our key may exist). **PUT on our reference is what makes a retry safe** |
 | `GET /v1/machines/{mfrMachineId}/vends/{commandRef}` | `{ state: pending \| dispensing \| dispensed \| failed, failureCode?, reason? }`. 404 → the vend never arrived |
 | Webhook (signed per API v1 §3, to `/api/v1/webhooks/manufacturers/{slug}`) | `{ id, events: [{ id, kind, machine, at?, slot?, detail? }] }`. Kinds: `heartbeat`, `machine.online`/`offline`, `door.open`/`closed`, `fault`, `temperature.alarm`, `slot.empty`/`low`, `payment.error`, `camera.offline`, `vend.completed`/`vend.failed` (with `detail.requestId` = our commandRef, `detail.failureCode` ∈ jam/empty/sensor/timeout/offline) |
 
-How the adapter classifies failures:
+How the adapter classifies a vend (tested against a real socket server
+in `tests/lib/manufacturerHttpResilience.test.ts`). **Refused** sends the
+sale down the refund path; **unknown** holds the money for review and
+resolves it by looking the vend up — never a refund, never a re-send:
 
-| Situation | Classification |
-|---|---|
-| Vend 5xx | Timeout → unknown |
-| Vend connection refused | Unreachable → refund |
-| Vend timeout | Timeout → unknown |
-| Vend 401/403 | Authentication error |
-| Status read 5xx or 4xx | Unreachable |
-| Status 404 on a vend lookup | Failed ("manufacturer has no record") |
+| Answer | Outcome | Retried? |
+|---|---|---|
+| `2xx { accepted: true }` | accepted | — |
+| `2xx`/`422 { accepted: false }`, `400`, `404` | refused | no |
+| DNS failure, connection refused, TLS failure | refused (provably never sent) | yes, same idempotency key |
+| `408`, `429` | not processed | yes, same key, honouring `Retry-After` ≤ 5 s; still throttled → unknown |
+| `5xx` | unknown | no |
+| No answer within the deadline (headers **or body**) | unknown | no |
+| Connection dropped after sending, partial body | unknown | no |
+| `2xx` with invalid JSON, a body without `accepted`, or an empty body | unknown | no |
+| Response over 1 MB | unknown (not buffered) | no |
+| `409` | unknown | no |
+| `3xx` | unknown — redirects are never followed | no |
+| `401`/`403` | authentication error (refused) | no |
 
-`ManufacturerHttpClient` retries only GETs, and keyed writes only when
-provably undelivered.
+Vend lookups (`GET`) are retried on transport failures, `5xx`, `408`
+and `429`; a lookup that answers something unreadable returns
+`unknown` rather than a guess, and a `404` means the vend never arrived.
 
 When evaluating a real manufacturer, the must-haves are: an
 **idempotent vend keyed by our reference**, a **way to look up a

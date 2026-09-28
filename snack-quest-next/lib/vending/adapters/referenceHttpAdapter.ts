@@ -170,27 +170,51 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
       return { vendRef: '', authorized: false, reason: 'no command reference supplied' };
     }
     const path = `${await this.machinePath(machineId)}/vends/${encodeURIComponent(options.commandRef)}`;
-    const { status, json } = await client.request('PUT', path, {
+    const { status, json, malformed } = await client.request('PUT', path, {
       body: { slot: options.manufacturerSlotId ?? slotCode },
       idempotencyKey: options.commandRef,
     });
+    // Every answer that doesn't prove "refused" or "accepted" is unknown —
+    // the vend may exist — and is resolved by looking it up, never by
+    // refunding or re-sending blindly.
     if (status >= 500) {
-      // Ambiguous: the manufacturer may have started the vend before failing. Unknown, recoverable by lookup.
       throw new HardwareTimeoutError(ADAPTER_KEY, `vend returned HTTP ${status}`, 'transport.http_5xx');
     }
+    if (status === 408 || status === 429) {
+      throw new HardwareTimeoutError(ADAPTER_KEY, `vend still throttled (HTTP ${status}) after keyed retries`, 'transport.rate_limited');
+    }
+    if (status === 409) {
+      throw new HardwareTimeoutError(ADAPTER_KEY, 'vend returned HTTP 409 for our idempotency key — a vend under it may exist', 'protocol.conflict');
+    }
+    if (status >= 300 && status < 400) {
+      throw new HardwareTimeoutError(ADAPTER_KEY, `vend answered with a redirect (HTTP ${status}); redirects are not followed`, 'transport.redirect');
+    }
     const body = (json ?? {}) as { accepted?: unknown; reason?: unknown };
-    if (status >= 400 || body.accepted === false) {
+    if (status >= 400) {
+      // Rejected as a request (unknown machine, bad slot, validation): nothing was accepted.
       return { vendRef: options.commandRef, authorized: false, reason: typeof body.reason === 'string' ? body.reason : `refused (HTTP ${status})` };
+    }
+    if (malformed || typeof body.accepted !== 'boolean') {
+      throw new HardwareTimeoutError(ADAPTER_KEY, `vend answered HTTP ${status} without a readable { accepted } body`, 'protocol.malformed_response');
+    }
+    if (!body.accepted) {
+      return { vendRef: options.commandRef, authorized: false, reason: typeof body.reason === 'string' ? body.reason : 'refused by the manufacturer' };
     }
     return { vendRef: options.commandRef, authorized: true, reason: null, delivery: 'synchronous' };
   }
 
   async getDispenseStatus(machineId: string, vendRef: string): Promise<DispenseStatusReport> {
     const client = await this.clientFor(machineId, 'getDispenseStatus');
-    const { status, json } = await client.request('GET', `${await this.machinePath(machineId)}/vends/${encodeURIComponent(vendRef)}`);
+    const { status, json, malformed } = await client.request('GET', `${await this.machinePath(machineId)}/vends/${encodeURIComponent(vendRef)}`);
+    if (status >= 500 || status === 408 || status === 429) {
+      throw new HardwareTimeoutError(ADAPTER_KEY, `vend lookup returned HTTP ${status}`, status >= 500 ? 'transport.http_5xx' : 'transport.rate_limited');
+    }
     if (status === 404) {
       // The manufacturer never received it — which, for a vend that timed out, is itself an answer.
       return { vendRef, state: 'failed', failureReason: 'manufacturer has no record of this vend' };
+    }
+    if (malformed || status >= 300) {
+      return { vendRef, state: 'unknown', failureReason: `vend lookup answered HTTP ${status}${malformed ? ' with an unreadable body' : ''}` };
     }
     const body = (json ?? {}) as { state?: unknown; failureCode?: unknown; reason?: unknown };
     const reason = typeof body.reason === 'string' ? body.reason : null;
@@ -335,11 +359,14 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
   }
 
   private async readMachine(machineId: string): Promise<Record<string, unknown>> {
-    const { status, json } = await (await this.clientFor(machineId, 'getMachineStatus')).request('GET', await this.machinePath(machineId));
-    if (status >= 400) {
+    const { status, json, malformed } = await (await this.clientFor(machineId, 'getMachineStatus')).request('GET', await this.machinePath(machineId));
+    if (status >= 300) {
       throw new HardwareUnreachableError(ADAPTER_KEY, `machine status returned HTTP ${status}`);
     }
-    return (json ?? {}) as Record<string, unknown>;
+    if (malformed || typeof json !== 'object' || json === null) {
+      throw new HardwareUnreachableError(ADAPTER_KEY, 'machine status body was not a JSON object', 'protocol.malformed_response');
+    }
+    return json as Record<string, unknown>;
   }
 }
 

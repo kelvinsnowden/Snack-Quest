@@ -37,7 +37,7 @@ function fakeManufacturer(behaviour: { vend?: FakeBehaviour; status?: FakeBehavi
     const vendMatch = url.match(/\/v1\/machines\/([^/]+)\/vends\/([^/]+)$/);
     if (vendMatch && init.method === 'PUT') {
       if (mode === 'refuse') {
-        return Response.json({ accepted: false, reason: 'motor fault' }, { status: 409 });
+        return Response.json({ accepted: false, reason: 'motor fault' }, { status: 422 });
       }
       vends.set(decodeURIComponent(vendMatch[2]), vends.get(decodeURIComponent(vendMatch[2])) ?? { state: 'pending' });
       return Response.json({ accepted: true }, { status: 201 });

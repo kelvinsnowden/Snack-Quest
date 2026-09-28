@@ -25,11 +25,14 @@ export type IntegrationFailureCode =
   | 'transport.connection_reset'
   | 'transport.network'
   | 'transport.http_5xx'
+  | 'transport.rate_limited'
+  | 'transport.redirect'
   | 'auth.invalid_credentials'
   | 'auth.expired_credentials'
   | 'auth.invalid_signature'
   | 'auth.forbidden'
   | 'protocol.malformed_response'
+  | 'protocol.conflict'
   | 'protocol.unsupported_capability'
   | 'protocol.invalid_command'
   | 'protocol.not_configured'
@@ -81,6 +84,12 @@ export const RECOVERY_POLICY: Record<IntegrationFailureCode, RecoveryPolicy> = {
   'transport.timeout': MAYBE_DELIVERED('timeout'),
   'transport.connection_reset': MAYBE_DELIVERED('timeout'),
   'transport.http_5xx': MAYBE_DELIVERED('timeout'),
+  // 408/429 mean "not processed" by HTTP's own rules — but on a write we
+  // don't take the manufacturer's word for it: after the keyed retries
+  // run out, the vend goes to status lookup like any other unknown,
+  // which costs a delay and never costs a wrong refund.
+  'transport.rate_limited': MAYBE_DELIVERED('timeout'),
+  'transport.redirect': MAYBE_DELIVERED('protocol'),
   // These fail before a single request byte reaches the other side.
   'transport.dns': NOT_DELIVERED('connection', true),
   'transport.connection_refused': NOT_DELIVERED('connection'),
@@ -93,6 +102,8 @@ export const RECOVERY_POLICY: Record<IntegrationFailureCode, RecoveryPolicy> = {
   'auth.forbidden': NOT_DELIVERED('authentication', true, false),
   // A response we can't parse still means the request arrived — and may have been acted on.
   'protocol.malformed_response': MAYBE_DELIVERED('protocol'),
+  // A conflict on our own idempotency key means a vend under it may already exist.
+  'protocol.conflict': MAYBE_DELIVERED('protocol'),
   'protocol.unsupported_capability': NOT_DELIVERED('protocol', true, false),
   'protocol.invalid_command': NOT_DELIVERED('protocol', true, false),
   'protocol.not_configured': NOT_DELIVERED('protocol', true, false),

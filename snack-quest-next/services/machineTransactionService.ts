@@ -24,6 +24,7 @@ import { machineIntegrationRepository } from '@/repositories/machineIntegrationR
 import type { VendResultReport } from '@/lib/vending/hardwareAdapter';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
+import { paymentInitiationRepository, type PaymentInitiationResult } from '@/repositories/paymentInitiationRepository';
 import type { MachineDispenseCommand, MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
 
 /**
@@ -70,6 +71,19 @@ export class SlotUnavailableForSaleError extends Error {
 }
 
 /** The same idempotency key sent again with different content — a client bug that must be surfaced, never silently resolved either way. */
+/** The same payment is being started by another request right now — the client should poll or retry in a moment, not start another. */
+export class PaymentInitiationInProgressError extends Error {
+  constructor() {
+    super('A payment for this cart is already being started; retry in a moment');
+    this.name = 'PaymentInitiationInProgressError';
+  }
+}
+
+/** How long an automatic (key-less) duplicate is treated as a retry of the first prompt — an STK prompt itself expires well within this. */
+const AUTO_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+/** How long an explicit Idempotency-Key is remembered. */
+const EXPLICIT_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+
 export class IdempotencyKeyReusedError extends Error {
   constructor(readonly key: string) {
     super(`Idempotency key "${key}" was already used for a different report`);
@@ -199,16 +213,53 @@ class MachineTransactionService {
     machineId: string;
     slotIds: string[];
     phoneNumber: string;
-  }): Promise<{
-    checkoutRequestId: string;
-    merchantRequestId: string;
-    customerMessage: string;
-    cartRef: string;
-    transactions: { id: string; transactionRef: string; slotId: string; amountKes: number }[];
-  }> {
+    /** The client's `Idempotency-Key`. Without one, the same machine + phone + cart is deduplicated while its first prompt is still pending. */
+    idempotencyKey?: string | null;
+  }): Promise<PaymentInitiationResult & { idempotentReplay: boolean }> {
     if (input.slotIds.length === 0) {
       throw new EmptyCartError();
     }
+    // Idempotency (§ a retry must never send a second M-Pesa prompt the
+    // customer could also approve). Claimed before any work; a retry of
+    // an in-flight or completed initiation gets the original back.
+    const fingerprint = createHash('sha256').update(`${input.phoneNumber}\u0000${[...input.slotIds].sort().join(',')}`).digest('hex');
+    const explicitKey = Boolean(input.idempotencyKey);
+    const claimId = paymentInitiationRepository.docId(input.businessId, input.machineId, explicitKey ? `key:${input.idempotencyKey}` : `auto:${fingerprint}`);
+    for (let attempt = 0; ; attempt += 1) {
+      const claim = await paymentInitiationRepository.claim(claimId, { businessId: input.businessId, machineId: input.machineId, fingerprint, explicitKey }, explicitKey ? EXPLICIT_KEY_TTL_MS : AUTO_DEDUPE_WINDOW_MS);
+      if (claim.claimed) break;
+      const { existing } = claim;
+      if (existing.fingerprint !== fingerprint) {
+        throw new IdempotencyKeyReusedError(String(input.idempotencyKey));
+      }
+      if (existing.status === 'initiating') {
+        throw new PaymentInitiationInProgressError();
+      }
+      if (existing.result) {
+        // Without an explicit key, a repeat is only a retry while the first
+        // prompt is still unanswered; once it's paid or failed, the same cart
+        // again is a new purchase.
+        const stillPending = explicitKey || (await Promise.all(existing.result.transactions.map((t) => machineTransactionRepository.findById(input.businessId, t.id)))).every((t) => t?.status === 'pending');
+        if (stillPending) {
+          return { ...existing.result, idempotentReplay: true };
+        }
+      }
+      if (attempt > 0) {
+        throw new PaymentInitiationInProgressError();
+      }
+      await paymentInitiationRepository.release(claimId);
+    }
+    try {
+      const result = await this.startCartPayment(input);
+      await paymentInitiationRepository.complete(claimId, result);
+      return { ...result, idempotentReplay: false };
+    } catch (error) {
+      await paymentInitiationRepository.fail(claimId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async startCartPayment(input: { businessId: string; machineId: string; slotIds: string[]; phoneNumber: string }): Promise<PaymentInitiationResult> {
     // The same gate the dispatcher applies after payment, applied
     // before it: a machine whose integration isn't active can't
     // dispense, so the customer is never asked to pay for it (and
@@ -292,12 +343,14 @@ class MachineTransactionService {
     machineId: string;
     slotId: string;
     phoneNumber: string;
-  }): Promise<{ id: string; transactionRef: string; checkoutRequestId: string; customerMessage: string }> {
+    idempotencyKey?: string | null;
+  }): Promise<{ id: string; transactionRef: string; checkoutRequestId: string; customerMessage: string; idempotentReplay: boolean }> {
     const cart = await this.initiateCartPayment({
       businessId: input.businessId,
       machineId: input.machineId,
       slotIds: [input.slotId],
       phoneNumber: input.phoneNumber,
+      idempotencyKey: input.idempotencyKey,
     });
     const [transaction] = cart.transactions;
     return {
@@ -305,6 +358,7 @@ class MachineTransactionService {
       transactionRef: transaction.transactionRef,
       checkoutRequestId: cart.checkoutRequestId,
       customerMessage: cart.customerMessage,
+      idempotentReplay: cart.idempotentReplay,
     };
   }
 
