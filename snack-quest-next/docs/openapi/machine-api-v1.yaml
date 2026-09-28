@@ -6,23 +6,29 @@ info:
     The versioned API vending machine manufacturers build against.
     docs/SNACK_QUEST_MACHINE_API_V1.md is the narrative specification
     and the authority on behaviour (signing, idempotency, the dispense
-    lifecycle, retry rules). This file is its machine-readable
-    companion for Postman, client generators and similar tools.
+    lifecycle, retry rules, guarantees). This file is its machine-readable
+    companion for Postman, client generators and similar tools. The
+    reference clients in sdk/typescript and sdk/python implement it.
 
 
-    Every request is signed (see the IntegrationSignature scheme). OpenAPI
-    cannot express an HMAC over the request, so the four X-SQ-* headers
-    are also declared as parameters. Every response has the envelope
-    { data | error, meta: { apiVersion } } and the header SQ-API-Version: 1.
+    Every request is signed with an integration key (the
+    IntegrationSignature scheme). OpenAPI cannot express an HMAC over the
+    request, so the four X-SQ-* headers are also declared as parameters.
+    Every response has the envelope { data | error, meta: { apiVersion,
+    requestId } } and the headers SQ-API-Version and SQ-Request-Id.
     Unknown request fields are ignored, and clients must ignore unknown
-    response fields.
+    response fields and unknown enum values.
+
+
+    tests/contract/machineApiContract.test.ts fails the build if this
+    document, the route handlers, the request schemas, the error catalogue
+    or the reference SDK disagree.
 servers:
   - url: https://www.snackquests.shop
     description: Production and sandbox (the environment is determined by the key, not the host)
 
 security:
   - IntegrationSignature: []
-  - DeviceBearer: []
 
 tags:
   - name: Machines
@@ -35,13 +41,12 @@ paths:
       tags: [Machines]
       summary: Announce a unit and learn its Snack Quest machine code (§5.1)
       operationId: connectMachine
-      security:
-        - IntegrationSignature: []
       parameters: &signingHeaders
         - $ref: "#/components/parameters/KeyId"
         - $ref: "#/components/parameters/Timestamp"
         - $ref: "#/components/parameters/Nonce"
         - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/ClientRequestId"
       requestBody:
         required: true
         content:
@@ -50,59 +55,66 @@ paths:
       responses:
         "200":
           description: The machine description
+          headers: &standardHeaders
+            SQ-Request-Id: { $ref: "#/components/headers/RequestId" }
+            SQ-RateLimit-Limit: { $ref: "#/components/headers/RateLimitLimit" }
+            SQ-RateLimit-Remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            SQ-RateLimit-Reset: { $ref: "#/components/headers/RateLimitReset" }
+            SQ-Credential-Status: { $ref: "#/components/headers/CredentialStatus" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MachineDescriptionEnvelope" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}:
     get:
       tags: [Machines]
       summary: The machine as Snack Quest knows it (§5.2)
       operationId: describeMachine
-      parameters:
+      parameters: &machineParams
         - $ref: "#/components/parameters/MachineCode"
-        - $ref: "#/components/parameters/KeyIdOptional"
-        - $ref: "#/components/parameters/TimestampOptional"
-        - $ref: "#/components/parameters/NonceOptional"
-        - $ref: "#/components/parameters/SignatureOptional"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/ClientRequestId"
       responses:
         "200":
           description: The machine description
+          headers: *standardHeaders
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MachineDescriptionEnvelope" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/heartbeat:
     post:
       tags: [Machines]
-      summary: Proof of life (§5.3). Idempotent per eventId.
+      summary: Proof of life (§5.3). Answers with outcomes Snack Quest is still waiting for.
       operationId: postHeartbeat
-      parameters: &machineParams
-        - $ref: "#/components/parameters/MachineCode"
-        - $ref: "#/components/parameters/KeyIdOptional"
-        - $ref: "#/components/parameters/TimestampOptional"
-        - $ref: "#/components/parameters/NonceOptional"
-        - $ref: "#/components/parameters/SignatureOptional"
+      parameters: *machineParams
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/HeartbeatRequest" }
       responses:
-        "202": { $ref: "#/components/responses/Accepted" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        "202":
+          description: Accepted
+          headers: *standardHeaders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/HeartbeatResult" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/status:
     post:
       tags: [Machines]
-      summary: Full status snapshot (§5.4). Idempotent per eventId.
+      summary: Full status snapshot (§5.4). An older snapshot never overwrites a newer one.
       operationId: postStatus
       parameters: *machineParams
       requestBody:
@@ -111,10 +123,21 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/StatusRequest" }
       responses:
-        "202": { $ref: "#/components/responses/Accepted" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        "202":
+          description: Accepted. applied=false means a newer snapshot was already stored.
+          headers: *standardHeaders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      accepted: { type: boolean }
+                      applied: { type: boolean }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/inventory:
     post:
@@ -130,6 +153,7 @@ paths:
       responses:
         "200":
           description: Comparison result
+          headers: *standardHeaders
           content:
             application/json:
               schema:
@@ -137,9 +161,7 @@ paths:
                 properties:
                   data: { $ref: "#/components/schemas/InventoryResult" }
                   meta: { $ref: "#/components/schemas/Meta" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/events:
     post:
@@ -155,6 +177,7 @@ paths:
       responses:
         "202":
           description: Recorded
+          headers: *standardHeaders
           content:
             application/json:
               schema:
@@ -162,19 +185,18 @@ paths:
                 properties:
                   data: { $ref: "#/components/schemas/EventsResult" }
                   meta: { $ref: "#/components/schemas/Meta" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/commands:
     get:
       tags: [Commands]
-      summary: Commands to execute now; dispenses first (§6.1)
+      summary: Commands to execute now; dispenses first (§6.1). Poll again after nextPollSeconds.
       operationId: listCommands
       parameters: *machineParams
       responses:
         "200":
           description: Pending commands
+          headers: *standardHeaders
           content:
             application/json:
               schema:
@@ -186,25 +208,29 @@ paths:
                       commands:
                         type: array
                         items: { $ref: "#/components/schemas/Command" }
+                      nextPollSeconds:
+                        type: integer
+                        description: 2 while a customer is paying at this machine, otherwise 10.
                   meta: { $ref: "#/components/schemas/Meta" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/commands/{commandId}/ack:
     post:
       tags: [Commands]
-      summary: Acknowledge before executing (§6.2). A 409 means DO NOT EXECUTE.
+      summary: Acknowledge before executing (§6.2). Anything but 200 means DO NOT EXECUTE.
       operationId: acknowledgeCommand
-      parameters:
+      parameters: &commandParams
         - $ref: "#/components/parameters/MachineCode"
         - $ref: "#/components/parameters/CommandId"
-        - $ref: "#/components/parameters/KeyIdOptional"
-        - $ref: "#/components/parameters/TimestampOptional"
-        - $ref: "#/components/parameters/NonceOptional"
-        - $ref: "#/components/parameters/SignatureOptional"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/ClientRequestId"
       responses:
         "200":
-          description: Acknowledged
+          description: Acknowledged — execute it now
+          headers: *standardHeaders
           content:
             application/json:
               schema:
@@ -216,22 +242,14 @@ paths:
                       commandId: { type: string, example: DSP-3F9A1C22 }
                       status: { type: string, example: acknowledged }
                   meta: { $ref: "#/components/schemas/Meta" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/commands/{commandId}/status:
     post:
       tags: [Commands]
       summary: Report what happened (§6.3). For a dispense, this is what completes the sale or triggers the refund.
       operationId: reportCommandStatus
-      parameters:
-        - $ref: "#/components/parameters/MachineCode"
-        - $ref: "#/components/parameters/CommandId"
-        - $ref: "#/components/parameters/KeyIdOptional"
-        - $ref: "#/components/parameters/TimestampOptional"
-        - $ref: "#/components/parameters/NonceOptional"
-        - $ref: "#/components/parameters/SignatureOptional"
+      parameters: *commandParams
       requestBody:
         required: true
         content:
@@ -239,7 +257,8 @@ paths:
             schema: { $ref: "#/components/schemas/CommandStatusRequest" }
       responses:
         "200":
-          description: Applied, or already applied (applied=false). Both mean success.
+          description: Recorded. Every 200 means "stop re-sending this report", whatever applied says.
+          headers: *standardHeaders
           content:
             application/json:
               schema:
@@ -250,19 +269,20 @@ paths:
                     properties:
                       commandId: { type: string }
                       applied: { type: boolean }
+                      result:
+                        type: string
+                        description: >
+                          applied | duplicate (same eventId again) | already_recorded (another report got
+                          there first) | conflict (contradicts a decision already acted on — escalated to a
+                          human) | progress_recorded | stale_progress. New values may be added.
                   meta: { $ref: "#/components/schemas/Meta" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/webhooks/manufacturers/{slug}:
     post:
       tags: [Webhooks]
       summary: Signed webhook delivery from a manufacturer's cloud (§8). Signed with a webhook-kind key.
       operationId: postManufacturerWebhook
-      security:
-        - IntegrationSignature: []
       parameters:
         - name: slug
           in: path
@@ -289,10 +309,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/WebhookResultEnvelope" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/Error" }
 
 components:
   securitySchemes:
@@ -306,65 +323,70 @@ components:
         chars of [A-Za-z0-9_-], single use) and X-SQ-Signature =
         "v1=" + hex(HMAC-SHA256(secret, canonical)), where canonical is
         "v1\n{timestamp}\n{nonce}\n{METHOD}\n{path+query}\n{hex sha256(raw body)}".
-        See §3 of the specification, including the test vector.
-    DeviceBearer:
-      type: http
-      scheme: bearer
-      description: >
-        "{deviceCredentialId}:{deviceSecret}". A machine's own credential:
-        it reaches only its own /api/v1/machines/{machineCode}/* endpoints (§3.6).
+        docs/machine-api/signing-test-vectors.json has the official vectors.
+        A key may be scoped to one machine; there is no other way to authenticate.
+
+  headers:
+    RequestId:
+      description: Snack Quest's id for this request. Quote it to support; it is also meta.requestId.
+      schema: { type: string }
+    RateLimitLimit:
+      description: The limit of the rule that applied to this request.
+      schema: { type: integer }
+    RateLimitRemaining:
+      schema: { type: integer }
+    RateLimitReset:
+      description: Seconds until the window resets.
+      schema: { type: integer }
+    CredentialStatus:
+      description: '"rotating" when this key has been replaced; SQ-Credential-Grace-Ends says when it stops working.'
+      schema: { type: string }
 
   parameters:
     MachineCode:
       name: machineCode
       in: path
       required: true
-      schema: { type: string, pattern: "^SQ-MCH-[0-9]{6,}$", example: SQ-MCH-000001 }
+      schema: { type: string, example: SQ-MCH-000001 }
     CommandId:
       name: commandId
       in: path
       required: true
       description: DSP-… for a dispense, CMD-… for a maintenance command
       schema: { type: string, example: DSP-3F9A1C22 }
-    KeyId: &keyId
+    KeyId:
       name: X-SQ-Key-Id
       in: header
       required: true
       schema: { type: string, pattern: "^sqk_(live|test)_[A-Za-z0-9_-]{8,32}$" }
-    Timestamp: &timestamp
+    Timestamp:
       name: X-SQ-Timestamp
       in: header
       required: true
       schema: { type: string, pattern: "^[0-9]{9,11}$", example: "1790500000" }
-    Nonce: &nonce
+    Nonce:
       name: X-SQ-Nonce
       in: header
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9_-]{16,64}$" }
-    Signature: &signature
+    Signature:
       name: X-SQ-Signature
       in: header
       required: true
-      schema: { type: string, pattern: "^v1=[0-9a-f]{64}$" }
-    KeyIdOptional:
-      <<: *keyId
+      schema: { type: string, pattern: "^v1=[0-9a-fA-F]{64}$" }
+    ClientRequestId:
+      name: X-SQ-Client-Request-Id
+      in: header
       required: false
-      description: Required unless authenticating with a device bearer credential
-    TimestampOptional:
-      <<: *timestamp
-      required: false
-    NonceOptional:
-      <<: *nonce
-      required: false
-    SignatureOptional:
-      <<: *signature
-      required: false
+      description: Your own id for this attempt; echoed back as SQ-Client-Request-Id so both logs can be joined.
+      schema: { type: string, maxLength: 128 }
 
   schemas:
     Meta:
       type: object
       properties:
         apiVersion: { type: string, example: "1" }
+        requestId: { type: string }
     Error:
       type: object
       required: [error, meta]
@@ -373,25 +395,22 @@ components:
           type: object
           required: [code, message]
           properties:
-            code: { type: string, description: Stable and machine-readable. Branch on this. }
+            code:
+              type: string
+              description: Stable and machine-readable. Branch on this; see x-sq-error-codes.
             message: { type: string, description: For humans. May change. }
             details:
-              type: array
-              items:
-                type: object
-                properties:
-                  path: { type: string }
-                  message: { type: string }
+              description: Code-specific. validation_failed → a list of { path, message }; stale_timestamp → { serverTime, serverTimestamp }.
         meta: { $ref: "#/components/schemas/Meta" }
     EventId:
       type: string
       pattern: "^[A-Za-z0-9_.:-]{1,128}$"
-      description: Caller-chosen, unique per machine per occurrence. The idempotency key. Reuse it on retry.
+      description: Caller-chosen, unique per machine per occurrence. The idempotency key. Reuse it on retry; never for a different fact.
     OccurredAt:
       type: string
       nullable: true
       maxLength: 40
-      description: ISO-8601 with offset, by the machine's clock. Used only if plausible (§7).
+      description: ISO-8601 with offset, by the machine's clock. Used only if within a day of server time (§7).
       example: "2026-09-27T09:14:05+03:00"
     SlotId:
       type: string
@@ -414,7 +433,7 @@ components:
       type: object
       properties:
         machineCode: { type: string, example: SQ-MCH-000001 }
-        integrationState: { type: string, enum: [configured, tested, active, suspended, unregistered] }
+        integrationState: { type: string, description: "configured, tested, active, suspended, unregistered; more may be added" }
         environment: { type: string, enum: [sandbox, production], nullable: true }
         apiVersion: { type: string, example: "1" }
         capabilities:
@@ -423,9 +442,6 @@ components:
             type: string
             description: New capabilities may be added within v1. Ignore ones you don't recognise.
             example: vend
-            # Current values: vend, slot_read, inventory_read, inventory_write, dispense_confirmation,
-            # heartbeat, telemetry, faults, temperature, door_status, remote_price_update,
-            # remote_enable_disable, remote_restart, audit_export, camera, payment_device, remote_configuration
         slots:
           type: array
           items:
@@ -450,6 +466,18 @@ components:
         eventId: { $ref: "#/components/schemas/EventId" }
         occurredAt: { $ref: "#/components/schemas/OccurredAt" }
         uptimeSeconds: { type: integer, minimum: 0 }
+    HeartbeatResult:
+      type: object
+      properties:
+        accepted: { type: boolean }
+        reportOutcomes:
+          type: array
+          description: Dispenses whose outcome Snack Quest is still waiting for. Re-send their outcome reports (same eventId) if you have them.
+          items:
+            type: object
+            properties:
+              commandId: { type: string }
+              reason: { type: string, description: "outcome_unknown | no_outcome_received | in_progress_too_long; more may be added" }
 
     StatusRequest:
       type: object
@@ -516,22 +544,23 @@ components:
                 type: string
                 maxLength: 64
                 description: >
-                  Preferably one of MACHINE_ONLINE, MACHINE_OFFLINE, HEARTBEAT_RECEIVED,
-                  STATUS_REPORTED, SLOT_EMPTY, SLOT_LOW, INVENTORY_REPORTED, MACHINE_ERROR,
-                  TEMPERATURE_REPORTED, TEMPERATURE_ALERT, DOOR_OPENED, DOOR_CLOSED,
-                  CAMERA_OFFLINE, PAYMENT_DEVICE_ERROR. Anything else is kept as UNKNOWN_EVENT.
-                  DISPENSE_* types are refused.
+                  One of x-sq-event-types. Anything else is kept as UNKNOWN_EVENT (and listed
+                  in unknownTypes) — never refused. DISPENSE_* types are refused: outcomes go to
+                  /commands/{commandId}/status.
               occurredAt: { $ref: "#/components/schemas/OccurredAt" }
               slotId: { $ref: "#/components/schemas/SlotId" }
               data:
                 type: object
                 additionalProperties: true
-                description: Flat; primitives only; up to 25 keys
     EventsResult:
       type: object
       properties:
         recorded: { type: integer }
         duplicates: { type: integer }
+        conflictingEventIds:
+          type: array
+          items: { type: string }
+          description: Event ids already received with different content. The first report stands.
         unknownTypes: { type: array, items: { type: string } }
         unmappedSlots: { type: array, items: { type: string } }
 
@@ -540,12 +569,12 @@ components:
       required: [commandId, type, issuedAt, expiresAt]
       properties:
         commandId: { type: string, example: DSP-3F9A1C22 }
-        type: { type: string, description: "dispense or restart in v1; more may be added", example: dispense }
+        type: { type: string, description: "dispense, or a maintenance command; more may be added — ignore types you don't know", example: dispense }
         slotId: { type: string, description: Dispense only. The manufacturer's slot name. }
         quantity: { type: integer, description: Dispense only, example: 1 }
         payload: { type: object, nullable: true, additionalProperties: true, description: Maintenance commands only }
         issuedAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: Do not start a command after this. Acknowledge first; the ack is refused once it has passed. }
 
     CommandStatusRequest:
       oneOf:
@@ -563,14 +592,23 @@ components:
             occurredAt: { $ref: "#/components/schemas/OccurredAt" }
         - type: object
           required: [status, eventId]
+          description: The product provably did not come out. This refunds the customer.
           properties:
             status: { type: string, enum: [failed] }
             eventId: { $ref: "#/components/schemas/EventId" }
             occurredAt: { $ref: "#/components/schemas/OccurredAt" }
-            failureCode: { type: string, enum: [failed, timeout, jam, no_product, sensor_failure, machine_offline], default: failed }
+            failureCode:
+              type: string
+              pattern: "^[A-Za-z0-9_.:-]{1,64}$"
+              default: failed
+              description: >
+                One of failed, timeout, jam, no_product, sensor_failure, machine_offline — or your own
+                code, which is recorded as "failed" with your code kept. unknown/success/dispensed/ok are
+                refused: they contradict "failed".
             failureReason: { type: string, maxLength: 500, nullable: true }
         - type: object
           required: [status, eventId]
+          description: You cannot tell whether the product came out. Never refunded automatically.
           properties:
             status: { type: string, enum: [unknown] }
             eventId: { $ref: "#/components/schemas/EventId" }
@@ -599,49 +637,66 @@ components:
             dispenseOutcomesApplied: { type: integer }
             unmatchedMachines: { type: array, items: { type: string } }
             unknownEventTypes: { type: array, items: { type: string } }
+            conflictingEventIds: { type: array, items: { type: string } }
         meta: { $ref: "#/components/schemas/Meta" }
 
   responses:
-    Accepted:
-      description: Accepted. accepted=false means this eventId was already received, which also counts as success.
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              data:
-                type: object
-                properties:
-                  accepted: { type: boolean }
-              meta: { $ref: "#/components/schemas/Meta" }
-    Unauthenticated:
+    Error:
       description: >
-        missing_signature | unknown_key | key_revoked | key_expired | wrong_key_kind |
-        stale_timestamp | invalid_nonce | invalid_signature | replayed_request | unauthenticated
+        Any error. The HTTP status and error.code are listed in x-sq-error-codes, with the
+        retry rule for each. 429 and 503 carry Retry-After.
+      headers:
+        SQ-Request-Id: { $ref: "#/components/headers/RequestId" }
+        Retry-After:
+          description: Seconds to wait (429, 503)
+          schema: { type: integer }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
-    Forbidden:
-      description: manufacturer_suspended
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    NotFound:
-      description: >
-        machine_not_found | machine_not_provisioned | command_not_found | manufacturer_not_found.
-        A machine outside these credentials' manufacturer or environment is also machine_not_found.
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    Conflict:
-      description: command_expired | invalid_command_state. Do not execute the command.
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    Unprocessable:
-      description: >
-        validation_failed (see details) | dispense_events_not_accepted_here |
-        invalid_status_for_command | unrecognised_payload | webhooks_not_supported
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
+
+x-sq-event-types:
+  - MACHINE_ONLINE
+  - MACHINE_OFFLINE
+  - HEARTBEAT_RECEIVED
+  - STATUS_REPORTED
+  - SLOT_EMPTY
+  - SLOT_LOW
+  - INVENTORY_REPORTED
+  - MACHINE_ERROR
+  - TEMPERATURE_REPORTED
+  - TEMPERATURE_ALERT
+  - DOOR_OPENED
+  - DOOR_CLOSED
+  - CAMERA_OFFLINE
+  - PAYMENT_DEVICE_ERROR
+
+x-sq-error-codes:
+  invalid_json: { status: 400, retry: never }
+  payload_too_large: { status: 413, retry: never }
+  missing_signature: { status: 401, retry: never }
+  unknown_key: { status: 401, retry: never }
+  key_revoked: { status: 401, retry: after_fix }
+  key_expired: { status: 401, retry: after_fix }
+  wrong_key_kind: { status: 401, retry: never }
+  stale_timestamp: { status: 401, retry: backoff }
+  invalid_nonce: { status: 401, retry: never }
+  invalid_signature: { status: 401, retry: never }
+  replayed_request: { status: 401, retry: never }
+  environment_mismatch: { status: 403, retry: never }
+  manufacturer_suspended: { status: 403, retry: after_fix }
+  machine_not_found: { status: 404, retry: never }
+  machine_not_provisioned: { status: 404, retry: after_fix }
+  command_not_found: { status: 404, retry: never }
+  manufacturer_not_found: { status: 404, retry: never }
+  command_expired: { status: 409, retry: never }
+  invalid_command_state: { status: 409, retry: never }
+  idempotency_key_reused: { status: 409, retry: never }
+  validation_failed: { status: 422, retry: never }
+  dispense_events_not_accepted_here: { status: 422, retry: never }
+  invalid_status_for_command: { status: 422, retry: never }
+  unrecognised_payload: { status: 422, retry: never }
+  webhooks_not_supported: { status: 422, retry: never }
+  rate_limited: { status: 429, retry: backoff }
+  too_many_auth_failures: { status: 429, retry: backoff }
+  internal_error: { status: 500, retry: backoff }
+  temporarily_unavailable: { status: 503, retry: backoff }

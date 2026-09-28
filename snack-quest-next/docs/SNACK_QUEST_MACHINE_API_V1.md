@@ -9,6 +9,8 @@
 | Transport | HTTPS only, JSON bodies (`Content-Type: application/json`, UTF-8) |
 | Authentication | HMAC-SHA256 signed requests (§3) |
 | Machine-readable spec | [`docs/openapi/machine-api-v1.yaml`](openapi/machine-api-v1.yaml) (OpenAPI 3.0) |
+| Reference clients | [`sdk/typescript/snackQuestMachine.ts`](../sdk/typescript/snackQuestMachine.ts), [`sdk/python/snack_quest_machine.py`](../sdk/python/snack_quest_machine.py) — dependency-free, copy them |
+| Signing test vectors | [`docs/machine-api/signing-test-vectors.json`](machine-api/signing-test-vectors.json) |
 | Status | Stable. Changes follow the versioning policy in §10 |
 
 This document is the contract. If your implementation follows it,
@@ -103,9 +105,11 @@ environment:
   are issued only after certification (§12).
 
 The environment is set by the key, not by the URL. A sandbox key
-can see only sandbox machines, and a production key only production
-machines. Using the wrong key for a machine returns the same
-`404 machine_not_found` as a machine that doesn't exist.
+can reach only sandbox machines, and a production key only production
+machines. Using a sandbox key on one of your production machines (or
+the reverse) is refused with `403 environment_mismatch` before anything
+is read or written — the commonest onboarding mistake, so it has its
+own code. A machine that isn't yours at all is `404 machine_not_found`.
 
 ---
 
@@ -129,6 +133,12 @@ There are two kinds of credential:
 
 A key of one kind is refused on the other's endpoints
 (`401 wrong_key_kind`). Each can be revoked independently.
+
+An `api` key speaks for **every machine of your manufacturer** in its
+environment, or — if you ask for it — for **one machine only**. A
+machine-scoped key is the right choice when each unit talks to Snack
+Quest directly: a key extracted from one machine can't touch any
+other. (§3.6)
 
 ### 3.1 Headers
 
@@ -193,98 +203,72 @@ document and the server can't drift apart.
 
 ### 3.4 Reference implementations
 
-**Node.js**
+Don't write the signing code from scratch. Copy one of the reference
+clients — each is a single file with no dependencies beyond its
+language's standard library:
 
-```js
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+| Language | File | Proven by |
+|---|---|---|
+| TypeScript / Node 18+ | `sdk/typescript/snackQuestMachine.ts` | every signing vector; full sales against the real server |
+| Python 3.8+ | `sdk/python/snack_quest_machine.py` (+ `example_machine.py`) | every signing vector; a full sale over real HTTP |
 
-function signedHeaders({ keyId, secret, method, pathWithQuery, body }) {
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const nonce = randomBytes(16).toString('base64url');
-  const bodyHash = createHash('sha256').update(body, 'utf8').digest('hex');
-  const canonical = ['v1', timestamp, nonce, method.toUpperCase(), pathWithQuery, bodyHash].join('\n');
-  const signature = createHmac('sha256', secret).update(canonical, 'utf8').digest('hex');
-  return {
-    'Content-Type': 'application/json',
-    'X-SQ-Key-Id': keyId,
-    'X-SQ-Timestamp': timestamp,
-    'X-SQ-Nonce': nonce,
-    'X-SQ-Signature': `v1=${signature}`,
-  };
-}
-
-const body = JSON.stringify({ eventId: 'hb-NV0001-000418', uptimeSeconds: 86400 });
-const path = '/api/v1/machines/SQ-MCH-000001/heartbeat';
-await fetch(`https://www.snackquests.shop${path}`, {
-  method: 'POST',
-  headers: signedHeaders({ keyId, secret, method: 'POST', pathWithQuery: path, body }),
-  body, // the same string that was hashed
-});
-```
-
-**Python**
-
-```python
-import hashlib, hmac, json, secrets, time, requests
-
-def signed_headers(key_id, secret, method, path_with_query, body: bytes):
-    timestamp = str(int(time.time()))
-    nonce = secrets.token_urlsafe(16)
-    body_hash = hashlib.sha256(body).hexdigest()
-    canonical = "\n".join(["v1", timestamp, nonce, method.upper(), path_with_query, body_hash])
-    signature = hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
-    return {
-        "Content-Type": "application/json",
-        "X-SQ-Key-Id": key_id,
-        "X-SQ-Timestamp": timestamp,
-        "X-SQ-Nonce": nonce,
-        "X-SQ-Signature": f"v1={signature}",
-    }
-
-body = json.dumps({"eventId": "hb-NV0001-000418", "uptimeSeconds": 86400}, separators=(",", ":")).encode()
-path = "/api/v1/machines/SQ-MCH-000001/heartbeat"
-requests.post("https://www.snackquests.shop" + path, data=body,
-              headers=signed_headers(KEY_ID, SECRET, "POST", path, body))
-```
+Both sign every request, retry transient failures with the **same body
+bytes** (so the same `eventId`) and a fresh nonce, correct their clock
+from the server's `stale_timestamp` answer, and include a correct poll
+cycle (`runPollCycle` / `run_poll_cycle`): acknowledge before
+dispensing, never dispense after a refused acknowledgement, and keep
+outcome reports in an outbox until they are accepted.
 
 **C (embedded controllers).** Any HMAC-SHA256 implementation works,
 for example mbedTLS `mbedtls_md_hmac` or wolfSSL `wc_HmacSetKey`. Build
-the canonical string in a buffer and sign it. Test against §3.3 before
-anything else.
+the canonical string in a buffer and sign it. Test against every vector
+in `signing-test-vectors.json` before anything else — they cover empty
+bodies, query strings, non-ASCII bytes and uppercase hex.
 
-### 3.5 Replay protection, clocks and rotation
+### 3.5 Replay protection, clocks, rotation and revocation
 
 - **Timestamp window.** A request whose `X-SQ-Timestamp` is more than
   **300 seconds** from Snack Quest's clock is refused
-  (`401 stale_timestamp`). Keep machine clocks NTP-synchronised. If you
-  can't, see §7.
+  (`401 stale_timestamp`). The error's `details.serverTimestamp` is
+  Snack Quest's current time: compute your offset from it, apply it to
+  every later request, and retry. The reference clients do this
+  automatically. Keep clocks NTP-synchronised anyway (§7).
 - **Nonces are single-use.** A nonce is accepted once per key. Sending
   the same signed request twice gets `401 replayed_request`. To
-  **retry**, sign the request again with a new nonce and timestamp.
-  Idempotency (§4.3) is carried by the body's `eventId`, not the
-  nonce, so a re-signed retry is still safe.
-- **Rotation.** Ask Snack Quest for a second key while the first is
-  still active, and deploy it. When all traffic uses the new key, the
-  old one is revoked. Both work during the overlap. Keys can also be
-  issued with an expiry date (`401 key_expired` afterwards).
-- **Compromise.** If a secret may have leaked, tell us. Revocation
-  takes effect on the next request (`401 key_revoked`).
+  **retry**, sign again with a new nonce and timestamp. Idempotency
+  (§4.3) is carried by the body's `eventId`, not the nonce, so a
+  re-signed retry is still safe.
+- **Rotation keeps your fleet online.** When Snack Quest rotates a key
+  it issues the replacement immediately and the old key **keeps working
+  for a grace period** (7 days by default, at most 30). Every response
+  to a request signed with the old key carries
+  `SQ-Credential-Status: rotating` and `SQ-Credential-Grace-Ends:
+  <ISO time>` — alert on those headers and roll the new key out before
+  the grace ends (`401 key_expired` afterwards). The new secret is shown
+  once, at rotation.
+- **Revocation** takes effect within **30 seconds** on every Snack Quest
+  server (`401 key_revoked`). Revoke immediately if a secret may have
+  leaked.
+- **Failed signatures are counted.** More than 120 failed
+  authentications a minute from one address is `429
+  too_many_auth_failures` for that address. Fix signing against the
+  test vectors before retrying.
+- Snack Quest never logs secrets or signatures, and never shows a
+  secret after it was issued.
 
-### 3.6 Device credentials (alternative for firmware)
+### 3.6 One unit, one key
 
-A machine may also authenticate as itself, with the per-machine
-credential Snack Quest issues when it registers the unit:
+Earlier drafts of this specification allowed a per-machine bearer
+credential (`Authorization: Bearer …`). **That scheme is withdrawn**: a
+bearer token is replayable by anyone who sees it. A request that carries
+only a bearer token is refused with `401 missing_signature`.
 
-```
-Authorization: Bearer {deviceCredentialId}:{deviceSecret}
-```
-
-A device credential can reach **only its own machine**, and only the
-`/api/v1/machines/{machineCode}/…` endpoints. It can't call
-`connect` or webhooks. Use it when each machine talks to Snack Quest
-directly and you would rather not distribute a manufacturer-wide
-secret to every unit. Integration credentials (§3.1–3.5) are the
-right choice when your cloud speaks for your fleet.
+When each machine talks to Snack Quest directly and you don't want a
+manufacturer-wide secret on every unit, ask for **machine-scoped keys**:
+an ordinary signed `api` key that can reach only the one machine it was
+issued for (`connect` included — it can announce only that unit). It
+uses exactly the signing scheme above, and can be rotated and revoked
+per unit.
 
 ---
 
@@ -295,7 +279,7 @@ right choice when your cloud speaks for your fleet.
 Success:
 
 ```json
-{ "data": { … }, "meta": { "apiVersion": "1" } }
+{ "data": { … }, "meta": { "apiVersion": "1", "requestId": "5f0c2a9e-…" } }
 ```
 
 Error:
@@ -311,43 +295,66 @@ Error:
   and may change.
 - `details` appears on `validation_failed` and lists **every**
   problem, not just the first one.
-- Responses carry `Cache-Control: no-store`.
+- Responses carry `Cache-Control: no-store`, `SQ-API-Version: 1` and
+  `SQ-Request-Id` (also in `meta.requestId`). **Log the request id** with
+  your own records; it is what Snack Quest support needs to find a
+  request. You may send your own id for an attempt as
+  `X-SQ-Client-Request-Id`; it is echoed back as `SQ-Client-Request-Id`.
+- The body is read as raw bytes and must be UTF-8 JSON. The
+  `Content-Type` header is not enforced — but send `application/json`.
 
 ### 4.2 Status codes and what to do
 
 | Status | Meaning | Retry? |
 |---|---|---|
 | `200` / `202` | Done / accepted | No |
-| `400 invalid_json` | Body isn't JSON | No: fix the client |
-| `401` | Authentication failed (§11) | Only after fixing the cause. `stale_timestamp`: fix the clock, then re-sign |
+| `400 invalid_json` | Body isn't UTF-8 JSON | No: fix the client |
+| `401` | Authentication failed (§11) | Only after fixing the cause. `stale_timestamp`: correct the offset from `details.serverTimestamp`, re-sign, retry |
+| `403` | Authenticated but not allowed (`environment_mismatch`, `manufacturer_suspended`) | No |
 | `404` | Machine, command or manufacturer not found *for these credentials* | No |
-| `409` | State conflict (e.g. expired command) | No: see the code |
+| `409` | State conflict (expired command, reused `eventId`) | No: see the code. For a command: **do not execute it** |
 | `413 payload_too_large` | Body over 256 KB | No: split it |
 | `422` | Well-formed but breaks the contract | No: fix the payload |
-| `5xx` / network error | Snack Quest failed or was unreachable | **Yes**, with backoff, re-signed, same `eventId` |
+| `429` | Rate limit (§4.5) | **Yes**, after `Retry-After` seconds, same `eventId` |
+| `5xx` / network error | Snack Quest failed or was unreachable | **Yes**, with backoff, re-signed, same `eventId`. `503` carries `Retry-After` |
 
 Recommended backoff: 1 s, 2 s, 4 s, 8 s … capped at 60 s, with jitter.
 Keep unsent reports in durable storage on the machine so they survive
-a reboot and are sent when connectivity returns.
+a reboot and are sent when connectivity returns. §11 lists every
+`error.code` with its retry rule.
 
-### 4.3 Idempotency
+### 4.3 Idempotency and delivery guarantees
 
 Everything you **report** carries an id you choose: `eventId`, or
 `reportId` for inventory. It's unique per machine per occurrence.
-Snack Quest applies each id **once**:
 
-- A repeated report is accepted and ignored (`{"accepted": false}` or
-  `{"applied": false}`). It isn't an error, so treat it as success.
-- So after a timeout you **can always resend**. You can't cause a
-  double count, a double refund or a double sale.
-- Never reuse an id for a *different* occurrence. The second report
-  would be silently ignored.
+- **The same id with the same content is a duplicate**: accepted and
+  ignored (`accepted: false`, `applied: false`, `result: "duplicate"`,
+  or counted in `duplicates`). Treat it as success. So after a timeout
+  you **can always resend** — you can't cause a double count, a double
+  refund or a double sale.
+- **The same id with different content is refused**: an outcome report
+  gets `409 idempotency_key_reused`; an event is listed in
+  `conflictingEventIds` and not recorded. The first report stands. Ids
+  are per occurrence — never reuse one for a different fact.
 
 A good pattern is `{kind}-{manufacturerMachineId}-{monotonic counter}`,
 where the counter is persisted across reboots.
 
 Everything Snack Quest **sends you** carries a `commandId`. Execute a
 command at most once, whatever you receive later (§6).
+
+**What is guaranteed, precisely.** Networks lose messages, so no
+distributed system delivers anything "exactly once", and this one
+doesn't claim to. What it does guarantee:
+
+| | Guarantee |
+|---|---|
+| Your reports → Snack Quest | **At-least-once delivery** (you retry until a 2xx) **+ idempotent processing** (by `eventId`) = each report takes **effect** once. |
+| Dispense instruction → your machine | **At most one** dispense command per paid sale — enforced by a transactional claim before any machine is contacted, whatever retries, crashes or concurrent servers do. |
+| Dispense execution | Guaranteed at most once **only if you follow §6**: acknowledge first, execute only after a `200`, never execute a `commandId` twice. |
+| Money | A sale is refunded only when the dispense **provably** did not happen (never sent, refused, never collected, or reported `failed`). Anything that *may* have dispensed goes to a human, never an automatic refund or retry. |
+| Stock | Exactly one stock movement per completed sale (keyed by the sale), checked daily by a ledger reconciliation. |
 
 ### 4.4 Forward compatibility
 
@@ -358,6 +365,44 @@ command at most once, whatever you receive later (§6).
 - Unknown `type` values in `GET …/commands` must be **acknowledged and
   reported `failed`** with `failureReason: "unsupported command"`,
   never silently dropped.
+
+### 4.5 Rate limits
+
+Limits are per machine, per endpoint, per minute (fixed windows), so
+one busy endpoint never starves another — a flood of heartbeats can't
+block your dispense reports.
+
+| Endpoint class | Requests per machine per minute |
+|---|---|
+| `connect` | 10 |
+| `describe` | 30 |
+| `heartbeat` | 12 |
+| `status` | 30 |
+| `inventory` | 12 |
+| `events` | 60 requests |
+| `event_items` | 600 events (a batch of 100 counts as 100) |
+| `command_poll` | 60 |
+| `command_ack` | 120 |
+| `command_status` | 120 |
+
+Also: 30,000 requests a minute per key across your fleet, 1,200 webhook
+deliveries a minute per webhook key, 120 failed authentications a minute
+per source address, and 60 refused (4xx) requests a minute per machine.
+Snack Quest may agree higher limits for a key.
+
+Every response carries `SQ-RateLimit-Limit`, `SQ-RateLimit-Remaining`
+and `SQ-RateLimit-Reset` (seconds). Over a limit: `429 rate_limited`
+with `Retry-After`. Normal operation (a heartbeat a minute, a poll every
+10 s, a status every few minutes) uses a small fraction of each.
+
+### 4.6 Tracing a sale
+
+Every request gets an `SQ-Request-Id`. Snack Quest support can follow a
+single sale from the customer's M-Pesa receipt through the payment,
+the dispense command and its acknowledgement, your outcome report, the
+stock movement and any alert, on one timeline. Keep your own logs keyed
+by `commandId`, `eventId` and `SQ-Request-Id` and we can always meet in
+the middle.
 
 ---
 
@@ -465,14 +510,32 @@ Connect is safe to call on every boot.
 { "eventId": "hb-NV0001-000418", "occurredAt": "2026-09-27T09:14:05+03:00", "uptimeSeconds": 86400 }
 ```
 
-**Response `202`**: `{"data": {"accepted": true}}`. `accepted: false`
-means this `eventId` was already received.
+**Response `202`**
 
-Send one every `heartbeatIntervalSeconds`. A machine silent for more
-than 5 minutes shows as **degraded** to operations staff, and after
-15 minutes as **disconnected**. A disconnected machine is not sent
-dispenses. An order placed on it is refused and refunded instead of
-waiting for a machine that isn't there.
+```json
+{ "data": { "accepted": true, "reportOutcomes": [ { "commandId": "DSP-3F9A1C22", "reason": "no_outcome_received" } ] } }
+```
+
+`reportOutcomes` lists dispenses of yours whose outcome Snack Quest is
+still waiting for (`outcome_unknown`, `no_outcome_received`,
+`in_progress_too_long`; more reasons may be added). If you have the
+outcome stored, re-send its report (same `eventId`). It is usually
+empty.
+
+Send one every `heartbeatIntervalSeconds` (60 s by default). Snack
+Quest derives the machine's **liveness** from the last contact of any
+kind (heartbeat, status, any signed request), with E = the heartbeat
+interval and a grace G = max(30 s, E/2):
+
+| State | When | Effect |
+|---|---|---|
+| `ONLINE` | last contact within E + G | Takes orders (if also heard within the last 90 s) |
+| `DEGRADED` | within 3E + G | **No new orders** — a customer is not charged for a machine that may not collect the dispense |
+| `OFFLINE` | longer, or the last status said `online: false`, or staff declared maintenance | No orders; operations staff are alerted |
+| `UNKNOWN` | never heard since configuration, or most of your fleet went silent at once (likely an outage between us, not your machines) | No orders |
+
+A machine coming back is recorded once (`MACHINE_ONLINE`) and its
+offline alert closes itself.
 
 ### 5.4 Status: `POST /api/v1/machines/{machineCode}/status`
 
@@ -499,7 +562,12 @@ at least every few minutes.
 | `faults` | no | Up to 50 **currently active** fault codes, each 1–64 chars of `[A-Za-z0-9_.:-]`. Each one is recorded as a `MACHINE_ERROR` event with your code preserved. Send `[]` when faults clear |
 | `paymentDeviceOk` | no | If your unit has its own payment hardware. `false` raises `PAYMENT_DEVICE_ERROR` |
 
-**Response `202`**: `{"data": {"accepted": true}}`
+**Response `202`**: `{"data": {"accepted": true, "applied": true}}`
+
+`applied: false` means Snack Quest already holds a snapshot whose
+`occurredAt` is **newer** — a late, out-of-order delivery (an offline
+queue flushing) never overwrites fresher state. Events (door, faults,
+payment device) are emitted only for **changes**.
 
 ### 5.5 Inventory: `POST /api/v1/machines/{machineCode}/inventory`
 
@@ -564,8 +632,11 @@ Up to 100 operational events per request.
 **Response `202`**
 
 ```json
-{ "data": { "recorded": 3, "duplicates": 0, "unknownTypes": ["COIN_MECH_JAM"], "unmappedSlots": [] } }
+{ "data": { "recorded": 3, "duplicates": 0, "conflictingEventIds": [], "unknownTypes": ["COIN_MECH_JAM"], "unmappedSlots": [] } }
 ```
+
+- `conflictingEventIds`: ids already received with **different**
+  content. They are not recorded; the first report stands (§4.3).
 
 - A `type` outside §9 is **not rejected**. It is kept as
   `UNKNOWN_EVENT` with your original name preserved, and listed in
@@ -606,8 +677,11 @@ Up to 100 operational events per request.
 }
 ```
 
-- Poll every `pollIntervalSeconds` (§5.2) while the machine is
-  idle. A customer is standing at the machine, waiting.
+- Poll again after the response's `nextPollSeconds`: **2** while a
+  customer is paying at this machine, otherwise **10**. A customer is
+  standing at the machine, waiting — the fast interval is what makes
+  the product drop within seconds of payment. An idle poll is cheap for
+  both sides.
 - Dispenses come first. `slotId` is **your** slot id.
 - The same command is returned on every poll until you acknowledge
   it. That's why execution must be keyed on `commandId`.
@@ -620,9 +694,11 @@ No body. Call it **before** you actuate anything.
 
 **Response `200`**: `{"data": {"commandId": "DSP-3F9A1C22", "status": "acknowledged"}}`
 
-**`409 command_expired` or `409 invalid_command_state` means do not
-execute.** A dispense command is valid for **2 minutes** after
-`issuedAt`. If you acknowledge it later, Snack Quest has already
+**Anything other than `200` means do not execute** — in particular
+`409 command_expired` and `409 invalid_command_state`. A network error
+on the ack means you don't know: retry the ack (it is idempotent), and
+if you still can't get a `200` before `expiresAt`, don't dispense. A
+dispense command is valid for **2 minutes** after `issuedAt`. If you acknowledge it later, Snack Quest has already
 treated it as timed out and the customer may have walked away or
 been refunded. Discard it without dispensing.
 
@@ -659,7 +735,12 @@ already run, so don't run it again.
 | `failed` | **Certain** nothing was delivered | Refunds the customer |
 | `unknown` | You cannot tell | Sends it to a human for review. The customer isn't refunded automatically, and no sale is recorded yet |
 
-`failureCode` (for `failed`) is one of:
+`failureCode` (for `failed`) is one of the codes below — or **your
+own** code (1–64 chars of `[A-Za-z0-9_.:-]`), which is recorded as
+`failed` with your code kept in the reason, so adding a code to your
+firmware never breaks outcome reporting. `unknown`, `success`,
+`dispensed` and `ok` are refused (`422`): they contradict `failed` —
+report `status: "unknown"` instead.
 
 | Code | Meaning |
 |---|---|
@@ -670,10 +751,20 @@ already run, so don't run it again.
 | `machine_offline` | Machine couldn't act (e.g. lost power before starting) |
 | `failed` | Any other certain failure (default) |
 
-**Response `200`**: `{"data": {"commandId": "DSP-3F9A1C22", "applied": true}}`
+**Response `200`**: `{"data": {"commandId": "DSP-3F9A1C22", "applied": true, "result": "applied"}}`
 
-`applied: false` means this `eventId` was already applied, so your
-retry was a no-op. Treat it as success.
+**Every `200` means "stop re-sending this report".** `result` says what
+it did:
+
+| `result` | Meaning |
+|---|---|
+| `applied` | It changed the sale (completed it, or started the refund) |
+| `duplicate` | This `eventId` was already applied — your retry was a no-op |
+| `already_recorded` | Another report already recorded this outcome |
+| `conflict` | It contradicts a decision already acted on (e.g. `dispensed` after the refund started). Money is not moved; it is escalated to a human |
+| `progress_recorded` / `stale_progress` | For `dispensing` |
+
+New values may be added; treat any `200` as success.
 
 **For a maintenance command** (`CMD-…`): report `completed` or
 `failed` (with an optional `failureReason`). Anything else returns
@@ -703,8 +794,13 @@ TIMEOUT and UNKNOWN can still resolve to DISPENSED or FAILED when a late report 
   confirmed, and only once per paid order. There is no path from an
   unpaid order to your machine.
 - **SENT** means it's in your command queue (§6.1).
-- **TIMEOUT**: in flight for 15 minutes with no outcome. A human
-  reviews it.
+- **SENT but never collected** before `expiresAt`: provably not
+  dispensed — the command becomes `TIMEOUT` and the customer is
+  refunded. A late ack is refused (`409`).
+- **ACKNOWLEDGED / DISPENSING with no outcome for 5 minutes**: may have
+  dispensed — `TIMEOUT`, and the sale goes to a human; nothing is
+  refunded or retried automatically. The machine is asked for the
+  outcome in every heartbeat response (`reportOutcomes`).
 - **Payment status and dispense status are separate records.** A paid
   order with a failed dispense is a refund, not a sale.
 
@@ -721,9 +817,10 @@ TIMEOUT and UNKNOWN can still resolve to DISPENSED or FAILED when a late report 
   kept for diagnostics. A machine with a broken RTC therefore
   can't corrupt the event history.
 - **Request signing is stricter.** `X-SQ-Timestamp` must be within
-  **5 minutes** (§3.5). A machine that can't keep time should sign
-  from a time source it trusts. The `Date` header on any Snack Quest
-  response is accurate to the second.
+  **5 minutes** (§3.5). A refused request's `details.serverTimestamp`
+  is Snack Quest's time: correct your offset from it and retry — the
+  reference clients do this — so a drifting clock costs one extra
+  request, not a silent machine.
 
 ---
 
@@ -781,10 +878,15 @@ didn't recognise:
     "eventsDuplicate": 0,
     "dispenseOutcomesApplied": 1,
     "unmatchedMachines": ["NV-9999"],
-    "unknownEventTypes": []
+    "unknownEventTypes": [],
+    "conflictingEventIds": []
   }
 }
 ```
+
+Redeliver as often as your platform likes: a delivery or event seen
+before is acknowledged and not applied again, and a dispense outcome
+takes effect once however many times it arrives.
 
 ---
 
@@ -808,9 +910,12 @@ your native names to them.
 | `PAYMENT_DEVICE_ERROR` | The unit's own payment hardware failed | warning |
 
 Snack Quest itself records `DISPENSE_REQUESTED`, `DISPENSE_STARTED`,
-`DISPENSE_SUCCESS`, `DISPENSE_FAILED` and `INVENTORY_MISMATCH`. You
-don't send them. Anything unrecognised becomes `UNKNOWN_EVENT` with
-the native name kept.
+`DISPENSE_SUCCESS`, `DISPENSE_FAILED`, `INVENTORY_MISMATCH`,
+`DISPENSE_OUTCOME_CONFLICT`, `DISPENSE_UNRECOGNISED` and
+`FIRMWARE_CHANGED`. You don't send them: the `DISPENSE_*` outcomes are
+refused on `/events` (§5.6), and any other Snack Quest-only name you
+send is kept as `UNKNOWN_EVENT`. Anything unrecognised becomes
+`UNKNOWN_EVENT` with the native name kept — never an error.
 
 ---
 
@@ -838,6 +943,21 @@ client must tolerate them:**
   `X-SQ-Signature`, accepted alongside `v1=` during migration);
 - changing the meaning of a status or failure code.
 
+**How each kind of change is handled**
+
+| Change | Rule |
+|---|---|
+| New optional request field | Ignored by servers that don't know it; you may send it early |
+| New response field | You must ignore fields you don't know |
+| Deprecated field | Still accepted and still returned for the rest of v1; marked deprecated here and in OpenAPI with the version that removes it |
+| Enum values (`result`, `reason`, `integrationState`, capabilities, command `type`) | **Open**: new values may appear. Treat an unknown value as the safe default (unknown command → ack, report `failed` "unsupported command"; unknown capability → ignore) |
+| Your enum values (`failureCode`, event `type`) | **Tolerant**: a code or type we don't know is kept, never refused (§5.6, §6.3) |
+| New capability | Advertised in `capabilities` (§5.2); never required of existing models |
+| New event type | Added to §9; older clients never need to send it |
+| New command type | Only sent to models certified for it |
+| New authentication method | Added alongside `v1=` signing; `v1=` keeps working for all of v1 |
+| Anything breaking | `/api/v2/`, with v1 running in parallel |
+
 When a v2 is published, **v1 keeps working for at least 12 months**.
 Every manufacturer with an active integration is told in writing, with
 a changelog and the retirement date, before it happens.
@@ -846,39 +966,42 @@ a changelog and the retirement date, before it happens.
 
 ## 11. Error reference
 
-**Authentication (`401`)**
+Every code the API can return. `code` is stable within v1; branch on it,
+not on `message`. The same catalogue is in the OpenAPI document
+(`x-sq-error-codes`) and in `lib/vending/v1/errorCodes.ts`; a contract
+test keeps all three identical.
 
-| Code | Cause | Fix |
-|---|---|---|
-| `missing_signature` | One of the four `X-SQ-*` headers is absent | Send all four |
-| `unknown_key` | Key id not recognised | Check the key; mind sandbox vs production |
-| `key_revoked` | Key revoked | Use your current key |
-| `key_expired` | Past the key's expiry | Rotate |
-| `wrong_key_kind` | `webhook` key on an API endpoint, or vice versa | Use the right credential |
-| `stale_timestamp` | Clock more than 300 s off | Sync the clock (NTP) and re-sign |
-| `invalid_nonce` | Nonce not 16–64 chars of `[A-Za-z0-9_-]` | Fix the generator |
-| `invalid_signature` | Signature doesn't match | Check against §3.3: exact body bytes, path including query, uppercase method |
-| `replayed_request` | Nonce already used | New nonce per request; re-sign retries |
-| `unauthenticated` | Device bearer credential rejected (§3.6) | Check the device credential |
-
-**Everything else**
-
-| Status | Code | Meaning |
-|---|---|---|
-| 400 | `invalid_json` | Body isn't valid JSON |
-| 404 | `machine_not_found` | No such machine *for these credentials* (also: wrong environment, another manufacturer's machine) |
-| 404 | `machine_not_provisioned` | `connect` for a manufacturer machine id nobody registered |
-| 404 | `command_not_found` | No such command for this machine |
-| 404 | `manufacturer_not_found` | Webhook slug doesn't match the credential |
-| 403 | `manufacturer_suspended` | Integration suspended by Snack Quest |
-| 409 | `command_expired` | Acknowledged after expiry. **Do not execute** |
-| 409 | `invalid_command_state` | Command can't move to that state (e.g. already final). **Do not execute** |
-| 413 | `payload_too_large` | Over 256 KB |
-| 422 | `validation_failed` | Schema violation; see `details` |
-| 422 | `dispense_events_not_accepted_here` | Dispense outcome sent to `/events`; use §6.3 |
-| 422 | `invalid_status_for_command` | Wrong status for the command type |
-| 422 | `unrecognised_payload` | Webhook body not in the agreed format |
-| 422 | `webhooks_not_supported` | No webhook adapter configured for you yet |
+| Status | Code | Meaning | Retry? |
+|---|---|---|---|
+| 400 | `invalid_json` | The body is not valid UTF-8 JSON. | No — fix the request |
+| 413 | `payload_too_large` | The body exceeds the size limit. | No — fix the request |
+| 401 | `missing_signature` | One of the four X-SQ-* signing headers is missing. | No — fix the request |
+| 401 | `unknown_key` | No credential has this key id. | No — fix the request |
+| 401 | `key_revoked` | The key was revoked. Obtain a new one. | After the cause is fixed on our side or yours |
+| 401 | `key_expired` | The key expired (or its rotation grace period ended). Use the new key. | After the cause is fixed on our side or yours |
+| 401 | `wrong_key_kind` | An API key was used for a webhook or vice versa. | No — fix the request |
+| 401 | `stale_timestamp` | X-SQ-Timestamp is outside ±300 s. details.serverTimestamp gives the server time: correct your offset and retry. | Yes — backoff, same `eventId`, fresh nonce |
+| 401 | `invalid_nonce` | X-SQ-Nonce is not 16–64 characters of [A-Za-z0-9_-]. | No — fix the request |
+| 401 | `invalid_signature` | The signature does not match. Check the canonical string against the test vectors. | No — fix the request |
+| 401 | `replayed_request` | This nonce was already used. Every attempt needs a fresh nonce. | No — fix the request |
+| 403 | `environment_mismatch` | A sandbox key addressed a production machine, or vice versa. | No — fix the request |
+| 403 | `manufacturer_suspended` | This manufacturer is suspended. | After the cause is fixed on our side or yours |
+| 404 | `machine_not_found` | No machine with this code is available to these credentials. | No — fix the request |
+| 404 | `machine_not_provisioned` | No machine is registered for this manufacturerMachineId under these credentials. | After the cause is fixed on our side or yours |
+| 404 | `command_not_found` | No such command for this machine. | No — fix the request |
+| 404 | `manufacturer_not_found` | The webhook slug does not belong to these credentials. | No — fix the request |
+| 409 | `command_expired` | The command expired before it was acknowledged. DO NOT EXECUTE IT. | No — fix the request |
+| 409 | `invalid_command_state` | The command can no longer move to that state (e.g. already finished). DO NOT EXECUTE IT. | No — fix the request |
+| 409 | `idempotency_key_reused` | This eventId was already used for a different report. Event ids are per occurrence. | No — fix the request |
+| 422 | `validation_failed` | The body does not match the schema; details lists each problem. | No — fix the request |
+| 422 | `dispense_events_not_accepted_here` | DISPENSE_* outcomes go to /commands/{commandId}/status, not /events. | No — fix the request |
+| 422 | `invalid_status_for_command` | That status is not valid for this kind of command. | No — fix the request |
+| 422 | `unrecognised_payload` | The webhook payload is not in the agreed format. | No — fix the request |
+| 422 | `webhooks_not_supported` | This manufacturer integration does not accept webhooks. | No — fix the request |
+| 429 | `rate_limited` | A rate limit was exceeded. Retry after Retry-After seconds; see SQ-RateLimit-* headers. | Yes — backoff, same `eventId`, fresh nonce |
+| 429 | `too_many_auth_failures` | Too many failed authentications from this address. Fix signing before retrying. | Yes — backoff, same `eventId`, fresh nonce |
+| 500 | `internal_error` | An unexpected error. Retry with the same eventId; quote SQ-Request-Id to support. | Yes — backoff, same `eventId`, fresh nonce |
+| 503 | `temporarily_unavailable` | A dependency is unavailable. Retry with backoff. | Yes — backoff, same `eventId`, fresh nonce |
 
 ---
 
@@ -921,6 +1044,30 @@ sandbox run id, logs or a video of the physical test.
 Inventory and webhooks may be marked *not applicable* for models or
 integrations that don't have them. Everything else is required.
 
+**The automated certification harness.** Most of the checklist is
+verified by a harness Snack Quest runs against your machine in the
+sandbox. It drives a fixed script — connect, heartbeat, status,
+inventory, door events, a real sandbox sale, a sale from a slot you've
+emptied, a retransmitted outcome report, and a command that expires
+while your machine holds it — and judges each step from what Snack
+Quest recorded, not from what the machine claims:
+
+```
+CONNECT ✓  AUTHENTICATION ✓  HEARTBEAT ✓  STATUS ✓  INVENTORY ✓  EVENTS ✓
+COMMAND POLLING ✓  ACKNOWLEDGEMENT ✓  DISPENSE ✓  FAILURE HANDLING ✓
+IDEMPOTENCY ✓  REPLAY PROTECTION ✓  TIMEOUT HANDLING ✓        → CERTIFIED
+```
+
+Any failed check means **NOT CERTIFIED**, with the failure spelled out
+(for example "ACKNOWLEDGEMENT: history sent → dispensing → dispensed" —
+the machine dispensed without acknowledging). A step that can't be
+driven automatically on your hardware is *not verified*, and a Snack
+Quest engineer verifies it with you by hand. Passing results are
+recorded against your model as evidence; the harness never certifies a
+model on its own — a person signs it off. The Snack Quest simulator
+passes the same harness, so you can compare your machine's request log
+with a known-good one.
+
 ---
 
 ## 13. Worked example: one sale, end to end
@@ -949,13 +1096,13 @@ priced KES 250.
 **Machine-side loop (pseudocode)**
 
 ```
-every pollIntervalSeconds:
+every nextPollSeconds (from the last poll; 10 if unknown):
   for cmd in GET /commands:
     if store.has(cmd.commandId): continue                 # executed before: never twice
     if cmd.type not in SUPPORTED:
       ack(cmd); report(cmd, failed, reason="unsupported command"); continue
     r = ack(cmd)
-    if r.status == 409: store.put(cmd.commandId, "refused"); continue   # expired: do not dispense
+    if r.status != 200: store.put(cmd.commandId, "refused"); continue   # not acknowledged: do not dispense
     store.put(cmd.commandId, "executing")                 # persist BEFORE actuating
     report(cmd, dispensing)
     outcome = hardware.vend(cmd.slotId)                   # dispensed | failed(code) | unknown
@@ -975,7 +1122,7 @@ re-run the command after reboot. It reports `unknown` instead.
 
 ## 14. Implementation checklist
 
-- [ ] Signing matches the test vector in §3.3
+- [ ] Signing matches every vector in `docs/machine-api/signing-test-vectors.json` (or you use a reference client, §3.4)
 - [ ] New nonce and timestamp on every request, including retries
 - [ ] Secret stored securely; never logged or shipped in a client app
 - [ ] Clock NTP-synchronised (±5 min at worst)
@@ -984,7 +1131,11 @@ re-run the command after reboot. It reports `unknown` instead.
 - [ ] Every report has a unique, persisted `eventId`; the same id on retry
 - [ ] Unsent reports survive a reboot and are sent on reconnection
 - [ ] `commandId` persisted before actuation; a command never runs twice
-- [ ] `409` on ack means **do not dispense**
+- [ ] Anything but `200` on ack means **do not dispense**
+- [ ] `stale_timestamp` handled by correcting the clock offset from `details.serverTimestamp`
+- [ ] `429` handled by waiting `Retry-After`; `SQ-Credential-Status: rotating` alerts you to deploy the new key
+- [ ] `SQ-Request-Id` logged with every report
+- [ ] `reportOutcomes` in heartbeat responses answered from stored outcomes
 - [ ] `dispensed` only on physical confirmation; `unknown` when unsure
 - [ ] Late outcomes still reported
 - [ ] 5xx and network errors retried with backoff; 4xx not blindly retried
