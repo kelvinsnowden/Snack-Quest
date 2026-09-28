@@ -42,6 +42,8 @@ export interface MachineSlot {
   position: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /** When the stock ledger last changed `currentQuantity` (a sale, restock or adjustment). Absent until the first movement. */
+  stockChangedAt?: Timestamp | null;
 }
 
 export function machineSlotDocId(machineId: string, slotCode: string): string {

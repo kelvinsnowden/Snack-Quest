@@ -594,6 +594,7 @@ What the machine *physically* counts, if it can (capability
 {
   "data": {
     "slotsReported": 3,
+    "stale": false,
     "mismatches": [ { "slotId": "motor-02", "expected": 4, "reported": 3 } ],
     "unmappedSlots": []
   }
@@ -605,6 +606,13 @@ Your report is **compared against it and never overwrites it**. A
 difference is recorded as `INVENTORY_MISMATCH` for operations staff to
 investigate. `unmappedSlots` lists slot ids Snack Quest has no mapping
 for, which means staff need to finish the slot mapping.
+
+Send `occurredAt` (when the count was taken). A report older than one
+already applied — delivered late, or out of order from an offline
+queue — is recorded but not compared (`stale: true`), and a slot whose
+stock Snack Quest changed after your count was taken (a sale, a restock)
+is not flagged. Without `occurredAt`, the time we received the report
+is used.
 
 ### 5.6 Events: `POST /api/v1/machines/{machineCode}/events`
 
@@ -685,6 +693,10 @@ Up to 100 operational events per request.
 - Dispenses come first. `slotId` is **your** slot id.
 - The same command is returned on every poll until you acknowledge
   it. That's why execution must be keyed on `commandId`.
+- `serverTime` is Snack Quest's clock. Judge `expiresAt` against it (or
+  against your NTP-corrected clock), never against an unsynchronised
+  RTC. Whatever your clock says, the acknowledgement (§6.2) decides: a
+  command that has expired on our side is refused there.
 - `type` values in v1 are `dispense` and `restart`. More may be added
   (§4.4).
 
@@ -810,7 +822,10 @@ TIMEOUT and UNKNOWN can still resolve to DISPENSED or FAILED when a late report 
 
 - `occurredAt` is ISO-8601 **with an offset**, for example
   `2026-09-27T09:14:05+03:00` or `…Z`. It's optional; when you omit
-  it, Snack Quest uses the time it received the report.
+  it, Snack Quest uses the time it received the report. A time
+  **without** an offset (`2026-09-27T09:14:05`) is ambiguous, so it is
+  treated as omitted — never guessed as UTC or as any local time.
+- All times Snack Quest sends are UTC (`…Z`).
 - Snack Quest uses your `occurredAt` only when it's plausible. It
   can't be more than 1 minute in the future, or more than 24 hours in
   the past. Otherwise the receive time is used, and your timestamp is

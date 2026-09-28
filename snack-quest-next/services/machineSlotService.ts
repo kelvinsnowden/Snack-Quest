@@ -1,3 +1,4 @@
+import { slotMappingHistoryRepository } from '@/repositories/slotMappingHistoryRepository';
 import 'server-only';
 
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
@@ -44,6 +45,7 @@ class MachineSlotService {
     if (!machine) {
       throw new MachineNotFoundError(input.machineId);
     }
+    validateSlotConfiguration(input);
     const existing = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotCode);
     await machineSlotRepository.upsert({
       businessId: input.businessId,
@@ -73,6 +75,7 @@ class MachineSlotService {
     businessId: string,
     machineId: string,
     mappings: { slotCode: string; manufacturerSlotId: string | null }[],
+    actor = 'system',
   ): Promise<MachineSlot[]> {
     const machine = await machineRepository.findById(businessId, machineId);
     if (!machine) {
@@ -97,10 +100,20 @@ class MachineSlotService {
       throw new SlotMappingError(conflicts.join('; '));
     }
     await machineSlotRepository.setManufacturerSlotIds(machineId, mappings);
+    // History is appended after the change is applied; only real changes are recorded.
+    await slotMappingHistoryRepository.append(
+      mappings
+        .map((mapping) => ({ mapping, from: bySlotCode.get(mapping.slotCode)?.manufacturerSlotId ?? null }))
+        .filter(({ mapping, from }) => from !== mapping.manufacturerSlotId)
+        .map(({ mapping, from }) => ({ businessId, machineId, slotCode: mapping.slotCode, from, to: mapping.manufacturerSlotId, changedBy: actor })),
+    );
     return machineSlotRepository.listByMachine(businessId, machineId);
   }
 
   async setPrice(businessId: string, machineId: string, slotCode: string, priceKes: number): Promise<void> {
+    if (!Number.isInteger(priceKes) || priceKes < 0 || priceKes > MAX_PRICE_KES) {
+      throw new SlotMappingError(`priceKes must be a whole number of shillings between 0 and ${MAX_PRICE_KES}`);
+    }
     const machine = await machineRepository.findById(businessId, machineId);
     if (!machine) {
       throw new MachineNotFoundError(machineId);
@@ -173,3 +186,27 @@ class MachineSlotService {
 
 export const machineSlotService = new MachineSlotService();
 export { MachineSlotService };
+
+const MAX_PRICE_KES = 100_000;
+const MAX_SLOT_CAPACITY = 1_000;
+
+/**
+ * A slot's configuration must be internally consistent before it can
+ * be sold from: a whole, non-negative price (and a positive one when a
+ * product is assigned — a free sale is not a configuration mistake we
+ * want to discover at the till), a product catalogue whenever there is
+ * a product, and a sane capacity and position.
+ */
+function validateSlotConfiguration(input: { slotCode: string; productId: string | null; productCatalogue: MachineSlot['productCatalogue']; priceKes: number; capacity: number; position: number }): void {
+  const problems: string[] = [];
+  if (!/^[A-Za-z0-9_-]{1,16}$/.test(input.slotCode)) problems.push('slotCode must be 1–16 letters, digits, _ or -');
+  if (!Number.isInteger(input.priceKes) || input.priceKes < 0 || input.priceKes > MAX_PRICE_KES) problems.push(`priceKes must be a whole number between 0 and ${MAX_PRICE_KES}`);
+  if (input.productId !== null && input.priceKes <= 0) problems.push('a slot with a product must have a price above 0');
+  if (input.productId !== null && !input.productCatalogue) problems.push('productCatalogue is required when a product is assigned');
+  if (input.productId !== null && !/^[A-Za-z0-9_-]{1,128}$/.test(input.productId)) problems.push('productId is not a valid id');
+  if (!Number.isInteger(input.capacity) || input.capacity < 0 || input.capacity > MAX_SLOT_CAPACITY) problems.push(`capacity must be a whole number between 0 and ${MAX_SLOT_CAPACITY}`);
+  if (!Number.isInteger(input.position) || input.position < 0) problems.push('position must be a whole number ≥ 0');
+  if (problems.length > 0) {
+    throw new SlotMappingError(`Invalid slot configuration for ${input.slotCode}: ${problems.join('; ')}`);
+  }
+}

@@ -187,7 +187,7 @@ export class SnackQuestMachineClient {
   }
 
   pollCommands(machineCode: string) {
-    return this.request<{ commands: DispenseCommand[]; nextPollSeconds?: number }>('GET', this.machinePath(machineCode, 'commands'));
+    return this.request<{ commands: DispenseCommand[]; nextPollSeconds?: number; serverTime?: string }>('GET', this.machinePath(machineCode, 'commands'));
   }
 
   /** Must return 200 before you act on a command. A 409 means "do not execute" — the command expired or was cancelled. */

@@ -93,6 +93,8 @@ class MachineSlotRepository {
   updateQuantityInTransaction(tx: Transaction, machineId: string, slotCode: string, newQuantity: number): void {
     tx.update(adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode)), {
       currentQuantity: newQuantity,
+      // When the ledger last changed this slot's stock — what an inventory report's age is compared against.
+      stockChangedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }

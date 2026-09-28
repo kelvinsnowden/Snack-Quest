@@ -1,3 +1,4 @@
+import { resolveOccurredAt } from '@/lib/vending/machineEvents';
 import 'server-only';
 
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
@@ -15,6 +16,10 @@ export interface SlotQuantityReport {
 
 export interface InventorySyncResult {
   slotsReported: number;
+  /** An older report than one already applied (delayed or reordered): recorded, not compared. */
+  stale: boolean;
+  /** Slots whose stock the ledger changed after this report was taken (a sale, a restock): not compared. */
+  supersededSlots: string[];
   mismatches: { slotCode: string; expected: number; reported: number }[];
   unmappedSlots: string[];
   emptySlots: string[];
@@ -50,7 +55,7 @@ class MachineInventorySyncService {
     }
     const slots = await machineSlotRepository.listByMachine(input.businessId, input.machineId);
     const bySlotCode = new Map(slots.map((slot) => [slot.slotCode, slot]));
-    const result: InventorySyncResult = { slotsReported: input.reports.length, mismatches: [], unmappedSlots: [], emptySlots: [], lowSlots: [] };
+    const result: InventorySyncResult = { slotsReported: input.reports.length, stale: false, supersededSlots: [], mismatches: [], unmappedSlots: [], emptySlots: [], lowSlots: [] };
     const record = (type: Parameters<typeof machineEventService.record>[0]['type'], key: string, slotCode: string | null, data: Record<string, unknown>) =>
       machineEventService.record(
         {
@@ -66,6 +71,16 @@ class MachineInventorySyncService {
         machine,
       );
 
+    // When was this count taken? A delayed or reordered report is older
+    // than what the ledger already reflects — comparing it would raise a
+    // false mismatch (e.g. a pre-restock count arriving after the restock).
+    const observedAt = resolveOccurredAt(input.deviceTimestamp, new Date());
+    if (!(await machineIntegrationRepository.noteInventoryReport(input.machineId, observedAt))) {
+      result.stale = true;
+      await record('INVENTORY_REPORTED', 'summary', null, { slotsReported: result.slotsReported, stale: true, observedAt: observedAt.toISOString() });
+      return result;
+    }
+
     for (const report of input.reports) {
       const slotCode = resolveSlotCode(slots, report.manufacturerSlotId);
       const slot = slotCode ? bySlotCode.get(slotCode) : undefined;
@@ -76,6 +91,11 @@ class MachineInventorySyncService {
           manufacturerSlotId: report.manufacturerSlotId,
           reported: report.quantity,
         });
+        continue;
+      }
+      if (slot.stockChangedAt && slot.stockChangedAt.toMillis() > observedAt.getTime()) {
+        // The ledger moved this slot after the count was taken: the count can't be compared.
+        result.supersededSlots.push(slotCode);
         continue;
       }
       if (report.quantity !== slot.currentQuantity) {
@@ -93,6 +113,7 @@ class MachineInventorySyncService {
 
     await record('INVENTORY_REPORTED', 'summary', null, {
       slotsReported: result.slotsReported,
+      supersededSlots: result.supersededSlots.length,
       mismatches: result.mismatches.length,
       unmappedSlots: result.unmappedSlots.length,
     });

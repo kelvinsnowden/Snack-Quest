@@ -26,6 +26,7 @@ export const INTEGRATION_COLLECTIONS = [
   'alerts',
   'manufacturerApiCredentials',
   'paymentInitiations',
+  'slotMappingHistory',
 ];
 
 export async function clearIntegrationCollections(businessId: string): Promise<void> {

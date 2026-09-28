@@ -297,6 +297,28 @@ class MachineIntegrationRepository {
     });
   }
 
+  /**
+   * Records that an inventory report observed at `observedAt` is being
+   * applied — unless one observed later was already applied, in which
+   * case this one is stale and false is returned. No integration record
+   * (a pre-registry machine) means nothing to compare against: true.
+   */
+  async noteInventoryReport(machineId: string, observedAt: Date): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists) {
+        return true;
+      }
+      const last = (snapshot.data() as MachineIntegration).lastInventoryObservedAt ?? null;
+      if (last && last.toMillis() > observedAt.getTime()) {
+        return false;
+      }
+      tx.update(ref, { lastInventoryObservedAt: Timestamp.fromDate(observedAt) });
+      return true;
+    });
+  }
+
   async updateFirmware(machineId: string, facts: Partial<Pick<MachineIntegration, 'firmwareVersion' | 'controllerType' | 'controllerVersion' | 'integrationVersion'>>): Promise<void> {
     const defined = Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== undefined && value !== null));
     if (Object.keys(defined).length > 0) {

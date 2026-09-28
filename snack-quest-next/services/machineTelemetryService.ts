@@ -1,3 +1,4 @@
+import { parseDeviceTime } from '@/lib/vending/machineEvents';
 import 'server-only';
 
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
@@ -88,11 +89,7 @@ export const machineTelemetryService = new MachineTelemetryService();
 export { MachineTelemetryService };
 
 function parseDeviceTimestamp(iso: string | null): MachineTelemetryEvent['deviceTimestamp'] {
-  if (!iso) {
-    return null;
-  }
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime())
-    ? null
-    : (Timestamp.fromDate(parsed) as unknown as MachineTelemetryEvent['deviceTimestamp']);
+  // Offset-less or unparseable times are absent, never guessed (see `parseDeviceTime`).
+  const parsed = parseDeviceTime(iso);
+  return parsed ? (Timestamp.fromDate(parsed) as unknown as MachineTelemetryEvent['deviceTimestamp']) : null;
 }

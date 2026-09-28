@@ -1,3 +1,4 @@
+import { withinOneWindow } from '../helpers/rateLimitWindow';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Timestamp } from 'firebase-admin/firestore';
@@ -286,6 +287,7 @@ describe('credential lifecycle', () => {
 
 describe('rate limiting and abuse isolation', () => {
   it('a machine over its heartbeat budget gets 429 with machine-readable details and Retry-After', async () => {
+    await withinOneWindow();
     const client = v1(key, machine.machineCode);
     for (let i = 0; i < 12; i += 1) {
       expect((await client.heartbeat({ eventId: eventId() })).status).toBe(202);

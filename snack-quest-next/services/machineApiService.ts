@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { IllegalDispenseCommandTransitionError } from '@/repositories/machineDispenseCommandRepository';
+
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineModelRepository } from '@/repositories/machineModelRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
@@ -293,6 +295,7 @@ class MachineApiService {
     };
     return {
       slotsReported: result.slotsReported,
+      stale: result.stale,
       mismatches: result.mismatches.map((mismatch) => ({ slotId: external(mismatch.slotCode), expected: mismatch.expected, reported: mismatch.reported })),
       unmappedSlots: result.unmappedSlots,
     };
@@ -343,9 +346,11 @@ class MachineApiService {
     // marker is written *before* any command is created, so it can only
     // over-report. Expired-but-uncollected dispenses are still refunded —
     // by the recovery sweep rather than this poll.
+    // Server time lets a machine with a wrong clock judge `expiresAt` correctly.
+    const serverTime = new Date(now).toISOString();
     const queuedUntil = context.integration.commandsQueuedUntil?.toMillis() ?? 0;
     if (queuedUntil < now - 30_000 && !expectOrders) {
-      return { commands: [], nextPollSeconds };
+      return { commands: [], nextPollSeconds, serverTime };
     }
     await dispenseCommandService.expireUncollectedForMachine(context.businessId, context.machine.id);
     const [dispenses, generic] = await Promise.all([
@@ -373,13 +378,25 @@ class MachineApiService {
           })),
       ],
       nextPollSeconds,
+      serverTime,
     };
   }
 
   async acknowledgeCommand(context: MachineApiContext, commandId: string): Promise<{ commandId: string; status: string }> {
     if (commandId.startsWith('DSP-')) {
-      const { command } = await dispenseCommandService.recordProgress(context.businessId, context.machine.id, commandId, 'acknowledged');
-      return { commandId, status: command.status };
+      try {
+        const { command } = await dispenseCommandService.recordProgress(context.businessId, context.machine.id, commandId, 'acknowledged');
+        return { commandId, status: command.status };
+      } catch (error) {
+        // Collected too late (now, or already expired by a sweep): say so precisely.
+        if (error instanceof IllegalDispenseCommandTransitionError && error.from === 'timeout') {
+          const command = await dispenseCommandService.findOwnedCommand(context.businessId, context.machine.id, commandId);
+          if (command?.failureCode === 'business.command_expired') {
+            throw new ContractViolationError('command_expired', 'This dispense expired before it was acknowledged and must not be executed; the customer has been refunded', 409);
+          }
+        }
+        throw error;
+      }
     }
     const generic = await this.requireGenericCommand(context, commandId);
     try {

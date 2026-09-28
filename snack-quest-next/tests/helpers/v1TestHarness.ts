@@ -144,7 +144,7 @@ export function v1(key: Key, machineCode: string, defaults: SignOptions = {}) {
     inventory: async (body: unknown, o: SignOptions = {}) => toResult(await inventoryRoute(signed(key, `${base}/inventory`, body, { ...defaults, ...o }), machine(machineCode))),
     events: async (body: unknown, o: SignOptions = {}) => toResult(await eventsRoute(signed(key, `${base}/events`, body, { ...defaults, ...o }), machine(machineCode))),
     commands: async (o: SignOptions = {}) =>
-      toResult<{ commands: { commandId: string; type: string; slotId?: string; expiresAt: string }[]; reportOutcomes?: { commandId: string }[]; nextPollSeconds?: number }>(
+      toResult<{ commands: { commandId: string; type: string; slotId?: string; expiresAt: string }[]; reportOutcomes?: { commandId: string }[]; nextPollSeconds?: number; serverTime?: string }>(
         await commandsRoute(signed(key, `${base}/commands`, undefined, { ...defaults, ...o }), machine(machineCode)),
       ),
     ack: async (commandId: string, o: SignOptions = {}) =>

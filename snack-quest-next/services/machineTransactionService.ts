@@ -1,3 +1,4 @@
+import { parseDeviceTime } from '@/lib/vending/machineEvents';
 import 'server-only';
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -1008,11 +1009,7 @@ export { MachineTransactionService };
 
 /** A device's own ISO timestamp, kept as a fact rather than trusted for ordering — an unparseable or missing value is simply absent, never a thrown error over a field nothing downstream depends on. */
 function parseDeviceTimestamp(iso: string | null): MachineTransaction['createdAt'] | null {
-  if (!iso) {
-    return null;
-  }
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime())
-    ? null
-    : (Timestamp.fromDate(parsed) as unknown as MachineTransaction['createdAt']);
+  // Offset-less or unparseable times are absent, never guessed (see `parseDeviceTime`).
+  const parsed = parseDeviceTime(iso);
+  return parsed ? (Timestamp.fromDate(parsed) as unknown as MachineTransaction['createdAt']) : null;
 }

@@ -84,6 +84,25 @@ export const PLATFORM_ONLY_EVENT_TYPES: readonly MachineEventType[] = ['DISPENSE
 const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * A device's timestamp, only if it is unambiguous: RFC 3339 / ISO 8601
+ * **with** an explicit offset (`Z` or `±hh:mm`). A time without one
+ * (`2026-09-28T10:00:00`) would be read as the *server's* local time —
+ * a guess — so it is treated as absent and receipt time is used
+ * instead. Date-only strings, epoch numbers and anything unparseable
+ * are absent too.
+ */
+export function parseDeviceTime(value: string | null | undefined): Date | null {
+  if (typeof value !== 'string' || value.length > 40) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
  * When an event happened: the machine's own timestamp if it parses and
  * is plausible (not in the future, not more than a day stale), else
  * Snack Quest's receipt time. A queued-while-offline event legitimately
@@ -91,11 +110,8 @@ const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
  * to 1970 does not get to rewrite history.
  */
 export function resolveOccurredAt(deviceTimestamp: string | null | undefined, receivedAt: Date): Date {
-  if (!deviceTimestamp) {
-    return receivedAt;
-  }
-  const parsed = new Date(deviceTimestamp);
-  if (Number.isNaN(parsed.getTime())) {
+  const parsed = parseDeviceTime(deviceTimestamp);
+  if (!parsed) {
     return receivedAt;
   }
   const skew = receivedAt.getTime() - parsed.getTime();

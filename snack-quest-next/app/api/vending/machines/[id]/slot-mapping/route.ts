@@ -3,6 +3,17 @@ import { readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRo
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { machineSlotService } from '@/services/machineSlotService';
 import { RegistryValidationError } from '@/services/manufacturerRegistryService';
+import { slotMappingHistoryRepository } from '@/repositories/slotMappingHistoryRepository';
+import { toJsonSafe } from '@/lib/vending/serializeIntegration';
+
+/** The mapping's full history for this machine, newest first — append-only, never rewritten. */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+  const { id } = await params;
+  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) => {
+    const history = await slotMappingHistoryRepository.listForMachine(session.businessId, id);
+    return Response.json(toJsonSafe({ history }));
+  });
+}
 
 /**
  * Sets which manufacturer slot name each Snack Quest slot answers to
@@ -27,7 +38,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
       return { slotCode, manufacturerSlotId: manufacturerSlotId === '' ? null : (manufacturerSlotId as string | null) };
     });
-    const slots = await machineSlotService.setSlotMappings(session.businessId, id, mappings);
+    const slots = await machineSlotService.setSlotMappings(session.businessId, id, mappings, session.uid);
     await recordAuditLog(request, { businessId: session.businessId, actorId: session.uid, action: 'set_slot_mapping', entityType: 'machine', entityId: id, after: { mappings }, machineId: id });
     return Response.json({ slots: slots.map((slot) => ({ slotCode: slot.slotCode, manufacturerSlotId: slot.manufacturerSlotId ?? null })) });
   });

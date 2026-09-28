@@ -222,6 +222,10 @@ paths:
                       nextPollSeconds:
                         type: integer
                         description: 2 while a customer is paying at this machine, otherwise 10.
+                      serverTime:
+                        type: string
+                        format: date-time
+                        description: Snack Quest's clock (UTC). Compare expiresAt with this, not with your own clock. The acknowledgement remains the authority on whether a command may still run.
                   meta: { $ref: "#/components/schemas/Meta" }
         "4XX": { $ref: "#/components/responses/Error" }
         "5XX": { $ref: "#/components/responses/Error" }
@@ -530,6 +534,9 @@ components:
       type: object
       properties:
         slotsReported: { type: integer }
+        stale:
+          type: boolean
+          description: True when a report taken later was already applied; this one was recorded but not compared.
         mismatches:
           type: array
           items:

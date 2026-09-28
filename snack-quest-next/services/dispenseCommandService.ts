@@ -406,6 +406,12 @@ class DispenseCommandService {
     return { outcome, command };
   }
 
+  /** The command, if it belongs to this machine — null otherwise (never another machine's). */
+  async findOwnedCommand(businessId: string, machineId: string, commandRef: string): Promise<MachineDispenseCommand | null> {
+    const command = await machineDispenseCommandRepository.findByCommandRef(businessId, commandRef);
+    return command && command.machineId === machineId ? command : null;
+  }
+
   private async requireOwnedCommand(businessId: string, machineId: string, commandRef: string): Promise<MachineDispenseCommand> {
     const command = await machineDispenseCommandRepository.findByCommandRef(businessId, commandRef);
     if (!command || command.machineId !== machineId) {

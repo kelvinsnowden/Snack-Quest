@@ -70,6 +70,8 @@ export interface MachineIntegration extends AuditFields {
   errorCounts: Record<IntegrationErrorKind, number>;
   lastError: { kind: IntegrationErrorKind; message: string; at: Timestamp } | null;
   /** The last full status the machine itself reported through the v1 API — what an inbound-only adapter answers `getMachineStatus` from, since Snack Quest cannot call that machine. */
+  /** When the newest applied inventory report was taken (device time if trustworthy, else receipt). An older report arriving later is not compared against the ledger. */
+  lastInventoryObservedAt?: Timestamp | null;
   lastReportedStatus: {
     online: boolean;
     doorOpen: boolean | null;
