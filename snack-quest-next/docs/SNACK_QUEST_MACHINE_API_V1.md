@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | API version | `1` (every response carries `SQ-API-Version: 1`) |
-| Base URL | `https://www.snackquests.shop` |
+| Base URL | **Production:** `https://www.snackquests.shop`. **Sandbox:** a separate deployment; its base URL is given to you with your sandbox keys (§2.1) |
 | Transport | HTTPS only, JSON bodies (`Content-Type: application/json`, UTF-8) |
 | Authentication | HMAC-SHA256 signed requests (§3) |
 | Machine-readable spec | [`docs/openapi/machine-api-v1.yaml`](openapi/machine-api-v1.yaml) (OpenAPI 3.0) |
@@ -62,6 +62,16 @@ may use either or both.
 Model B needs no inbound connectivity to the machine. If you're
 starting fresh, it's the one we recommend.
 
+**Which parts of this document apply to you:**
+
+- **Model B** (your machine or cloud calls Snack Quest): all of it
+  except §8. Your machine implements §§3–7 and answers §6 commands.
+- **Model A** (Snack Quest calls your API): §3 (you sign webhook
+  deliveries), §8 (webhooks), §9 (event vocabulary), §10–12. The API
+  Snack Quest calls on your side is described in the integration guide
+  (§6 there). You do **not** poll §6.1 or acknowledge commands here —
+  Snack Quest sends each vend to your API instead.
+
 For Model A, Snack Quest writes an **adapter** for your API. Your
 events still end up in the same vocabulary (§9), your dispenses in
 the same lifecycle (§6.4), and your credentials in the same signing
@@ -106,12 +116,20 @@ environment:
 - **`production`**: live machines. Keys start with `sqk_live_`. These
   are issued only after certification (§12).
 
-The environment is set by the key, not by the URL. A sandbox key
-can reach only sandbox machines, and a production key only production
-machines. Using a sandbox key on one of your production machines (or
-the reverse) is refused with `403 environment_mismatch` before anything
-is read or written — the commonest onboarding mistake, so it has its
-own code. A machine that isn't yours at all is `404 machine_not_found`.
+**Sandbox and production are separate deployments with separate base
+URLs and separate data.** Sandbox keys and sandbox machines exist only
+on the sandbox deployment; your production keys and machines only on
+production (`https://www.snackquests.shop`). Nothing you do with a
+sandbox key can reach a production machine, a real customer or real
+money. Point your firmware's base URL, keys and machine registrations
+at one environment at a time: the production deployment never
+activates, dispenses to or certifies a sandbox machine, so sandbox
+testing against the production URL receives no dispense commands.
+
+Within a deployment the key's environment must also match the
+machine's: a sandbox key used on a production machine (or the reverse)
+is refused with `403 environment_mismatch` before anything is read or
+written. A machine that isn't yours at all is `404 machine_not_found`.
 
 ---
 
@@ -166,7 +184,9 @@ v1
 ```
 
 - The path starts with `/api/v1/…`, not the host. Include `?query` if
-  you send one.
+  you send one. Paths have **no trailing slash**: a request to
+  `…/heartbeat/` is redirected, and the redirected request no longer
+  matches its signature.
 - Hash the **exact bytes** you put on the wire. If you pretty-print or
   re-serialize JSON after signing, the signature fails.
 - A request with no body (every `GET`, and `POST …/ack`) hashes the
@@ -536,10 +556,16 @@ Connect is safe to call on every boot.
 { "data": { "accepted": true, "reportOutcomes": [ { "commandId": "DSP-3F9A1C22", "reason": "no_outcome_received" } ] } }
 ```
 
-`reportOutcomes` lists dispenses of yours whose outcome Snack Quest is
-still waiting for (`outcome_unknown`, `no_outcome_received`,
-`in_progress_too_long`; more reasons may be added). It is usually
-empty. Answer each one with `POST …/commands/{commandId}/status`:
+`reportOutcomes` lists dispenses **you acknowledged** whose outcome
+Snack Quest is still waiting for (`reason`: `in_progress_too_long` —
+acknowledged more than 3 minutes ago with no outcome yet; or
+`no_outcome_received` — it has since timed out; more reasons may be
+added, answer them all the same way). A command you never acknowledged
+is never listed: Snack Quest already knows it didn't run. The list is
+usually empty. Answer each listed command **once**, with
+`POST …/commands/{commandId}/status`; once answered, it is no longer
+listed (if your answer fails with a network error, the next heartbeat
+lists it again — just answer again with the same `eventId`):
 
 | What your persistent store says about the command | Report |
 |---|---|
@@ -1038,16 +1064,16 @@ the server, the OpenAPI document and this table ever disagree.
 | 401 | `stale_timestamp` | X-SQ-Timestamp is outside ±300 s. details.serverTimestamp gives the server time: correct your offset and retry. | Yes — backoff, same `eventId`, fresh nonce |
 | 401 | `invalid_nonce` | X-SQ-Nonce is not 16–64 characters of [A-Za-z0-9_-]. | No — fix the request |
 | 401 | `invalid_signature` | The signature does not match. Check the canonical string against the test vectors. | No — fix the request |
-| 401 | `replayed_request` | This nonce was already used. Every attempt needs a fresh nonce. | No — fix the request |
+| 401 | `replayed_request` | This nonce was already used. Every attempt needs a fresh nonce. | Not as-is — re-sign with a fresh nonce and timestamp, same body and `eventId` |
 | 403 | `environment_mismatch` | A sandbox key addressed a production machine, or vice versa. | No — fix the request |
 | 403 | `manufacturer_suspended` | This manufacturer is suspended. | After the cause is fixed on our side or yours |
 | 404 | `machine_not_found` | No machine with this code is available to these credentials. | No — fix the request |
 | 404 | `machine_not_provisioned` | No machine is registered for this manufacturerMachineId under these credentials. | After the cause is fixed on our side or yours |
-| 404 | `command_not_found` | No such command for this machine. | No — fix the request |
+| 404 | `command_not_found` | No such command for this machine. | No. On an ack: **do not execute**. On a report: stop re-sending it and check the machine code and `commandId` |
 | 404 | `manufacturer_not_found` | The webhook slug does not belong to these credentials. | No — fix the request |
-| 409 | `command_expired` | The command expired before it was acknowledged. DO NOT EXECUTE IT. | No — fix the request |
-| 409 | `invalid_command_state` | The command can no longer move to that state (e.g. already finished). DO NOT EXECUTE IT. | No — fix the request |
-| 409 | `idempotency_key_reused` | This eventId was already used for a different report. Event ids are per occurrence. | No — fix the request |
+| 409 | `command_expired` | The command expired before it was acknowledged. DO NOT EXECUTE IT. | No — **do not execute**; discard the command. Nothing to report: the customer is already refunded |
+| 409 | `invalid_command_state` | The command can no longer move to that state (e.g. already finished). DO NOT EXECUTE IT. | No. On an ack: **do not execute** (it already ran or was resolved). On a report: stop re-sending it; keep it and its `SQ-Request-Id` for support |
+| 409 | `idempotency_key_reused` | This eventId was already used for a different report. Event ids are per occurrence. | No — the first report stands. Fix your `eventId` generation; contact support if a real outcome is now unreported |
 | 422 | `validation_failed` | The body does not match the schema; details lists each problem. | No — fix the request |
 | 422 | `dispense_events_not_accepted_here` | DISPENSE_* outcomes go to /commands/{commandId}/status, not /events. | No — fix the request |
 | 422 | `invalid_status_for_command` | That status is not valid for this kind of command. | No — fix the request |

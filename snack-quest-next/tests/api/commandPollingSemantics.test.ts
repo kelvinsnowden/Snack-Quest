@@ -90,6 +90,33 @@ describe('restarts and power loss', () => {
     expect((beat.data as { reportOutcomes?: { commandId: string }[] }).reportOutcomes?.map((r) => r.commandId)).toContain(commandRef);
   });
 
+  it('reportOutcomes asks only about acknowledged dispenses, and stops once the machine answers — even "unknown"', async () => {
+    const client = v1(key, machine.machineCode);
+    const listed = async () => ((await client.heartbeat({ eventId: `hb-${Date.now()}-${Math.random()}` })).data as { reportOutcomes: { commandId: string; reason: string }[] }).reportOutcomes;
+
+    // Expired uncollected — never acknowledged, already refunded: never asked about.
+    const expired = await queued();
+    await adminFirestore.collection('machineDispenseCommands').doc(dispenseCommandDocId(expired.id)).update({ expiresAt: ago(10 * 60_000), updatedAt: ago(10 * 60_000) });
+    await dispenseRecoveryService.sweep(BUSINESS_ID);
+    expect(await moneyOf(expired.id)).toBe('paid_vend_failed');
+
+    // Acknowledged, then silent past the timeout: asked about.
+    const lost = await queued();
+    expect((await client.ack(lost.commandRef)).status).toBe(200);
+    await adminFirestore.collection('machineDispenseCommands').doc(dispenseCommandDocId(lost.id)).update({ updatedAt: ago(10 * 60_000) });
+    await dispenseRecoveryService.sweep(BUSINESS_ID);
+    expect((await listed()).map((r) => r.commandId)).toEqual([lost.commandRef]);
+
+    // The machine lost its record, so it answers "unknown" as the spec says: recorded, and not asked again.
+    const answer = await client.report(lost.commandRef, { status: 'unknown', eventId: `ro-${lost.id}`, failureReason: 'no record' });
+    expect(answer.status).toBe(200);
+    expect(await listed()).toEqual([]);
+    expect(await moneyOf(lost.id)).toBe('manual_review');
+    // A definite answer found later still resolves it.
+    expect((await client.report(lost.commandRef, { status: 'failed', eventId: `ro2-${lost.id}`, failureReason: 'not executed' })).data).toMatchObject({ result: 'applied' });
+    expect(await moneyOf(lost.id)).toBe('paid_vend_failed');
+  });
+
   it('power lost before acknowledging: the command is simply offered again (nothing ran)', async () => {
     const { commandRef } = await queued();
     const client = v1(key, machine.machineCode);

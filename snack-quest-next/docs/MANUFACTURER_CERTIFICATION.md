@@ -56,9 +56,10 @@ on hand-recorded evidence alone. Two more rules:
 
 ## 2. The automated harness (Model B)
 
-Snack Quest runs the harness from its admin console against one of your
-**sandbox** machines. It never runs against production, and it refuses
-to run on Snack Quest's production deployment.
+Snack Quest runs the harness from its sandbox deployment against one of
+your **sandbox** machines — the machine talks to the sandbox base URL you
+were given. It never runs against production, and it refuses to run on
+the production deployment.
 
 **Before a run**
 

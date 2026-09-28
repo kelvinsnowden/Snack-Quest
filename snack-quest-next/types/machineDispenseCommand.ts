@@ -52,7 +52,10 @@ export const DISPENSE_COMMAND_STATUS_TRANSITIONS: Record<DispenseCommandStatus, 
   dispensed: [],
   rejected: [],
   failed: [],
-  timeout: ['dispensed', 'failed'],
+  // `unknown` from `timeout`: the machine, asked for the outcome, answers
+  // that it can't tell (e.g. its record was lost). Recorded, so it isn't
+  // asked again; a later definite report still resolves it.
+  timeout: ['dispensed', 'failed', 'unknown'],
   unknown: ['dispensed', 'failed'],
 };
 

@@ -27,7 +27,7 @@ info:
     and in the narrative specification disagree.
 servers:
   - url: https://www.snackquests.shop
-    description: Production and sandbox (the environment is determined by the key, not the host)
+    description: Production (production keys and machines only). Sandbox is a separate deployment whose base URL is given to you with your sandbox keys.
 
 security:
   - IntegrationSignature: []
@@ -536,7 +536,7 @@ components:
             type: object
             properties:
               commandId: { type: string }
-              reason: { type: string, description: "outcome_unknown | no_outcome_received | in_progress_too_long; more may be added" }
+              reason: { type: string, description: "no_outcome_received | in_progress_too_long; more may be added — answer every listed command the same way (see the specification)" }
 
     StatusRequest:
       type: object

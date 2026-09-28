@@ -290,11 +290,19 @@ class DispenseCommandService {
    * know — returned to the machine (heartbeat `reportOutcomes`) so one
    * that stored its outcomes can resend them. The inbound counterpart of
    * pull reconciliation.
+   *
+   * Only dispenses the machine **acknowledged** can have run (a compliant
+   * machine never executes without a `200` ack), so only those are asked
+   * about: one that expired uncollected is already known not to have
+   * dispensed. And a machine is asked once per command, in effect: after it
+   * answers — even `unknown`, "I can't tell" — the command leaves the list
+   * (the answer moves it out of `timeout`; `unknown` is never asked about).
    */
   async listNeedingOutcome(businessId: string, machineId: string): Promise<MachineDispenseCommand[]> {
     const stuckBefore = Date.now() - IN_FLIGHT_REPORT_AFTER_MS;
-    const commands = await machineDispenseCommandRepository.listForMachineInStatuses(businessId, machineId, ['unknown', 'timeout', 'acknowledged', 'dispensing']);
-    return commands.filter((command) => command.status === 'unknown' || command.status === 'timeout' || command.updatedAt.toMillis() < stuckBefore);
+    const commands = await machineDispenseCommandRepository.listForMachineInStatuses(businessId, machineId, ['timeout', 'acknowledged', 'dispensing']);
+    const wasAcknowledged = (command: MachineDispenseCommand) => command.statusHistory.some((entry) => entry.status === 'acknowledged' || entry.status === 'dispensing');
+    return commands.filter((command) => (command.status === 'timeout' ? wasAcknowledged(command) : command.updatedAt.toMillis() < stuckBefore));
   }
 
   /**

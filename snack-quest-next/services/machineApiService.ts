@@ -183,7 +183,7 @@ class MachineApiService {
       accepted: true,
       reportOutcomes: outstanding.map((command) => ({
         commandId: command.commandRef,
-        reason: command.status === 'unknown' ? 'outcome_unknown' : command.status === 'timeout' ? 'no_outcome_received' : 'in_progress_too_long',
+        reason: command.status === 'timeout' ? 'no_outcome_received' : 'in_progress_too_long',
       })),
     };
   }

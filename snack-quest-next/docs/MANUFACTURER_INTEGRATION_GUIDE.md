@@ -104,16 +104,22 @@ events pushed by webhook. Agree on this with your integration engineer.
 
 From Snack Quest you receive:
 
-1. your **manufacturer slug** (used in the webhook URL);
-2. a **sandbox API key**: a key id `sqk_test_…` and a secret `sqs_…`. The
+1. the **sandbox base URL** — a separate deployment from production
+   (`https://www.snackquests.shop`), with its own data;
+2. your **manufacturer slug** (used in the webhook URL);
+3. a **sandbox API key**: a key id `sqk_test_…` and a secret `sqs_…`. The
    secret is shown once. Store it like a password;
-3. one or more **sandbox machines** registered against your own machine
+4. one or more **sandbox machines** registered against your own machine
    ids (`manufacturerMachineId`), with your slot ids mapped;
-4. for Model A, a **sandbox webhook key**, and Snack Quest will ask for
+5. for Model A, a **sandbox webhook key**, and Snack Quest will ask for
    your sandbox API base URL and an API key for it.
 
-The base URL is the same for sandbox and production:
-`https://www.snackquests.shop`. The key decides the environment.
+Sandbox and production are **separate deployments**. Build and certify
+against the sandbox base URL; production (`https://www.snackquests.shop`)
+never dispenses to or certifies a sandbox machine, and sandbox keys don't
+exist there. Keep the base URL and the key together in your
+configuration, so a unit can't end up with one environment's URL and
+the other's key.
 
 Never put a secret in a mobile app, a web page, a log line, a URL or a
 source repository. Machine-scoped keys (spec §3.6) limit the damage if a
@@ -433,8 +439,9 @@ looked up. See [`MANUFACTURER_CERTIFICATION.md`](MANUFACTURER_CERTIFICATION.md#4
 
 1. Your model passes certification ([`MANUFACTURER_CERTIFICATION.md`](MANUFACTURER_CERTIFICATION.md)).
 2. Snack Quest issues **production** keys (`sqk_live_…`). Deploy them
-   the way you deployed sandbox keys, and never ship a sandbox key in
-   production firmware.
+   together with the production base URL (`https://www.snackquests.shop`),
+   the way you deployed sandbox keys with the sandbox URL; never ship a
+   sandbox key or the sandbox URL in production firmware.
 3. Staff register and activate your production machines.
 4. Watch for `SQ-Credential-Status: rotating` on responses. It means a
    new key has been issued and the old one stops working at

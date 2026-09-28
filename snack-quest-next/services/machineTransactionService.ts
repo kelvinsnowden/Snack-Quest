@@ -733,6 +733,11 @@ class MachineTransactionService {
         data: { transactionId: found.id, vendRef: report.vendRef, status: report.status, stage: 'machine', reason: report.failureReason },
       });
     }
+    if (decision.kind === 'noop' && decision.reason === 'already_in_review' && report.status === 'unknown') {
+      // The sale is already with a human; the machine's "I can't tell" still
+      // belongs on the command, so it isn't asked for this outcome again.
+      await this.dispenser.recordOutcome(input.businessId, found.id, report.status, report.failureReason);
+    }
     await machineTelemetryEventRepository.markProcessed(telemetryEventId);
     if (!claim.isNew && result === 'already_recorded') {
       // Resuming our own earlier attempt: to the caller this is a repeat of a report already applied.
