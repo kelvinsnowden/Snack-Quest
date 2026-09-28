@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/dispenseRecoveryService', () => ({ dispenseRecoveryService: { sweep: mocks.sweep } }));
 vi.mock('@/services/machineTransactionService', () => ({ machineTransactionService: { reconcileUnknownDispenses: mocks.reconcileUnknownDispenses } }));
 vi.mock('@/services/alertService', () => ({ alertService: { evaluateAndSync: mocks.evaluateAndSync, notifyCritical: mocks.notifyCritical } }));
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({ scheduledJobRunRepository: { record: mocks.record } }));
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(mocks.record) }));
 
 import { GET } from '@/app/api/cron/vending-fast-recovery/route';
 
@@ -39,17 +39,24 @@ describe('GET /api/cron/vending-fast-recovery', () => {
     expect(mocks.evaluateAndSync).toHaveBeenCalledWith('snack-quest');
   });
 
-  it('a failed text never fails the recovery run', async () => {
+  it('a failed text does not stop recovery: the run is recorded as partial, with the reason', async () => {
     mocks.notifyCritical.mockRejectedValue(new Error('sms gateway down'));
     const response = await GET(authorized());
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, alertsNotified: 0 });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ ok: false, status: 'partial', examined: 2, refunded_never_collected: 1, alertsNotified: null, errors: [{ step: 'critical alert texts', message: 'sms gateway down' }] });
+    expect(mocks.evaluateAndSync).toHaveBeenCalled();
   });
 
-  it('records a failed run and 500s when recovery itself fails', async () => {
+  it('one step failing still runs the others (per-step isolation)', async () => {
+    mocks.sweep.mockRejectedValue(new Error('firestore down'));
+    const response = await GET(authorized());
+    expect(await response.json()).toMatchObject({ status: 'partial', pulledStillUnknown: 1, alertsNotified: 1 });
+  });
+
+  it('records a partial run and 500s when recovery itself fails', async () => {
     mocks.sweep.mockRejectedValue(new Error('firestore down'));
     const response = await GET(authorized());
     expect(response.status).toBe(500);
-    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ jobName: 'vending-fast-recovery', status: 'failed' }));
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ jobName: 'vending-fast-recovery', status: 'partial' }));
   });
 });

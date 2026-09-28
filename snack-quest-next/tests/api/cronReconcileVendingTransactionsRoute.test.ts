@@ -23,9 +23,7 @@ vi.mock('@/services/deepReconciliationService', () => ({
   deepReconciliationService: { run: vi.fn().mockResolvedValue({ discrepancies: [] }) },
 }));
 
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({
-  scheduledJobRunRepository: { record: recordMock },
-}));
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
 
 import { GET } from '@/app/api/cron/reconcile-vending-transactions/route';
 
@@ -85,7 +83,7 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
     expect(response.status).toBe(200);
     expect(reconcileStuckTransactionsMock).toHaveBeenCalledWith('snack-quest');
     expect(reconcileStuckPendingTransactionsMock).toHaveBeenCalledWith('snack-quest');
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       movedToManualReview: 3,
       resolvedFailed: 1,
@@ -128,7 +126,7 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
     );
   });
 
-  it('records a failed scheduled job run and rethrows when either sweep throws', async () => {
+  it('records a partial scheduled job run and answers 500 when either sweep throws', async () => {
     reconcileStuckTransactionsMock.mockRejectedValue(new Error('Firestore unavailable'));
     reconcileStuckPendingTransactionsMock.mockResolvedValue({
       resolvedFailed: 0,
@@ -136,14 +134,13 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
       stillPending: 0,
     });
 
-    await expect(GET(request())).rejects.toThrow('Firestore unavailable');
+    expect((await GET(request())).status).toBe(500);
 
     expect(recordMock).toHaveBeenCalledWith(
       expect.objectContaining({
         businessId: 'snack-quest',
         jobName: 'reconcile-vending-transactions',
-        status: 'failed',
-        resultSummary: null,
+        status: 'partial',
         error: 'Firestore unavailable',
       }),
     );

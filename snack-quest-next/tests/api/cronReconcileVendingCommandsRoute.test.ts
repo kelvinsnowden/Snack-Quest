@@ -24,9 +24,7 @@ vi.mock('@/services/dispenseRecoveryService', () => ({
   dispenseRecoveryService: { sweep: recoverySweepMock },
 }));
 
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({
-  scheduledJobRunRepository: { record: recordMock },
-}));
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
 
 import { GET } from '@/app/api/cron/reconcile-vending-commands/route';
 
@@ -87,7 +85,7 @@ describe('GET /api/cron/reconcile-vending-commands', () => {
     expect(sweepTimedOutMock).toHaveBeenCalledWith('snack-quest');
     expect(probeMock).toHaveBeenCalledWith('snack-quest');
     expect(recoverySweepMock).toHaveBeenCalledWith('snack-quest');
-    expect(await response.json()).toEqual({ ok: true, expired: 2, dispenseTimedOut: 1, integrationsProbed: 3, integrationProbesFailed: 1, recoveryExamined: 0 });
+    expect(await response.json()).toMatchObject({ ok: true, expired: 2, dispenseTimedOut: 1, integrationsProbed: 3, integrationProbesFailed: 1, recoveryExamined: 0 });
   });
 
   it('records a succeeded scheduled job run with the result summary', async () => {
@@ -106,17 +104,16 @@ describe('GET /api/cron/reconcile-vending-commands', () => {
     );
   });
 
-  it('records a failed scheduled job run and rethrows when the sweep itself throws', async () => {
+  it('records a partial scheduled job run and answers 500 when the sweep itself throws', async () => {
     reconcileStuckCommandsMock.mockRejectedValue(new Error('Firestore unavailable'));
 
-    await expect(GET(request())).rejects.toThrow('Firestore unavailable');
+    expect((await GET(request())).status).toBe(500);
 
     expect(recordMock).toHaveBeenCalledWith(
       expect.objectContaining({
         businessId: 'snack-quest',
         jobName: 'reconcile-vending-commands',
-        status: 'failed',
-        resultSummary: null,
+        status: 'partial',
         error: 'Firestore unavailable',
       }),
     );

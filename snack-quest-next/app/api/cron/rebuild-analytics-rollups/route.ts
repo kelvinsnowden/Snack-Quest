@@ -1,10 +1,9 @@
 import { analyticsRollupService } from '@/services/analyticsRollupService';
 import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
+import { scheduledJobService } from '@/services/scheduledJobService';
 import { dateKey } from '@/lib/analytics/dateKey';
 
-const JOB_NAME = 'rebuild-analytics-rollups';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -40,38 +39,13 @@ export async function GET(request: Request): Promise<Response> {
   if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-
-  try {
+  const outcome = await scheduledJobService.run(businessId, 'rebuild-analytics-rollups', async (job) => {
     const startDate = dateKey(new Date(Date.now() - 3 * DAY_MS));
     const endDate = dateKey(new Date());
-
-    const [traffic, lifetime] = await Promise.all([
-      analyticsRollupService.rebuildTrafficRange(businessId, startDate, endDate),
-      analyticsRollupService.rebuildCustomerLifetime(businessId),
-    ]);
-
-    const result = { traffic, lifetime };
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'succeeded',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: result,
-      error: null,
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: null,
-      error: error instanceof Error ? error.message : 'unknown error',
-    });
-    throw error;
-  }
+    const traffic = await job.step('traffic rollups', () => analyticsRollupService.rebuildTrafficRange(businessId, startDate, endDate));
+    const lifetime = await job.step('customer lifetime', () => analyticsRollupService.rebuildCustomerLifetime(businessId));
+    return { traffic, lifetime };
+  });
+  return scheduledJobService.toResponse(outcome);
 }

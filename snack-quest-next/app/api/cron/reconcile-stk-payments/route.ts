@@ -3,9 +3,7 @@ import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { conversationService } from '@/services/conversationService';
 import { notificationService } from '@/services/notificationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
-
-const JOB_NAME = 'reconcile-stk-payments';
+import { scheduledJobService } from '@/services/scheduledJobService';
 
 /**
  * The STK Push Query fallback sweep's real trigger (§ Daraja
@@ -29,33 +27,37 @@ export async function GET(request: Request): Promise<Response> {
   if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-
-  try {
+  const outcome = await scheduledJobService.run(businessId, 'reconcile-stk-payments', async (job) => {
     // First, settle anything Safaricom already has a verdict on
     // (§ payment auto-recovery). The payment screen does this too, but
     // only while it is open — a customer who approved the prompt and
     // closed the tab has nothing polling for them, and before this
     // their paid order waited on a human noticing the manual-review
     // page. Runs ahead of the sweep below so those never reach it.
-    const recovered = await paymentService.recoverAllProcessingPayments(businessId);
+    const recovered = (await job.step('recover processing payments', () => paymentService.recoverAllProcessingPayments(businessId))) ?? [];
     for (const result of recovered) {
-      await conversationService.handlePaymentResult(result);
-    }
-
-    const outcomes = await paymentService.reconcileStuckIntents(businessId);
-
-    for (const outcome of outcomes) {
-      if (outcome.outcome === 'confirmedFailed' && outcome.callbackResult) {
-        await conversationService.handlePaymentResult(outcome.callbackResult);
-      } else if (outcome.outcome === 'needsManualReview' && outcome.reviewReason) {
-        await notificationService.notifyAdmin(businessId, `URGENT: ${outcome.reviewReason}`);
+      try {
+        await conversationService.handlePaymentResult(result);
+      } catch (error) {
+        job.itemError('handle recovered payment', error);
       }
     }
 
-    const result = {
+    const outcomes = (await job.step('reconcile stuck intents', () => paymentService.reconcileStuckIntents(businessId))) ?? [];
+    for (const item of outcomes) {
+      try {
+        if (item.outcome === 'confirmedFailed' && item.callbackResult) {
+          await conversationService.handlePaymentResult(item.callbackResult);
+        } else if (item.outcome === 'needsManualReview' && item.reviewReason) {
+          await notificationService.notifyAdmin(businessId, `URGENT: ${item.reviewReason}`);
+        }
+      } catch (error) {
+        job.itemError('handle reconciled intent', error);
+      }
+    }
+
+    return {
       recovered: recovered.length,
       recoveredSucceeded: recovered.filter((r) => r.status === 'succeeded').length,
       checked: outcomes.length,
@@ -64,25 +66,6 @@ export async function GET(request: Request): Promise<Response> {
       stillPending: outcomes.filter((o) => o.outcome === 'stillPending').length,
       skipped: outcomes.filter((o) => o.outcome === 'skipped').length,
     };
-
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'succeeded',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: result,
-      error: null,
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: null,
-      error: error instanceof Error ? error.message : 'unknown error',
-    });
-    throw error;
-  }
+  });
+  return scheduledJobService.toResponse(outcome);
 }

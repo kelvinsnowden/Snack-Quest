@@ -24,7 +24,7 @@ import { machineIntegrationRepository } from '@/repositories/machineIntegrationR
 import type { VendResultReport } from '@/lib/vending/hardwareAdapter';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
-import type { MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
+import type { MachineDispenseCommand, MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
 
 /**
  * How long a transaction may sit `paid`/`vend_authorized` before the
@@ -728,72 +728,79 @@ class MachineTransactionService {
    * short of definitive (still pending, still dispensing, unknown, or
    * the manufacturer unreachable) leaves the case with a human.
    */
-  async reconcileUnknownDispenses(businessId: string): Promise<{ resolved: number; stillUnknown: number }> {
+  async reconcileUnknownDispenses(businessId: string): Promise<{ resolved: number; stillUnknown: number; itemErrors: Error[] }> {
     let resolved = 0;
     let stillUnknown = 0;
+    const itemErrors: Error[] = [];
     const now = new Date();
     for (const status of ['unknown', 'timeout'] as const) {
       for (const command of await machineDispenseCommandRepository.listByStatusUpdatedBefore(businessId, status, now)) {
-        if (findAdapterRegistration(command.adapterKey)?.direction !== 'outbound') {
-          stillUnknown += 1;
-          continue;
-        }
-        // Back off per command so a manufacturer outage isn't hammered by every sweep.
-        const attempts = command.reconcileAttempts ?? 0;
-        if (command.nextReconcileAt && command.nextReconcileAt.toMillis() > now.getTime()) {
-          stillUnknown += 1;
-          continue;
-        }
-        if (attempts >= PULL_RECONCILE_BACKOFF_MS.length) {
-          // Out of automatic attempts — the case stays with a human.
-          stillUnknown += 1;
-          continue;
-        }
-        const scheduleNext = () =>
-          machineDispenseCommandRepository.scheduleReconcile(
-            businessId,
-            command.transactionId,
-            attempts + 1,
-            attempts + 1 < PULL_RECONCILE_BACKOFF_MS.length ? new Date(now.getTime() + PULL_RECONCILE_BACKOFF_MS[attempts + 1]) : null,
-          );
-        const vendRef = command.vendRef ?? command.commandRef;
-        let report: Awaited<ReturnType<ReturnType<VendingAdapterResolver>['getDispenseStatus']>>;
+        // One command failing (a bad report, a transient write error) is
+        // counted and skipped; the others still reconcile. Applying a
+        // report is idempotent, so the next sweep retries it safely.
         try {
-          report = await this.resolveAdapter(command.adapterKey).getDispenseStatus(command.machineId, vendRef);
+          const outcome = await this.reconcileOneUnknownDispense(businessId, command, now);
+          if (outcome === 'resolved') resolved += 1;
+          else stillUnknown += 1;
         } catch (error) {
-          await machineIntegrationRepository.recordError(command.machineId, 'connection', error instanceof Error ? error.message : 'status lookup failed');
-          await scheduleNext();
           stillUnknown += 1;
-          continue;
-        }
-        if (report.state === 'pending' || report.state === 'dispensing' || report.state === 'unknown') {
-          await scheduleNext();
-          stillUnknown += 1;
-          continue;
-        }
-        const { applied } = await this.applyVendReport({
-          businessId,
-          machineId: command.machineId,
-          report: {
-            vendRef,
-            dispensed: report.state === 'success',
-            status: report.state,
-            failureReason: report.failureReason,
-            deviceTimestamp: null,
-            idempotencyKey: `pull:${command.commandRef}:${report.state}`,
-          },
-          rawPayload: { reconciledFrom: 'getDispenseStatus', commandRef: command.commandRef, state: report.state },
-          source: 'reconciliation',
-          actor: 'system:dispense-reconciliation',
-        });
-        if (applied) {
-          resolved += 1;
-        } else {
-          stillUnknown += 1;
+          logger.error('pull reconciliation failed for one dispense; continuing', { commandRef: command.commandRef, error });
+          itemErrors.push(new Error(`${command.commandRef}: ${error instanceof Error ? error.message : String(error)}`));
         }
       }
     }
-    return { resolved, stillUnknown };
+    return { resolved, stillUnknown, itemErrors };
+  }
+
+  private async reconcileOneUnknownDispense(businessId: string, command: MachineDispenseCommand, now: Date): Promise<'resolved' | 'still_unknown'> {
+    if (findAdapterRegistration(command.adapterKey)?.direction !== 'outbound') {
+      return 'still_unknown';
+    }
+    // Back off per command so a manufacturer outage isn't hammered by every sweep.
+    const attempts = command.reconcileAttempts ?? 0;
+    if (command.nextReconcileAt && command.nextReconcileAt.toMillis() > now.getTime()) {
+      return 'still_unknown';
+    }
+    if (attempts >= PULL_RECONCILE_BACKOFF_MS.length) {
+      // Out of automatic attempts — the case stays with a human.
+      return 'still_unknown';
+    }
+    const scheduleNext = () =>
+      machineDispenseCommandRepository.scheduleReconcile(
+        businessId,
+        command.transactionId,
+        attempts + 1,
+        attempts + 1 < PULL_RECONCILE_BACKOFF_MS.length ? new Date(now.getTime() + PULL_RECONCILE_BACKOFF_MS[attempts + 1]) : null,
+      );
+    const vendRef = command.vendRef ?? command.commandRef;
+    let report: Awaited<ReturnType<ReturnType<VendingAdapterResolver>['getDispenseStatus']>>;
+    try {
+      report = await this.resolveAdapter(command.adapterKey).getDispenseStatus(command.machineId, vendRef);
+    } catch (error) {
+      await machineIntegrationRepository.recordError(command.machineId, 'connection', error instanceof Error ? error.message : 'status lookup failed');
+      await scheduleNext();
+      return 'still_unknown';
+    }
+    if (report.state === 'pending' || report.state === 'dispensing' || report.state === 'unknown') {
+      await scheduleNext();
+      return 'still_unknown';
+    }
+    const { applied } = await this.applyVendReport({
+      businessId,
+      machineId: command.machineId,
+      report: {
+        vendRef,
+        dispensed: report.state === 'success',
+        status: report.state,
+        failureReason: report.failureReason,
+        deviceTimestamp: null,
+        idempotencyKey: `pull:${command.commandRef}:${report.state}`,
+      },
+      rawPayload: { reconciledFrom: 'getDispenseStatus', commandRef: command.commandRef, state: report.state },
+      source: 'reconciliation',
+      actor: 'system:dispense-reconciliation',
+    });
+    return applied ? 'resolved' : 'still_unknown';
   }
 
   /**

@@ -6,6 +6,7 @@ import { paymentIntentRepository } from '@/repositories/paymentIntentRepository'
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { inventoryBatchRepository } from '@/repositories/inventoryBatchRepository';
 import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
+import { scheduledJobService, type JobHealth } from '@/services/scheduledJobService';
 import { packageRepository } from '@/repositories/packageRepository';
 import { integrationSettingsService, type IntegrationSummary } from '@/services/integrationSettingsService';
 import type { DomainEvent, PaymentIntent, ScheduledJobRun, Shipment, WebhookEvent } from '@/types';
@@ -39,6 +40,8 @@ export interface OperationsSnapshot {
   integrationIssues: IntegrationSummary[];
   expiringBatches: ExpiringBatchRow[];
   scheduledJobRuns: { id: string; data: ScheduledJobRun }[];
+  /** Per-job state from the run records: ok, running, failing, abandoned, overdue, or never run. */
+  jobHealth: JobHealth[];
   /** Sum of every failure count above — the "system health" rollup, deliberately a real count, never a fabricated score (§ Phase 5). */
   totalIssueCount: number;
 }
@@ -62,6 +65,7 @@ class OperationsService {
       integrationSummaries,
       expiringBatches,
       scheduledJobRuns,
+      jobHealth,
     ] = await Promise.all([
       domainEventRepository.listRecentFailures(businessId),
       webhookEventRepository.listFailed(businessId),
@@ -71,6 +75,7 @@ class OperationsService {
       integrationSettingsService.listSummaries(businessId),
       inventoryBatchRepository.listExpiringSoon(businessId, EXPIRING_SOON_DAYS),
       scheduledJobRunRepository.listRecent(businessId),
+      scheduledJobService.health(businessId),
     ]);
 
     const abandonedCutoffMs = Date.now() - ABANDONED_PENDING_AFTER_MS;
@@ -101,7 +106,7 @@ class OperationsService {
       abandonedPaymentIntents.length +
       manualBookingShipments.length +
       integrationIssues.length +
-      scheduledJobRuns.filter((r) => r.data.status === 'failed').length;
+      jobHealth.filter((job) => job.state === 'failing' || job.state === 'abandoned' || job.state === 'overdue').length;
 
     return {
       failedDomainEvents,
@@ -112,6 +117,7 @@ class OperationsService {
       integrationIssues,
       expiringBatches: expiringBatchRows,
       scheduledJobRuns,
+      jobHealth,
       totalIssueCount,
     };
   }

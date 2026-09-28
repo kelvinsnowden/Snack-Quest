@@ -29,13 +29,16 @@ import type { IntegrationCredential, IntegrationCredentialStatus, Machine, Machi
  *
  *   1. read the raw body (size-capped) — bytes, not a decoded string;
  *   2. verify the HMAC signature over those bytes (cheap checks first,
- *      credential from a short cache; failures counted per IP);
+ *      credential from a short cache; failures counted per IP), then
+ *      refuse a suspended manufacturer;
  *   3. resolve which machine it addresses, and whether this credential
  *      may reach it (manufacturer, environment, machine scope);
- *   4. charge rate limits — only now, so forged requests can never spend
- *      a real machine's budget;
- *   5. claim the nonce (replay protection) — only now, so a throttled
- *      request never burns its nonce;
+ *   4. claim the nonce (replay protection) — only after the signature is
+ *      verified, so nobody without the secret can burn a nonce, and
+ *      atomically, so two copies of one request can't both pass;
+ *   5. charge rate limits — only now, so neither forged nor replayed
+ *      requests can spend a real machine's budget (a throttled request
+ *      has spent its nonce; every retry is re-signed anyway);
  *   6. parse JSON and run the handler.
  *
  * Every response — success, refusal, crash — has the same envelope, a

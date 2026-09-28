@@ -192,7 +192,7 @@ describe('base URL safety (SSRF)', () => {
 });
 
 describe('admin routes', () => {
-  const ctx = (environment?: string) => ({ params: Promise.resolve({ id: manufacturerId, ...(environment ? { environment } : {}) }) });
+  const ctx = (environment = 'sandbox') => ({ params: Promise.resolve({ id: manufacturerId, environment }) });
   const put = (body: unknown) => new Request('http://localhost/x', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const post = (body: unknown = {}) => new Request('http://localhost/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 

@@ -45,7 +45,9 @@ export type AlertType =
   /** A machine integration is misbehaving at the protocol level: rate-limited, sending invalid requests, or on uncertified firmware. */
   | 'integration_issue'
   /** Most of one manufacturer's machines went silent together — the manufacturer's cloud (or its link to us) is the likely cause, not the machines. */
-  | 'manufacturer_outage';
+  | 'manufacturer_outage'
+  /** A scheduled job (recovery, reconciliation, rollups) failed, partly failed, was abandoned mid-run, or has not run on schedule. Condition alert, one per job. */
+  | 'job_failure';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertStatus = 'open' | 'acknowledged' | 'resolved';
@@ -87,4 +89,5 @@ export const ALERT_SEVERITY_BY_TYPE: Record<AlertType, AlertSeverity> = {
   dispense_conflict: 'critical',
   integration_issue: 'warning',
   manufacturer_outage: 'critical',
+  job_failure: 'warning',
 };

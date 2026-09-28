@@ -22,6 +22,7 @@ import { ALERT_SEVERITY_BY_TYPE, type Alert, type AlertSeverity, type AlertType 
 import { businessRepository } from '@/repositories/businessRepository';
 import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
 import { notificationService, TemplateNotFoundError, type NotificationService } from '@/services/notificationService';
+import { scheduledJobService } from '@/services/scheduledJobService';
 import { logger } from '@/lib/observability/logger';
 
 const DEFAULT_EXPIRY_WARNING_DAYS = 7;
@@ -59,18 +60,53 @@ class AlertService {
     const machines = await machineRepository.listAllStatuses(businessId);
     const locationByMachine = new Map(machines.map((m) => [m.id, m.locationId]));
 
-    await Promise.all([
-      this.evaluateConnectivity(businessId, machines),
-      this.evaluateInventory(businessId, machines, locationByMachine),
-      this.evaluateReconciliation(businessId, locationByMachine),
-      this.evaluateSubscriptions(businessId, locationByMachine),
-      this.evaluateSettlements(businessId, locationByMachine),
-      this.evaluateFaults(businessId, locationByMachine),
-      this.evaluateInventoryDiscrepancies(businessId, locationByMachine),
-      this.evaluateExpiryRisk(businessId, locationByMachine),
-      this.evaluateIntegrationEvents(businessId, locationByMachine),
-      this.evaluateManufacturerOutages(businessId),
-    ]);
+    // Each evaluator is independent: one failing (a bad record, a
+    // missing index) must not stop the others from raising their alerts.
+    const evaluators: [string, () => Promise<void>][] = [
+      ['connectivity', () => this.evaluateConnectivity(businessId, machines)],
+      ['inventory', () => this.evaluateInventory(businessId, machines, locationByMachine)],
+      ['reconciliation', () => this.evaluateReconciliation(businessId, locationByMachine)],
+      ['subscriptions', () => this.evaluateSubscriptions(businessId, locationByMachine)],
+      ['settlements', () => this.evaluateSettlements(businessId, locationByMachine)],
+      ['faults', () => this.evaluateFaults(businessId, locationByMachine)],
+      ['inventory discrepancies', () => this.evaluateInventoryDiscrepancies(businessId, locationByMachine)],
+      ['expiry risk', () => this.evaluateExpiryRisk(businessId, locationByMachine)],
+      ['integration events', () => this.evaluateIntegrationEvents(businessId, locationByMachine)],
+      ['manufacturer outages', () => this.evaluateManufacturerOutages(businessId)],
+      ['scheduled jobs', () => this.evaluateScheduledJobs(businessId)],
+    ];
+    const results = await Promise.allSettled(evaluators.map(([, run]) => run()));
+    const failed = results.flatMap((result, index) => (result.status === 'rejected' ? [{ name: evaluators[index][0], error: result.reason as unknown }] : []));
+    for (const { name, error } of failed) {
+      logger.error('alert evaluator failed', { businessId, evaluator: name, error });
+    }
+    if (failed.length > 0) {
+      throw new Error(`alert evaluation incomplete: ${failed.map(({ name, error }) => `${name} (${error instanceof Error ? error.message : String(error)})`).join('; ')}`);
+    }
+  }
+
+  /**
+   * A scheduled job that failed, partly failed, was abandoned mid-run
+   * or hasn't run on schedule — from the run records alone
+   * (`scheduledJobService.health`). A job that has never run raises
+   * nothing: it may simply not be scheduled on this deployment, and the
+   * Operations page shows "never run" for it.
+   */
+  private async evaluateScheduledJobs(businessId: string): Promise<void> {
+    const open = new Set<string>();
+    for (const job of await scheduledJobService.health(businessId)) {
+      if (job.state !== 'failing' && job.state !== 'overdue' && job.state !== 'abandoned') continue;
+      const key = `job_failure:${job.jobName}`;
+      open.add(key);
+      const detail =
+        job.state === 'failing'
+          ? `The last run ${job.lastStatus === 'partial' ? 'partly failed' : 'failed'}: ${job.lastError ?? 'no error recorded'}. It runs again on its schedule (${job.trigger}); steps are idempotent, so a re-run is safe.`
+          : job.state === 'abandoned'
+            ? `A run started at ${job.lastRunAt} never finished (killed or timed out). The next run will retry; if this repeats, the job is exceeding the platform's time limit.`
+            : `No run since ${job.lastRunAt} — expected about every ${Math.round(job.expectedEveryMs / 60_000)} minutes (${job.trigger}). Check the scheduler.`;
+      await this.open({ businessId, type: 'job_failure', machineId: null, locationId: null, dedupeKey: key, title: `Scheduled job ${job.jobName}: ${job.state}`, detail });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'job_failure', open);
   }
 
   /**

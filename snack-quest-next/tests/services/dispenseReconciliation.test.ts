@@ -77,9 +77,9 @@ describe('recovering a dispense whose outcome was lost', () => {
 
   it('the sweep leaves it alone while the manufacturer is still dispensing or unreachable', async () => {
     const id = await paidSaleThatTimesOut();
-    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toEqual({ resolved: 0, stillUnknown: 1 });
+    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toMatchObject({ resolved: 0, stillUnknown: 1, itemErrors: [] });
     manufacturer.state.statusUnavailable = true;
-    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toEqual({ resolved: 0, stillUnknown: 1 });
+    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toMatchObject({ resolved: 0, stillUnknown: 1, itemErrors: [] });
     expect((await machineTransactionRepository.findById(BUSINESS_ID, id))?.status).toBe('manual_review');
   });
 
@@ -87,10 +87,10 @@ describe('recovering a dispense whose outcome was lost', () => {
     const id = await paidSaleThatTimesOut();
     const command = await machineDispenseCommandRepository.findByTransactionId(BUSINESS_ID, id);
     manufacturer.state.vends.set(command!.commandRef, { state: 'dispensed' });
-    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toEqual({ resolved: 1, stillUnknown: 0 });
+    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toMatchObject({ resolved: 1, stillUnknown: 0, itemErrors: [] });
     expect((await machineTransactionRepository.findById(BUSINESS_ID, id))?.status).toBe('dispensed');
     expect((await machineDispenseCommandRepository.findByTransactionId(BUSINESS_ID, id))?.status).toBe('dispensed');
-    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toEqual({ resolved: 0, stillUnknown: 0 });
+    expect(await service.reconcileUnknownDispenses(BUSINESS_ID)).toMatchObject({ resolved: 0, stillUnknown: 0, itemErrors: [] });
   });
 
   it('resolves to a refund when the manufacturer reports the vend failed', async () => {

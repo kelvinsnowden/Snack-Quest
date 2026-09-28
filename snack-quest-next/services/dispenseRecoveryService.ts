@@ -81,7 +81,7 @@ class DispenseRecoveryService {
   }
 
   /** Every stuck sale in the tenant, bounded per run. The fast-recovery cron and the admin "recover now" action call this. */
-  async sweep(businessId: string, now: number = Date.now()): Promise<{ examined: number; recovered: Record<RecoveryAction, number> }> {
+  async sweep(businessId: string, now: number = Date.now()): Promise<{ examined: number; recovered: Record<RecoveryAction, number>; itemErrors: Error[] }> {
     const recovered: Record<RecoveryAction, number> = {
       dispatched: 0,
       refunded_never_dispatched: 0,
@@ -101,13 +101,23 @@ class DispenseRecoveryService {
         candidates.add(command.transactionId);
       }
     }
+    // Each sale is recovered on its own: one that errors (a malformed
+    // record, a transient Firestore failure) is logged and counted, and
+    // the rest still get their refunds. Every step is compare-and-set, so
+    // the failed one is simply retried by the next sweep.
+    const itemErrors: Error[] = [];
     for (const transactionId of candidates) {
-      const result = await this.recoverTransaction(businessId, transactionId, now);
-      if (result) {
-        recovered[result.action] += 1;
+      try {
+        const result = await this.recoverTransaction(businessId, transactionId, now);
+        if (result) {
+          recovered[result.action] += 1;
+        }
+      } catch (error) {
+        logger.error('dispense recovery failed for one sale; continuing', { transactionId, error });
+        itemErrors.push(new Error(`${transactionId}: ${error instanceof Error ? error.message : String(error)}`));
       }
     }
-    return { examined: candidates.size, recovered };
+    return { examined: candidates.size, recovered, itemErrors };
   }
 
   private async recoverUndispatched(businessId: string, transactionId: string, transaction: MachineTransaction, now: number): Promise<RecoveryAction | null> {

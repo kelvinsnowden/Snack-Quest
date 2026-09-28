@@ -18,6 +18,7 @@ const ALERT_TYPES: AlertType[] = [
   'dispense_conflict',
   'integration_issue',
   'manufacturer_outage',
+  'job_failure',
 ];
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 

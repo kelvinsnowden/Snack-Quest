@@ -3,10 +3,7 @@ import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { dispenseRecoveryService } from '@/services/dispenseRecoveryService';
 import { machineTransactionService } from '@/services/machineTransactionService';
 import { alertService } from '@/services/alertService';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
-import { logger } from '@/lib/observability/logger';
-
-const JOB_NAME = 'vending-fast-recovery';
+import { scheduledJobService } from '@/services/scheduledJobService';
 
 /**
  * The fast-recovery tier (docs/MACHINE_INTEGRATION_LAYER.md §7): every
@@ -24,32 +21,31 @@ const JOB_NAME = 'vending-fast-recovery';
  * backstop. Most recovery happens before either: on the customer's own
  * status poll and on the machine's command poll.
  *
- * Idempotent: safe to run concurrently and repeatedly.
+ * Idempotent: safe to run concurrently and repeatedly (an overlapping run is
+ * skipped by the job lease; see `scheduledJobService.run`).
  */
 export async function GET(request: Request): Promise<Response> {
   if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-  try {
-    const sweep = await dispenseRecoveryService.sweep(businessId);
-    const pulled = await machineTransactionService.reconcileUnknownDispenses(businessId);
+  const outcome = await scheduledJobService.run(businessId, 'vending-fast-recovery', async (job) => {
+    const sweep = await job.step('recovery sweep', () => dispenseRecoveryService.sweep(businessId));
+    const pulled = await job.step('pull reconciliation', () => machineTransactionService.reconcileUnknownDispenses(businessId));
     // Alerts ride the same schedule, so an operator hears about a
     // critical condition within one run, not when someone next opens
     // the dashboard.
-    await alertService.evaluateAndSync(businessId);
-    const notified = await alertService.notifyCritical(businessId).catch((error: unknown) => {
-      logger.error('critical alert notification failed', { businessId, error });
-      return { notified: 0, digest: false };
-    });
-    const result = { examined: sweep.examined, ...sweep.recovered, pulledResolved: pulled.resolved, pulledStillUnknown: pulled.stillUnknown, alertsNotified: notified.notified };
-    await scheduledJobRunRepository.record({ businessId, jobName: JOB_NAME, status: 'succeeded', durationMs: Date.now() - startedAtMs, resultSummary: result, error: null });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'unknown error';
-    logger.error('fast recovery failed', { error });
-    await scheduledJobRunRepository.record({ businessId, jobName: JOB_NAME, status: 'failed', durationMs: Date.now() - startedAtMs, resultSummary: null, error: message });
-    return Response.json({ ok: false, error: message }, { status: 500 });
-  }
+    await job.step('alert evaluation', () => alertService.evaluateAndSync(businessId));
+    const notified = await job.step('critical alert texts', () => alertService.notifyCritical(businessId));
+    (sweep?.itemErrors ?? []).forEach((error) => job.itemError('recovery sweep', error));
+    (pulled?.itemErrors ?? []).forEach((error) => job.itemError('pull reconciliation', error));
+    return {
+      examined: sweep?.examined ?? null,
+      ...(sweep?.recovered ?? {}),
+      pulledResolved: pulled?.resolved ?? null,
+      pulledStillUnknown: pulled?.stillUnknown ?? null,
+      alertsNotified: notified?.notified ?? null,
+    };
+  });
+  return scheduledJobService.toResponse(outcome);
 }

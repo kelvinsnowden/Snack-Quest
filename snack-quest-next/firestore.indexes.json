@@ -2063,6 +2063,24 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "scheduledJobRuns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "businessId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "jobName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startedAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -2096,6 +2114,12 @@
     {
       "collectionGroup": "rateLimitCounters",
       "fieldPath": "count",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "scheduledJobLeases",
+      "fieldPath": "expiresAt",
+      "ttl": true,
       "indexes": []
     }
   ]

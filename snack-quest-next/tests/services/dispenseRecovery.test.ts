@@ -154,6 +154,31 @@ describe('sweep', () => {
     const second = await dispenseRecoveryService.sweep(BUSINESS_ID);
     expect(Object.values(second.recovered).reduce((a, b) => a + b, 0)).toBe(0);
   });
+
+  it('two overlapping sweeps (a cron retry racing the scheduled run) resolve each sale exactly once', async () => {
+    const ids = [await paid(), await paid(), await paid()];
+    for (const id of ids) await age(adminFirestore.collection('machineTransactions').doc(id), { paidAt: 300, updatedAt: 300 });
+    const [a, b] = await Promise.all([dispenseRecoveryService.sweep(BUSINESS_ID), dispenseRecoveryService.sweep(BUSINESS_ID)]);
+    expect(a.recovered.refunded_never_dispatched + b.recovered.refunded_never_dispatched).toBe(3);
+    for (const id of ids) expect(await statusOf(id)).toBe('paid_vend_failed');
+    expect([...a.itemErrors, ...b.itemErrors]).toEqual([]);
+  });
+
+  it('one sale that errors does not stop the others being recovered; the error is reported', async () => {
+    const broken = await paid();
+    await machineDispenseCommandRepository.claim({ businessId: BUSINESS_ID, machineId: machine.machineId, machineCode: machine.machineCode, transactionId: broken, paymentRef: 'R', slotCode: 'A01', manufacturerSlotId: 'spiral_01', productId: 'pkg-1', quantity: 1, adapterKey: 'snack_quest_gateway', requestedBy: 'test', expiresAt: new Date(Date.now() + 120_000) });
+    // A malformed record: recovery of this one sale throws.
+    await adminFirestore.collection('machineDispenseCommands').doc(dispenseCommandDocId(broken)).update({ updatedAt: 'not-a-timestamp' });
+    await age(adminFirestore.collection('machineTransactions').doc(broken), { paidAt: 300, updatedAt: 300 });
+    const healthy = await paid();
+    await age(adminFirestore.collection('machineTransactions').doc(healthy), { paidAt: 300, updatedAt: 300 });
+
+    const result = await dispenseRecoveryService.sweep(BUSINESS_ID);
+    expect(result.itemErrors).toHaveLength(1);
+    expect(result.itemErrors[0].message).toContain(broken);
+    expect(await statusOf(healthy)).toBe('paid_vend_failed');
+    expect(await statusOf(broken)).toBe('paid');
+  });
 });
 
 describe('orders and polling', () => {
