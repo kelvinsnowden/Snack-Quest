@@ -53,6 +53,7 @@ export const en = {
       '/admin/suppliers': 'Suppliers',
       '/admin/vending': 'Vending Machines',
       '/admin/vending/alerts': 'Alert Center',
+      '/admin/vending/kiosk-screen': 'Machine Screen',
       '/admin/vending/restock': 'Restock Command Center',
       '/admin/vending/partners': 'Machine Owners',
       '/admin/vending/intelligence': 'Network Intelligence',
