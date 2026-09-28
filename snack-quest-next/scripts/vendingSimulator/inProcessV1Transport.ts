@@ -38,6 +38,10 @@ export class InProcessV1Transport implements V1Transport {
     if (path === '/api/v1/machines/connect') {
       return { handler: (await import('@/app/api/v1/machines/connect/route')).POST as Handler, params: {} };
     }
+    const webhook = path.match(/^\/api\/v1\/webhooks\/manufacturers\/([^/]+)$/);
+    if (webhook) {
+      return { handler: (await import('@/app/api/v1/webhooks/manufacturers/[slug]/route')).POST as Handler, params: { slug: decodeURIComponent(webhook[1]) } };
+    }
     const match = path.match(/^\/api\/v1\/machines\/([^/]+)(?:\/(.*))?$/);
     if (!match) {
       throw new Error(`simulator: no route for ${path}`);

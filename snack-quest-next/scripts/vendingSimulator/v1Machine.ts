@@ -37,6 +37,10 @@ export interface SandboxFaults {
   outOfOrderEvents: boolean;
   /** Heartbeats are silently not sent (a stuck scheduler) while the rest keeps working. */
   heartbeatFailure: boolean;
+  /** Every command in a poll response is seen twice (a transport that duplicates messages). */
+  duplicateCommandDelivery: boolean;
+  /** The next outcome report is delivered, but its response is lost — the machine must re-send it unchanged. */
+  loseNextReportResponse: boolean;
 
   // Integration bugs — for proving the certification harness catches them.
   /** Dispenses without acknowledging first (or regardless of the ack's answer). */
@@ -88,6 +92,19 @@ export interface V1CommandExecution {
   outcome: string;
 }
 
+/**
+ * What a real machine keeps in non-volatile memory across reboots: which
+ * commands it has already executed, and the outcome report it owes for
+ * each. Execution is keyed on `commandId` against this record, so a
+ * command seen again — duplicated, re-polled, or after a restart — is
+ * never executed twice; its stored report is re-sent instead.
+ */
+export interface MachinePersistentStore {
+  executed: Map<string, { report: Record<string, unknown> | null; reported: boolean }>;
+}
+
+export const newPersistentStore = (): MachinePersistentStore => ({ executed: new Map() });
+
 export class SandboxOnlyError extends Error {
   constructor() {
     super('The machine simulator only runs with sandbox (sqk_test_) credentials.');
@@ -119,6 +136,8 @@ export class V1SimulatedMachine {
     duplicateEvents: false,
     outOfOrderEvents: false,
     heartbeatFailure: false,
+    duplicateCommandDelivery: false,
+    loseNextReportResponse: false,
     executeWithoutAck: false,
     reportDispensedWhenEmpty: false,
     freshEventIdOnRetry: false,
@@ -128,12 +147,18 @@ export class V1SimulatedMachine {
   readonly requestLog: AttemptLog[] = [];
   private readonly client: SnackQuestMachineClient;
   private readonly fetchImpl: FetchLike;
+  /** Survives `restart()` — see `MachinePersistentStore`. */
+  readonly persistent: MachinePersistentStore;
+  /** How many times a command already in the persistent record was seen again and not executed. */
+  duplicatesSuppressed = 0;
 
   constructor(
     transport: V1Transport | { fetch: FetchLike },
     private readonly credentials: { keyId: string; secret: string },
     readonly manufacturerMachineId: string,
+    persistent: MachinePersistentStore = newPersistentStore(),
   ) {
+    this.persistent = persistent;
     if (!credentials.keyId.startsWith('sqk_test_')) {
       throw new SandboxOnlyError();
     }
@@ -146,6 +171,33 @@ export class V1SimulatedMachine {
       maxAttempts: 1,
       onAttempt: (entry) => this.requestLog.push(entry),
     });
+  }
+
+  /**
+   * A reboot or power cycle: everything in RAM is gone (the local command
+   * queue, the last report in flight); what is in flash survives (the
+   * executed-command record, the physical stock). Pass
+   * `{ loseFlash: true }` to simulate a firmware that keeps nothing —
+   * the case the server-side acknowledgement guard exists for.
+   */
+  restart(options: { loseFlash?: boolean } = {}): void {
+    this.localQueue.length = 0;
+    this.lastReport = null;
+    this.online = true;
+    if (options.loseFlash) this.persistent.executed.clear();
+  }
+
+  /** Re-sends every stored outcome report the server hasn't confirmed (after a restart, or when a heartbeat asks for them). */
+  async resendOwedReports(commandIds?: string[]): Promise<number> {
+    let sent = 0;
+    for (const [commandId, record] of this.persistent.executed) {
+      if (!record.report || (record.reported && !commandIds?.includes(commandId))) continue;
+      if (commandIds && !commandIds.includes(commandId)) continue;
+      const result = await this.machineCall('POST', `commands/${commandId}/status`, record.report);
+      if (result.status === 200) record.reported = true;
+      sent += 1;
+    }
+    return sent;
   }
 
   goOffline(): void {
@@ -223,10 +275,13 @@ export class V1SimulatedMachine {
   /** Fetches commands into the machine's local queue without executing them (a machine that is busy, or batches its work). */
   async pollOnly(): Promise<string[]> {
     const polled = await this.machineCall<{ commands: { commandId: string; type: string; slotId?: string }[] }>('GET', 'commands');
-    for (const command of polled.body?.data?.commands ?? []) {
-      if (!this.localQueue.some((queued) => queued.commandId === command.commandId)) {
-        this.localQueue.push(command);
+    const commands = polled.body?.data?.commands ?? [];
+    for (const command of this.inject.duplicateCommandDelivery ? [...commands, ...commands] : commands) {
+      if (this.persistent.executed.has(command.commandId) || this.localQueue.some((queued) => queued.commandId === command.commandId)) {
+        this.duplicatesSuppressed += 1;
+        continue;
       }
+      this.localQueue.push(command);
     }
     return this.localQueue.map((command) => command.commandId);
   }
@@ -245,6 +300,8 @@ export class V1SimulatedMachine {
           continue;
         }
       }
+      // Recorded before the motor turns: a crash mid-dispense must not lead to a second dispense after reboot.
+      this.persistent.executed.set(command.commandId, { report: null, reported: false });
       if (command.type === 'dispense') {
         executions.push(await this.executeDispense(command.commandId, command.slotId ?? ''));
       } else {
@@ -273,13 +330,21 @@ export class V1SimulatedMachine {
     } else {
       body = { status: 'unknown', failureReason: behaviour.reason ?? 'controller did not confirm', eventId: `out-${randomUUID()}` };
     }
+    const record = this.persistent.executed.get(commandId);
+    if (record) record.report = body;
     const report = await this.report(`commands/${commandId}/status`, body);
+    if (record && report.status === 200) record.reported = true;
     return { commandId, type: 'dispense', acknowledgedStatus: 200, reportedStatus: report.status, outcome: String(body.status) };
   }
 
   private async report(relative: string, body: unknown) {
     const result = await this.machineCall('POST', relative, body);
     this.lastReport = { path: this.machinePath(relative), body };
+    if (this.inject.loseNextReportResponse && relative.endsWith('/status') && (body as { status?: string }).status !== 'dispensing') {
+      // Delivered, but the machine never saw the answer.
+      this.inject.loseNextReportResponse = false;
+      return { status: 0, body: null };
+    }
     return result;
   }
 

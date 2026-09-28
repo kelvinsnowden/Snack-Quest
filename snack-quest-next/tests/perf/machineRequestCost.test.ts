@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { DocumentReference, Query, Transaction, WriteBatch, Firestore } from 'firebase-admin/firestore';
 import { machineTransactionService } from '@/services/machineTransactionService';
 import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
-import { resetRateLimiterForTesting } from '@/lib/rateLimit/rateLimiter';
+import { FirestoreRateLimitStore, MemoryRateLimitStore, RateLimiter, resetRateLimiterForTesting } from '@/lib/rateLimit/rateLimiter';
 import { clearIntegrationCollections } from '../helpers/integrationFixtures';
 import { activeMachine, apiKey, onboardManufacturer, v1, type Key, type V1Machine } from '../helpers/v1TestHarness';
 
@@ -14,8 +14,11 @@ import { activeMachine, apiKey, onboardManufacturer, v1, type Key, type V1Machin
  *
  * Measured with the credential cache and signal throttles in their
  * steady state (the machine has been talking for a while), which is
- * what a fleet sees >99% of the time. The rate limiter is on its
- * in-memory store here; in production it's KV, which is not Firestore.
+ * what a fleet sees >99% of the time. The budgets are measured with
+ * the rate limiter on an in-memory store (opted into explicitly), because
+ * in production it runs on KV, which is not Firestore. Without KV the
+ * limiter falls back to Firestore counters; that overhead is measured
+ * separately below, so the scale model can state it.
  */
 
 const BUSINESS_ID = 'biz-request-cost';
@@ -79,7 +82,7 @@ let machine: V1Machine;
 let key: Key;
 
 beforeEach(async () => {
-  resetRateLimiterForTesting();
+  resetRateLimiterForTesting(new MemoryRateLimitStore());
   await clearIntegrationCollections(BUSINESS_ID);
   const ids = await onboardManufacturer(BUSINESS_ID, 'costco', { adapterKey: 'snack_quest_gateway' });
   machine = await activeMachine(BUSINESS_ID, ids, { adapterKey: 'snack_quest_gateway' });
@@ -119,6 +122,18 @@ describe('Firestore cost per machine request (steady state)', () => {
     results.heartbeat = await measure(() => v1(key, machine.machineCode).heartbeat({ eventId: `hb-${Date.now()}` }));
     expect(results.heartbeat.reads).toBeLessThanOrEqual(budgets.heartbeat.reads);
     expect(results.heartbeat.writes).toBeLessThanOrEqual(budgets.heartbeat.writes);
+  });
+
+  it('the Firestore rate-limit fallback (no KV configured) adds a bounded, known cost per request', async () => {
+    resetRateLimiterForTesting(new FirestoreRateLimitStore(`rl-cost-${Date.now()}`));
+    const withFirestoreLimiter = await measure(() => v1(key, machine.machineCode).commands());
+    resetRateLimiterForTesting(new MemoryRateLimitStore());
+    const overhead = { reads: withFirestoreLimiter.reads - (results['idle command poll']?.reads ?? 0), writes: withFirestoreLimiter.writes - (results['idle command poll']?.writes ?? 0) };
+    console.log('RATE_LIMIT_FIRESTORE_OVERHEAD', JSON.stringify(overhead));
+    // Three rules per request (machine endpoint, credential, manufacturer) plus the IP-block check.
+    expect(overhead.reads).toBeLessThanOrEqual(12);
+    expect(overhead.writes).toBeLessThanOrEqual(3);
+    expect(new RateLimiter(new MemoryRateLimitStore()).storeName).toBe('memory');
   });
 
   it('a complete sale (payment verified → dispatch → poll → ack → dispensed)', async () => {
