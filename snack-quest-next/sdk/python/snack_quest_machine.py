@@ -199,6 +199,13 @@ def run_poll_cycle(client: SnackQuestMachineClient, machine_code: str, dispense:
     executed, refused = [], []
     for command in (poll.data or {}).get("commands", []):
         if command.get("type") != "dispense":
+            # A command type this machine doesn't implement: acknowledge it and decline it, never drop it silently (spec 4.4).
+            if client.ack(machine_code, command["commandId"]).status == 200:
+                report = {"status": "failed", "eventId": new_event_id("out"), "failureReason": "unsupported command"}
+                outbox.items[command["commandId"]] = report
+                if client.report(machine_code, command["commandId"], report).ok:
+                    del outbox.items[command["commandId"]]
+            refused.append(command["commandId"])
             continue
         if client.ack(machine_code, command["commandId"]).status != 200:
             refused.append(command["commandId"])

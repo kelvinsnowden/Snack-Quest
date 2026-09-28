@@ -2,8 +2,8 @@ import type { RateLimitRule } from '@/lib/rateLimit/rateLimiter';
 
 /**
  * Rate limits for the Machine API v1 (docs/SNACK_QUEST_MACHINE_API_V1.md
- * §4.4 publishes this table; tests/lib/machineApiContract.test.ts keeps
- * the two in step).
+ * §4.5 publishes these limits; tests/contract/machineApiContract.test.ts
+ * keeps the two in step).
  *
  * The design goal is isolation, not a global cap:
  *

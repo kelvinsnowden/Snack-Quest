@@ -28,8 +28,11 @@ import { dispenseCommandDocId, type CertificationCheckKey, type MachineDispenseC
  * empty slot fails, however confident it sounds.
  *
  * Verdict: CERTIFIED only if every check passed. A check the subject
- * can't be driven through automatically is `not_verified`, and the
- * verdict is NOT CERTIFIED until a human verifies it.
+ * can't be driven through automatically is `not_verified`: the matching
+ * checklist item is left for a human to verify, but the run's verdict is
+ * NOT CERTIFIED — and since `contract_suite` is recorded only by a
+ * CERTIFIED run, a model can't be certified until its machine can be
+ * driven through every step.
  *
  * Sandbox only. It refuses a production integration and refuses to run
  * on the production deployment. Results can be written into the model's
@@ -304,17 +307,17 @@ class IntegrationCertificationService {
       ),
       run.retransmit
         ? result('idempotency', run.retransmit.status === 200 && run.retransmit.result === 'duplicate' && (await saleMovements(run.failingSale)) + (await saleMovements(run.sale)) === 1, `retransmitted report answered ${run.retransmit.status} "${run.retransmit.result}" — must be recognised as the same report (same eventId)`)
-        : result('idempotency', null, 'subject cannot be made to retransmit a report; verify by hand'),
+        : result('idempotency', null, 'subject cannot be made to retransmit a report (control endpoint POST /retransmit-last-report); the contract suite cannot pass without it'),
       run.requestLog
         ? result('replay_protection', new Set(nonces).size === nonces.length && skewed.length === 0 && authFailures === 0, `${nonces.length} requests, ${nonces.length - new Set(nonces).size} reused nonce(s), ${skewed.length} timestamp(s) outside ±300 s`)
-        : result('replay_protection', null, 'subject exposes no request log; verify nonce uniqueness by hand'),
+        : result('replay_protection', null, 'subject exposes no request log (control endpoint GET /request-log); the contract suite cannot pass without it'),
       run.expiredSale
         ? result(
             'timeout_handling',
             expired?.status === 'paid_vend_failed' && !expired.outcomeConflict && (await saleMovements(run.expiredSale)) === 0 && ackedBeforeOutcome(expiredCommand),
             `expired command ended "${expiredCommand?.status}", sale "${expired?.status}"${expired?.outcomeConflict ? ' — the machine reported an outcome for a command it was told not to run' : ''}`,
           )
-        : result('timeout_handling', null, 'subject cannot hold a command without executing it; verify by hand'),
+        : result('timeout_handling', null, 'subject cannot hold a command without executing it (control endpoint POST /hold-next-commands); the contract suite cannot pass without it'),
     ];
   }
 

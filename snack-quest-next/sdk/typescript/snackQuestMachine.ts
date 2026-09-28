@@ -319,7 +319,20 @@ export async function runPollCycle(client: SnackQuestMachineClient, machineCode:
   const executed: string[] = [];
   const refused: string[] = [];
   for (const command of poll.data?.commands ?? []) {
-    if (command.type !== 'dispense') continue;
+    if (command.type !== 'dispense') {
+      // A command type this machine doesn't implement: acknowledge it and decline it, never drop it silently (spec §4.4).
+      if ((await client.ack(machineCode, command.commandId)).status !== 200) {
+        refused.push(command.commandId);
+        continue;
+      }
+      const report: DispenseReport = { status: 'failed', eventId: newEventId('out'), failureReason: 'unsupported command', occurredAt: new Date().toISOString() };
+      await outbox.put(command.commandId, report);
+      if ((await client.report(machineCode, command.commandId, report)).ok) {
+        await outbox.remove(command.commandId);
+      }
+      refused.push(command.commandId);
+      continue;
+    }
     // Don't start what has already expired by the server's clock (the ack would be refused anyway).
     if (Date.parse(command.expiresAt) <= Date.now() + client.clockOffset * 1000) {
       refused.push(command.commandId);

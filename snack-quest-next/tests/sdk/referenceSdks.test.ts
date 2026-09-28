@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -8,6 +9,8 @@ import { canonicalString, runPollCycle, MemoryOutbox, newEventId, signatureHeade
 import { InProcessV1Transport } from '@/scripts/vendingSimulator/inProcessV1Transport';
 import { machineTransactionService } from '@/services/machineTransactionService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
+import { machineCommandService } from '@/services/machineCommandService';
+import { machineCommandRepository } from '@/repositories/machineCommandRepository';
 import { resetRateLimiterForTesting } from '@/lib/rateLimit/rateLimiter';
 import { clearIntegrationCollections } from '../helpers/integrationFixtures';
 import { activeMachine, apiKey, onboardManufacturer, v1, type Key, type V1Machine } from '../helpers/v1TestHarness';
@@ -38,6 +41,18 @@ describe('signing vectors', () => {
   it('the Python client reproduces every vector', async () => {
     const result = await run('python3', ['-m', 'unittest', 'test_signing_vectors.py'], { cwd: path.join(ROOT, 'sdk/python') });
     expect(result.code, result.stderr).toBe(0);
+  });
+  // Needs a C compiler and OpenSSL headers; without them the test is reported skipped, never passed.
+  const cToolchain = existsSync('/usr/bin/cc') && existsSync('/usr/include/openssl/hmac.h');
+  it.skipIf(!cToolchain)('the C signing reference reproduces every vector', async () => {
+    const binary = path.join(mkdtempSync(path.join(os.tmpdir(), 'sq-c-')), 'vector_check');
+    const build = await run('cc', ['-std=c99', '-Wall', '-Wextra', '-Werror', '-o', binary, path.join(ROOT, 'sdk/c/vector_check.c'), path.join(ROOT, 'sdk/c/sq_sign.c'), '-lcrypto'], {});
+    expect(build.code, build.stderr).toBe(0);
+    for (const vector of VECTORS.vectors) {
+      const result = await run(binary, [VECTORS.secret, vector.method, vector.pathWithQuery, vector.timestamp, vector.nonce, vector.bodyUtf8Hex], {});
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stdout.trim(), vector.name).toBe(vector.signatureHeader);
+    }
   });
 });
 
@@ -109,6 +124,17 @@ describe('TypeScript client against the real server', () => {
     const cycle = await runPollCycle(sdk, code, { dispense: async () => ({ outcome: 'dispensed' }) }, new MemoryOutbox());
     expect(cycle.executed).toHaveLength(1);
     expect(await statusOf(sale)).toBe('dispensed');
+  });
+
+  it('a command type the machine does not implement is acknowledged and declined, never dropped (spec §4.4)', async () => {
+    const { commandId } = await machineCommandService.issueCommand({ businessId: BUSINESS_ID, machineId: machine.machineId, commandType: 'restart', requestedBy: 'staff-1' });
+    let dispensed = 0;
+    const cycle = await runPollCycle(client(), machine.machineCode, { dispense: async () => ((dispensed += 1), { outcome: 'dispensed' }) }, new MemoryOutbox());
+    const command = await machineCommandRepository.findById(BUSINESS_ID, commandId);
+    expect(dispensed).toBe(0);
+    expect(cycle.refused).toHaveLength(1);
+    expect(command?.status).toBe('failed');
+    expect(command?.error).toBe('unsupported command');
   });
 
   it('a report whose response was lost is re-sent from the outbox with the same event id, and counted once', async () => {
@@ -193,8 +219,9 @@ describe('Python client against the real server, over HTTP', () => {
   });
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-  it('completes a sale end to end', async () => {
+  it('completes a sale end to end, and declines a command type it does not implement', async () => {
     const sale = await queuedSale();
+    const { commandId: restart } = await machineCommandService.issueCommand({ businessId: BUSINESS_ID, machineId: machine.machineId, commandType: 'restart', requestedBy: 'staff-1' });
     const env: Record<string, string> = { PATH: process.env.PATH ?? '', SQ_BASE_URL: baseUrl, SQ_KEY_ID: key.keyId, SQ_SECRET: key.secret, SQ_MACHINE_ID: machine.manufacturerMachineId, NO_PROXY: '*', no_proxy: '*' };
     const result = await run('python3', [path.join(ROOT, 'sdk/python/example_machine.py')], { env });
     expect(result.code, result.stderr + result.stdout).toBe(0);
@@ -207,6 +234,8 @@ describe('Python client against the real server, over HTTP', () => {
     expect((byStep.cycle.executed as string[]).length).toBe(1);
     expect(byStep.log.nonces_unique).toBe(true);
     expect(await statusOf(sale)).toBe('dispensed');
+    expect(byStep.cycle.refused).toEqual([(await machineCommandRepository.findById(BUSINESS_ID, restart))?.commandRef]);
+    expect((await machineCommandRepository.findById(BUSINESS_ID, restart))?.status).toBe('failed');
   }, 60_000);
 });
 

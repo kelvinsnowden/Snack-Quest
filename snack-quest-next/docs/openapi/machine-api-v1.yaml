@@ -22,9 +22,9 @@ info:
     response fields and unknown enum values.
 
 
-    tests/contract/machineApiContract.test.ts fails the build if this
-    document, the route handlers, the request schemas, the error catalogue
-    or the reference SDK disagree.
+    Snack Quest's contract tests fail the build if this document, the
+    server, the error catalogue, the reference SDKs or the examples here
+    and in the narrative specification disagree.
 servers:
   - url: https://www.snackquests.shop
     description: Production and sandbox (the environment is determined by the key, not the host)
@@ -57,6 +57,13 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/ConnectRequest" }
+            example:
+              manufacturerMachineId: NV-0001
+              serialNumber: NV40-8841
+              firmwareVersion: "4.2.1"
+              controllerType: NVC
+              controllerVersion: "3.2"
+              integrationVersion: "1"
       responses:
         "200":
           description: The machine description
@@ -105,6 +112,10 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/HeartbeatRequest" }
+            example:
+              eventId: hb-NV0001-000418
+              occurredAt: "2026-09-27T09:14:05+03:00"
+              uptimeSeconds: 86400
       responses:
         "202":
           description: Accepted
@@ -130,6 +141,14 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/StatusRequest" }
+            example:
+              eventId: st-NV0001-000093
+              occurredAt: "2026-09-27T09:14:05+03:00"
+              online: true
+              doorOpen: false
+              temperatureCelsius: 6.5
+              faults: [E07]
+              paymentDeviceOk: true
       responses:
         "202":
           description: Accepted. applied=false means a newer snapshot was already stored.
@@ -159,6 +178,13 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/InventoryRequest" }
+            example:
+              reportId: inv-NV0001-000031
+              occurredAt: "2026-09-27T09:14:05+03:00"
+              slots:
+                - { slotId: motor-01, quantity: 6 }
+                - { slotId: motor-02, quantity: 3 }
+                - { slotId: motor-03, quantity: 0 }
       responses:
         "200":
           description: Comparison result
@@ -184,6 +210,11 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/EventsRequest" }
+            example:
+              events:
+                - { eventId: door-NV0001-000210, type: DOOR_OPENED, occurredAt: "2026-09-27T09:20:00+03:00" }
+                - { eventId: tmp-NV0001-000977, type: TEMPERATURE_ALERT, data: { temperatureCelsius: 14.2 } }
+                - { eventId: slt-NV0001-000045, type: SLOT_EMPTY, slotId: motor-03 }
       responses:
         "202":
           description: Recorded
@@ -272,6 +303,15 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CommandStatusRequest" }
+            examples:
+              dispensing:
+                value: { status: dispensing, eventId: dsp-NV0001-005512-start, occurredAt: "2026-09-27T09:21:47+03:00" }
+              dispensed:
+                value: { status: dispensed, eventId: dsp-NV0001-005512-end, occurredAt: "2026-09-27T09:21:52+03:00" }
+              failed:
+                value: { status: failed, eventId: dsp-NV0001-005512-end, failureCode: jam, failureReason: motor-07 stall current exceeded }
+              unknown:
+                value: { status: unknown, eventId: dsp-NV0001-005512-end, failureReason: drop sensor offline; motor completed rotation }
       responses:
         "200":
           description: Recorded. Every 200 means "stop re-sending this report", whatever applied says.

@@ -11,6 +11,8 @@
 | Machine-readable spec | [`docs/openapi/machine-api-v1.yaml`](openapi/machine-api-v1.yaml) (OpenAPI 3.0) |
 | Reference clients | [`sdk/typescript/snackQuestMachine.ts`](../sdk/typescript/snackQuestMachine.ts), [`sdk/python/snack_quest_machine.py`](../sdk/python/snack_quest_machine.py) — dependency-free, copy them |
 | Signing test vectors | [`docs/machine-api/signing-test-vectors.json`](machine-api/signing-test-vectors.json) |
+| Integration guide | [`docs/MANUFACTURER_INTEGRATION_GUIDE.md`](MANUFACTURER_INTEGRATION_GUIDE.md) — step by step, with Node, Python and C examples |
+| Certification | [`docs/MANUFACTURER_CERTIFICATION.md`](MANUFACTURER_CERTIFICATION.md) — what is verified and how |
 | Status | Stable. Changes follow the versioning policy in §10 |
 
 This document is the contract. If your implementation follows it,
@@ -315,7 +317,7 @@ Error:
 | `409` | State conflict (expired command, reused `eventId`) | No: see the code. For a command: **do not execute it** |
 | `413 payload_too_large` | Body over 256 KB | No: split it |
 | `422` | Well-formed but breaks the contract | No: fix the payload |
-| `429` | Rate limit (§4.5) | **Yes**, after `Retry-After` seconds, same `eventId` |
+| `429` | Rate limit (§4.5) | **Yes**, after `Retry-After` seconds, re-signed with a fresh nonce, same `eventId` |
 | `5xx` / network error | Snack Quest failed or was unreachable | **Yes**, with backoff, re-signed, same `eventId`. `503` carries `Retry-After` |
 
 Recommended backoff: 1 s, 2 s, 4 s, 8 s … capped at 60 s, with jitter.
@@ -385,10 +387,28 @@ block your dispense reports.
 | `command_ack` | 120 |
 | `command_status` | 120 |
 
-Also: 30,000 requests a minute per key across your fleet, 1,200 webhook
-deliveries a minute per webhook key, 120 failed authentications a minute
-per source address, and 60 refused (4xx) requests a minute per machine.
+Also, per minute:
+
+| Scope | Limit |
+|---|---|
+| One key, across your fleet | 30,000 requests |
+| One manufacturer, across all its keys | 60,000 requests |
+| One webhook key | 1,200 deliveries |
+| One source address | 120 **failed** authentications (valid traffic is never limited by address) |
+| One machine | 60 refused (4xx) requests, after which that machine's requests are refused for the rest of the minute |
+
 Snack Quest may agree higher limits for a key.
+
+How limits are counted:
+
+- Only requests that are correctly signed and carry an unused nonce
+  count against a machine's or key's limits. Forged or replayed requests
+  in your name can't use up your budget; they count against the sender's
+  address instead.
+- A request refused with `429` has **used its nonce**. Retry it re-signed
+  with a new nonce (the same body and `eventId`), as for any retry.
+- Limits are enforced across all Snack Quest servers together, so
+  spreading requests across servers or connections doesn't raise them.
 
 Every response carries `SQ-RateLimit-Limit`, `SQ-RateLimit-Remaining`
 and `SQ-RateLimit-Reset` (seconds). Over a limit: `429 rate_limited`
@@ -680,7 +700,9 @@ Up to 100 operational events per request.
         "issuedAt": "2026-09-27T06:10:02.000Z",
         "expiresAt": "2026-09-27T06:25:02.000Z"
       }
-    ]
+    ],
+    "nextPollSeconds": 2,
+    "serverTime": "2026-09-27T06:21:45.004Z"
   }
 }
 ```
@@ -887,7 +909,7 @@ didn't recognise:
 ```json
 {
   "data": {
-    "deliveryId": "whk_01J8…",
+    "deliveryId": "whk_01J8Z6Q4M2",
     "duplicate": false,
     "eventsRecorded": 4,
     "eventsDuplicate": 0,
@@ -973,9 +995,18 @@ client must tolerate them:**
 | New authentication method | Added alongside `v1=` signing; `v1=` keeps working for all of v1 |
 | Anything breaking | `/api/v2/`, with v1 running in parallel |
 
-When a v2 is published, **v1 keeps working for at least 12 months**.
-Every manufacturer with an active integration is told in writing, with
-a changelog and the retirement date, before it happens.
+**Retiring a version.** A breaking change never happens inside v1.
+When a v2 is published, v1 keeps running alongside it; v1 is retired
+only after every manufacturer with an active integration has been told
+in writing, with a changelog, a migration guide and the retirement
+date. The notice period is the one stated in your integration agreement
+with Snack Quest. This document doesn't set one, and nothing here
+should be read as a fixed support period.
+
+**Security exception.** If a flaw in v1 puts customers' money or your
+machines at risk, Snack Quest may change v1's behaviour with shorter
+notice, for example by refusing a weak client pattern. We'll contact
+you directly and explain the change.
 
 ---
 
@@ -983,8 +1014,8 @@ a changelog and the retirement date, before it happens.
 
 Every code the API can return. `code` is stable within v1; branch on it,
 not on `message`. The same catalogue is in the OpenAPI document
-(`x-sq-error-codes`) and in `lib/vending/v1/errorCodes.ts`; a contract
-test keeps all three identical.
+(`x-sq-error-codes`); Snack Quest's contract tests fail the build if
+the server, the OpenAPI document and this table ever disagree.
 
 | Status | Code | Meaning | Retry? |
 |---|---|---|---|
@@ -1036,28 +1067,32 @@ can't be activated, until the model is certified. Certification is
 per model. If a model's capabilities later change, it has to be
 re-certified.
 
-**Certification checklist.** Each item needs evidence, such as a
-sandbox run id, logs or a video of the physical test.
+**Certification checklist.** These are the checks recorded against your
+model. Each one needs evidence, such as a harness run id, a sandbox
+transaction reference, logs or a video of the physical test.
+[`MANUFACTURER_CERTIFICATION.md`](MANUFACTURER_CERTIFICATION.md) says
+exactly how each is verified.
 
 | Check | What we verify |
 |---|---|
-| Authentication | Signed requests accepted; bad signature, stale timestamp and replay are rejected and handled by your client |
-| Machine identity | `connect` maps your id to the right machine; serial matches |
-| Heartbeat | Heartbeats at the advertised interval for 24 h |
-| Status | Door, temperature and faults reported accurately and promptly |
-| Dispense | A real product dispensed from every slot type via §6 |
+| Authentication | Signed requests accepted; bad signature, stale timestamp and replay are rejected and handled by your client; no nonce reused |
+| Machine registration | `connect` maps your id to the right machine; serial matches |
+| Heartbeat | Heartbeats at the advertised interval |
+| Status reporting | Door, temperature and faults reported accurately and promptly |
+| Inventory | Reported counts match physical counts (*not applicable* without `inventory_read`) |
+| Product / slot mapping | Your slot ids map to the right physical slots |
+| Dispense command | Commands collected, acknowledged **before** dispensing, never executed after a refused acknowledgement |
 | Dispense confirmation | `dispensed` only when the product physically dropped |
 | Failed dispense | A jammed or empty slot reports `failed` with the right code |
-| Timeout handling | An expired command is never executed (§6.2) |
-| Duplicate protection | A command re-polled or re-delivered is executed once |
-| Offline recovery | Reports made while offline are delivered after reconnection, deduplicated |
-| Inventory | Reported counts match physical counts (if `inventory_read`) |
-| Webhooks | Signed deliveries, retries, deduplication (Model A only) |
+| Idempotency | A re-sent report is recognised as the same report; a command re-polled or re-delivered is executed once |
 | Error handling | 4xx vs 5xx behaviour per §4.2 |
-| Security | Secrets stored securely, never logged, never in a mobile or web client |
+| Webhooks | Signed deliveries, retries, deduplication (*not applicable* without webhooks) |
+| Payment flow | A paid sandbox sale dispenses and is confirmed end to end |
+| Reconciliation | An expired command is never executed; unknown outcomes are reported, not guessed |
+| Automated contract suite | A complete, passing run of the certification harness against your model |
 
-Inventory and webhooks may be marked *not applicable* for models or
-integrations that don't have them. Everything else is required.
+Everything not marked *not applicable* is required. The last check can
+only be recorded by the harness itself, never ticked by hand.
 
 **The automated certification harness.** Most of the checklist is
 verified by a harness Snack Quest runs against your machine in the
@@ -1075,13 +1110,22 @@ IDEMPOTENCY ✓  REPLAY PROTECTION ✓  TIMEOUT HANDLING ✓        → CERTIFIE
 
 Any failed check means **NOT CERTIFIED**, with the failure spelled out
 (for example "ACKNOWLEDGEMENT: history sent → dispensing → dispensed" —
-the machine dispensed without acknowledging). A step that can't be
-driven automatically on your hardware is *not verified*, and a Snack
-Quest engineer verifies it with you by hand. Passing results are
+the machine dispensed without acknowledging). The harness drives your
+sandbox machine through **sandbox control endpoints** you build
+([`MANUFACTURER_CERTIFICATION.md`](MANUFACTURER_CERTIFICATION.md)). A
+step your machine can't be driven through is *not verified*, and a run
+with any step not verified is NOT CERTIFIED, so all of the control
+endpoints are required for certification. Passing results are
 recorded against your model as evidence; the harness never certifies a
 model on its own — a person signs it off. The Snack Quest simulator
 passes the same harness, so you can compare your machine's request log
 with a known-good one.
+
+The harness covers Model B (your machine calls Snack Quest). A Model A
+API is checked in the sandbox with the API probe described in the
+certification guide. Certifying a Model A model for production also
+needs a production adapter for your API and a harness run through it,
+which Snack Quest builds with you.
 
 ---
 
@@ -1159,5 +1203,4 @@ re-run the command after reboot. It reports `unknown` instead.
 ---
 
 *Questions about this specification: contact your Snack Quest
-integration engineer. Internal architecture notes live in
-`docs/MACHINE_INTEGRATION_LAYER.md`.*
+integration engineer.*

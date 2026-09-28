@@ -76,8 +76,11 @@ function fail(code: IntegrationAuthFailureCode, credential: IntegrationCredentia
  * request has at least a well-formed key id, a fresh timestamp and a
  * valid nonce. The credential itself comes from a short-lived cache
  * (`credentialCache.ts`). The nonce is **not** claimed here: the caller
- * claims it (`claimRequestNonce`) after rate limiting, so neither a
- * forged request nor a throttled one can burn a legitimate nonce.
+ * claims it (`claimRequestNonce`) once the signature has verified and
+ * *before* any rate-limit budget is charged, so a forged request can't
+ * burn a legitimate nonce and a replay can't spend the machine's
+ * budget. A request then refused by a rate limit has used its nonce;
+ * clients re-sign every retry anyway.
  *
  * Every failure is counted against the source IP; an IP over the
  * failure budget is refused before any lookup. Valid traffic is never
@@ -145,8 +148,8 @@ async function verify(input: SignedRequestInput, now: Date): Promise<Integration
 }
 
 /**
- * Claims a verified request's nonce — the last step before a request is
- * acted on. Returns false for a replay. Stored until well after the
+ * Claims a verified request's nonce — after the signature check, before
+ * rate limiting and the handler. Returns false for a replay. Stored until well after the
  * timestamp window closes, so a captured request can never be replayed
  * inside it.
  *

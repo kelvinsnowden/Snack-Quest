@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { commandStatusSchema, connectSchema, eventsSchema, heartbeatSchema, inventorySchema, statusSchema, DISPENSE_FAILURE_CODES } from '@/lib/vending/v1/schemas';
@@ -166,6 +168,156 @@ describe('rate limits', () => {
   it('the specification states every default limit', () => {
     const missing = Object.entries(DEFAULT_MACHINE_API_RATE_LIMITS.perMachine).filter(([name, rule]) => !new RegExp(`\`${name}\`[^\\n]*\\b${rule.limit}\\b`).test(spec));
     expect(missing.map(([name]) => name)).toEqual([]);
+  });
+
+  it('the specification states every fleet-wide limit', () => {
+    const stated = (limit: number) => new RegExp(`\\|[^\\n]*\\|\\s*${limit.toLocaleString('en-US')}\\b`).test(spec);
+    const fleetWide = Object.entries(DEFAULT_MACHINE_API_RATE_LIMITS).filter(([name]) => name !== 'perMachine') as [string, number][];
+    expect(fleetWide.filter(([, limit]) => !stated(limit)).map(([name]) => name)).toEqual([]);
+  });
+});
+
+/**
+ * Examples are what manufacturers copy. Every one — in the narrative
+ * specification and in the OpenAPI document — must be accepted by the
+ * server's own request validator, and must match the OpenAPI schema
+ * *closed*: an object that lists its properties accepts no others, so an
+ * example can't show a field the document doesn't define.
+ */
+describe('examples', () => {
+  const closed = structuredClone(openapi) as unknown as Record<string, unknown>;
+  const close = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(close);
+    if (node && typeof node === 'object') {
+      const record = node as Record<string, unknown>;
+      if (record.properties && record.additionalProperties === undefined) record.additionalProperties = false;
+      Object.values(record).forEach(close);
+    }
+  };
+  close(closed.components);
+  close(closed.paths);
+  const ajv = new Ajv({ strict: false, allErrors: true, validateSchema: false });
+  addFormats(ajv);
+  ajv.addSchema(closed, 'machine-api');
+  const pointer = (...segments: string[]) => `machine-api#/${segments.map((segment) => segment.replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
+  const check = (ref: string, value: unknown): string[] => {
+    const validate = ajv.getSchema(ref);
+    if (!validate) return [`no schema at ${ref}`];
+    return validate(value) ? [] : (validate.errors ?? []).map((error) => `${error.instancePath || '/'} ${error.message}${error.params && 'additionalProperty' in error.params ? ` (${String(error.params.additionalProperty)})` : ''}`);
+  };
+  const componentSchema = (name: string) => pointer('components', 'schemas', name);
+  const responseSchema = (route: string, method: string, status: string) => pointer('paths', route, method, 'responses', status, 'content', 'application/json', 'schema');
+  const zodFor: Record<string, z.ZodType> = {
+    ConnectRequest: connectSchema,
+    HeartbeatRequest: heartbeatSchema,
+    StatusRequest: statusSchema,
+    InventoryRequest: inventorySchema,
+    EventsRequest: eventsSchema,
+    CommandStatusRequest: commandStatusSchema,
+  };
+  const checkRequest = (schemaName: string, value: unknown): string[] => {
+    const parsed = zodFor[schemaName].safeParse(value);
+    return [...(parsed.success ? [] : parsed.error.issues.map((issue) => `server refuses: ${issue.path.join('.')} ${issue.message}`)), ...check(componentSchema(schemaName), value)];
+  };
+
+  /** Where each specification section's examples belong. */
+  const SECTIONS: { heading: RegExp; request?: string; response?: string }[] = [
+    { heading: /^### 4\.1 /, response: componentSchema('Error') },
+    { heading: /^### 5\.1 /, request: 'ConnectRequest' },
+    { heading: /^### 5\.2 /, response: responseSchema('/api/v1/machines/{machineCode}', 'get', '200') },
+    { heading: /^### 5\.3 /, request: 'HeartbeatRequest', response: responseSchema('/api/v1/machines/{machineCode}/heartbeat', 'post', '202') },
+    { heading: /^### 5\.4 /, request: 'StatusRequest' },
+    { heading: /^### 5\.5 /, request: 'InventoryRequest', response: responseSchema('/api/v1/machines/{machineCode}/inventory', 'post', '200') },
+    { heading: /^### 5\.6 /, request: 'EventsRequest', response: responseSchema('/api/v1/machines/{machineCode}/events', 'post', '202') },
+    { heading: /^### 6\.1 /, response: responseSchema('/api/v1/machines/{machineCode}/commands', 'get', '200') },
+    { heading: /^### 6\.3 /, request: 'CommandStatusRequest' },
+    { heading: /^## 8\. /, response: responseSchema('/api/v1/webhooks/manufacturers/{slug}', 'post', '202') },
+  ];
+
+  function specExamples(): { heading: string; line: number; text: string }[] {
+    const lines = spec.split('\n');
+    const found: { heading: string; line: number; text: string }[] = [];
+    let heading = '';
+    for (let index = 0; index < lines.length; index += 1) {
+      if (/^#{2,3} /.test(lines[index])) heading = lines[index];
+      if (lines[index] === '```json') {
+        const line = index + 1;
+        const body: string[] = [];
+        while (lines[++index] !== '```') body.push(lines[index]);
+        found.push({ heading, line, text: body.join('\n') });
+      }
+    }
+    return found;
+  }
+
+  it('every JSON example in the specification is valid for its endpoint', () => {
+    const examples = specExamples();
+    expect(examples.length).toBeGreaterThanOrEqual(17);
+    const problems: string[] = [];
+    let checked = 0;
+    for (const { heading, line, text } of examples) {
+      if (text.includes('…')) {
+        // Only the schematic envelope in §4.1 may elide.
+        if (!/^### 4\.1 /.test(heading)) problems.push(`line ${line}: elided example outside §4.1`);
+        continue;
+      }
+      let value: Record<string, unknown>;
+      try {
+        value = JSON.parse(text) as Record<string, unknown>;
+      } catch (error) {
+        problems.push(`line ${line}: not JSON (${error instanceof Error ? error.message : String(error)})`);
+        continue;
+      }
+      const section = SECTIONS.find((candidate) => candidate.heading.test(heading));
+      const isResponse = 'data' in value || 'error' in value;
+      const target = isResponse ? section?.response : section?.request;
+      if (!target) {
+        problems.push(`line ${line}: no ${isResponse ? 'response' : 'request'} schema known for "${heading}"`);
+        continue;
+      }
+      problems.push(...(isResponse ? check(target, value) : checkRequest(target, value)).map((problem) => `line ${line} (${heading}): ${problem}`));
+      checked += 1;
+    }
+    expect(problems).toEqual([]);
+    expect(checked).toBeGreaterThanOrEqual(16);
+  });
+
+  it('every request example in the OpenAPI document is accepted by the server', () => {
+    const problems: string[] = [];
+    let checked = 0;
+    for (const [route, methods] of Object.entries(openapi.paths)) {
+      for (const [method, operation] of Object.entries(methods)) {
+        const content = (operation.requestBody?.content['application/json'] ?? null) as { schema: { $ref?: string }; example?: unknown; examples?: Record<string, { value: unknown }> } | null;
+        const schemaName = content?.schema.$ref?.split('/').pop();
+        if (!content || !schemaName) continue;
+        const examples = [...(content.example === undefined ? [] : [content.example]), ...Object.values(content.examples ?? {}).map((example) => example.value)];
+        if (examples.length === 0) problems.push(`${method.toUpperCase()} ${route}: no request example`);
+        for (const example of examples) {
+          problems.push(...checkRequest(schemaName, example).map((problem) => `${method.toUpperCase()} ${route}: ${problem}`));
+          checked += 1;
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+    expect(checked).toBeGreaterThanOrEqual(9);
+  });
+
+  it('every field-level example matches its own schema', () => {
+    const problems: string[] = [];
+    const walk = (node: unknown, at: string[]): void => {
+      if (Array.isArray(node)) return node.forEach((item, index) => walk(item, [...at, String(index)]));
+      if (!node || typeof node !== 'object') return;
+      const record = node as Record<string, unknown>;
+      if ('example' in record && ('type' in record || '$ref' in record) && !at.includes('content')) {
+        const { example, ...schema } = record;
+        const validate = ajv.compile({ ...schema, $id: `field:${at.join('/')}` });
+        if (!validate(example)) problems.push(`${at.join('.')}: ${JSON.stringify(example)} ${ajv.errorsText(validate.errors)}`);
+      }
+      for (const [key, value] of Object.entries(record)) walk(value, [...at, key]);
+    };
+    walk(openapi.components, ['components']);
+    walk(openapi.paths, ['paths']);
+    expect(problems).toEqual([]);
   });
 });
 

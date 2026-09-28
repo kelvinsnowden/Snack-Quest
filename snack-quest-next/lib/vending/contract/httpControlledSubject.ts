@@ -11,13 +11,14 @@ import { validateManufacturerBaseUrl } from '@/lib/vending/outboundUrl';
  *   POST {controlUrl}/cycle               → run one normal cycle (connect if needed, heartbeat, status, inventory, poll → ack → dispense → report)
  *   POST {controlUrl}/door-events         → open and close the door
  *   POST {controlUrl}/empty-slot          { "slotId": "…" } → make that slot physically empty
- *   POST {controlUrl}/hold-next-commands  → next cycle fetches commands but does not execute them   (optional: "hold")
- *   POST {controlUrl}/retransmit-last-report → re-send the last outcome report unchanged → { status, result } (optional: "retransmit")
- *   GET  {controlUrl}/request-log         → [{ nonce, timestamp }] of every signed request   (optional: "request-log")
+ *   POST {controlUrl}/hold-next-commands  → next cycle fetches commands but does not execute them   ("hold")
+ *   POST {controlUrl}/retransmit-last-report → re-send the last outcome report unchanged → { status, result } ("retransmit")
+ *   GET  {controlUrl}/request-log         → [{ nonce, timestamp }] of every signed request   ("request-log")
  *
- * All with `Authorization: Bearer {controlToken}`. Optional steps the
- * machine can't be driven through are left out, and the harness marks
- * them "verify by hand" rather than passing them.
+ * All with `Authorization: Bearer {controlToken}`. The last three are
+ * advertised in `/capabilities`; a step the machine can't be driven
+ * through is `not_verified`, never passed, so a run without all three
+ * can't be CERTIFIED (and can't record `contract_suite`).
  */
 export async function connectHttpControlledSubject(
   controlUrl: string,

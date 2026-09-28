@@ -41,6 +41,7 @@ import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransac
 import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
 import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
 import { TestVendAction } from '@/components/admin/TestVendAction';
+import { CertificationToolsPanel } from '@/components/admin/integrations/CertificationToolsPanel';
 import { StockDiscrepancyForm } from '@/components/admin/StockDiscrepancyForm';
 import { RestockTaskStatusBadge } from '@/components/admin/RestockTaskStatusBadge';
 import { RestockTaskActions } from '@/components/admin/RestockTaskActions';
@@ -212,6 +213,21 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
           />
         </CardContent>
       </Card>
+
+      {integrationView.integration ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Manufacturer verification</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CertificationToolsPanel
+              machineId={machineId}
+              environment={integrationView.integration.environment}
+              slotIds={slots.map((slot) => slot.manufacturerSlotId ?? slot.slotCode)}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
