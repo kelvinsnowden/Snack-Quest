@@ -167,6 +167,20 @@ class AlertRepository {
   }
 
   /** Marks alerts as texted, so the notifier never texts the same alert twice (the outbound-message dedupe is the second line of defence). */
+  /** Which of these conditions already had an alert texted since `since` (any status) — the notification cooldown. */
+  async dedupeKeysNotifiedSince(businessId: string, dedupeKeys: string[], since: Date): Promise<Set<string>> {
+    const unique = [...new Set(dedupeKeys)];
+    const out = new Set<string>();
+    for (let offset = 0; offset < unique.length; offset += 30) {
+      const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('dedupeKey', 'in', unique.slice(offset, offset + 30)).get();
+      for (const doc of snapshot.docs) {
+        const notifiedAt = (doc.data() as Alert).notifiedAt;
+        if (notifiedAt && notifiedAt.toMillis() >= since.getTime()) out.add((doc.data() as Alert).dedupeKey);
+      }
+    }
+    return out;
+  }
+
   async markNotified(alertIds: string[]): Promise<void> {
     for (let offset = 0; offset < alertIds.length; offset += 400) {
       const batch = adminFirestore.batch();

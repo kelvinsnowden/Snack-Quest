@@ -32,6 +32,13 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
   integration_issue: 'Integration issue',
   manufacturer_outage: 'Manufacturer outage',
   job_failure: 'Scheduled job',
+  dispense_failures: 'Repeated dispense failures',
+  dispense_timeout_rate: 'Dispense timeout rate',
+  manufacturer_api_unavailable: 'Manufacturer API unavailable',
+  integration_auth_failures: 'Integration authentication',
+  credential_expiring: 'Credential expiring',
+  credential_revoked: 'Credential revoked',
+  webhook_failures: 'Webhook failures',
 };
 
 /**

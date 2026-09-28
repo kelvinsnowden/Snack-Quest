@@ -19,6 +19,13 @@ const ALERT_TYPES: AlertType[] = [
   'integration_issue',
   'manufacturer_outage',
   'job_failure',
+  'dispense_failures',
+  'dispense_timeout_rate',
+  'manufacturer_api_unavailable',
+  'integration_auth_failures',
+  'credential_expiring',
+  'credential_revoked',
+  'webhook_failures',
 ];
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 

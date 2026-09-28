@@ -277,7 +277,7 @@ async function authenticate(
   request: Request,
   kind: IntegrationCredential['kind'],
   route: string,
-): Promise<{ ok: true; auth: AuthenticatedRequest } | { ok: false; response: Response; credential: IntegrationCredential | null }> {
+): Promise<{ ok: true; auth: AuthenticatedRequest } | { ok: false; response: Response; credential: IntegrationCredential | null; code?: string }> {
   const requestId = randomUUID();
   const clientId = clientRequestId(request);
   const url = new URL(request.url);
@@ -311,7 +311,7 @@ async function authenticate(
     // Say what time it is, so a client can correct its offset and retry
     // instead of failing until someone visits the machine.
     const details = result.code === 'stale_timestamp' ? { serverTime: new Date().toISOString(), serverTimestamp: Math.floor(Date.now() / 1000) } : undefined;
-    return { ok: false, response: v1Error(result.status, result.code, result.message, details, meta, extra), credential: result.credential };
+    return { ok: false, response: v1Error(result.status, result.code, result.message, details, meta, extra), credential: result.credential, code: result.code };
   }
   // A suspended manufacturer's keys stop working everywhere at once —
   // not just for new dispenses. Cached with the credential (≤ 30 s).
@@ -392,7 +392,7 @@ export async function handleMachineRequest(
   const authenticated = await authenticate(request, 'api', endpoint);
   if (!authenticated.ok) {
     if (authenticated.credential) {
-      await recordAuthFailureAgainstMachine(authenticated.credential, machineCode);
+      await recordAuthFailureAgainstMachine(authenticated.credential, machineCode, authenticated.code);
     }
     return authenticated.response;
   }
@@ -511,7 +511,7 @@ async function recordSignalIfStale(integration: MachineIntegration, kind: 'api_r
  * machine — is not attributed anywhere. At most one write a minute per
  * machine, so a flood can't turn this into write amplification.
  */
-async function recordAuthFailureAgainstMachine(credential: IntegrationCredential, machineCode: string): Promise<void> {
+async function recordAuthFailureAgainstMachine(credential: IntegrationCredential, machineCode: string, reason = 'authentication_failed'): Promise<void> {
   try {
     const integration = await machineIntegrationRepository.findByMachineCode(credential.businessId, machineCode);
     if (!integration || credential.manufacturerId !== integration.manufacturerId) {
@@ -521,7 +521,7 @@ async function recordAuthFailureAgainstMachine(credential: IntegrationCredential
     if (last?.kind === 'authentication' && last.at && Date.now() - last.at.toMillis() < 60_000) {
       return;
     }
-    await machineIntegrationRepository.recordError(integration.machineId, 'authentication', `authentication failed for key ${credential.keyId}`);
+    await machineIntegrationRepository.recordError(integration.machineId, 'authentication', `${reason} for key ${credential.keyId}`);
   } catch (error) {
     logger.warn('could not attribute auth failure to machine', { machineCode, error });
   }

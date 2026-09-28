@@ -73,6 +73,8 @@ export interface Manufacturer extends AuditFields {
   notes: string | null;
   /** Timestamp each stage was entered — the onboarding audit trail at a glance. */
   stageHistory: { stage: ManufacturerOnboardingStage; at: Timestamp; by: string }[];
+  /** Outcome of their authenticated webhook deliveries (throttled writes): feeds the webhook-failure alert. */
+  webhookHealth?: { lastAcceptedAt?: Timestamp | null; lastRejectedAt?: Timestamp | null; lastRejectedCode?: string | null };
 }
 
 /** Every check a model must pass before it may run in production (§ MACHINE CERTIFICATION). */

@@ -23,6 +23,18 @@ import { businessRepository } from '@/repositories/businessRepository';
 import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
 import { notificationService, TemplateNotFoundError, type NotificationService } from '@/services/notificationService';
 import { scheduledJobService } from '@/services/scheduledJobService';
+import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
+import { integrationCredentialRepository } from '@/repositories/integrationCredentialRepository';
+import { manufacturerApiCredentialRepository } from '@/repositories/manufacturerApiCredentialRepository';
+import {
+  INTEGRATION_ALERT_THRESHOLDS,
+  abnormalTimeoutRates,
+  authenticationFailures,
+  expiringCredentials,
+  failingWebhooks,
+  repeatedDispenseFailures,
+  unavailableManufacturerApis,
+} from '@/lib/vending/integrationAlerts';
 import { logger } from '@/lib/observability/logger';
 
 const DEFAULT_EXPIRY_WARNING_DAYS = 7;
@@ -42,6 +54,8 @@ function alertEvaluationMinIntervalMs(): number {
 }
 /** More new critical alerts than this in one sweep are texted as one digest — a fleet-wide outage is one text, not a thousand. */
 export const CRITICAL_ALERT_DIGEST_THRESHOLD = 3;
+/** The same condition is texted at most once per this interval, however often it re-opens. */
+export const CRITICAL_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
 
 type ConditionDraft = Omit<AlertConditionInput, 'severity'>;
 
@@ -74,6 +88,7 @@ class AlertService {
       ['integration events', () => this.evaluateIntegrationEvents(businessId, locationByMachine)],
       ['manufacturer outages', () => this.evaluateManufacturerOutages(businessId)],
       ['scheduled jobs', () => this.evaluateScheduledJobs(businessId)],
+      ['integration health', () => this.evaluateIntegrationHealth(businessId, locationByMachine)],
     ];
     const results = await Promise.allSettled(evaluators.map(([, run]) => run()));
     const failed = results.flatMap((result, index) => (result.status === 'rejected' ? [{ name: evaluators[index][0], error: result.reason as unknown }] : []));
@@ -83,6 +98,113 @@ class AlertService {
     if (failed.length > 0) {
       throw new Error(`alert evaluation incomplete: ${failed.map(({ name, error }) => `${name} (${error instanceof Error ? error.message : String(error)})`).join('; ')}`);
     }
+  }
+
+  /**
+   * Integration conditions (`lib/vending/integrationAlerts.ts` holds every
+   * threshold): repeated dispense failures per machine, an abnormal
+   * unresolved-outcome rate per manufacturer, an outbound manufacturer API
+   * that most machines can't reach, authentication failures, keys expiring
+   * or still in use at the end of a rotation, Snack Quest's own API key
+   * revoked while machines need it, and refused webhook deliveries. All
+   * condition alerts: one per subject, auto-resolving when it clears.
+   */
+  private async evaluateIntegrationHealth(businessId: string, locationByMachine: Map<string, string | null>): Promise<void> {
+    const now = Date.now();
+    const [integrations, manufacturers] = await Promise.all([machineIntegrationRepository.listByBusiness(businessId), manufacturerRepository.listByBusiness(businessId)]);
+    const manufacturerOf = new Map(integrations.map((integration) => [integration.machineId, integration.manufacturerId]));
+    const nameOf = new Map(manufacturers.map(({ id, data }) => [id, data.name]));
+    const ms = (value: { toMillis(): number } | null | undefined) => (value ? value.toMillis() : null);
+
+    const since = new Date(now - INTEGRATION_ALERT_THRESHOLDS.timeoutRate.windowMs);
+    const commands = (await Promise.all((['dispensed', 'failed', 'timeout', 'unknown'] as const).map((status) => machineDispenseCommandRepository.listByStatusUpdatedSince(businessId, status, since)))).flat();
+    const commandFacts = commands.map((command) => ({ machineId: command.machineId, manufacturerId: manufacturerOf.get(command.machineId) ?? null, status: command.status, updatedAtMs: command.updatedAt.toMillis() }));
+
+    const failuresOpen = new Set<string>();
+    for (const [machineId, count] of repeatedDispenseFailures(commandFacts, now)) {
+      const key = `dispense_failures:${machineId}`;
+      failuresOpen.add(key);
+      await this.open({ businessId, type: 'dispense_failures', machineId, locationId: locationByMachine.get(machineId) ?? null, dedupeKey: key, title: `${count} dispenses failed or unresolved in the last hour`, detail: 'Customers on this machine are not getting their products. Check for a jam, an empty spiral or a connectivity problem; unresolved ones are in manual review.' });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'dispense_failures', failuresOpen);
+
+    const rateOpen = new Set<string>();
+    for (const [manufacturerId, { total, unresolved, rate }] of abnormalTimeoutRates(commandFacts, now)) {
+      const key = `dispense_timeout_rate:${manufacturerId}`;
+      rateOpen.add(key);
+      await this.open({ businessId, type: 'dispense_timeout_rate', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId}: ${Math.round(rate * 100)}% of dispenses had no known outcome`, detail: `${unresolved} of ${total} dispenses in the last 24 hours ended as timeout or unknown. Each one needs a human; ask the manufacturer why outcomes aren't being reported.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'dispense_timeout_rate', rateOpen);
+
+    const integrationFacts = integrations.map((integration) => ({
+      machineId: integration.machineId,
+      manufacturerId: integration.manufacturerId,
+      active: integration.state === 'active',
+      outbound: findAdapterRegistration(integration.adapterKey)?.direction === 'outbound',
+      lastError: integration.lastError ? { kind: integration.lastError.kind, atMs: ms(integration.lastError.at), message: integration.lastError.message } : null,
+      lastSuccessMs: Math.max(0, ...(['api_request', 'heartbeat', 'webhook', 'dispense_success'] as const).map((kind) => ms(integration.signals?.[kind]) ?? 0)),
+    }));
+
+    const apiOpen = new Set<string>();
+    for (const [manufacturerId, { failing, active, lastError }] of unavailableManufacturerApis(integrationFacts, now)) {
+      const key = `manufacturer_api_unavailable:${manufacturerId}`;
+      apiOpen.add(key);
+      await this.open({ businessId, type: 'manufacturer_api_unavailable', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId} API unreachable`, detail: `${failing} of ${active} active machines could not reach the manufacturer's API (${lastError}). New orders to them are refused while it lasts; nothing is refunded or re-sent blindly.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'manufacturer_api_unavailable', apiOpen);
+
+    const authOpen = new Set<string>();
+    for (const [manufacturerId, { machines, lastError }] of authenticationFailures(integrationFacts, now)) {
+      const key = `integration_auth_failures:${manufacturerId}`;
+      authOpen.add(key);
+      await this.open({ businessId, type: 'integration_auth_failures', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId}: requests failing authentication`, detail: `${machines} machine(s) are sending requests Snack Quest refuses (${lastError}). Usually a revoked or expired key, an unfinished rotation, or a clock far off.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'integration_auth_failures', authOpen);
+
+    const expiringOpen = new Set<string>();
+    const revokedOpen = new Set<string>();
+    const webhookFacts = [];
+    for (const { id: manufacturerId, data: manufacturer } of manufacturers) {
+      const credentials = await integrationCredentialRepository.listByManufacturer(businessId, manufacturerId);
+      for (const expiring of expiringCredentials(credentials.map((c) => ({ keyId: c.keyId, manufacturerId, revokedAtMs: ms(c.revokedAt), expiresAtMs: ms(c.expiresAt), graceEndsAtMs: ms(c.graceEndsAt), supersededAtMs: ms(c.supersededAt), lastUsedAtMs: ms(c.lastUsedAt) })), now)) {
+        const key = `credential_expiring:${expiring.keyId}`;
+        expiringOpen.add(key);
+        await this.open({
+          businessId,
+          type: 'credential_expiring',
+          machineId: null,
+          locationId: null,
+          dedupeKey: key,
+          title: `${manufacturer.name}: key ${expiring.keyId} ${expiring.reason === 'expires_soon' ? 'expires' : 'stops working'} ${new Date(expiring.atMs).toISOString().slice(0, 10)}`,
+          detail: expiring.reason === 'expires_soon' ? 'Issue a replacement and have the manufacturer switch before it expires.' : 'The rotation grace period is ending and machines are still signing with the old key. They will be refused afterwards.',
+        });
+      }
+      const needsOutbound = integrations.filter((i) => i.manufacturerId === manufacturerId && i.state === 'active' && findAdapterRegistration(i.adapterKey)?.requiresOutboundCredential);
+      if (needsOutbound.length > 0) {
+        for (const credential of await manufacturerApiCredentialRepository.listForManufacturer(businessId, manufacturerId)) {
+          const affected = needsOutbound.filter((i) => i.environment === credential.environment);
+          if (credential.status === 'revoked' && affected.length > 0) {
+            const key = `credential_revoked:${manufacturerId}__${credential.environment}`;
+            revokedOpen.add(key);
+            await this.open({ businessId, type: 'credential_revoked', machineId: null, locationId: null, dedupeKey: key, title: `${manufacturer.name}: ${credential.environment} API key revoked`, detail: `${affected.length} active machine(s) depend on it; they cannot sell (payments are declined) until a new key is set.` });
+          }
+        }
+      }
+      const health = manufacturer.webhookHealth;
+      if (health) {
+        webhookFacts.push({ manufacturerId, lastRejectedAtMs: ms(health.lastRejectedAt), lastRejectedCode: health.lastRejectedCode ?? null, lastAcceptedAtMs: ms(health.lastAcceptedAt) });
+      }
+    }
+    await alertRepository.autoResolveMissing(businessId, 'credential_expiring', expiringOpen);
+    await alertRepository.autoResolveMissing(businessId, 'credential_revoked', revokedOpen);
+
+    const webhookOpen = new Set<string>();
+    for (const [manufacturerId, { code }] of failingWebhooks(webhookFacts, now)) {
+      const key = `webhook_failures:${manufacturerId}`;
+      webhookOpen.add(key);
+      await this.open({ businessId, type: 'webhook_failures', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId}: webhook deliveries refused`, detail: `Their signed deliveries are being refused (${code ?? 'unknown reason'}) and none has been accepted since. Events and dispense outcomes they send are not arriving.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'webhook_failures', webhookOpen);
   }
 
   /**
@@ -133,7 +255,13 @@ class AlertService {
    * logs why.
    */
   async notifyCritical(businessId: string, notifications: Pick<NotificationService, 'send'> = notificationService): Promise<{ notified: number; digest: boolean }> {
-    const pending = (await alertRepository.listOpen(businessId, { severity: 'critical' })).filter(({ data }) => !data.notifiedAt);
+    const unnotified = (await alertRepository.listOpen(businessId, { severity: 'critical' })).filter(({ data }) => !data.notifiedAt);
+    // Cooldown: a condition that flaps (resolves, then re-opens as a new
+    // alert) is texted at most once an hour. The alert still shows in the
+    // Alert Center immediately; it is texted once the cooldown has passed
+    // if it is still open.
+    const recentlyTexted = await alertRepository.dedupeKeysNotifiedSince(businessId, unnotified.map(({ data }) => data.dedupeKey), new Date(Date.now() - CRITICAL_ALERT_COOLDOWN_MS));
+    const pending = unnotified.filter(({ data }) => !recentlyTexted.has(data.dedupeKey));
     if (pending.length === 0) {
       return { notified: 0, digest: false };
     }

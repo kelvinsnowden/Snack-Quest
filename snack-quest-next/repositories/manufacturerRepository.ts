@@ -18,6 +18,8 @@ export type ManufacturerInput = Omit<Manufacturer, 'createdAt' | 'updatedAt' | '
 export type ManufacturerUpdate = Partial<Pick<Manufacturer, 'name' | 'integrationType' | 'defaultAdapterKey' | 'apiVersion' | 'documentationUrl' | 'supportContact' | 'notes'>>;
 
 /** `manufacturers` reads/writes. Persistence only — `manufacturerRegistryService` owns the onboarding rules. */
+const webhookOutcomeWrites = new Map<string, number>();
+
 class ManufacturerRepository {
   async create(input: ManufacturerInput): Promise<string> {
     const now = FieldValue.serverTimestamp();
@@ -53,6 +55,23 @@ class ManufacturerRepository {
       .limit(1)
       .get();
     return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as Manufacturer };
+  }
+
+  /**
+   * Records how an authenticated webhook delivery went. At most one write
+   * per manufacturer and outcome per minute from each server, so a flood
+   * of deliveries can't turn into a flood of writes.
+   */
+  async noteWebhookOutcome(manufacturerId: string, outcome: 'accepted' | 'rejected', code: string | null = null, now = Date.now()): Promise<void> {
+    const throttleKey = `${manufacturerId}:${outcome}`;
+    if ((webhookOutcomeWrites.get(throttleKey) ?? 0) > now - 60_000) {
+      return;
+    }
+    webhookOutcomeWrites.set(throttleKey, now);
+    const update = outcome === 'accepted'
+      ? { 'webhookHealth.lastAcceptedAt': Timestamp.fromMillis(now) }
+      : { 'webhookHealth.lastRejectedAt': Timestamp.fromMillis(now), 'webhookHealth.lastRejectedCode': code };
+    await adminFirestore.collection(COLLECTION).doc(manufacturerId).update(update).catch(() => undefined);
   }
 
   async listByBusiness(businessId: string): Promise<{ id: string; data: Manufacturer }[]> {

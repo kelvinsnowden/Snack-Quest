@@ -1,5 +1,7 @@
 import { ContractViolationError, handleIntegrationRequest, v1Ok } from '@/lib/vending/v1/machineApi';
 import { manufacturerWebhookService, WebhookRejectedError } from '@/services/manufacturerWebhookService';
+import { manufacturerRepository } from '@/repositories/manufacturerRepository';
+import { UnrecognisedHardwarePayloadError } from '@/lib/vending/hardwareAdapter';
 
 /**
  * `POST /api/v1/webhooks/manufacturers/{slug}` — signed manufacturer
@@ -16,10 +18,14 @@ import { manufacturerWebhookService, WebhookRejectedError } from '@/services/man
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> {
   const { slug } = await params;
   return handleIntegrationRequest(request, 'webhook', 'webhook', async ({ businessId, credential, body, requestId }) => {
+    // Outcomes of authenticated deliveries feed the webhook-failure alert.
     try {
       const result = await manufacturerWebhookService.ingest(businessId, credential, slug, body);
+      await manufacturerRepository.noteWebhookOutcome(credential.manufacturerId, 'accepted');
       return v1Ok({ requestId }, result, result.duplicate ? 200 : 202);
     } catch (error) {
+      const code = error instanceof WebhookRejectedError ? error.code : error instanceof UnrecognisedHardwarePayloadError ? 'unrecognised_payload' : 'internal_error';
+      await manufacturerRepository.noteWebhookOutcome(credential.manufacturerId, 'rejected', code);
       if (error instanceof WebhookRejectedError) {
         throw new ContractViolationError(error.code, error.message, error.status);
       }

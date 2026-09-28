@@ -189,6 +189,18 @@ class MachineDispenseCommandRepository {
     return snapshot.docs.map((doc) => doc.data() as MachineDispenseCommand);
   }
 
+  /** Commands that reached `status` since `since` — for the alert sweep's failure and timeout-rate conditions. */
+  async listByStatusUpdatedSince(businessId: string, status: DispenseCommandStatus, since: Date, limit = 1000): Promise<MachineDispenseCommand[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('status', '==', status)
+      .where('updatedAt', '>=', since)
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => doc.data() as MachineDispenseCommand);
+  }
+
   async listByMachine(businessId: string, machineId: string, limit = 50): Promise<MachineDispenseCommand[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
