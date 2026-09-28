@@ -357,14 +357,16 @@ describe('rate limiting and abuse isolation', () => {
     expect((second.error?.details as { policy: string }).policy).toBe('machine.event_items');
   });
 
-  it('a throttled request does not burn its nonce — the client can resend it once the window resets', async () => {
+  it('a throttled request spends its nonce (so replays can\'t spend the machine\'s budget); the re-signed retry succeeds', async () => {
     process.env.MACHINE_API_RATE_LIMITS = JSON.stringify({ perMachine: { heartbeat: { limit: 1, windowSeconds: 60 } } });
     const client = v1(key, machine.machineCode);
     expect((await client.heartbeat({ eventId: eventId() })).status).toBe(202);
-    const nonce = 'nonce-kept-after-429-000';
+    const nonce = 'nonce-spent-by-a-429-000';
     expect((await client.heartbeat({ eventId: 'same' }, { nonce })).status).toBe(429);
     resetRateLimiterForTesting();
-    expect((await client.heartbeat({ eventId: 'same' }, { nonce })).status).toBe(202);
+    expect((await client.heartbeat({ eventId: 'same' }, { nonce })).error?.code).toBe('replayed_request');
+    // Every retry is re-signed with a fresh nonce (spec §3.5); the same eventId keeps it idempotent.
+    expect((await client.heartbeat({ eventId: 'same' })).status).toBe(202);
   });
 
   it('a per-credential budget can be raised for a large fleet', async () => {

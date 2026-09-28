@@ -8,7 +8,7 @@ import { scopeOf } from '@/lib/vending/credentialLifecycle';
 import { UnrecognisedHardwarePayloadError } from '@/lib/vending/hardwareAdapter';
 import { defaultRateLimiter, type RateLimitCheck, type RateLimitDecision } from '@/lib/rateLimit/rateLimiter';
 import { logger, type Logger } from '@/lib/observability/logger';
-import { clientErrorRule, credentialRule, machineRule, webhookRule, type MachineEndpointClass } from '@/lib/vending/v1/rateLimits';
+import { authFailureRule, clientErrorRule, credentialRule, machineRule, manufacturerRule, webhookRule, type MachineEndpointClass } from '@/lib/vending/v1/rateLimits';
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { DispenseCommandNotFoundError, IllegalDispenseCommandTransitionError } from '@/repositories/machineDispenseCommandRepository';
@@ -265,6 +265,7 @@ interface AuthenticatedRequest {
   nonce: string;
   timestamp: number;
   rawBody: Uint8Array;
+  ip: string | null;
 }
 
 async function authenticate(
@@ -281,6 +282,11 @@ async function authenticate(
   const raw = await readRawBody(request);
   if (!(raw instanceof Uint8Array)) {
     log.info('v1 request refused', { status: raw.status, code: raw.code });
+    // An oversized body is refused before authentication; it still costs the sender.
+    const ip = clientIp(request);
+    if (ip) {
+      await defaultRateLimiter().record(`ip:${ip}:auth_failures`, authFailureRule());
+    }
     return { ok: false, response: v1Error(raw.status, raw.code, raw.message, undefined, meta), credential: null };
   }
   const businessId = getCurrentBusinessId();
@@ -315,12 +321,24 @@ async function authenticate(
       nonce: result.nonce,
       timestamp: result.timestamp,
       rawBody: raw,
+      ip: clientIp(request),
     },
   };
 }
 
 async function finishRequest(auth: AuthenticatedRequest, checks: RateLimitCheck[], clientErrorKey: string | null, run: (onClientError: () => Promise<void>) => Promise<Response>): Promise<Response> {
   const limiter = defaultRateLimiter();
+  // The nonce is claimed before any budget is charged: a replayed request
+  // must not spend the victim machine's allowance. The replay is charged
+  // to the replaying address instead. (A legitimate request refused by a
+  // limit below loses its nonce — harmless: every retry is re-signed.)
+  if (!(await claimRequestNonce(auth.credential.keyId, auth.nonce, auth.timestamp))) {
+    auth.log.warn('v1 replayed request refused');
+    if (auth.ip) {
+      await limiter.record(`ip:${auth.ip}:auth_failures`, authFailureRule());
+    }
+    return v1Error(401, 'replayed_request', 'This nonce has already been used', undefined, auth.meta);
+  }
   if (clientErrorKey && (await limiter.isOver(clientErrorKey, clientErrorRule()))) {
     const decision: RateLimitDecision = { allowed: false, rule: clientErrorRule(), remaining: 0, resetSeconds: 60 };
     auth.log.warn('v1 request refused: too many invalid requests', { policy: decision.rule.name });
@@ -331,10 +349,6 @@ async function finishRequest(auth: AuthenticatedRequest, checks: RateLimitCheck[
   if (!decision.allowed) {
     auth.log.warn('v1 request rate limited', { policy: decision.rule.name, limit: decision.rule.limit });
     return rateLimitedResponse(decision, auth.meta);
-  }
-  if (!(await claimRequestNonce(auth.credential.keyId, auth.nonce, auth.timestamp))) {
-    auth.log.warn('v1 replayed request refused');
-    return v1Error(401, 'replayed_request', 'This nonce has already been used', undefined, auth.meta);
   }
   const onClientError = async () => {
     if (clientErrorKey) {
@@ -400,6 +414,7 @@ export async function handleMachineRequest(
   const checks: RateLimitCheck[] = [
     { key: `${machineKey}:${endpoint}`, rule: machineRule(endpoint) },
     { key: `k:${auth.credential.keyId}`, rule: credentialRule(auth.credential.rateLimitPerMinute) },
+    { key: `mf:${auth.credential.manufacturerId}`, rule: manufacturerRule() },
   ];
   const limiter = defaultRateLimiter();
   return finishRequest(auth, checks, `${machineKey}:client_errors`, async () => {
@@ -437,9 +452,13 @@ export async function handleIntegrationRequest(
   const auth = authenticated.auth;
   const checks: RateLimitCheck[] =
     endpoint === 'webhook'
-      ? [{ key: `k:${auth.credential.keyId}:webhooks`, rule: webhookRule(auth.credential.rateLimitPerMinute) }]
+      ? [
+          { key: `k:${auth.credential.keyId}:webhooks`, rule: webhookRule(auth.credential.rateLimitPerMinute) },
+          { key: `mf:${auth.credential.manufacturerId}`, rule: manufacturerRule() },
+        ]
       : [
           { key: `k:${auth.credential.keyId}`, rule: credentialRule(auth.credential.rateLimitPerMinute) },
+          { key: `mf:${auth.credential.manufacturerId}`, rule: manufacturerRule() },
           { key: `k:${auth.credential.keyId}:connect`, rule: { ...machineRule('connect'), limit: Math.max(machineRule('connect').limit, 600) } },
         ];
   return finishRequest(auth, checks, `k:${auth.credential.keyId}:client_errors`, async () => {

@@ -2068,6 +2068,17 @@
       "collectionGroup": "integrationRequestNonces",
       "fieldPath": "keyId",
       "indexes": []
+    },
+    {
+      "collectionGroup": "rateLimitCounters",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rateLimitCounters",
+      "fieldPath": "count",
+      "indexes": []
     }
   ]
 }
