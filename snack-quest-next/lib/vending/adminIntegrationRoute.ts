@@ -19,6 +19,9 @@ import {
 } from '@/services/machineIntegrationService';
 import { CredentialIssuanceError, CredentialRotationConflictError, IntegrationCredentialNotFoundError } from '@/services/integrationCredentialService';
 import { SlotMappingError } from '@/services/machineSlotService';
+import { ManufacturerApiCredentialError } from '@/services/manufacturerApiCredentialService';
+import { ManufacturerApiCredentialNotFoundError } from '@/repositories/manufacturerApiCredentialRepository';
+import { UnsafeManufacturerUrlError } from '@/lib/vending/outboundUrl';
 import type { StaffSession } from '@/services/staffAuthService';
 import type { Role } from '@/types';
 
@@ -93,7 +96,9 @@ function mapIntegrationError(error: unknown): Response | null {
     error instanceof IntegrationConfigurationError ||
     error instanceof SlotMappingError ||
     error instanceof CredentialIssuanceError ||
-    error instanceof UnsupportedManufacturerError
+    error instanceof UnsupportedManufacturerError ||
+    error instanceof ManufacturerApiCredentialError ||
+    error instanceof UnsafeManufacturerUrlError
   ) {
     return respond(400);
   }
@@ -102,7 +107,8 @@ function mapIntegrationError(error: unknown): Response | null {
     error instanceof MachineModelNotFoundError ||
     error instanceof MachineIntegrationNotFoundError ||
     error instanceof MachineNotFoundError ||
-    error instanceof IntegrationCredentialNotFoundError
+    error instanceof IntegrationCredentialNotFoundError ||
+    error instanceof ManufacturerApiCredentialNotFoundError
   ) {
     return respond(404);
   }

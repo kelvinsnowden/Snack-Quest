@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
+import { manufacturerApiCredentialService } from '@/services/manufacturerApiCredentialService';
 import { manufacturerRepository, ManufacturerNotFoundError } from '@/repositories/manufacturerRepository';
 import { machineModelRepository, MachineModelNotFoundError } from '@/repositories/machineModelRepository';
 import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
@@ -258,6 +259,9 @@ class MachineIntegrationService {
     } else if (manufacturer.status === 'suspended') {
       blockers.push(`${manufacturer.name} is suspended`);
     }
+    if (registration?.requiresOutboundCredential && !(await manufacturerApiCredentialService.isConfigured(businessId, integration.manufacturerId, integration.environment))) {
+      blockers.push(`No ${integration.environment} API credential is configured for this manufacturer`);
+    }
     if (isProductionDeployment() && (integration.environment === 'sandbox' || registration?.environment === 'sandbox_only')) {
       blockers.push('Sandbox integrations cannot be activated on the production deployment');
     }
@@ -315,6 +319,11 @@ class MachineIntegrationService {
     }
     if (isProductionDeployment() && integration.environment !== 'production') {
       return { allowed: false, reason: 'sandbox integration on the production deployment' };
+    }
+    if (purpose === 'pre_payment' && findAdapterRegistration(integration.adapterKey)?.requiresOutboundCredential
+      && !(await manufacturerApiCredentialService.isConfigured(businessId, integration.manufacturerId, integration.environment))) {
+      // Revoked or never set: the vend would be refused, so don't take the money.
+      return { allowed: false, reason: 'no manufacturer API credential configured' };
     }
     const manufacturer = await manufacturerRepository.findById(businessId, integration.manufacturerId);
     if (!manufacturer || manufacturer.status !== 'active') {

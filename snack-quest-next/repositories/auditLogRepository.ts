@@ -60,6 +60,25 @@ class AuditLogRepository {
       nextCursor: hasMore ? docs[docs.length - 1].id : null,
     };
   }
+
+  /**
+   * The newest entries about any of these entities (e.g. every credential
+   * of one manufacturer), merged across Firestore's 30-value `in` limit.
+   */
+  async listForEntities(businessId: string, entityIds: string[], limit = 50): Promise<{ id: string; data: AuditLog }[]> {
+    const unique = [...new Set(entityIds)].slice(0, 300);
+    const chunks: string[][] = [];
+    for (let i = 0; i < unique.length; i += 30) chunks.push(unique.slice(i, i + 30));
+    const pages = await Promise.all(
+      chunks.map((ids) =>
+        adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('entityId', 'in', ids).orderBy('createdAt', 'desc').limit(limit).get(),
+      ),
+    );
+    return pages
+      .flatMap((page) => page.docs.map((doc) => ({ id: doc.id, data: doc.data() as AuditLog })))
+      .sort((a, b) => (b.data.createdAt?.toMillis?.() ?? 0) - (a.data.createdAt?.toMillis?.() ?? 0))
+      .slice(0, limit);
+  }
 }
 
 export const auditLogRepository = new AuditLogRepository();

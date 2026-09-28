@@ -86,21 +86,40 @@ export interface ReferenceHttpAdapterConfig {
  * refuses every call — the same honest "not configured" posture as the
  * Shengma stub.
  */
+/**
+ * Where the adapter gets Snack Quest's credential for a machine's
+ * manufacturer — in production, `manufacturerApiCredentialService`
+ * (per manufacturer × environment, encrypted, rotatable). Resolved per
+ * call, so a rotation or revocation takes effect without a redeploy.
+ */
+export interface ReferenceHttpCredentialSource {
+  credentialFor(machineId: string): Promise<{ baseUrl: string; apiKey: string; version: number } | null>;
+  timeoutMs?: number;
+  fetchImpl?: FetchLike;
+  retryDelaysMs?: number[];
+  resolveManufacturerMachineId?: (machineId: string) => Promise<string | null>;
+}
+
 export class ReferenceHttpAdapter implements VendingHardwareAdapter {
   readonly manufacturer = ADAPTER_KEY;
-  private readonly client: ManufacturerHttpClient | null;
+  private readonly staticClient: ManufacturerHttpClient | null;
+  private readonly source: ReferenceHttpCredentialSource | null;
+  private readonly clients = new Map<string, ManufacturerHttpClient>();
   private readonly resolveManufacturerMachineId: (machineId: string) => Promise<string | null>;
 
-  constructor(config: ReferenceHttpAdapterConfig | null) {
-    this.client = config?.baseUrl && config.apiKey
-      ? new ManufacturerHttpClient({ adapterKey: ADAPTER_KEY, baseUrl: config.baseUrl, apiKey: config.apiKey, timeoutMs: config.timeoutMs, fetchImpl: config.fetchImpl, retryDelaysMs: config.retryDelaysMs })
+  /** A fixed `{ baseUrl, apiKey }` (tests, a single sandbox), or a credential source resolved per machine (production). */
+  constructor(config: ReferenceHttpAdapterConfig | ReferenceHttpCredentialSource | null) {
+    const fixed = config && 'baseUrl' in config ? config : null;
+    this.source = config && 'credentialFor' in config ? config : null;
+    this.staticClient = fixed?.baseUrl && fixed.apiKey
+      ? new ManufacturerHttpClient({ adapterKey: ADAPTER_KEY, baseUrl: fixed.baseUrl, apiKey: fixed.apiKey, timeoutMs: fixed.timeoutMs, fetchImpl: fixed.fetchImpl, retryDelaysMs: fixed.retryDelaysMs })
       : null;
     this.resolveManufacturerMachineId =
       config?.resolveManufacturerMachineId ?? (async (machineId) => (await machineIntegrationRepository.findForAdapter(machineId))?.manufacturerMachineId ?? null);
   }
 
   capabilities(): HardwareCapabilities {
-    if (!this.client) {
+    if (!this.staticClient && !this.source) {
       return NO_CAPABILITIES;
     }
     return {
@@ -116,13 +135,16 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
   }
 
   async testConnection(machineId: string): Promise<ConnectionTestResult> {
-    if (!this.client) {
-      return { ok: false, detail: 'Reference manufacturer API is not configured (base URL and API key).', latencyMs: null, errorKind: 'protocol' };
+    let client: ManufacturerHttpClient;
+    try {
+      client = await this.clientFor(machineId, 'testConnection');
+    } catch {
+      return { ok: false, detail: 'No API credential is configured for this manufacturer in this environment (Integrations → manufacturer → API credentials).', latencyMs: null, errorKind: 'protocol' };
     }
     const startedAt = Date.now();
     try {
       const path = await this.machinePath(machineId);
-      const { status } = await this.client.request('GET', path);
+      const { status } = await client.request('GET', path);
       if (status === 404) {
         return { ok: false, detail: 'The manufacturer API does not know this machine id — check the integration’s manufacturer machine id.', latencyMs: Date.now() - startedAt, errorKind: 'protocol' };
       }
@@ -142,7 +164,7 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
   }
 
   async authorizeVend(machineId: string, slotCode: string, options: VendAuthorizationOptions = {}): Promise<VendAuthorizationResult> {
-    const client = this.requireClient('authorizeVend');
+    const client = await this.clientFor(machineId, 'authorizeVend');
     if (!options.commandRef) {
       // Without our own reference the vend could not be made idempotent — refuse rather than risk a double dispense.
       return { vendRef: '', authorized: false, reason: 'no command reference supplied' };
@@ -164,7 +186,7 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
   }
 
   async getDispenseStatus(machineId: string, vendRef: string): Promise<DispenseStatusReport> {
-    const client = this.requireClient('getDispenseStatus');
+    const client = await this.clientFor(machineId, 'getDispenseStatus');
     const { status, json } = await client.request('GET', `${await this.machinePath(machineId)}/vends/${encodeURIComponent(vendRef)}`);
     if (status === 404) {
       // The manufacturer never received it — which, for a vend that timed out, is itself an answer.
@@ -285,11 +307,23 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
     return { deliveryId, events };
   }
 
-  private requireClient(action: string): ManufacturerHttpClient {
-    if (!this.client) {
-      throw new ProtocolNotConfiguredError(ADAPTER_KEY, action);
+  private async clientFor(machineId: string, action: string): Promise<ManufacturerHttpClient> {
+    if (this.staticClient) {
+      return this.staticClient;
     }
-    return this.client;
+    const credential = this.source ? await this.source.credentialFor(machineId) : null;
+    if (!credential) {
+      // Refused before anything is sent — provably undelivered.
+      throw new ProtocolNotConfiguredError(ADAPTER_KEY, `${action}: no API credential configured for this manufacturer and environment`);
+    }
+    const cacheKey = `${credential.baseUrl}#${credential.version}`;
+    let client = this.clients.get(cacheKey);
+    if (!client) {
+      client = new ManufacturerHttpClient({ adapterKey: ADAPTER_KEY, baseUrl: credential.baseUrl, apiKey: credential.apiKey, timeoutMs: this.source?.timeoutMs, fetchImpl: this.source?.fetchImpl, retryDelaysMs: this.source?.retryDelaysMs });
+      if (this.clients.size > 100) this.clients.clear();
+      this.clients.set(cacheKey, client);
+    }
+    return client;
   }
 
   private async machinePath(machineId: string): Promise<string> {
@@ -301,7 +335,7 @@ export class ReferenceHttpAdapter implements VendingHardwareAdapter {
   }
 
   private async readMachine(machineId: string): Promise<Record<string, unknown>> {
-    const { status, json } = await this.requireClient('getMachineStatus').request('GET', await this.machinePath(machineId));
+    const { status, json } = await (await this.clientFor(machineId, 'getMachineStatus')).request('GET', await this.machinePath(machineId));
     if (status >= 400) {
       throw new HardwareUnreachableError(ADAPTER_KEY, `machine status returned HTTP ${status}`);
     }

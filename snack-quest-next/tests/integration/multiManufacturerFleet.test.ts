@@ -4,6 +4,7 @@ import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/li
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import { ReferenceHttpAdapter } from '@/lib/vending/adapters/referenceHttpAdapter';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
+import { manufacturerApiCredentialService } from '@/services/manufacturerApiCredentialService';
 import { MachineIntegrationService } from '@/services/machineIntegrationService';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
 import { MachineTransactionService } from '@/services/machineTransactionService';
@@ -35,13 +36,16 @@ import { clearIntegrationCollections } from '../helpers/integrationFixtures';
 
 const BUSINESS_ID = 'biz-multi-manufacturer-fleet';
 const ORIGINAL_BUSINESS_ID = process.env.SNACK_QUEST_BUSINESS_ID;
+const ORIGINAL_KEY = process.env.SECRET_ENCRYPTION_KEY;
 
 beforeAll(() => {
   process.env.SNACK_QUEST_BUSINESS_ID = BUSINESS_ID;
+  process.env.SECRET_ENCRYPTION_KEY = '6'.repeat(64);
 });
 
 afterAll(() => {
   process.env.SNACK_QUEST_BUSINESS_ID = ORIGINAL_BUSINESS_ID;
+  process.env.SECRET_ENCRYPTION_KEY = ORIGINAL_KEY;
 });
 
 /** Manufacturer C's API — a fake of the reference contract that dispenses whatever it is asked to. */
@@ -68,7 +72,8 @@ let resolver: VendingAdapterResolver;
 beforeEach(async () => {
   await clearIntegrationCollections(BUSINESS_ID);
   mockA = new MockVendingAdapter();
-  referenceC = new ReferenceHttpAdapter({ baseUrl: 'https://c.example.test', apiKey: 'k', fetchImpl: manufacturerCServer().fetchImpl, retryDelaysMs: [0] });
+  // Credentials resolved the production way: through the server-side credential service, per machine.
+  referenceC = new ReferenceHttpAdapter({ credentialFor: (machineId) => manufacturerApiCredentialService.resolveForMachine(machineId), fetchImpl: manufacturerCServer().fetchImpl, retryDelaysMs: [0] });
   resolver = (key) => (key === 'mock' ? mockA : key === 'reference_http' ? referenceC : defaultVendingAdapterResolver(key));
 });
 
@@ -114,6 +119,7 @@ describe('one Snack Quest OS over three manufacturers', () => {
     const m002 = await registerMachine(ownerA, 'snack_quest_gateway', manufacturerB, 'B-002', 'motor-1');
     const m003 = await registerMachine(ownerB, 'snack_quest_gateway', manufacturerB, 'B-003', 'motor-1');
     const m004 = await registerMachine(ownerB, 'reference_http', manufacturerC, 'C-004', 'tray-1');
+    await manufacturerApiCredentialService.set(BUSINESS_ID, manufacturerC.manufacturerId, 'sandbox', { baseUrl: 'https://c.example.test', apiKey: 'sandbox-key-for-c' }, 'staff-1');
 
     // Machine 001: Snack Quest calls Manufacturer A.
     mockA.setOnline(m001.machineId);

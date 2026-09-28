@@ -81,3 +81,35 @@ export function invalidateCredentialCache(keyId?: string): void {
     entries.clear();
   }
 }
+
+const manufacturerStatuses = new Map<string, { status: string | null; expiresAt: number }>();
+
+/**
+ * A manufacturer's status (`active` / `suspended`), cached like its
+ * credentials: every authenticated request checks it, and suspension
+ * reaches every instance within the same bound as revocation.
+ */
+export async function getCachedManufacturerStatus(manufacturerId: string, load: (manufacturerId: string) => Promise<string | null>, now: number = Date.now()): Promise<string | null> {
+  const hit = manufacturerStatuses.get(manufacturerId);
+  if (hit && hit.expiresAt > now) {
+    return hit.status;
+  }
+  const status = await load(manufacturerId);
+  const lifetime = ttl();
+  if (lifetime > 0) {
+    if (manufacturerStatuses.size >= MAX_ENTRIES) {
+      const oldest = manufacturerStatuses.keys().next().value;
+      if (oldest !== undefined) manufacturerStatuses.delete(oldest);
+    }
+    manufacturerStatuses.set(manufacturerId, { status, expiresAt: now + lifetime });
+  }
+  return status;
+}
+
+export function invalidateManufacturerStatus(manufacturerId?: string): void {
+  if (manufacturerId) {
+    manufacturerStatuses.delete(manufacturerId);
+  } else {
+    manufacturerStatuses.clear();
+  }
+}

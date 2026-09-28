@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { invalidateManufacturerStatus } from '@/lib/vending/credentialCache';
 import { manufacturerRepository, ManufacturerNotFoundError } from '@/repositories/manufacturerRepository';
 import { machineModelRepository, MachineModelNotFoundError } from '@/repositories/machineModelRepository';
 import { findAdapterRegistration, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
@@ -174,6 +175,7 @@ class ManufacturerRegistryService {
   async setManufacturerStatus(businessId: string, manufacturerId: string, status: Manufacturer['status'], actor: string): Promise<void> {
     await this.requireManufacturer(businessId, manufacturerId);
     await manufacturerRepository.setStatus(businessId, manufacturerId, status, actor);
+    invalidateManufacturerStatus(manufacturerId);
   }
 
   async createModel(

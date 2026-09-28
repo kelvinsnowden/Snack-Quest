@@ -10,6 +10,8 @@ import { defaultRateLimiter, type RateLimitCheck, type RateLimitDecision } from 
 import { logger, type Logger } from '@/lib/observability/logger';
 import { authFailureRule, clientErrorRule, credentialRule, machineRule, manufacturerRule, webhookRule, type MachineEndpointClass } from '@/lib/vending/v1/rateLimits';
 import { machineRepository } from '@/repositories/machineRepository';
+import { manufacturerRepository } from '@/repositories/manufacturerRepository';
+import { getCachedManufacturerStatus } from '@/lib/vending/credentialCache';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { DispenseCommandNotFoundError, IllegalDispenseCommandTransitionError } from '@/repositories/machineDispenseCommandRepository';
 import { MachineCommandNotFoundError } from '@/repositories/machineCommandRepository';
@@ -307,6 +309,13 @@ async function authenticate(
     // instead of failing until someone visits the machine.
     const details = result.code === 'stale_timestamp' ? { serverTime: new Date().toISOString(), serverTimestamp: Math.floor(Date.now() / 1000) } : undefined;
     return { ok: false, response: v1Error(result.status, result.code, result.message, details, meta, extra), credential: result.credential };
+  }
+  // A suspended manufacturer's keys stop working everywhere at once —
+  // not just for new dispenses. Cached with the credential (≤ 30 s).
+  const manufacturerStatus = await getCachedManufacturerStatus(result.credential.manufacturerId, async (manufacturerId) => (await manufacturerRepository.findById(businessId, manufacturerId))?.status ?? null);
+  if (manufacturerStatus !== 'active') {
+    log.warn('v1 request from a suspended or unknown manufacturer refused', { keyId: result.credential.keyId, manufacturerId: result.credential.manufacturerId });
+    return { ok: false, response: v1Error(403, 'manufacturer_suspended', 'This manufacturer is suspended', undefined, meta), credential: null };
   }
   const authed: ResponseMeta = { ...meta, credential: result.credential, credentialStatus: result.credentialStatus };
   return {

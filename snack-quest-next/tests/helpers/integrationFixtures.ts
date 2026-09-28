@@ -24,6 +24,7 @@ export const INTEGRATION_COLLECTIONS = [
   'webhookEvents',
   'partners',
   'alerts',
+  'manufacturerApiCredentials',
 ];
 
 export async function clearIntegrationCollections(businessId: string): Promise<void> {

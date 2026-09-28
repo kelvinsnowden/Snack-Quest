@@ -40,6 +40,8 @@ export interface AdapterRegistration {
   integrationTypes: readonly IntegrationType[];
   environment: 'sandbox_only' | 'production_capable';
   maturity: 'implemented' | 'reference' | 'stub';
+  /** Calls a manufacturer API with a credential from `manufacturerApiCredentialService` — activation and payment are refused until one is configured for the manufacturer and environment. */
+  requiresOutboundCredential?: boolean;
   notes: string;
   resolve(): VendingHardwareAdapter;
 }
@@ -55,14 +57,17 @@ const sharedMockAdapter = new MockVendingAdapter();
 const sharedShengmaAdapter = new ShengmaAdapter();
 /** Stateless — it reads what machines reported from Firestore on every call. */
 const sharedGatewayAdapter = new SnackQuestGatewayAdapter();
-/** Configured from the environment; without both values it reports no capabilities and refuses every call. */
+/**
+ * Credentials come from `manufacturerApiCredentialService`, per machine's
+ * manufacturer and environment — never from environment variables. A
+ * machine whose manufacturer has no credential is refused before
+ * anything is sent.
+ */
 let referenceHttpAdapter: ReferenceHttpAdapter | null = null;
 function resolveReferenceHttpAdapter(): ReferenceHttpAdapter {
-  referenceHttpAdapter ??= new ReferenceHttpAdapter(
-    process.env.REFERENCE_MANUFACTURER_API_URL && process.env.REFERENCE_MANUFACTURER_API_KEY
-      ? { baseUrl: process.env.REFERENCE_MANUFACTURER_API_URL, apiKey: process.env.REFERENCE_MANUFACTURER_API_KEY }
-      : null,
-  );
+  referenceHttpAdapter ??= new ReferenceHttpAdapter({
+    credentialFor: async (machineId) => (await import('@/services/manufacturerApiCredentialService')).manufacturerApiCredentialService.resolveForMachine(machineId),
+  });
   return referenceHttpAdapter;
 }
 
@@ -104,6 +109,7 @@ const registrations: AdapterRegistration[] = [
     integrationTypes: ['manufacturer_api', 'webhook', 'hybrid'],
     environment: 'sandbox_only',
     maturity: 'reference',
+    requiresOutboundCredential: true,
     notes: 'A template built against the example contract in docs/MACHINE_INTEGRATION_LAYER.md §6, tested only against a fake server. Not an integration with any real manufacturer — copy it as the starting point for one.',
     resolve: resolveReferenceHttpAdapter,
   },

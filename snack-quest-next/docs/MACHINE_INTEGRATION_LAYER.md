@@ -176,9 +176,18 @@ smallest API a manufacturer could expose for Snack Quest to drive
 their machines safely. It's also the list of things to look for in a
 real manufacturer's documentation.
 
-Auth: `Authorization: Bearer {REFERENCE_MANUFACTURER_API_KEY}` against
-`REFERENCE_MANUFACTURER_API_URL`. Without both, the adapter reports no
-capabilities and refuses every call.
+Auth: `Authorization: Bearer {key}` against `{baseUrl}`, both taken from
+the manufacturer's API credential for the machine's environment
+(`manufacturerApiCredentials`, set in the admin console under the
+manufacturer → *API key for calling …*; encrypted at rest, rotatable
+with roll-back, revocable, every change audit-logged). The adapter asks
+`manufacturerApiCredentialService` for it at call time — no environment
+variable holds a manufacturer credential. Without one, activation is
+blocked, payments for the machine are declined, and any call is refused
+before anything is sent. Base URLs must be https and public: private,
+loopback, link-local and metadata addresses are refused (production
+hosts are also re-resolved and checked at call time); `http://localhost`
+is accepted only for a sandbox credential in local development.
 
 | Call | Semantics |
 |---|---|
@@ -417,7 +426,7 @@ Every admin mutation is audit-logged.
 
 | Item | Detail |
 |---|---|
-| Env | `SECRET_ENCRYPTION_KEY` (64 hex, required for production credentials); `CRON_SECRET`; `UPSTASH_REDIS_REST_URL`/`_TOKEN` (or `KV_REST_API_URL`/`_TOKEN`) for shared rate limits; optional `MACHINE_API_RATE_LIMITS` (JSON overrides), `MACHINE_API_NONCE_STORE=kv`, `CREDENTIAL_CACHE_TTL_MS`, `ALERT_EVALUATION_MIN_INTERVAL_MS`; `REFERENCE_MANUFACTURER_API_URL`/`_KEY` (sandbox reference adapter only) |
+| Env | `SECRET_ENCRYPTION_KEY` (64 hex, required for production credentials); `CRON_SECRET`; `UPSTASH_REDIS_REST_URL`/`_TOKEN` (or `KV_REST_API_URL`/`_TOKEN`) for shared rate limits; optional `MACHINE_API_RATE_LIMITS` (JSON overrides), `MACHINE_API_NONCE_STORE=kv`, `CREDENTIAL_CACHE_TTL_MS`, `ALERT_EVALUATION_MIN_INTERVAL_MS` |
 | Crons | `reconcile-vending-transactions` 06:00 UTC and `reconcile-vending-commands` 07:00 UTC (daily, `vercel.json`); `vending-fast-recovery` every 5 min from GitHub Actions (needs repository secrets `CRON_SECRET`, `SNACK_QUEST_BASE_URL`) — recovery, pull reconciliation, alert sweep and critical-alert SMS |
 | Firestore TTL | Declared in `firestore.indexes.json` for `integrationRequestNonces.expiresAt` (deployed with `firebase deploy --only firestore:indexes`); both nonce fields are exempt from indexing |
 | Notifications | Seed the `vending_critical_alert_sms` template (`scripts/seedNotificationTemplates.mjs`); recipients are the order-alert recipients |

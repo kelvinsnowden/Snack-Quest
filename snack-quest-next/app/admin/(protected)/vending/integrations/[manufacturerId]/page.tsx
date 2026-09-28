@@ -7,6 +7,8 @@ import { manufacturerRepository } from '@/repositories/manufacturerRepository';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
 import { machineIntegrationService } from '@/services/machineIntegrationService';
+import { manufacturerApiCredentialService } from '@/services/manufacturerApiCredentialService';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
 import { findAdapterRegistration } from '@/lib/vending/adapterRegistry';
 import { HARDWARE_CAPABILITY_LABELS, type HardwareCapability } from '@/lib/vending/protocol/capabilities';
 import { toJsonSafe } from '@/lib/vending/serializeIntegration';
@@ -16,6 +18,8 @@ import { ManufacturerStageControls } from '@/components/admin/integrations/Manuf
 import { CreateModelForm } from '@/components/admin/integrations/CreateModelForm';
 import { CertificationPanel, type ChecklistEntry } from '@/components/admin/integrations/CertificationPanel';
 import { CredentialsPanel, type CredentialRow } from '@/components/admin/integrations/CredentialsPanel';
+import { ManufacturerApiCredentialsPanel, type ApiCredentialRow } from '@/components/admin/integrations/ManufacturerApiCredentialsPanel';
+import { CredentialHistory, type CredentialHistoryEntry } from '@/components/admin/integrations/CredentialHistory';
 import { CertificationBadge, IntegrationHealthBadge, IntegrationStateBadge } from '@/components/admin/integrations/IntegrationBadges';
 import type { CertificationCheckKey } from '@/types';
 
@@ -29,11 +33,17 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
   if (!manufacturer) {
     notFound();
   }
-  const [models, credentials, integrations] = await Promise.all([
+  const [models, credentials, apiCredentials, integrations] = await Promise.all([
     manufacturerRegistryService.listModels(session.businessId, manufacturerId),
     integrationCredentialService.listForManufacturer(session.businessId, manufacturerId),
+    manufacturerApiCredentialService.listSummaries(session.businessId, manufacturerId),
     machineIntegrationService.listIntegrations(session.businessId),
   ]);
+  const credentialHistory = await auditLogRepository.listForEntities(
+    session.businessId,
+    [...credentials.map((credential) => credential.keyId), `${manufacturerId}__sandbox`, `${manufacturerId}__production`],
+    30,
+  );
   const adapter = findAdapterRegistration(manufacturer.defaultAdapterKey);
   const machines = integrations.filter(({ integration }) => integration.manufacturerId === manufacturerId);
   const modelName = new Map(models.map(({ id, data }) => [id, data.name]));
@@ -113,6 +123,35 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
             credentials={toJsonSafe(credentials) as CredentialRow[]}
             canIssueProduction={manufacturer.onboardingStage === 'production'}
             machines={machines.map(({ integration }) => ({ machineId: integration.machineId, machineCode: integration.machineCode, environment: integration.environment }))}
+          />
+        </CardContent>
+      </Card>
+
+      {adapter?.direction !== 'inbound' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>API key for calling {manufacturer.name}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ManufacturerApiCredentialsPanel manufacturerId={manufacturerId} credentials={apiCredentials as ApiCredentialRow[]} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Credential history</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CredentialHistory
+            entries={credentialHistory.map(({ id, data }) => ({
+              id,
+              action: data.action,
+              entityId: data.entityId,
+              actorId: data.actorId,
+              at: data.createdAt ? data.createdAt.toDate().toISOString() : null,
+              after: (data.after as Record<string, unknown> | null) ?? null,
+            })) as CredentialHistoryEntry[]}
           />
         </CardContent>
       </Card>
