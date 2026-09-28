@@ -175,7 +175,7 @@ class MachineApiService {
    * know, so a machine that stored its outcomes can resend them.
    */
   async heartbeat(context: MachineApiContext, body: z.infer<typeof heartbeatSchema>): Promise<{ accepted: true; reportOutcomes: { commandId: string; reason: string }[] }> {
-    await this.noteContact(context, body.eventId);
+    await this.noteContact(context, body.eventId, 'heartbeat');
     const outstanding = await dispenseCommandService.listNeedingOutcome(context.businessId, context.machine.id);
     return {
       accepted: true,
@@ -195,7 +195,7 @@ class MachineApiService {
    * device), each deduplicated by the report's `eventId`.
    */
   async status(context: MachineApiContext, body: z.infer<typeof statusSchema>): Promise<{ accepted: true; applied: boolean }> {
-    await this.noteContact(context, body.eventId);
+    await this.noteContact(context, body.eventId, 'status');
     const observedAt = resolveOccurredAt(body.occurredAt, new Date());
     const previous = context.integration.lastReportedStatus;
     const next = {
@@ -241,7 +241,7 @@ class MachineApiService {
    * per request) and, when this contact ends a period of silence, a
    * MACHINE_ONLINE event.
    */
-  private async noteContact(context: MachineApiContext, eventId: string): Promise<void> {
+  private async noteContact(context: MachineApiContext, eventId: string, via: 'heartbeat' | 'status'): Promise<void> {
     const integration = context.integration;
     const now = new Date();
     const before = deriveMachineLiveness({
@@ -250,8 +250,11 @@ class MachineApiService {
       expectedIntervalSeconds: integration.heartbeatIntervalSeconds,
       now,
     });
+    // Only a heartbeat moves the heartbeat signal — a status report is
+    // contact (the pipeline's api_request signal keeps liveness fresh), but
+    // "does this machine heartbeat?" must stay answerable on its own.
     const lastHeartbeat = integration.signals?.heartbeat?.toMillis() ?? 0;
-    if (now.getTime() - lastHeartbeat >= CONTACT_WRITE_INTERVAL_MS) {
+    if (via === 'heartbeat' && now.getTime() - lastHeartbeat >= CONTACT_WRITE_INTERVAL_MS) {
       await machineIntegrationRepository.recordSignal(context.machine.id, 'heartbeat');
     }
     const lastSeen = context.machine.lastSeenAt?.toMillis?.() ?? 0;

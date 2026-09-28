@@ -1,23 +1,53 @@
 import { randomUUID } from 'node:crypto';
-import { signRequest } from '@/lib/vending/requestSigning';
+import { SnackQuestMachineClient, newNonce, signedHeaders, type AttemptLog, type FetchLike } from '@/sdk/typescript/snackQuestMachine';
 
 /**
  * A virtual vending machine that integrates with Snack Quest exactly
  * the way a manufacturer who builds against the Snack Quest Machine API
- * v1 would (docs/SNACK_QUEST_MACHINE_API_V1.md): signed requests, a
- * heartbeat, status and inventory reports, a command poll, and
- * acknowledged, reported dispenses — including every failure mode the
- * platform has to survive (jams, unknown outcomes, going silent,
- * duplicate reports, going offline).
+ * v1 would (docs/SNACK_QUEST_MACHINE_API_V1.md) — and it does so
+ * through the published TypeScript reference client
+ * (sdk/typescript/snackQuestMachine.ts), so every simulator run is also
+ * a test of the SDK a manufacturer copies.
+ *
+ * Signed requests, a heartbeat, status and inventory reports, a command
+ * poll, and acknowledged, reported dispenses — plus the sandbox's fault
+ * injection (`inject`): slow networks, malformed requests, duplicated
+ * and reordered events, missed heartbeats, and every dispense outcome
+ * (jams, unknown outcomes, going silent, going offline).
  *
  * It holds no assertions. It does what a machine does and reports what
- * happened; a test or a person decides whether that was right.
+ * happened; a test, the certification harness or a person decides
+ * whether that was right. Every request it makes is in `requestLog`.
  *
  * **Sandbox only.** It refuses a production (`sqk_live_`) key outright,
  * and sandbox integrations are themselves refused on the production
  * deployment — two independent guards against a simulator ever
  * dispensing against real money.
  */
+
+/** Sandbox fault injection — flip these to make the machine misbehave in a specific, reproducible way. */
+export interface SandboxFaults {
+  /** Added before every request (a slow or congested link). */
+  delayMs: number;
+  /** The next request is sent as broken JSON (a firmware serialization bug). */
+  malformedNextRequest: boolean;
+  /** Every events batch is sent twice (an at-least-once transport). */
+  duplicateEvents: boolean;
+  /** Events in a batch are sent newest-first, and status timestamps run backwards (an offline queue flushed out of order). */
+  outOfOrderEvents: boolean;
+  /** Heartbeats are silently not sent (a stuck scheduler) while the rest keeps working. */
+  heartbeatFailure: boolean;
+
+  // Integration bugs — for proving the certification harness catches them.
+  /** Dispenses without acknowledging first (or regardless of the ack's answer). */
+  executeWithoutAck: boolean;
+  /** Reports "dispensed" even when the slot is empty (a missing drop sensor). */
+  reportDispensedWhenEmpty: boolean;
+  /** Re-sends a report under a new event id instead of the original. */
+  freshEventIdOnRetry: boolean;
+  /** Signs every request with this nonce (a broken random source). */
+  fixedNonce: string | null;
+}
 
 export interface V1Transport {
   send(method: 'GET' | 'POST', path: string, headers: Record<string, string>, body: string): Promise<{ status: number; body: unknown }>;
@@ -77,18 +107,45 @@ export class V1SimulatedMachine {
   private readonly dispenseQueue: DispenseBehaviour[] = [];
   private lastReport: { path: string; body: unknown } | null = null;
   temperatureCelsius = 5;
+  private statusRewind = 0;
+  private readonly localQueue: { commandId: string; type: string; slotId?: string }[] = [];
   doorOpen = false;
   faults: string[] = [];
   paymentDeviceOk = true;
 
+  readonly inject: SandboxFaults = {
+    delayMs: 0,
+    malformedNextRequest: false,
+    duplicateEvents: false,
+    outOfOrderEvents: false,
+    heartbeatFailure: false,
+    executeWithoutAck: false,
+    reportDispensedWhenEmpty: false,
+    freshEventIdOnRetry: false,
+    fixedNonce: null,
+  };
+  /** Every attempt the machine made, in order — nonce, timestamp, status, request id. */
+  readonly requestLog: AttemptLog[] = [];
+  private readonly client: SnackQuestMachineClient;
+  private readonly fetchImpl: FetchLike;
+
   constructor(
-    private readonly transport: V1Transport,
+    transport: V1Transport | { fetch: FetchLike },
     private readonly credentials: { keyId: string; secret: string },
     readonly manufacturerMachineId: string,
   ) {
     if (!credentials.keyId.startsWith('sqk_test_')) {
       throw new SandboxOnlyError();
     }
+    this.fetchImpl = 'fetch' in transport ? transport.fetch : fetchFromTransport(transport as V1Transport);
+    this.client = new SnackQuestMachineClient({
+      baseUrl: 'http://sandbox.invalid',
+      keyId: credentials.keyId,
+      secret: credentials.secret,
+      fetch: this.fetchImpl,
+      maxAttempts: 1,
+      onAttempt: (entry) => this.requestLog.push(entry),
+    });
   }
 
   goOffline(): void {
@@ -118,13 +175,16 @@ export class V1SimulatedMachine {
   }
 
   async heartbeat() {
+    if (this.inject.heartbeatFailure) {
+      return { status: 0, body: null, skipped: true };
+    }
     return this.machineCall('POST', 'heartbeat', { eventId: `hb-${randomUUID()}`, occurredAt: new Date().toISOString() });
   }
 
   async reportStatus() {
     return this.machineCall('POST', 'status', {
       eventId: `st-${randomUUID()}`,
-      occurredAt: new Date().toISOString(),
+      occurredAt: new Date(Date.now() - (this.inject.outOfOrderEvents ? 60_000 * ++this.statusRewind : 0)).toISOString(),
       online: true,
       doorOpen: this.doorOpen,
       temperatureCelsius: this.temperatureCelsius,
@@ -142,9 +202,13 @@ export class V1SimulatedMachine {
   }
 
   async sendEvents(events: { type: string; slotId?: string; data?: Record<string, unknown> }[]) {
-    return this.machineCall('POST', 'events', {
-      events: events.map((event) => ({ eventId: `ev-${randomUUID()}`, occurredAt: new Date().toISOString(), ...event })),
-    });
+    const now = Date.now();
+    let batch = events.map((event, index) => ({ eventId: `ev-${randomUUID()}`, occurredAt: new Date(now + index).toISOString(), ...event }));
+    if (this.inject.outOfOrderEvents) {
+      batch = [...batch].reverse();
+    }
+    const first = await this.machineCall('POST', 'events', { events: batch });
+    return this.inject.duplicateEvents ? this.machineCall('POST', 'events', { events: batch }) : first;
   }
 
   /** Re-sends the last report byte-for-byte (new signature, same event id) — the retry-after-lost-ack case. */
@@ -152,24 +216,40 @@ export class V1SimulatedMachine {
     if (!this.lastReport) {
       throw new Error('nothing to resend');
     }
-    return this.call('POST', this.lastReport.path, this.lastReport.body);
+    const body = this.inject.freshEventIdOnRetry ? { ...(this.lastReport.body as Record<string, unknown>), eventId: `retry-${randomUUID()}` } : this.lastReport.body;
+    return this.call('POST', this.lastReport.path, body);
   }
 
-  /** One poll cycle: fetch commands, acknowledge each before acting, execute, report. */
-  async pollAndExecute(): Promise<V1CommandExecution[]> {
+  /** Fetches commands into the machine's local queue without executing them (a machine that is busy, or batches its work). */
+  async pollOnly(): Promise<string[]> {
     const polled = await this.machineCall<{ commands: { commandId: string; type: string; slotId?: string }[] }>('GET', 'commands');
-    const executions: V1CommandExecution[] = [];
     for (const command of polled.body?.data?.commands ?? []) {
-      const ack = await this.machineCall('POST', `commands/${command.commandId}/ack`);
-      if (ack.status !== 200) {
-        executions.push({ commandId: command.commandId, type: command.type, acknowledgedStatus: ack.status, reportedStatus: null, outcome: 'not_executed' });
-        continue;
+      if (!this.localQueue.some((queued) => queued.commandId === command.commandId)) {
+        this.localQueue.push(command);
+      }
+    }
+    return this.localQueue.map((command) => command.commandId);
+  }
+
+  /** One poll cycle: fetch commands, then for each — acknowledge before acting, execute, report. */
+  async pollAndExecute(): Promise<V1CommandExecution[]> {
+    await this.pollOnly();
+    const executions: V1CommandExecution[] = [];
+    while (this.localQueue.length > 0) {
+      const command = this.localQueue.shift()!;
+      let ackStatus = 200;
+      if (!this.inject.executeWithoutAck) {
+        ackStatus = (await this.machineCall('POST', `commands/${command.commandId}/ack`)).status;
+        if (ackStatus !== 200) {
+          executions.push({ commandId: command.commandId, type: command.type, acknowledgedStatus: ackStatus, reportedStatus: null, outcome: 'not_executed' });
+          continue;
+        }
       }
       if (command.type === 'dispense') {
         executions.push(await this.executeDispense(command.commandId, command.slotId ?? ''));
       } else {
         const report = await this.report(`commands/${command.commandId}/status`, { status: 'completed', eventId: `c-${randomUUID()}` });
-        executions.push({ commandId: command.commandId, type: command.type, acknowledgedStatus: ack.status, reportedStatus: report.status, outcome: 'completed' });
+        executions.push({ commandId: command.commandId, type: command.type, acknowledgedStatus: ackStatus, reportedStatus: report.status, outcome: 'completed' });
       }
     }
     return executions;
@@ -183,8 +263,8 @@ export class V1SimulatedMachine {
     }
     const available = this.stock.get(slotId) ?? 0;
     let body: Record<string, unknown>;
-    if (behaviour.outcome === 'dispensed' && available > 0) {
-      this.stock.set(slotId, available - 1);
+    if (behaviour.outcome === 'dispensed' && (available > 0 || this.inject.reportDispensedWhenEmpty)) {
+      this.stock.set(slotId, Math.max(0, available - 1));
       body = { status: 'dispensed', eventId: `out-${randomUUID()}`, occurredAt: new Date().toISOString() };
     } else if (behaviour.outcome === 'dispensed') {
       body = { status: 'failed', failureCode: 'no_product', failureReason: 'slot empty at dispense time', eventId: `out-${randomUUID()}` };
@@ -218,9 +298,40 @@ export class V1SimulatedMachine {
     if (!this.online) {
       return { status: 0, body: null, skipped: true };
     }
-    const raw = body === undefined ? '' : JSON.stringify(body);
-    const headers = signRequest({ keyId: this.credentials.keyId, secret: this.credentials.secret, method, pathWithQuery: path, body: raw });
-    const response = await this.transport.send(method, path, headers, raw);
-    return { status: response.status, body: response.body as ApiEnvelope<T> | null };
+    if (this.inject.delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.inject.delayMs));
+    }
+    if (this.inject.malformedNextRequest && method === 'POST') {
+      this.inject.malformedNextRequest = false;
+      return this.sendRaw<T>(method, path, '{"eventId": "broken');
+    }
+    if (this.inject.fixedNonce) {
+      return this.sendRaw<T>(method, path, body === undefined ? '' : JSON.stringify(body), this.inject.fixedNonce);
+    }
+    const result = await this.client.request<T>(method, path, body);
+    return { status: result.status, body: { data: result.data ?? undefined, error: result.error ?? undefined } };
   }
+
+  /** Signs and sends exact bytes, bypassing the SDK's serializer — for the malformed-request fault. */
+  private async sendRaw<T>(method: 'GET' | 'POST', path: string, raw: string, nonce = newNonce()): Promise<{ status: number; body: ApiEnvelope<T> | null }> {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const headers = { ...signedHeaders({ keyId: this.credentials.keyId, secret: this.credentials.secret, method, pathWithQuery: path, body: raw, timestamp, nonce }), 'Content-Type': 'application/json' };
+    const response = await this.fetchImpl(`http://sandbox.invalid${path}`, { method, headers, body: method === 'GET' ? undefined : raw });
+    const text = await response.text();
+    this.requestLog.push({ method, path, attempt: 1, status: response.status, errorCode: null, requestId: response.headers.get('SQ-Request-Id'), nonce, timestamp, body: raw });
+    try {
+      return { status: response.status, body: JSON.parse(text) as ApiEnvelope<T> };
+    } catch {
+      return { status: response.status, body: null };
+    }
+  }
+}
+
+/** Adapts the simulator's older send-style transports to the SDK's fetch shape. */
+function fetchFromTransport(transport: V1Transport): FetchLike {
+  return async (url, init) => {
+    const path = url.replace(/^https?:\/\/[^/]+/, '');
+    const { status, body } = await transport.send(init.method as 'GET' | 'POST', path, init.headers, init.body ?? '');
+    return { status, headers: { get: () => null }, text: async () => (body === null ? '' : JSON.stringify(body)) };
+  };
 }
