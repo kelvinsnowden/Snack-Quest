@@ -278,6 +278,7 @@ as — you cannot fetch another machine's catalog.
       "name": "Lay's Original Chips",
       "description": "Classic salted potato chips.",
       "imageUrl": "https://.../chips.jpg",
+      "origin": null,
       "category": "chips",
       "priceKes": 150,
       "availabilityState": "available",

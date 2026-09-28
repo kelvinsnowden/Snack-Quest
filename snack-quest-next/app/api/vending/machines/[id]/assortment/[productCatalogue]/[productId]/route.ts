@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
-import { machineAssortmentService } from '@/services/machineAssortmentService';
+import { machineAssortmentService, MerchandisingValidationError, type MerchandisingPatch } from '@/services/machineAssortmentService';
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
 import { serializeMachineAssortment } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
@@ -11,11 +11,16 @@ type RouteParams = { id: string; productCatalogue: string; productId: string };
 /**
  * The mutations that exist without a full re-assort (§ MACHINE
  * ASSORTMENT): unassort, link/unlink a physical slot, hide/show on the
- * customer screen, and set (or clear) a machine-specific price
- * override. Each field present in the body is applied; fields absent
- * are left untouched — the same "apply whichever fields were given"
- * convention `.../slots` PATCH already uses.
+ * customer screen, set (or clear) a machine-specific price override,
+ * and how the product looks on this machine's screen — name, short
+ * description, photo, category, position and badge (`null` clears a
+ * machine-specific value back to the product's own). Each field present
+ * in the body is applied; fields absent are left untouched — the same
+ * "apply whichever fields were given" convention `.../slots` PATCH
+ * already uses.
  */
+const MERCHANDISING_TEXT_FIELDS = ['customerFacingName', 'customerFacingDescription', 'customerFacingImageUrl', 'category'] as const;
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<RouteParams> },
@@ -41,10 +46,35 @@ export async function PATCH(
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { unassort, slotCode, visible, priceOverrideKes } = (body ?? {}) as Record<string, unknown>;
-  if (unassort === undefined && slotCode === undefined && visible === undefined && priceOverrideKes === undefined) {
+  const fields = (body ?? {}) as Record<string, unknown>;
+  const { unassort, slotCode, visible, priceOverrideKes, displayOrder, promotionalState } = fields;
+
+  const merchandising: MerchandisingPatch = {};
+  for (const field of MERCHANDISING_TEXT_FIELDS) {
+    const value = fields[field];
+    if (value === undefined) continue;
+    if (value !== null && typeof value !== 'string') {
+      return Response.json({ error: `${field} must be a string or null` }, { status: 400 });
+    }
+    merchandising[field] = value;
+  }
+  if (displayOrder !== undefined) {
+    if (typeof displayOrder !== 'number') {
+      return Response.json({ error: 'displayOrder must be a number' }, { status: 400 });
+    }
+    merchandising.displayOrder = displayOrder;
+  }
+  if (promotionalState !== undefined) {
+    if (typeof promotionalState !== 'string') {
+      return Response.json({ error: 'promotionalState must be a string' }, { status: 400 });
+    }
+    merchandising.promotionalState = promotionalState as MerchandisingPatch['promotionalState'];
+  }
+  const hasMerchandising = Object.keys(merchandising).length > 0;
+
+  if (unassort === undefined && slotCode === undefined && visible === undefined && priceOverrideKes === undefined && !hasMerchandising) {
     return Response.json(
-      { error: 'at least one of unassort, slotCode, visible, priceOverrideKes is required' },
+      { error: 'at least one of unassort, slotCode, visible, priceOverrideKes, customerFacingName, customerFacingDescription, customerFacingImageUrl, category, displayOrder, promotionalState is required' },
       { status: 400 },
     );
   }
@@ -62,6 +92,9 @@ export async function PATCH(
     const beforeRows = await machineAssortmentService.listByMachine(session.businessId, machineId);
     const before = beforeRows.find((row) => row.productCatalogue === productCatalogue && row.productId === productId);
 
+    if (hasMerchandising) {
+      await machineAssortmentService.updateMerchandising(session.businessId, machineId, productCatalogue, productId, merchandising);
+    }
     if (unassort === true) {
       await machineAssortmentService.unassortProduct(session.businessId, machineId, productCatalogue, productId);
     }
@@ -86,7 +119,16 @@ export async function PATCH(
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
-      action: priceOverrideKes !== undefined ? 'change_price_override' : unassort === true ? 'unassort_product' : slotCode !== undefined ? 'change_slot_link' : 'change_visibility',
+      action:
+        priceOverrideKes !== undefined
+          ? 'change_price_override'
+          : unassort === true
+            ? 'unassort_product'
+            : slotCode !== undefined
+              ? 'change_slot_link'
+              : visible !== undefined
+                ? 'change_visibility'
+                : 'change_screen_presentation',
       entityType: 'machineAssortment',
       entityId: `${machineId}__${productCatalogue}__${productId}`,
       before: before ? (serializeMachineAssortment(before) as unknown as Record<string, unknown>) : null,
@@ -95,6 +137,9 @@ export async function PATCH(
     });
     return Response.json({ assortment: updated ? serializeMachineAssortment(updated) : null });
   } catch (error) {
+    if (error instanceof MerchandisingValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
     return Response.json({ error: error instanceof Error ? error.message : 'could not update assortment' }, { status: 400 });
   }
 }

@@ -96,6 +96,21 @@ describe('the snack catalogue', () => {
     await expect(recipeService.getSnackItem(BUSINESS_ID, snackId)).rejects.toThrow(SnackItemNotFoundError);
   });
 
+  it('keeps the customer description, trimmed and short, and leaves it alone when an update does not mention it', async () => {
+    const id = await seedSnack('Honey Butter Chips', 150, { description: '  Sweet, buttery and salty.  ' });
+    expect((await recipeService.getSnackItem(BUSINESS_ID, id)).description).toBe('Sweet, buttery and salty.');
+
+    // An older caller that never sends the field must not wipe it.
+    await recipeService.updateSnackItem(BUSINESS_ID, id, { name: 'Honey Butter Chips 60g', imageUrl: null, expectedUnitCostKes: 160, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true }, ACTOR);
+    expect((await recipeService.getSnackItem(BUSINESS_ID, id)).description).toBe('Sweet, buttery and salty.');
+
+    // Sending an empty one clears it.
+    await recipeService.updateSnackItem(BUSINESS_ID, id, { name: 'Honey Butter Chips 60g', imageUrl: null, description: '', expectedUnitCostKes: 160, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true }, ACTOR);
+    expect((await recipeService.getSnackItem(BUSINESS_ID, id)).description).toBeNull();
+
+    await expect(seedSnack('Too Long', 100, { description: 'x'.repeat(161) })).rejects.toThrow(/under 160 characters/);
+  });
+
   it('can list only active snacks, for the recipe builder', async () => {
     await seedSnack('Pocky', 200);
     await seedSnack('Discontinued Thing', 100, { isActive: false });

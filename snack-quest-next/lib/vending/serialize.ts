@@ -3,6 +3,8 @@ import type {
   Camera,
   CameraSnapshot,
   IntelligenceRecommendation,
+  KioskScreenImage,
+  KioskScreenPlacement,
   Location,
   Machine,
   MachineAssortment,
@@ -558,5 +560,30 @@ export function serializeCameraSnapshot(id: string, data: CameraSnapshot): Seria
     errorMessage: data.errorMessage,
     capturedAt: data.capturedAt.toDate().toISOString(),
     capturedBy: data.capturedBy,
+  };
+}
+
+export interface SerializedKioskScreenImage {
+  id: string;
+  placement: KioskScreenPlacement;
+  machineId: string | null;
+  imageUrl: string;
+  altText: string;
+  displayOrder: number;
+  active: boolean;
+  updatedAt: string | null;
+}
+
+export function serializeKioskScreenImage(id: string, data: KioskScreenImage): SerializedKioskScreenImage {
+  return {
+    id,
+    placement: data.placement,
+    machineId: data.machineId,
+    imageUrl: data.imageUrl,
+    altText: data.altText,
+    displayOrder: data.displayOrder,
+    active: data.active,
+    // Null only in the instant between a write and the server timestamp resolving.
+    updatedAt: data.updatedAt ? data.updatedAt.toDate().toISOString() : null,
   };
 }

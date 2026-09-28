@@ -45,6 +45,8 @@ export interface SerializedSnackItem {
   id: string;
   name: string;
   imageUrl: string | null;
+  /** Customer-facing; null when none has been written. */
+  description: string | null;
   expectedUnitCostKes: number;
   unitLabel: string;
   origin: string | null;
@@ -61,6 +63,7 @@ export function serializeSnackItem(id: string, data: SnackItem): SerializedSnack
     id,
     name: data.name,
     imageUrl: data.imageUrl,
+    description: data.description ?? null,
     expectedUnitCostKes: data.expectedUnitCostKes,
     unitLabel: data.unitLabel,
     origin: data.origin,

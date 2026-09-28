@@ -31,6 +31,13 @@ export interface SnackItem extends AuditFields {
   expectedUnitCostKes: number;
   /** What "one" means for this snack — "bag", "pack", "bottle". Shown next to the quantity so "3" is never ambiguous on a phone at a market stall. */
   unitLabel: string;
+  /**
+   * One or two sentences a customer reads on the machine screen — what
+   * it tastes like, why it is worth trying. Distinct from
+   * `sourcingNote`, which is for the person buying it. Absent on snacks
+   * created before the field existed; null when nobody has written one.
+   */
+  description?: string | null;
   /** Japan, Korea, China, Thailand… Free text rather than an enum: the sourcing range is explicitly expected to widen (§ international positioning). Null when it does not matter. */
   origin: string | null;
   /** Where to actually buy it — "Chinese supermarket, Diamond Plaza". The single most useful field for a runner who did not do the last shop themselves. */

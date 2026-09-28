@@ -14,6 +14,50 @@ export class ProductNotFoundError extends Error {
   }
 }
 
+export class MerchandisingValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MerchandisingValidationError';
+  }
+}
+
+export const PROMOTIONAL_STATES: MachineAssortmentPromotionalState[] = ['none', 'featured', 'new', 'limited_time'];
+
+/**
+ * How one product looks on one machine's screen. Each field present is
+ * applied; `null` (or an empty string) clears a machine-specific value
+ * so the screen falls back to the product's own name, description or
+ * photo; an absent field is left alone.
+ */
+export interface MerchandisingPatch {
+  customerFacingName?: string | null;
+  customerFacingDescription?: string | null;
+  customerFacingImageUrl?: string | null;
+  category?: string | null;
+  displayOrder?: number;
+  promotionalState?: MachineAssortmentPromotionalState;
+}
+
+const MERCHANDISING_LIMITS = { customerFacingName: 60, customerFacingDescription: 160, category: 40 } as const;
+
+/** An uploaded image (https) or a file shipped with the site (`/…`). */
+function isAcceptableImageUrl(value: string): boolean {
+  if (value.startsWith('/') && !value.startsWith('//')) {
+    return true;
+  }
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export interface ScreenPresentationRow {
+  assortment: MachineAssortment;
+  /** The product's own values — what the screen falls back to when this machine has no override. */
+  product: { name: string; description: string | null; imageUrl: string | null; origin: string | null };
+}
+
 interface ResolvedProduct {
   name: string;
   description: string | null;
@@ -43,7 +87,7 @@ class MachineAssortmentService {
       if (!item) {
         throw new ProductNotFoundError('snackItem', productId);
       }
-      return { name: item.name, description: null, imageUrl: item.imageUrl, defaultPriceKes: item.expectedUnitCostKes };
+      return { name: item.name, description: item.description ?? null, imageUrl: item.imageUrl, defaultPriceKes: item.expectedUnitCostKes };
     }
     const pkg = await packageRepository.findById(businessId, productId);
     if (!pkg) {
@@ -74,6 +118,9 @@ class MachineAssortmentService {
     effectiveTo?: Date | null;
     actor: string;
   }): Promise<void> {
+    if (input.customerFacingImageUrl && !isAcceptableImageUrl(input.customerFacingImageUrl.trim())) {
+      throw new MerchandisingValidationError('Upload the photo first — the address must be an https link.');
+    }
     const machine = await machineRepository.findById(input.businessId, input.machineId);
     if (!machine) {
       throw new MachineNotFoundError(input.machineId);
@@ -162,6 +209,60 @@ class MachineAssortmentService {
     await machineAssortmentRepository.upsert({ ...existing, visible });
   }
 
+  /** Validates and applies a `MerchandisingPatch` — see its own doc comment for the absent/null rules. */
+  async updateMerchandising(
+    businessId: string,
+    machineId: string,
+    productCatalogue: MachineAssortment['productCatalogue'],
+    productId: string,
+    patch: MerchandisingPatch,
+  ): Promise<void> {
+    const existing = await machineAssortmentRepository.findByProduct(businessId, machineId, productCatalogue, productId);
+    if (!existing) {
+      throw new Error(`Product ${productId} is not assorted to machine ${machineId}`);
+    }
+
+    const text = (field: keyof typeof MERCHANDISING_LIMITS, label: string): string | null | undefined => {
+      const value = patch[field];
+      if (value === undefined) return undefined;
+      const cleaned = value?.trim() || null;
+      if (cleaned && cleaned.length > MERCHANDISING_LIMITS[field]) {
+        throw new MerchandisingValidationError(`Keep the ${label} under ${MERCHANDISING_LIMITS[field]} characters so it fits on the screen.`);
+      }
+      return cleaned;
+    };
+
+    const next: MachineAssortment = { ...existing };
+    const name = text('customerFacingName', 'name');
+    if (name !== undefined) next.customerFacingName = name;
+    const description = text('customerFacingDescription', 'description');
+    if (description !== undefined) next.customerFacingDescription = description;
+    const category = text('category', 'category');
+    if (category !== undefined) next.category = category;
+
+    if (patch.customerFacingImageUrl !== undefined) {
+      const imageUrl = patch.customerFacingImageUrl?.trim() || null;
+      if (imageUrl && !isAcceptableImageUrl(imageUrl)) {
+        throw new MerchandisingValidationError('Upload the photo first — the address must be an https link.');
+      }
+      next.customerFacingImageUrl = imageUrl;
+    }
+    if (patch.displayOrder !== undefined) {
+      if (!Number.isInteger(patch.displayOrder) || patch.displayOrder < 0 || patch.displayOrder > 9999) {
+        throw new MerchandisingValidationError('Position must be a whole number from 0 to 9999.');
+      }
+      next.displayOrder = patch.displayOrder;
+    }
+    if (patch.promotionalState !== undefined) {
+      if (!PROMOTIONAL_STATES.includes(patch.promotionalState)) {
+        throw new MerchandisingValidationError(`Badge must be one of: ${PROMOTIONAL_STATES.join(', ')}.`);
+      }
+      next.promotionalState = patch.promotionalState;
+    }
+
+    await machineAssortmentRepository.upsert(next);
+  }
+
   async setPriceOverride(
     businessId: string,
     machineId: string,
@@ -171,6 +272,40 @@ class MachineAssortmentService {
     actor: string,
   ): Promise<void> {
     await machineAssortmentRepository.setPriceOverride(businessId, machineId, productCatalogue, productId, priceOverrideKes, actor);
+  }
+
+  /**
+   * Every assorted product on one machine with the product's own name,
+   * description and photo beside this machine's overrides — what the
+   * admin screen editor needs to show "what the customer sees" and what
+   * clearing an override would fall back to.
+   */
+  async listScreenPresentation(businessId: string, machineId: string): Promise<ScreenPresentationRow[]> {
+    const rows = (await machineAssortmentRepository.listByMachine(businessId, machineId)).filter((row) => row.assorted);
+    const snackItemIds = rows.filter((row) => row.productCatalogue === 'snackItem').map((row) => row.productId);
+    const packageRows = rows.filter((row) => row.productCatalogue === 'package');
+    const [snackItemsById, packages] = await Promise.all([
+      snackItemRepository.findManyById(snackItemIds),
+      Promise.all(packageRows.map((row) => packageRepository.findById(businessId, row.productId))),
+    ]);
+    const packagesById = new Map(packageRows.map((row, index) => [row.productId, packages[index]]));
+
+    return rows
+      .map((row) => {
+        if (row.productCatalogue === 'snackItem') {
+          const item = snackItemsById.get(row.productId);
+          return {
+            assortment: row,
+            product: { name: item?.name ?? row.productId, description: item?.description ?? null, imageUrl: item?.imageUrl ?? null, origin: item?.origin ?? null },
+          };
+        }
+        const pkg = packagesById.get(row.productId) ?? null;
+        return {
+          assortment: row,
+          product: { name: pkg?.name ?? row.productId, description: pkg?.description ?? null, imageUrl: pkg?.imageUrl ?? null, origin: null },
+        };
+      })
+      .sort((a, b) => a.assortment.displayOrder - b.assortment.displayOrder);
   }
 
   async listByMachine(businessId: string, machineId: string): Promise<MachineAssortment[]> {
@@ -241,10 +376,13 @@ class MachineAssortmentService {
       let description = row.customerFacingDescription;
       let imageUrl = row.customerFacingImageUrl;
       let fallbackPriceKes = 0;
+      let origin: string | null = null;
       if (row.productCatalogue === 'snackItem') {
         const item = snackItemsById.get(row.productId);
         name = name ?? item?.name ?? row.productId;
+        description = description ?? item?.description ?? null;
         imageUrl = imageUrl ?? item?.imageUrl ?? null;
+        origin = item?.origin ?? null;
         fallbackPriceKes = item?.expectedUnitCostKes ?? 0;
       } else {
         const pkg = packagesById.get(row.productId) ?? null;
@@ -278,6 +416,7 @@ class MachineAssortmentService {
         name,
         description,
         imageUrl,
+        origin,
         category: row.category,
         priceKes,
         availabilityState,

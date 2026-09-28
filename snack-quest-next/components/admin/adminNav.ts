@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Activity,
   Cpu,
+  MonitorSmartphone,
   Plug,
   Flag,
   FolderOpen,
@@ -126,6 +127,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { href: '/admin/vending', label: 'Vending Machines', shortLabel: 'Vending', icon: Cpu, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/alerts', label: 'Alert Center', shortLabel: 'Alerts', icon: AlertTriangle, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/kiosk-screen', label: 'Machine Screen', shortLabel: 'Screen', icon: MonitorSmartphone, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/restock', label: 'Restock Command Center', shortLabel: 'Restock', icon: PackageSearch, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/partners', label: 'Machine Owners', shortLabel: 'Owners', icon: Banknote, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence', label: 'Network Intelligence', shortLabel: 'Intelligence', icon: BarChart3, section: 'vending', group: 'Vending' },

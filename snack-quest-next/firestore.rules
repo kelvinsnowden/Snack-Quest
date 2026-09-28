@@ -542,6 +542,13 @@ service cloud.firestore {
     // admin-only rather than relying on that alone. No device or
     // partner writes directly — every write goes through
     // `cameraService`, same as `alerts`.
+    // Artwork staff choose for the customer machine screen. Written only
+    // through `kioskScreenService`; machines read their own resolved set
+    // through a device-authenticated route, never this collection.
+    match /kioskScreenImages/{imageId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     match /cameras/{cameraId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

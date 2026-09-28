@@ -9,13 +9,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { SerializedSnackItem } from '@/lib/recipes/serialize';
+
+/** Mirrors `SNACK_DESCRIPTION_MAX` in `services/recipeService.ts` (a server-only module); the server enforces it. */
+const SNACK_DESCRIPTION_MAX = 160;
 
 interface DraftState {
   id: string | null;
   name: string;
   imageUrl: string | null;
+  description: string;
   expectedUnitCostKes: string;
   unitLabel: string;
   origin: string;
@@ -29,6 +34,7 @@ const EMPTY: DraftState = {
   id: null,
   name: '',
   imageUrl: null,
+  description: '',
   expectedUnitCostKes: '',
   unitLabel: 'bag',
   origin: '',
@@ -59,6 +65,7 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
       id: item.id,
       name: item.name,
       imageUrl: item.imageUrl,
+      description: item.description ?? '',
       expectedUnitCostKes: String(item.expectedUnitCostKes),
       unitLabel: item.unitLabel,
       origin: item.origin ?? '',
@@ -98,6 +105,7 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
       const body = {
         name: draft.name,
         imageUrl: draft.imageUrl,
+        description: draft.description,
         expectedUnitCostKes: Number(draft.expectedUnitCostKes),
         unitLabel: draft.unitLabel,
         origin: draft.origin,
@@ -195,6 +203,22 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
                   className="min-h-11"
                 />
                 <p className="text-caption text-muted-foreground">Include size and flavour — this has to be enough to buy the right thing.</p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="snack-description">What customers read</Label>
+                <Textarea
+                  id="snack-description"
+                  value={draft.description}
+                  maxLength={SNACK_DESCRIPTION_MAX}
+                  rows={2}
+                  onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+                  placeholder="Light, crunchy prawn crackers — Japan's favourite after-school snack."
+                />
+                <p className="text-caption text-muted-foreground">
+                  Shown on the machine screen when someone taps the snack. One or two short sentences
+                  ({draft.description.length}/{SNACK_DESCRIPTION_MAX}).
+                </p>
               </div>
 
               <div className="flex gap-3">

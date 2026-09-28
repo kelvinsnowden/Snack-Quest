@@ -185,6 +185,7 @@ describe('staff-only vending collections — no partner read at all', () => {
     'deviceCredentials',
     'cameras',
     'cameraSnapshots',
+    'kioskScreenImages',
   ];
 
   for (const collectionName of STAFF_ONLY_COLLECTIONS) {

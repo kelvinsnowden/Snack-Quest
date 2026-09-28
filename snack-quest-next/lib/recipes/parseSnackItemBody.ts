@@ -8,7 +8,7 @@ import type { SnackItemDraft } from '@/services/recipeService';
  * valid snack is.
  */
 export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | { error: string } {
-  const { name, imageUrl, expectedUnitCostKes, unitLabel, origin, sourcingNote, isActive, availableForPremiumSelection, stockCount } = (body ?? {}) as Record<
+  const { name, imageUrl, description, expectedUnitCostKes, unitLabel, origin, sourcingNote, isActive, availableForPremiumSelection, stockCount } = (body ?? {}) as Record<
     string,
     unknown
   >;
@@ -24,6 +24,9 @@ export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | {
     draft: {
       name,
       imageUrl: typeof imageUrl === 'string' ? imageUrl : null,
+      // Absent means "leave it as it is" on an update, so a caller that
+      // predates the field never wipes a description someone wrote.
+      description: typeof description === 'string' ? description : description === null ? null : undefined,
       expectedUnitCostKes: Number(expectedUnitCostKes),
       unitLabel: typeof unitLabel === 'string' ? unitLabel : 'unit',
       origin: typeof origin === 'string' ? origin : null,

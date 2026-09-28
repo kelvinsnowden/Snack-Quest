@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { machineAssortmentService, ProductNotFoundError } from '@/services/machineAssortmentService';
+import { machineAssortmentService, ProductNotFoundError, MerchandisingValidationError, type MerchandisingPatch } from '@/services/machineAssortmentService';
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
 import { machineService } from '@/services/machineService';
 import { MachineSlotService } from '@/services/machineSlotService';
@@ -312,5 +312,74 @@ describe('MachineAssortmentService.getCatalogVersion', () => {
     const version = await machineAssortmentService.getCatalogVersion(BUSINESS_ID, machineId);
     expect(typeof version).toBe('string');
     expect(new Date(version).toString()).not.toBe('Invalid Date');
+  });
+});
+
+describe('MachineAssortmentService — how a product looks on one screen', () => {
+  it('uses the snack’s own photo, description and origin until this machine overrides them, and clearing an override falls back again', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-SCREEN');
+    const sku = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Honey Butter Chips 60g', imageUrl: 'https://blob.example/honey.webp', description: 'Sweet, buttery and salty.', expectedUnitCostKes: 150, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
+
+    const [before] = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    expect(before).toMatchObject({ name: 'Honey Butter Chips 60g', description: 'Sweet, buttery and salty.', imageUrl: 'https://blob.example/honey.webp', origin: 'Korea' });
+
+    await machineAssortmentService.updateMerchandising(BUSINESS_ID, machineId, 'snackItem', sku, {
+      customerFacingName: '  Honey Butter Chips  ',
+      customerFacingDescription: 'Campus favourite.',
+      customerFacingImageUrl: 'https://blob.example/honey-campus.webp',
+      category: 'Chips',
+      displayOrder: 2,
+      promotionalState: 'featured',
+    });
+    const [after] = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    expect(after).toMatchObject({ name: 'Honey Butter Chips', description: 'Campus favourite.', imageUrl: 'https://blob.example/honey-campus.webp', category: 'Chips', displayOrder: 2, promotionalState: 'featured', origin: 'Korea' });
+
+    // Absent fields stay; null and blank clear back to the snack's own.
+    await machineAssortmentService.updateMerchandising(BUSINESS_ID, machineId, 'snackItem', sku, { customerFacingImageUrl: null, customerFacingDescription: '   ' });
+    const [cleared] = await machineAssortmentService.getSellableCatalog(BUSINESS_ID, machineId);
+    expect(cleared).toMatchObject({ name: 'Honey Butter Chips', description: 'Sweet, buttery and salty.', imageUrl: 'https://blob.example/honey.webp', category: 'Chips' });
+
+    const [row] = await machineAssortmentService.listScreenPresentation(BUSINESS_ID, machineId);
+    expect(row.product).toEqual({ name: 'Honey Butter Chips 60g', description: 'Sweet, buttery and salty.', imageUrl: 'https://blob.example/honey.webp', origin: 'Korea' });
+    expect(row.assortment.customerFacingName).toBe('Honey Butter Chips');
+  });
+
+  it('refuses unsafe photo addresses, over-long text and unknown badges, changing nothing', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-SCREEN-BAD');
+    const sku = await createSnackItem('Japanese Gummy', 120);
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', actor: 'staff-1' });
+
+    const attempts: MerchandisingPatch[] = [
+      { customerFacingImageUrl: 'javascript:alert(1)' },
+      { customerFacingImageUrl: 'http://blob.example/a.webp' },
+      { customerFacingName: 'x'.repeat(61) },
+      { customerFacingDescription: 'x'.repeat(161) },
+      { displayOrder: -1 },
+      { displayOrder: 1.5 },
+      { promotionalState: 'flash_sale' as MerchandisingPatch['promotionalState'] },
+    ];
+    for (const patch of attempts) {
+      await expect(machineAssortmentService.updateMerchandising(BUSINESS_ID, machineId, 'snackItem', sku, patch)).rejects.toBeInstanceOf(MerchandisingValidationError);
+    }
+    const row = await machineAssortmentRepository.findByProduct(BUSINESS_ID, machineId, 'snackItem', sku);
+    expect(row).toMatchObject({ customerFacingImageUrl: null, customerFacingName: null, customerFacingDescription: null, displayOrder: 0, promotionalState: 'none' });
+  });
+
+  it('refuses an unsafe photo address when a product is first assorted, too', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-SCREEN-NEW');
+    const sku = await createSnackItem('Japanese Gummy', 120);
+    await expect(
+      machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: sku, productCatalogue: 'snackItem', customerFacingImageUrl: 'javascript:alert(1)', actor: 'staff-1' }),
+    ).rejects.toBeInstanceOf(MerchandisingValidationError);
+    expect(await machineAssortmentRepository.findByProduct(BUSINESS_ID, machineId, 'snackItem', sku)).toBeNull();
+  });
+
+  it('refuses a product that is not assorted to the machine', async () => {
+    const machineId = await provisionMachine('SQ-ASSORT-SCREEN-NONE');
+    await expect(machineAssortmentService.updateMerchandising(BUSINESS_ID, machineId, 'snackItem', 'not-assorted', { customerFacingName: 'x' })).rejects.toThrow(/not assorted/);
   });
 });

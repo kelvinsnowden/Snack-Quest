@@ -21,9 +21,14 @@ export class SnackItemNotFoundError extends Error {
   }
 }
 
+/** A customer description is read standing at a machine — two short sentences at most. */
+export const SNACK_DESCRIPTION_MAX = 160;
+
 export interface SnackItemDraft {
   name: string;
   imageUrl: string | null;
+  /** Customer-facing; see `SnackItem.description`. */
+  description?: string | null;
   expectedUnitCostKes: number;
   unitLabel: string;
   origin: string | null;
@@ -268,10 +273,17 @@ class RecipeService {
     if (!Number.isFinite(cost) || cost < 0) {
       throw new RecipeValidationError('The expected cost must be a number, and cannot be negative.');
     }
+    const description = draft.description?.trim() || null;
+    if (description && description.length > SNACK_DESCRIPTION_MAX) {
+      throw new RecipeValidationError(`Keep the customer description under ${SNACK_DESCRIPTION_MAX} characters — it has to fit on the machine screen.`);
+    }
 
     return {
       name,
       imageUrl: draft.imageUrl?.trim() || null,
+      // Absent key when the caller did not send one — an update then
+      // leaves the stored description alone (and Firestore rejects undefined).
+      ...(draft.description === undefined ? {} : { description }),
       expectedUnitCostKes: Math.round(cost),
       unitLabel,
       origin: draft.origin?.trim() || null,

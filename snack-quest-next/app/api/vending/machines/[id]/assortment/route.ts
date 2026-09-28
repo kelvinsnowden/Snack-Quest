@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
-import { machineAssortmentService, ProductNotFoundError } from '@/services/machineAssortmentService';
+import { machineAssortmentService, MerchandisingValidationError, ProductNotFoundError } from '@/services/machineAssortmentService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineAssortment } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
@@ -100,6 +100,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     if (error instanceof ProductNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof MerchandisingValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
     }
     throw error;
   }

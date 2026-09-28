@@ -233,6 +233,21 @@
   --color-home-purple-deep: #38137f;
   --color-home-orange-glow: #ff9633;
 
+  /*
+   * Customer machine screen (components/kiosk). The "stage" is the deep
+   * purple of the brand mark itself (sampled from public/logo.png's own
+   * ground), used for the built-in menu banner and the idle screen so the
+   * logo sits seamlessly on it; the
+   * highlight is the mark's lime, for the one thing on a surface that
+   * should be read first. Like the lightbox's immersive ground, these
+   * do not change with theme: the machine screen is a single, fixed
+   * brand surface.
+   */
+  --color-kiosk-stage: #170132;
+  --color-kiosk-stage-foreground: #fff8ee;
+  --color-kiosk-highlight: #c8ff00;
+  --color-kiosk-highlight-foreground: #1f1f1f;
+
   --font-display: var(--font-bagel-fat-one), 'Titan One', ui-sans-serif, system-ui, sans-serif;
   --font-signature: Georgia, 'Times New Roman', serif;
 }
