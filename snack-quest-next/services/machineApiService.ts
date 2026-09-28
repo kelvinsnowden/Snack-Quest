@@ -338,8 +338,13 @@ class MachineApiService {
     const now = Date.now();
     const expectOrders = (context.integration.expectOrdersUntil?.toMillis() ?? 0) > now;
     const nextPollSeconds = expectOrders ? FAST_POLL_SECONDS : RECOMMENDED_POLL_SECONDS;
-    const queuedUntil = context.integration.commandsQueuedUntil;
-    if (queuedUntil !== undefined && queuedUntil !== null && queuedUntil.toMillis() < now - 30_000 && !expectOrders) {
+    // Nothing has been queued for this machine that could still be live
+    // (never, or everything queued has expired): skip the queries. The
+    // marker is written *before* any command is created, so it can only
+    // over-report. Expired-but-uncollected dispenses are still refunded —
+    // by the recovery sweep rather than this poll.
+    const queuedUntil = context.integration.commandsQueuedUntil?.toMillis() ?? 0;
+    if (queuedUntil < now - 30_000 && !expectOrders) {
       return { commands: [], nextPollSeconds };
     }
     await dispenseCommandService.expireUncollectedForMachine(context.businessId, context.machine.id);

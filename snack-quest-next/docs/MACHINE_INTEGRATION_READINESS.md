@@ -128,4 +128,294 @@ Assumptions:
 
 ---
 
-*§5 onward are filled in as the hardening layers land.*
+---
+
+## 5. What changed (issue → fix → evidence)
+
+Every audit finding, with where it was fixed and the test that holds it
+in place. "Partial" means the risk is reduced, not gone — the gap is
+stated.
+
+| ID | Status | Fix | Evidence (tests) |
+|---|---|---|---|
+| A-01 | Fixed | `moveStatus` is a compare-and-set transaction (`expectedFrom`); outcome decisions re-decide on a lost race, so two contradicting reports end "one applied, one conflict" | `vendOutcomeSafety`, `vendOutcomeDecision` |
+| A-02 | Fixed | Report claims carry a fingerprint and a `processed` flag; a crashed claim is resumed; the sale movement is keyed `sale:{txId}` and self-heals | `vendOutcomeSafety` (crash-resume), `deepReconciliation` |
+| A-03 | Fixed | Late contradicting outcome → `outcomeConflict` on the sale, `DISPENSE_OUTCOME_CONFLICT` event, critical `dispense_conflict` alert; stock recorded if the product left; money untouched | `vendOutcomeSafety`, horrible-day D |
+| A-04 | Fixed | Same id + different content → `409 idempotency_key_reused` (reports) / `conflictingEventIds` (events) | `machineApiHardening`, horrible-day Q |
+| A-05 | Fixed | Refunds of never-dispensed sales are no longer deducted from gross that never contained them; reported separately as `failedVendRefundsKes` | `partnerAndSettlementService` |
+| A-06 | Fixed | Gross attributed by `dispensedAt` — a sale resolved from review lands in the period it resolved | `partnerAndSettlementService` |
+| A-07 | Fixed | `lastUsedAt` throttled to once a minute per key; credentials cached 30 s (negative cache too) | `integrationHardeningUnits`, `machineRequestCost` |
+| A-08 | Fixed | Device-bearer auth removed from `/api/v1` (`401 missing_signature`); machine-scoped signed keys instead | `machineApiV1`, horrible-day M |
+| A-09 | Fixed | Rate limits per machine × endpoint, per key, per IP (auth failures), per machine (4xx) — after signature verification; KV-backed when configured | `machineApiHardening`, horrible-day N, O |
+| A-10 | Fixed | Raw bytes hashed; UTF-8 decoded (fatal) and JSON parsed only after authentication | `machineApiHardening` |
+| A-11 | Fixed | Uppercase hex accepted; 7 official vectors; reproduced by TypeScript and Python clients | `referenceSdks`, `integrationHardeningUnits` |
+| A-12 | Fixed | Lifecycle issued → active → rotating (grace, signalled by headers) → expired / revoked; machine scope; fingerprint instead of secret prefix | `machineApiHardening`, horrible-day H |
+| A-13 | Fixed | Structured, redacting logger; every response has `SQ-Request-Id`; unexpected errors are enveloped (`internal_error` / `temporarily_unavailable`); sale trace | `machineApiHardening`, `saleTrace` |
+| A-14 | Fixed | Three-tier recovery: fast (customer poll, machine poll, 5-minute cron), periodic pull with backoff, daily deep reconciliation | `dispenseRecovery`, `deepReconciliation`, horrible-day A, B, T |
+| A-15 | Fixed | Liveness model ONLINE / DEGRADED / OFFLINE / UNKNOWN with expected interval, grace and maintenance; orders need ONLINE and contact within 90 s | `machineLiveness`, `dispenseRecovery` |
+| A-16 | Fixed | Alert sweep runs at most once a minute from pages and every 5 minutes on schedule; critical alerts are texted (burst → one digest) | `alertService`, `cronVendingFastRecoveryRoute` |
+| A-17 | Fixed | Heartbeats write signals, not events; status emits change-only events | `machineApiV1`, `machineRequestCost` |
+| A-18 | Fixed | Idle polls skip command queries (queue marker written before any command exists) | `machineRequestCost` (3 reads, 1 write) |
+| A-19 | Fixed | Older status snapshots never overwrite newer; stale progress is a harmless no-op | horrible-day D, `sandboxFaults` |
+| A-20 | Fixed | Heartbeat responses carry `reportOutcomes` for dispenses awaiting an outcome | `dispenseRecovery`, horrible-day B |
+| A-21 | Fixed | Owners get a live-view capability, never host/port/path/credentials | `ownerPortalService` |
+| A-22 | Partial | Paid-but-undispatched sales are recovered within minutes (fast tier). Dispatch still runs inside the Daraja callback | `dispenseRecovery` |
+| A-23 | Fixed | Re-pointing a machine resets its signals and is refused while a dispense is in flight; old manufacturer's key is locked out | `manufacturerReplacement` |
+| A-24 | Fixed | Firmware change → `FIRMWARE_CHANGED` event, alert, flagged when the model was certified before | horrible-day R |
+| A-25 | Fixed | Contract test ties routes, schemas, OpenAPI, spec, error catalogue and SDKs together; reference SDKs exist | `machineApiContract`, `referenceSdks` |
+| A-26 | Fixed | Automated certification harness, self-tested against good and broken machines | `certificationHarness` |
+| A-27 | Fixed | Constant-time cron secret comparison on every cron route | cron route tests |
+
+Found during this pass (not in the original audit) and fixed:
+
+| Issue | Fix | Evidence |
+|---|---|---|
+| A dispense Snack Quest never ordered was logged as an info-level unknown event | `DISPENSE_UNRECOGNISED` + inventory alert | horrible-day J |
+| A machine with a drifted clock went silent with no way to recover itself | `stale_timestamp` returns `serverTimestamp`; SDKs correct their offset | horrible-day P, `referenceSdks` |
+| A manufacturer adding a failure code would have its outcome reports (and refunds) refused | `failureCode` is tolerant; contradictory codes still refused | horrible-day S, `machineApiV1Schemas` |
+| Outbound API outage charged customers only to refund them | Two-minute per-machine breaker on the pre-payment gate | horrible-day G |
+| A manufacturer-wide outage produced N unrelated offline alerts | One critical `manufacturer_outage` alert, auto-resolving | horrible-day T |
+| Status reports kept the heartbeat signal fresh, hiding a machine that never heartbeats | Only heartbeats move the heartbeat signal | `certificationHarness` |
+| Idle polls on a machine that had never had a command ran full queries | "Never queued" counts as idle | `machineRequestCost` |
+| Nonce documents were never deleted (≈10 M/day at 1,000 machines) | TTL + index exemption declared in `firestore.indexes.json` | — (deployed config) |
+| Customer paid → complaint had no single place to look | Sale trace service, API and admin page | `saleTrace`, `vendingTraceRoute` |
+
+## 6. The horrible day (scenarios A–T)
+
+Evidence: `tests/integration/horribleDay.test.ts` (34 tests, all driven
+through the real routes and services). ✅ yes · ⚠️ with a condition ·
+❌ no.
+
+| | Scenario | What happens | Money safe | Double dispense possible | Inventory corrupted | Recovers by itself | Operator alerted |
+|---|---|---|---|---|---|---|---|
+| A | Paid, then machine disconnects | A silent machine is refused *before* payment. If it drops after: the queued command expires (2 min) → refund; a late ack is refused | ✅ | ❌ | ❌ | ✅ | ✅ `machine_offline` (critical, SMS) |
+| B | Dispensed, connection dies before confirmation | Retried report (same `eventId`) → `duplicate`. No report at all → after 5 min: timeout + human review, never an automatic refund; the machine is asked again in each heartbeat | ✅ | ❌ | ❌ (one movement, when the truth arrives) | ⚠️ when the machine reports; otherwise a human | ✅ review queue |
+| C | Same webhook 100× | Applied once; 99 acknowledged as duplicates | ✅ | ❌ | ❌ | ✅ | n/a |
+| D | Events out of order | Late `dispensing` after `dispensed` is a no-op; older status never overwrites newer; contradicting outcome → conflict, money unchanged | ✅ | ❌ | ❌ | ✅ | ✅ `dispense_conflict` for contradictions |
+| E | Heartbeat after "offline" | ONLINE again; `MACHINE_ONLINE` recorded once; the offline alert closes itself | ✅ | ❌ | ❌ | ✅ | ✅ (and cleared) |
+| F | Two servers, same dispense | Transactional claim: one command, the machine told once | ✅ | ❌ | ❌ | ✅ | n/a |
+| G | Manufacturer API down 30 min | Connection refused → provably unsent → refund; breaker stops new payments for 2 min per machine. Timeout mid-call → review, pulled on backoff until the API returns | ✅ | ❌ | ❌ | ✅ (pull) | ⚠️ via the review queue — no dedicated "outbound API down" alert |
+| H | Key revoked mid-flight | In-flight requests finish or are refused cleanly; everything after is `401 key_revoked` within 30 s everywhere; rotation keeps the fleet online | ✅ | ❌ | ❌ | n/a | n/a |
+| I | Inventory contradicts Snack Quest | Reported, never trusted; ledger unchanged | ✅ | ❌ | ❌ | ⚠️ a human adjusts (audited flow) | ✅ `inventory_discrepancy` |
+| J | Dispense Snack Quest doesn't recognise | Nothing moves; recorded as `DISPENSE_UNRECOGNISED` | ✅ | ❌ | ❌ | ⚠️ a human checks slot and camera | ✅ `inventory_discrepancy` |
+| K | Payment callback twice | Deduplicated by checkout id and status guard; one command | ✅ | ❌ | ❌ | ✅ | n/a |
+| L | Sandbox key against production | `403 environment_mismatch` before anything is read or written | ✅ | ❌ | ❌ | n/a | ⚠️ counted, not alerted |
+| M | Credentials compromised | Blast radius: that manufacturer's machines in that environment (one machine with a scoped key). Cannot create sales or commands. **Can** report false outcomes for genuine in-flight dispenses | ⚠️ see note | ❌ | ⚠️ via false outcomes | ✅ after revocation | ❌ no anomaly detection on key use |
+| N | 100× traffic from one machine | Throttled per endpoint; its dispense reporting and every other machine unaffected | ✅ | ❌ | ❌ | ✅ | ⚠️ `SQ-RateLimit` headers + logs; no alert |
+| O | Malformed JSON continuously | 400 until the machine's 4xx budget (60/min) runs out, then 429; others unaffected | ✅ | ❌ | ❌ | ✅ | ⚠️ logs only |
+| P | Clock 20 minutes off | Refused with the server's time; clients correct and succeed; event times within 24 h are kept as sent | ✅ | ❌ | ❌ | ✅ (with the SDKs) | ⚠️ auth-failure count on the integration |
+| Q | Same event id, different payload | First stands; events listed as conflicting; outcome reports `409` | ✅ | ❌ | ❌ | ✅ | ⚠️ response only |
+| R | Firmware change | Recorded; flagged if the model was certified on older firmware; machine keeps working | ✅ | ❌ | ❌ | n/a | ✅ `integration_issue` |
+| S | Manufacturer changes a field | Unknown fields ignored; unknown event types kept; missing required field → precise 422; new failure codes accepted as `failed` | ✅ | ❌ | ❌ | ✅ | ⚠️ `unknownTypes` in responses |
+| T | Manufacturer disappears | One critical `manufacturer_outage` alert (inbound fleets of 3+), orders refused, queued dispenses refunded, acknowledged ones reviewed; clears on return | ✅ | ❌ | ❌ | ✅ | ✅ (inbound) / ⚠️ per-machine for outbound |
+
+**Note on M.** A stolen key can report `failed` for a dispense that
+actually dropped (the customer is refunded *and* keeps the product) or
+`dispensed` for one that didn't (the customer isn't refunded). Both
+require a genuine in-flight command and are bounded to that
+manufacturer's live dispenses; both show up in reconciliation and the
+camera evidence. Revocation is the remedy. There is no automatic
+anomaly detection (new source IP, unusual outcome mix) — a stated gap.
+
+## 7. Scale (after)
+
+Measured, not estimated: `tests/perf/machineRequestCost.test.ts` counts
+Firestore operations per request in steady state and fails the build
+if the hot path gets more expensive.
+
+| Request | Reads | Writes | Before |
+|---|---|---|---|
+| Idle command poll | 3 | 1 (nonce) | ~5 R + 3 W |
+| Heartbeat | 4 | 1 (nonce) + throttled signal writes | ~6 W |
+| A complete sale (verify → dispatch → poll → ack → dispensed) | ~51 | ~20 | — |
+
+Per inbound machine per day (poll every 10 s, heartbeat every 60 s,
+status every 5 min; signal writes at their 30–60 s throttles):
+**≈ 33,000 reads and ≈ 16,000 writes → ≈ $1.50 / month** at Firestore
+list prices (before: ≈ $2.70). With `MACHINE_API_NONCE_STORE=kv` the
+nonce writes (≈ 10,000/day) move to KV.
+
+| Machines | Requests/s (steady) | Firestore / month | What happens |
+|---|---|---|---|
+| 5 | 0.6 | ≈ $8 | Fine. **But Vercel Hobby's invocation allowance does not cover even this** — 5 machines ≈ 1.5 M invocations/month |
+| 100 | 12 | ≈ $150 | Fine technically. Needs a paid Vercel plan. KV (if used for rate limits and nonces) costs more than Firestore at pay-as-you-go prices — pick a fixed plan |
+| 1,000 | 120 | ≈ $1,500 | **What breaks first — see below.** Firestore itself is comfortable (~40 writes/s, random document ids) |
+| 10,000 | 1,200 | ≈ $15,000 | The 5-minute alert sweep reads every machine and slot (~300 k reads a run) — too slow and too costly; must become incremental. Polling is the dominant cost; move to long-poll or push |
+| 100,000 | 12,000 | ≈ $150,000 | Not viable with 10-second HTTP polling on serverless functions. Needs a persistent push channel (the `CloudTransport` MQTT abstraction exists but is not deployed), regional sharding, and a different rate-limit/nonce store |
+
+**What breaks first at 1,000 machines, in order:**
+1. **Cost of polling, not correctness.** 120 requests/s, ~310 M
+   function invocations a month. Every request is a signature check, a
+   nonce write and rate-limit calls. The lever needs no firmware change:
+   `nextPollSeconds` is server-controlled (10 s idle, 2 s while a
+   customer pays). Raising idle to 20–30 s halves or thirds the bill at
+   the cost of a few seconds' latency on the first poll after payment.
+2. **The alert sweep's full scans** every 5 minutes (~31 k reads a run,
+   ~$160/month, growing linearly). Fine at 1,000; must be incremental
+   before 10,000.
+3. **Per-instance limits without KV.** If KV isn't configured, rate
+   limits and the credential cache are per server instance — a flood
+   spread over many instances isn't limited globally.
+
+Nothing in the money or dispense paths depends on fleet size: every
+money-moving write is a per-sale transaction.
+
+## 8. Manufacturer onboarding
+
+1. **Application and technical review** — manufacturer record, models,
+   capabilities (admin console).
+2. **Sandbox credentials** — `sqk_test_` keys, shown once; optionally
+   machine-scoped.
+3. **Build** — against `SNACK_QUEST_MACHINE_API_V1.md`, the OpenAPI
+   file, the signing vectors and a reference client (TypeScript or
+   Python). Snack Quest's simulator shows what a correct machine sends.
+4. **Sandbox machines** — staff register units; the manufacturer's
+   firmware connects and runs.
+5. **Certification** — the harness runs against the manufacturer's
+   machine on a bench (`integrationCertificationService.run(…, { recordToModel: true })`),
+   writes evidence into the model's checklist, and a person verifies what
+   the harness can't (physical drop confirmation on every slot type,
+   power loss mid-vend, 24-hour heartbeat soak, secret storage) and
+   certifies the model.
+6. **Production** — manufacturer moved to `production` (needs a
+   certified model), production keys issued, machines activated
+   (activation blockers enforce certification and environment).
+
+## 9. Readiness matrix (after)
+
+| Area | Item | Before | After |
+|---|---|---|---|
+| Security | Authentication (HMAC) | 🟡 | ✅ |
+| | Authorization / isolation | ✅ | ✅ (+ machine scope, `environment_mismatch`) |
+| | Owner isolation | ✅ (camera gap) | ✅ |
+| | Key rotation / lifecycle | ❌ | ✅ |
+| | Rate limiting / abuse | ❌ | ✅ (⚠️ per-instance without KV) |
+| | Log redaction | ❌ | ✅ |
+| | Anomaly detection on key use | ❌ | ❌ |
+| Reliability | Idempotency | 🟡 | ✅ |
+| | Concurrency safety | ❌ | ✅ |
+| | Unknown / late outcomes | 🟡 | ✅ |
+| | Fast recovery | ❌ | ✅ (⚠️ 5-min cadence needs the GitHub workflow) |
+| | Liveness model | ❌ | ✅ |
+| Financial | Payment ≠ dispense | ✅ | ✅ |
+| | Refund / conflict handling | ❌ | ✅ decision side · ❌ refund *execution* is manual |
+| | Settlement correctness | ❌ | ✅ for defined rules · undefined rules isolated (§10) |
+| Inventory | Ledger integrity under failure | ❌ | ✅ (+ daily deep reconciliation) |
+| API | Tolerant readers / evolution rules | ✅ | ✅ (documented per change type) |
+| | Error contract / request ids / rate-limit headers | ❌ | ✅ |
+| | Contract tests / SDKs | ❌ | ✅ |
+| Operations | Alerting | ❌ | ✅ (SMS for critical) |
+| | Tracing a complaint | ❌ | ✅ |
+| | Certification | 🟡 | ✅ automated + human sign-off |
+| Scale | 1,000 machines | ❌ | ✅ technically · ⚠️ cost of polling (§7) |
+
+## 10. Owner settlement: defined and undefined rules
+
+The chain: customer pays → transaction (money state) → dispense
+command (physical state) → revenue attribution → settlement. Physical
+state can't create revenue twice: gross counts transactions in status
+`dispensed` by `dispensedAt`, and a transaction reaches `dispensed` at
+most once (compare-and-set).
+
+| Case | Rule | Where |
+|---|---|---|
+| Dispensed sale | In gross, in the period it was dispensed | `computeGrossForPeriod` |
+| Failed dispense, refunded | Never in gross; not deducted; reported as `failedVendRefundsKes` for visibility | same |
+| Unknown outcome (review) | Not in gross until resolved; lands in the period it resolves | same |
+| Outcome conflict (product left, money refunded) | Counted (`outcomeConflictCount`), **not** deducted — **who bears this loss is undefined** | same |
+| Partial refunds | Not possible: one item per transaction (a cart is N transactions) | — |
+| Chargebacks / reversal of a dispensed sale | **Undefined business rule.** Isolated in `revenueReversalsForPeriod()`, which returns 0 today | `machineSettlementService` |
+
+Decisions the business must make before the first owner payout on real
+machines: who bears conflicts and chargebacks (owner, Snack Quest, or
+split); whether a settled period is reopened for a late reversal or the
+reversal lands in the next period.
+
+## 11. Camera contract
+
+Owners and customers never receive a camera address or credential.
+The owner endpoint returns a capability:
+`{ mode: 'unavailable', cameraOnline, reason }` today, and
+`{ mode: 'relay_url', url, expiresAt }` once a streaming relay exists
+— a short-lived, per-viewer URL. Snapshots go through Snack Quest's
+storage. Staff diagnostics keep the raw stream info. Not built: the
+relay, recording and retention, and privacy notices at the machine.
+
+## 12. Deploying and rolling back
+
+**Before the first deploy with this change set**
+1. Set `SECRET_ENCRYPTION_KEY` (64 hex) and `CRON_SECRET`.
+2. Configure KV (`UPSTASH_REDIS_REST_URL`/`_TOKEN`) for global rate
+   limits — optional but recommended beyond a handful of machines.
+3. `firebase deploy --only firestore:indexes,firestore:rules` — new
+   composite indexes, the nonce TTL, and the credential rules.
+4. Seed templates: `node scripts/seedNotificationTemplates.mjs`
+   (adds `vending_critical_alert_sms`).
+5. Add repository secrets `CRON_SECRET` and `SNACK_QUEST_BASE_URL` so
+   `.github/workflows/vending-fast-recovery.yml` runs every 5 minutes.
+6. Deploy when no dispense is in flight (true before launch): commands
+   queued by older code have no queue marker and would only be found by
+   the recovery sweep (refunded), not by the machine's poll.
+
+**After deploying:** run the certification harness against the
+simulator in staging (it must say CERTIFIED), check
+`/admin/vending/alerts` and one sale trace.
+
+**Rolling back:** redeploy the previous build. Data written by this
+version is additive (new optional fields and collections), so the
+previous build reads it. Rolling back re-opens device-bearer auth on
+`/api/v1` (no client uses it) and drops rate limiting and the fast
+recovery tier; a key rotated under this version still stops at the
+end of its grace window, because rotation also writes it as the key's
+expiry, which the previous build enforces.
+
+## 13. READY TO HAND TO A MANUFACTURER — checklist
+
+Ticked only where there is evidence, not merely code.
+
+| ✓ | Item | Evidence |
+|---|---|---|
+| ✅ | Specification complete and matching the implementation | `machineApiContract` |
+| ✅ | OpenAPI matching routes, schemas and error codes | `machineApiContract` |
+| ✅ | Signing vectors reproducible in two languages | `referenceSdks` |
+| ✅ | Reference clients that complete a sale against the real server | `referenceSdks` |
+| ✅ | Sandbox with a known-good simulator and fault injection | `v1Simulator`, `sandboxFaults` |
+| ✅ | Automated certification that tells good from bad | `certificationHarness` |
+| ✅ | Every failure scenario A–T answered | `horribleDay` |
+| ✅ | Credentials: issue, rotate without downtime, revoke | `machineApiHardening`, horrible-day H |
+| ✅ | Rate limits documented and enforced | `machineApiHardening`, spec §4.5 |
+| ✅ | A support path for "I paid and got nothing" | `saleTrace` |
+| ⚠️ | 5-minute recovery cadence in production | needs the GitHub workflow secrets (§12) |
+| ⚠️ | Global (not per-instance) rate limits | needs KV configured |
+| ❌ | Tested against a real manufacturer's firmware or API | none exists yet |
+| ❌ | Tested on physical hardware (drop sensor, power loss mid-vend) | none |
+| ❌ | Automated M-Pesa refunds | refunds are recorded; money is returned by hand |
+| ❌ | Settlement rules for conflicts and chargebacks | business decision (§10) |
+
+Verdict for this list: **ready to hand the sandbox, the specification
+and the SDKs to a manufacturer to build against. Not ready to take
+money on their machines.**
+
+## 14. Remaining blockers
+
+1. **No real manufacturer.** Every integration claim here is proven
+   against Snack Quest's simulator and mocks. The first real firmware
+   will find things the simulator didn't.
+2. **No hardware.** Drop-sensor reliability, power loss mid-vend, motor
+   jams and the 2-minute command window are untested on a machine.
+3. **Refunds are manual.** `paid_vend_failed` means "refund owed"; staff
+   return the money outside the system. The daily ledger check alerts
+   when a refund has been owed for over 24 hours, but nothing pays it.
+   M-Pesa reversal/B2C with production credentials is required before
+   volume.
+4. **Production M-Pesa** is not verified end to end for vending (see
+   `DARAJA_PRODUCTION_VERIFICATION_AUDIT.md` at the repository root).
+5. **Cameras:** no streaming relay, recording, retention policy or
+   privacy notice; owners see snapshots only.
+6. **Business decisions:** loss allocation for conflicts and
+   chargebacks; whether firmware changes on certified models should
+   suspend a machine; the idle poll interval versus cost (§7).
+7. **Hosting plan:** Vercel Hobby can't run minute-level crons or the
+   invocation volume of even a few polling machines.
+8. **Key-use anomaly detection** (new source address, unusual outcome
+   mix) doesn't exist.

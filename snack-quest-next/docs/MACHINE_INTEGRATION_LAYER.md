@@ -238,14 +238,32 @@ dispatchForTransaction(transactionId):
   outcome came from the v1 API, a webhook or legacy telemetry.
 - **Queued commands expire after 2 minutes.** A late ack moves the
   command to `timeout` and the machine is told not to execute.
-- **Sweeps** (daily cron `reconcile-vending-commands`):
-  - commands in flight for more than 15 minutes → `timeout`;
-  - active outbound integrations are probed.
-- **Pull reconciliation** (`reconcile-vending-transactions`): for
-  outbound adapters, unknown dispenses are resolved by
-  `getDispenseStatus`.
+- **Outcome decisions** are a pure table (`lib/vending/vendOutcomeDecision.ts`)
+  applied with compare-and-set on the transaction; a report that
+  contradicts a decision already acted on is recorded as
+  `DISPENSE_OUTCOME_CONFLICT` (critical alert), never applied. The sale's
+  stock movement is keyed `sale:{transactionId}` (at most one), and a
+  crashed report is resumed, not dropped.
+- **Recovery, three tiers** (`services/dispenseRecoveryService.ts`):
+  - *fast* — on the customer's status poll, the machine's command poll,
+    and the `vending-fast-recovery` cron (every 5 min via
+    `.github/workflows/vending-fast-recovery.yml`): paid-but-undispatched
+    → dispatch (≤2 min) or refund; claimed/authorized-but-unsent → refund
+    (inbound) or review (outbound); queued-and-expired → refund;
+    acknowledged/dispensing with no outcome for 5 min → timeout + review
+    (the machine is asked via `reportOutcomes`);
+  - *periodic* — pull reconciliation of outbound unknowns
+    (`getDispenseStatus`) on a backoff of 0, 1m, 5m, 15m, 1h, 6h, 24h;
+  - *deep* — daily `deepReconciliationService` cross-checks money,
+    dispense and stock ledgers over 7 days and alerts on any
+    discrepancy. It reports; it never repairs.
+- Only what is **provably** undelivered is refunded automatically.
+  Anything that may have dispensed goes to a human.
 - **Timeout/unknown → dispensed/failed** remains possible, so a late
   truth always lands.
+- **Tracing.** `saleTraceService` (admin *Trace a Sale*,
+  `GET /api/vending/trace`) rebuilds one sale's timeline across all of
+  these ledgers from a receipt, a reference, or machine + time.
 
 ---
 
@@ -354,6 +372,10 @@ security.
 | Customer invoking machine commands | No customer-facing route can create a dispense command. Only a verified payment (`markPaymentVerified`) leads to `dispatchForTransaction` |
 | Owners seeing others' machines | The owner portal is partner-scoped (existing `ownerPortalService`). Integration details (manufacturer ids, adapters, credentials) are admin-only routes (`ADMIN_OR_WAREHOUSE` read, `ADMIN_ONLY` mutate) and never appear in owner responses. Owner health uses normalized labels only |
 | Untrusted payloads | zod schemas (422 lists every issue), a 256 KB cap, adapter parsers as the only entry for native payloads, sanitised event data |
+| Flooding / abuse | Rate limits per machine per endpoint, per key, per IP for auth failures, per machine for 4xx (`lib/vending/v1/rateLimits.ts`), checked only after the signature verifies. KV-backed (Upstash) when configured, per-instance otherwise |
+| Leaked or stale keys | Lifecycle issued → active → rotating (grace ≤30 d, signalled on every response) → expired / revoked; revocation reaches every instance within the 30 s credential cache; optional machine scope; secret fingerprint only, never the secret |
+| Secrets in logs | Structured logger redacts secret-looking keys and values (`lib/observability/redact.ts`) |
+| Camera access by owners | Owners get a live-view *capability* (`unavailable` until a relay issues short-lived URLs), never a camera's host, port, path or credentials |
 | Firestore direct access | All new collections `allow write: if false`. Nonces have no read either |
 
 Every admin mutation is audit-logged.
@@ -377,6 +399,17 @@ Every admin mutation is audit-logged.
 - End-to-end: `tests/scripts/v1Simulator.test.ts` and
   `tests/integration/multiManufacturerFleet.test.ts` (2 owners,
   4 machines, 3 manufacturers).
+- The simulator runs on the published TypeScript reference client
+  (`sdk/typescript`), keeps a request log, and has sandbox fault
+  injection (`inject`: delay, malformed request, duplicate/reordered
+  events, heartbeat failure, and seeded integration bugs).
+- **Certification harness** (`services/integrationCertificationService.ts`)
+  drives a sandbox machine through CONNECT … TIMEOUT HANDLING and judges
+  from recorded state: CERTIFIED / NOT CERTIFIED with explicit failures.
+  Self-tested against the simulator and five seeded bugs
+  (`tests/certification`).
+- **Failure suite**: `tests/integration/horribleDay.test.ts` (scenarios
+  A–T) and `tests/integration/manufacturerReplacement.test.ts`.
 
 ---
 
@@ -384,22 +417,27 @@ Every admin mutation is audit-logged.
 
 | Item | Detail |
 |---|---|
-| Env | `SECRET_ENCRYPTION_KEY` (64 hex chars, required for production credentials), `REFERENCE_MANUFACTURER_API_URL` / `_KEY` (sandbox reference adapter only) |
-| Crons | `reconcile-vending-transactions` 06:00 UTC, `reconcile-vending-commands` 07:00 UTC (daily, per `vercel.json`) |
-| Firestore TTL | Configure a TTL policy on `integrationRequestNonces.expiresAt` (console/gcloud). Without it, nonce docs accumulate. Correctness doesn't depend on deletion |
-| Admin UI | `/admin/vending/integrations` (fleet connections, manufacturers, reliability, adapters), `/admin/vending/integrations/{manufacturerId}` (stage, models, certification, credentials), Integration card on `/admin/vending/{machineId}` |
-| Legacy API | `/api/vending/*` (per-machine bearer gateway API) is unchanged and still accepted. Its outcomes flow through the same `applyVendReport`, and its telemetry is also written as normalized events |
+| Env | `SECRET_ENCRYPTION_KEY` (64 hex, required for production credentials); `CRON_SECRET`; `UPSTASH_REDIS_REST_URL`/`_TOKEN` (or `KV_REST_API_URL`/`_TOKEN`) for shared rate limits; optional `MACHINE_API_RATE_LIMITS` (JSON overrides), `MACHINE_API_NONCE_STORE=kv`, `CREDENTIAL_CACHE_TTL_MS`, `ALERT_EVALUATION_MIN_INTERVAL_MS`; `REFERENCE_MANUFACTURER_API_URL`/`_KEY` (sandbox reference adapter only) |
+| Crons | `reconcile-vending-transactions` 06:00 UTC and `reconcile-vending-commands` 07:00 UTC (daily, `vercel.json`); `vending-fast-recovery` every 5 min from GitHub Actions (needs repository secrets `CRON_SECRET`, `SNACK_QUEST_BASE_URL`) — recovery, pull reconciliation, alert sweep and critical-alert SMS |
+| Firestore TTL | Declared in `firestore.indexes.json` for `integrationRequestNonces.expiresAt` (deployed with `firebase deploy --only firestore:indexes`); both nonce fields are exempt from indexing |
+| Notifications | Seed the `vending_critical_alert_sms` template (`scripts/seedNotificationTemplates.mjs`); recipients are the order-alert recipients |
+| Admin UI | `/admin/vending/integrations` (fleet connections, manufacturers, reliability, adapters), `/admin/vending/integrations/{manufacturerId}` (stage, models, certification, credentials incl. rotate), Integration card on `/admin/vending/{machineId}` (liveness, maintenance), `/admin/vending/trace` |
+| Legacy API | `/api/vending/*` (per-machine bearer gateway API) is unchanged and still accepted for the existing gateway. Its outcomes flow through the same `applyVendReport`. It is not offered to new manufacturers |
 
 ## 13. Known limits
 
 - No real manufacturer integration exists yet (see the status note at
-  the top).
-- No request rate limiting on `/api/v1` yet. Rely on platform-level
-  protection until added.
+  the top). Everything is proven against the simulator and mocks.
+- Without KV, rate limits and the credential cache are per server
+  instance: a flood spread across many instances is limited per
+  instance, not globally.
+- The 5-minute recovery cadence depends on the external GitHub
+  workflow; if it isn't configured, recovery falls back to the
+  opportunistic triggers and the daily crons.
 - Outbound manufacturer credentials (Model A) come from environment
   variables. Per-manufacturer encrypted storage in `integrationSecrets`
   is the next step once a second outbound manufacturer exists.
-- Crons are daily, so timeout sweeps and probes are coarse. Inbound
-  health is real-time because it's derived at read time.
 - Price and slot changes for inbound (Model B) machines take effect
   when the machine re-reads its description. There's no push.
+- Readiness, scale model and remaining blockers:
+  `docs/MACHINE_INTEGRATION_READINESS.md`.

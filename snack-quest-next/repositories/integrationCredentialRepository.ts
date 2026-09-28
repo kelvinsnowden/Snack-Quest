@@ -128,7 +128,12 @@ class IntegrationCredentialRepository {
         rateLimitPerMinute: old.rateLimitPerMinute ?? null,
       };
       tx.create(adminFirestore.collection(COLLECTION).doc(newKeyId), newDocument(input, newKeyId, secret, now, keyId));
-      tx.update(oldRef, { supersededBy: newKeyId, supersededAt: now, graceEndsAt: Timestamp.fromDate(graceEndsAt) });
+      // The grace end is also written as a hard expiry, so the old key stops
+      // at the same moment even for code that only understands `expiresAt`
+      // (a rolled-back build, a script) — rotation can never leave it open.
+      const graceEnd = Timestamp.fromDate(graceEndsAt);
+      const expiry = old.expiresAt && old.expiresAt.toMillis() < graceEnd.toMillis() ? old.expiresAt : graceEnd;
+      tx.update(oldRef, { supersededBy: newKeyId, supersededAt: now, graceEndsAt: graceEnd, expiresAt: expiry });
       return {
         keyId: newKeyId,
         secret,

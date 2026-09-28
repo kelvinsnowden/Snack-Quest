@@ -2057,6 +2057,17 @@
           "queryScope": "COLLECTION_GROUP"
         }
       ]
+    },
+    {
+      "collectionGroup": "integrationRequestNonces",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "integrationRequestNonces",
+      "fieldPath": "keyId",
+      "indexes": []
     }
   ]
 }

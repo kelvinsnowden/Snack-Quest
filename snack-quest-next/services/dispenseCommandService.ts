@@ -165,9 +165,11 @@ class DispenseCommandService {
       }
       const delivery = result.delivery ?? 'synchronous';
       if (delivery === 'queued') {
-        const finished = await this.finish(businessId, transactionId, 'sent', 'sent', { vendRef: result.vendRef, delivery }, 'queued for the machine to collect', 'machine');
-        await machineIntegrationRepository.noteCommandQueued(transaction.machineId, finished.command.expiresAt.toDate());
-        return finished;
+        // Mark the machine's queue before the command becomes visible as
+        // `sent`: the poll skips its queries while nothing can be queued,
+        // and a crash between the two writes must never hide a dispense.
+        await machineIntegrationRepository.noteCommandQueued(transaction.machineId, command.expiresAt.toDate());
+        return this.finish(businessId, transactionId, 'sent', 'sent', { vendRef: result.vendRef, delivery }, 'queued for the machine to collect', 'machine');
       }
       await machineIntegrationRepository.recordSignal(transaction.machineId, 'api_request');
       return this.finish(businessId, transactionId, 'acknowledged', 'acknowledged', { vendRef: result.vendRef, delivery }, 'accepted by the machine', 'machine');

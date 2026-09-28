@@ -72,6 +72,10 @@ class MachineCommandService {
     }
 
     const expiresAt = new Date(Date.now() + (input.ttlMs ?? DEFAULT_COMMAND_TTL_MS));
+    // The v1 poll skips its queries while nothing queued can still be live.
+    // Mark the queue *before* creating the command: a crash in between
+    // costs one wasted poll query, never an invisible command.
+    await machineIntegrationRepository.noteCommandQueued(input.machineId, expiresAt);
     const { id, commandRef } = await machineCommandRepository.create({
       businessId: input.businessId,
       machineId: input.machineId,
@@ -80,8 +84,6 @@ class MachineCommandService {
       requestedBy: input.requestedBy,
       expiresAt,
     });
-    // The v1 poll skips its queries when nothing queued can still be live; this keeps it from skipping this command.
-    await machineIntegrationRepository.noteCommandQueued(input.machineId, expiresAt);
 
     // Best-effort only — see CloudTransport's own doc comment. Polling
     // already delivers this command correctly with no transport at all.
