@@ -332,6 +332,19 @@ class IntegrationCertificationService {
         actor,
       );
     }
+    // The whole-suite result: the one check nobody can tick by hand.
+    const unverified = report.checks.filter((check) => check.outcome === 'not_verified').map((check) => check.label);
+    await manufacturerRegistryService.recordCertificationCheck(
+      businessId,
+      report.modelId,
+      'contract_suite',
+      {
+        outcome: report.verdict === 'CERTIFIED' ? 'passed' : 'failed',
+        evidence: `harness run ${report.runId} on ${report.machineCode}: ${report.verdict}${report.failures.length ? ` — failed: ${report.failures.join('; ')}` : ''}${unverified.length ? ` — verify by hand: ${unverified.join(', ')}` : ''}`,
+      },
+      actor,
+      { source: 'harness' },
+    );
   }
 }
 

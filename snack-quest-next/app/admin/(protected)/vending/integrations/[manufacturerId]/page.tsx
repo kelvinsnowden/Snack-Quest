@@ -9,6 +9,9 @@ import { integrationCredentialService } from '@/services/integrationCredentialSe
 import { machineIntegrationService } from '@/services/machineIntegrationService';
 import { manufacturerApiCredentialService } from '@/services/manufacturerApiCredentialService';
 import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { manufacturerOnboardingService } from '@/services/manufacturerOnboardingService';
+import { OnboardingChecklist } from '@/components/admin/integrations/OnboardingChecklist';
+import { CertificationRuns } from '@/components/admin/integrations/CertificationRuns';
 import { findAdapterRegistration } from '@/lib/vending/adapterRegistry';
 import { HARDWARE_CAPABILITY_LABELS, type HardwareCapability } from '@/lib/vending/protocol/capabilities';
 import { toJsonSafe } from '@/lib/vending/serializeIntegration';
@@ -38,6 +41,10 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
     integrationCredentialService.listForManufacturer(session.businessId, manufacturerId),
     manufacturerApiCredentialService.listSummaries(session.businessId, manufacturerId),
     machineIntegrationService.listIntegrations(session.businessId),
+  ]);
+  const [onboardingSteps, certificationRuns] = await Promise.all([
+    manufacturerOnboardingService.checklist(session.businessId, manufacturerId),
+    manufacturerOnboardingService.certificationRuns(session.businessId, manufacturerId),
   ]);
   const credentialHistory = await auditLogRepository.listForEntities(
     session.businessId,
@@ -82,6 +89,15 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
 
       <Card>
         <CardHeader>
+          <CardTitle>Onboarding checklist</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <OnboardingChecklist steps={onboardingSteps} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Models</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-8">
@@ -110,6 +126,15 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
             <h3 className="mb-4 text-sm font-medium">Add a model</h3>
             <CreateModelForm manufacturerId={manufacturerId} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Certification harness runs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CertificationRuns runs={certificationRuns} />
         </CardContent>
       </Card>
 

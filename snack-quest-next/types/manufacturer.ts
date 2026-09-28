@@ -92,9 +92,15 @@ export type CertificationCheckKey =
   | 'error_handling'
   | 'webhooks'
   | 'payment_flow'
-  | 'reconciliation';
+  | 'reconciliation'
+  | 'contract_suite';
 
-export const CERTIFICATION_CHECKS: readonly { key: CertificationCheckKey; label: string; mayBeNotApplicable: boolean }[] = [
+/**
+ * `harnessOnly` checks cannot be recorded by hand: only a passing run of
+ * the automated certification harness (`integrationCertificationService`)
+ * records them, so no model is certified on manual checkboxes alone.
+ */
+export const CERTIFICATION_CHECKS: readonly { key: CertificationCheckKey; label: string; mayBeNotApplicable: boolean; harnessOnly?: boolean }[] = [
   { key: 'authentication', label: 'Authentication', mayBeNotApplicable: false },
   { key: 'machine_registration', label: 'Machine registration', mayBeNotApplicable: false },
   { key: 'heartbeat', label: 'Heartbeat', mayBeNotApplicable: false },
@@ -109,6 +115,7 @@ export const CERTIFICATION_CHECKS: readonly { key: CertificationCheckKey; label:
   { key: 'webhooks', label: 'Webhooks', mayBeNotApplicable: true },
   { key: 'payment_flow', label: 'Payment flow (paid → dispense → confirmed)', mayBeNotApplicable: false },
   { key: 'reconciliation', label: 'Reconciliation (timeouts, unknown outcomes)', mayBeNotApplicable: false },
+  { key: 'contract_suite', label: 'Automated contract suite (harness run against this model)', mayBeNotApplicable: false, harnessOnly: true },
 ];
 
 export interface CertificationCheckResult {

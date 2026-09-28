@@ -29,7 +29,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ loca
   const { locationId } = await params;
   const hasMachine = await assertPartnerHasMachineAtLocation(session.businessId, session.partnerId, locationId);
   if (!hasMachine) {
-    return Response.json({ error: `Location ${locationId} not found` }, { status: 404 });
+    return Response.json({ error: 'not found' }, { status: 404 });
   }
 
   let body: unknown;
@@ -62,7 +62,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ loca
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof LocationNotFoundError) {
-      return Response.json({ error: error.message }, { status: 404 });
+      return Response.json({ error: 'not found' }, { status: 404 });
     }
     throw error;
   }

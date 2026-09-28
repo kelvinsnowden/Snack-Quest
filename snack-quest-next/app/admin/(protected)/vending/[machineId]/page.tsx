@@ -1,3 +1,4 @@
+import { slotMappingHistoryRepository } from '@/repositories/slotMappingHistoryRepository';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -139,12 +140,13 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       cameraService.listByMachine(session.businessId, machineId),
     ]);
 
-  const [integrationView, registryManufacturers, registryModels, machineEvents, dispenseCommands] = await Promise.all([
+  const [integrationView, registryManufacturers, registryModels, machineEvents, dispenseCommands, mappingHistory] = await Promise.all([
     machineIntegrationService.getView(session.businessId, machineId),
     manufacturerRegistryService.listManufacturers(session.businessId),
     manufacturerRegistryService.listModels(session.businessId),
     machineEventService.listForMachine(session.businessId, machineId, 15),
     dispenseCommandService.listForMachine(session.businessId, machineId, 10),
+    slotMappingHistoryRepository.listForMachine(session.businessId, machineId, 50),
   ]);
 
   const cameraRows = await Promise.all(
@@ -205,6 +207,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
             }}
             slots={slots.map((slot) => ({ slotCode: slot.slotCode, manufacturerSlotId: slot.manufacturerSlotId ?? null }))}
             events={toJsonSafe(machineEvents.map(({ id, data }) => ({ id, type: data.type, severity: data.severity, occurredAt: data.occurredAt, source: data.source, slotCode: data.slotCode, nativeType: data.nativeType }))) as PanelEvent[]}
+            mappingHistory={toJsonSafe(mappingHistory) as { slotCode: string; from: string | null; to: string | null; changedBy: string; changedAt: string | null }[]}
             dispenseCommands={toJsonSafe(dispenseCommands.map((command) => ({ commandRef: command.commandRef, status: command.status, slotCode: command.slotCode, manufacturerSlotId: command.manufacturerSlotId, delivery: command.delivery, failureReason: command.failureReason, updatedAt: command.updatedAt }))) as PanelDispenseCommand[]}
           />
         </CardContent>

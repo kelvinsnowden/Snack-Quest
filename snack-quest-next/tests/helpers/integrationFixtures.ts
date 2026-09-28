@@ -72,8 +72,9 @@ export async function createManufacturerWithModel(
 
 /** Records a passing result for every certification check, then certifies. */
 export async function certifyModel(businessId: string, modelId: string): Promise<void> {
-  for (const { key } of CERTIFICATION_CHECKS) {
-    await manufacturerRegistryService.recordCertificationCheck(businessId, modelId, key, { outcome: 'passed', evidence: `test evidence for ${key}` }, 'staff-1');
+  for (const { key, harnessOnly } of CERTIFICATION_CHECKS) {
+    // Harness-only checks stand in for a passing harness run here.
+    await manufacturerRegistryService.recordCertificationCheck(businessId, modelId, key, { outcome: 'passed', evidence: `test evidence for ${key}` }, 'staff-1', { source: harnessOnly ? 'harness' : 'manual' });
   }
   await manufacturerRegistryService.certifyModel(businessId, modelId, 'staff-1');
 }

@@ -94,7 +94,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ withdrawalId }, { status: 201 });
   } catch (error) {
     if (error instanceof PartnerNotEligibleForWithdrawalError) {
-      return Response.json({ error: error.message }, { status: 404 });
+      return Response.json({ error: 'not found' }, { status: 404 });
     }
     if (error instanceof InsufficientPartnerBalanceError) {
       return Response.json({ error: error.message }, { status: 409 });

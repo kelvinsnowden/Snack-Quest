@@ -120,15 +120,28 @@ describe('models and certification', () => {
     await manufacturerRegistryService.recordCertificationCheck(BUSINESS_ID, modelId, 'webhooks', { outcome: 'not_applicable', evidence: 'no webhooks' }, 'staff-1');
   });
 
+  it('the automated contract suite cannot be ticked by hand — certification needs a harness run', async () => {
+    const { modelId } = await createManufacturerWithModel(BUSINESS_ID);
+    for (const { key, harnessOnly } of CERTIFICATION_CHECKS) {
+      if (harnessOnly) {
+        await expect(manufacturerRegistryService.recordCertificationCheck(BUSINESS_ID, modelId, key, { outcome: 'passed', evidence: 'trust me' }, 'staff-1')).rejects.toBeInstanceOf(RegistryValidationError);
+        continue;
+      }
+      await manufacturerRegistryService.recordCertificationCheck(BUSINESS_ID, modelId, key, { outcome: 'passed', evidence: 'ok' }, 'staff-1');
+    }
+    await expect(manufacturerRegistryService.certifyModel(BUSINESS_ID, modelId, 'staff-1')).rejects.toMatchObject({ outstanding: ['contract_suite'] });
+  });
+
   it('certifies with webhooks not applicable, since that check permits it', async () => {
     const { modelId } = await createManufacturerWithModel(BUSINESS_ID);
-    for (const { key } of CERTIFICATION_CHECKS) {
+    for (const { key, harnessOnly } of CERTIFICATION_CHECKS) {
       await manufacturerRegistryService.recordCertificationCheck(
         BUSINESS_ID,
         modelId,
         key,
         key === 'webhooks' ? { outcome: 'not_applicable', evidence: 'polls only' } : { outcome: 'passed', evidence: 'ok' },
         'staff-1',
+        { source: harnessOnly ? 'harness' : 'manual' },
       );
     }
     await manufacturerRegistryService.certifyModel(BUSINESS_ID, modelId, 'staff-1');

@@ -108,6 +108,7 @@ export function MachineIntegrationPanel({
   slots,
   events,
   dispenseCommands,
+  mappingHistory = [],
 }: {
   machineId: string;
   view: IntegrationPanelView;
@@ -115,6 +116,8 @@ export function MachineIntegrationPanel({
   slots: { slotCode: string; manufacturerSlotId: string | null }[];
   events: PanelEvent[];
   dispenseCommands: PanelDispenseCommand[];
+  /** Append-only slot mapping history, newest first. */
+  mappingHistory?: { slotCode: string; from: string | null; to: string | null; changedBy: string; changedAt: string | null }[];
 }) {
   const router = useRouter();
   const integration = view.integration;
@@ -397,6 +400,19 @@ export function MachineIntegrationPanel({
               Save slot mapping
             </Button>
           </div>
+          {mappingHistory.length > 0 ? (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-muted-foreground">Mapping history ({mappingHistory.length})</summary>
+              <ol className="mt-2 flex flex-col divide-y divide-border">
+                {mappingHistory.map((change, index) => (
+                  <li key={`${change.slotCode}-${index}`} className="flex flex-wrap justify-between gap-2 py-1.5">
+                    <span><span className="font-medium">{change.slotCode}</span>: <code className="font-mono text-xs">{change.from ?? '—'}</code> → <code className="font-mono text-xs">{change.to ?? '—'}</code></span>
+                    <span className="text-muted-foreground">{change.changedAt ? new Date(change.changedAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : '—'} · {change.changedBy}</span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
         </div>
       ) : null}
 

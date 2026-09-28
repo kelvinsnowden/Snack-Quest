@@ -67,7 +67,7 @@ export function CertificationPanel({ modelId, status, checklist }: { modelId: st
             </tr>
           </thead>
           <tbody>
-            {CERTIFICATION_CHECKS.map(({ key, label, mayBeNotApplicable }) => {
+            {CERTIFICATION_CHECKS.map(({ key, label, mayBeNotApplicable, harnessOnly }) => {
               const entry = checklist[key];
               return (
                 <tr key={key} className="border-b border-border last:border-0 align-top">
@@ -89,7 +89,9 @@ export function CertificationPanel({ modelId, status, checklist }: { modelId: st
                     )}
                   </td>
                   <td className="py-2 text-right">
-                    {editing === key ? null : (
+                    {harnessOnly ? (
+                      <span className="text-caption text-muted-foreground">Recorded by the harness</span>
+                    ) : editing === key ? null : (
                       <Button size="sm" variant="ghost" onClick={() => { setEditing(key); setOutcome(entry?.outcome ?? 'passed'); setEvidence(''); }}>
                         Record
                       </Button>

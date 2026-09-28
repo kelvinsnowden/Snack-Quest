@@ -268,11 +268,15 @@ class ManufacturerRegistryService {
     key: CertificationCheckKey,
     result: { outcome: CertificationCheckResult['outcome']; evidence: string },
     actor: string,
+    options: { source?: 'manual' | 'harness' } = {},
   ): Promise<void> {
     const model = await this.requireModel(businessId, modelId);
     const check = CERTIFICATION_CHECKS.find((entry) => entry.key === key);
     if (!check) {
       throw new RegistryValidationError(`Unknown certification check "${key}"`);
+    }
+    if (check.harnessOnly && options.source !== 'harness') {
+      throw new RegistryValidationError(`"${check.label}" is recorded only by a run of the automated certification harness`);
     }
     if (!['passed', 'failed', 'not_applicable'].includes(result.outcome)) {
       throw new RegistryValidationError('outcome must be passed, failed or not_applicable');

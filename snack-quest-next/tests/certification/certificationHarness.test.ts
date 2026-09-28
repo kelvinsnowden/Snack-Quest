@@ -84,6 +84,39 @@ describe('certification harness', () => {
     expect(report.checks.filter((check) => check.outcome === 'not_verified').map((check) => check.id).sort()).toEqual(['idempotency', 'replay_protection', 'timeout_handling']);
   }, 60_000);
 
+  /** A manufacturer's machine driven through the harness interface (here, one built on the reference firmware). */
+  const asManufacturerMachine = (sim: V1SimulatedMachine) => {
+    const inner = new SimulatorCertificationSubject(sim);
+    return {
+      kind: 'manufacturer_machine' as const,
+      cycle: () => inner.cycle(),
+      emitDoorEvents: () => inner.emitDoorEvents(),
+      emptySlot: (slot: string) => inner.emptySlot(slot),
+      pollWithoutExecuting: () => inner.pollWithoutExecuting(),
+      retransmitLastReport: () => inner.retransmitLastReport(),
+      requestLog: () => inner.requestLog(),
+    };
+  };
+  const checklist = async () => (await adminFirestore.collection('machineModels').doc(ids.modelId).get()).get('certificationChecklist') as Record<string, { outcome: string; evidence: string }>;
+
+  it('a passing run against a manufacturer machine records the contract suite as passed — the one check no human can tick', async () => {
+    const report = await integrationCertificationService.run(BUSINESS_ID, machine.machineId, asManufacturerMachine(simulator()), { recordToModel: true });
+    expect(report.verdict).toBe('CERTIFIED');
+    const recorded = await checklist();
+    expect(recorded.contract_suite).toMatchObject({ outcome: 'passed' });
+    expect(recorded.contract_suite.evidence).toContain(report.runId);
+  }, 60_000);
+
+  it('a failing run records the contract suite as failed, with the reasons', async () => {
+    const sim = simulator();
+    sim.inject.executeWithoutAck = true;
+    const report = await integrationCertificationService.run(BUSINESS_ID, machine.machineId, asManufacturerMachine(sim), { recordToModel: true });
+    expect(report.verdict).toBe('NOT CERTIFIED');
+    const recorded = await checklist();
+    expect(recorded.contract_suite.outcome).toBe('failed');
+    expect(recorded.contract_suite.evidence).toContain('failed:');
+  }, 60_000);
+
   it('refuses production integrations, and refuses to record a simulator run as model evidence', async () => {
     const production = await activeMachine(BUSINESS_ID, ids, { adapterKey: 'snack_quest_gateway', environment: 'production' });
     await expect(integrationCertificationService.run(BUSINESS_ID, production.machineId, new SimulatorCertificationSubject(simulator()))).rejects.toThrow(CertificationNotAllowedError);
