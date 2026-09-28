@@ -22,7 +22,7 @@ import {
   type VendingTelemetryReport,
 } from '../hardwareAdapter';
 import { NO_CAPABILITIES, type HardwareCapabilities } from '../protocol/capabilities';
-import { ManufacturerHttpClient, type FetchLike } from './manufacturerHttpClient';
+import { ManufacturerHttpClient, type FetchLike } from '../manufacturerHttpClient';
 
 const ADAPTER_KEY = 'reference_http';
 

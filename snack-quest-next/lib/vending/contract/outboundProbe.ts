@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ManufacturerHttpClient, type FetchLike } from '@/lib/vending/adapters/manufacturerHttpClient';
+import { ManufacturerHttpClient, type FetchLike } from '@/lib/vending/manufacturerHttpClient';
 import { HardwareAuthenticationError } from '@/lib/vending/hardwareAdapter';
 
 /**

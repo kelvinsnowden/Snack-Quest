@@ -1,9 +1,9 @@
-import { classifyNetworkError, recoveryFor } from '../integrationErrors';
+import { classifyNetworkError, recoveryFor } from './integrationErrors';
 import {
   HardwareAuthenticationError,
   HardwareTimeoutError,
   HardwareUnreachableError,
-} from '../hardwareAdapter';
+} from './hardwareAdapter';
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
