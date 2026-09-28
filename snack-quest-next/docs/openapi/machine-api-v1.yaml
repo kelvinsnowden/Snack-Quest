@@ -2,6 +2,8 @@ openapi: 3.0.3
 info:
   title: Snack Quest Machine API
   version: "1"
+  license:
+    name: Proprietary — for integration partners of Snack Quest
   description: >
     The versioned API vending machine manufacturers build against.
     docs/SNACK_QUEST_MACHINE_API_V1.md is the narrative specification
@@ -32,8 +34,11 @@ security:
 
 tags:
   - name: Machines
+    description: Identity, liveness, status, inventory and operational events
   - name: Commands
+    description: Polling, acknowledging and reporting commands — the dispense lifecycle
   - name: Webhooks
+    description: Signed deliveries from a manufacturer's own cloud (Model A)
 
 paths:
   /api/v1/machines/connect:
@@ -64,7 +69,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MachineDescriptionEnvelope" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}:
     get:
@@ -85,7 +91,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MachineDescriptionEnvelope" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/heartbeat:
     post:
@@ -109,7 +116,8 @@ paths:
                 properties:
                   data: { $ref: "#/components/schemas/HeartbeatResult" }
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/status:
     post:
@@ -137,7 +145,8 @@ paths:
                       accepted: { type: boolean }
                       applied: { type: boolean }
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/inventory:
     post:
@@ -161,7 +170,8 @@ paths:
                 properties:
                   data: { $ref: "#/components/schemas/InventoryResult" }
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/events:
     post:
@@ -185,7 +195,8 @@ paths:
                 properties:
                   data: { $ref: "#/components/schemas/EventsResult" }
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/commands:
     get:
@@ -212,7 +223,8 @@ paths:
                         type: integer
                         description: 2 while a customer is paying at this machine, otherwise 10.
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/commands/{commandId}/ack:
     post:
@@ -242,7 +254,8 @@ paths:
                       commandId: { type: string, example: DSP-3F9A1C22 }
                       status: { type: string, example: acknowledged }
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/machines/{machineCode}/commands/{commandId}/status:
     post:
@@ -276,7 +289,8 @@ paths:
                           there first) | conflict (contradicts a decision already acted on — escalated to a
                           human) | progress_recorded | stale_progress. New values may be added.
                   meta: { $ref: "#/components/schemas/Meta" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
   /api/v1/webhooks/manufacturers/{slug}:
     post:
@@ -309,7 +323,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/WebhookResultEnvelope" }
-        default: { $ref: "#/components/responses/Error" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
 
 components:
   securitySchemes:
