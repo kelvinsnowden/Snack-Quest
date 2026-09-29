@@ -17,6 +17,8 @@ import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { MachineStatusBadge } from '@/components/admin/MachineStatusBadge';
 import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivityBadge';
 import { formatDateTime } from '@/lib/orders/format';
+import { hasPermission } from '@/lib/auth/permissions';
+import { Button } from '@/components/ui/button';
 import type { Alert, Machine } from '@/types';
 
 export const metadata: Metadata = { title: 'Vending Machines' };
@@ -137,9 +139,16 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Vending Machines</h1>
-        <p className="text-sm text-muted-foreground">Network Overview &mdash; {overview.machineCount} machine{overview.machineCount === 1 ? '' : 's'} across the fleet.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Vending Machines</h1>
+          <p className="text-sm text-muted-foreground">Network Overview &mdash; {overview.machineCount} machine{overview.machineCount === 1 ? '' : 's'} across the fleet.</p>
+        </div>
+        {hasPermission(session, 'machines.create') ? (
+          <Button asChild>
+            <Link href="/admin/vending/new">Register a machine</Link>
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">

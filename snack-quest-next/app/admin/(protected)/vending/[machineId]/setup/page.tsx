@@ -12,6 +12,8 @@ import { MACHINE_STATUS_TRANSITIONS } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MachineStatusControl, MachineMoveControl } from '@/components/admin/vending/MachineStatusControls';
 import { MachineOwnerControl } from '@/components/admin/vending/OwnerControls';
+import { DeviceKeysCard } from '@/components/admin/vending/DeviceKeysCard';
+import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { partnerService } from '@/services/partnerService';
 import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
@@ -31,12 +33,14 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
   const machine = await machineService.findById(session.businessId, machineId);
   if (!machine) notFound();
   const canSeeOwners = hasPermission(session, 'owners.view');
-  const [locations, history, owners, ownerHistory, activeAgreement] = await Promise.all([
+  const canManageKeys = hasPermission(session, 'machines.credentials.manage');
+  const [locations, history, owners, ownerHistory, activeAgreement, keys] = await Promise.all([
     locationService.listByBusiness(session.businessId),
     machineLocationHistoryRepository.listByMachine(session.businessId, machineId),
     canSeeOwners ? partnerService.listByBusiness(session.businessId) : Promise.resolve([]),
     canSeeOwners ? machineOwnershipHistoryRepository.listByMachine(session.businessId, machineId) : Promise.resolve([]),
     canSeeOwners ? partnerMachineAgreementRepository.findActiveForMachine(session.businessId, machineId) : Promise.resolve(null),
+    canManageKeys ? deviceCredentialRepository.listByMachine(session.businessId, machineId) : Promise.resolve([]),
   ]);
   const names = new Map(locations.map(({ id, data }) => [id, data.name]));
   const ownerNames = new Map(owners.map(({ id, data }) => [id, data.name]));
@@ -90,6 +94,28 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
             ) : null}
           </CardContent>
         </Card>
+
+        {canManageKeys ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Screen keys</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DeviceKeysCard
+                machineId={machineId}
+                machineCode={machine.machineCode}
+                keys={keys.map(({ id, data }) => ({
+                  id,
+                  prefix: data.secretPrefix,
+                  issuedAt: data.issuedAt ? data.issuedAt.toDate().toISOString() : null,
+                  lastUsedAt: data.lastUsedAt ? data.lastUsedAt.toDate().toISOString() : null,
+                  revokedAt: data.revokedAt ? data.revokedAt.toDate().toISOString() : null,
+                  revokedReason: data.revokedReason,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
 
         {canSeeOwners ? (
           <Card>

@@ -160,6 +160,26 @@ class MachineService {
     return deviceCredentialRepository.issue({ businessId, machineId, issuedBy: actor });
   }
 
+  /**
+   * Issues a new screen key and, when `revokeOthers` is set, revokes every
+   * other active key for the machine at once — the response to a leaked
+   * key. Without it the old key keeps working until someone revokes it,
+   * so the screen isn't cut off before it's re-paired.
+   */
+  async replaceDeviceCredential(businessId: string, machineId: string, actor: string, options: { revokeOthers: boolean; reason: string | null }): Promise<{ issued: IssuedDeviceCredential; revokedIds: string[] }> {
+    const issued = await this.rotateDeviceCredential(businessId, machineId, actor);
+    const revokedIds: string[] = [];
+    if (options.revokeOthers) {
+      const active = await deviceCredentialRepository.listActiveByMachine(businessId, machineId);
+      for (const { id } of active) {
+        if (id === issued.credentialId) continue;
+        await deviceCredentialRepository.revoke(businessId, id, actor, options.reason ?? 'Replaced by a new key');
+        revokedIds.push(id);
+      }
+    }
+    return { issued, revokedIds };
+  }
+
   /** Immediate revocation, per `DeviceCredential`'s own doc comment — the next request with this secret is rejected, no grace window. */
   async revokeDeviceCredential(businessId: string, credentialId: string, actor: string, reason: string): Promise<void> {
     await deviceCredentialRepository.revoke(businessId, credentialId, actor, reason);

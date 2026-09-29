@@ -8,6 +8,7 @@ import type { KioskScreenContent, KioskScreenContentImage, SellableCatalogItem }
 import { ProductCard, ProductImage, STATE_LABEL } from './ProductCard';
 import { AttractScreen, MenuBanner } from './ScreenArtwork';
 import { PhoneKeypad } from './PhoneKeypad';
+import { readPairingFragment } from '@/lib/vending/kioskPairing';
 import { cartKey, formatKes, formatPhoneNumber, isCompletePhoneNumber, PHONE_MAX_DIGITS } from './format';
 
 /**
@@ -142,7 +143,14 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
   const lastTouchRef = useRef(0);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(`${PAIRING_KEY_PREFIX}${machineId}`);
+    // QR pairing: the admin's pairing code opens this page with the key after `#pair=`.
+    // The fragment never reaches a server; save the key, then wipe it from the address bar and history.
+    const paired = readPairingFragment(window.location.hash);
+    if (paired) {
+      window.localStorage.setItem(`${PAIRING_KEY_PREFIX}${machineId}`, paired);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    const stored = paired ?? window.localStorage.getItem(`${PAIRING_KEY_PREFIX}${machineId}`);
     if (stored) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the paired secret from localStorage is the intentional sync-from-browser-storage-after-mount step, not an update loop; `window` doesn't exist during SSR so this can't be a lazy useState initializer either.
       setSecret(stored);

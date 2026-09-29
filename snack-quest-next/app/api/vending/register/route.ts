@@ -2,6 +2,8 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { machineService } from '@/services/machineService';
 import { isRegisteredAdapterKey, listAdapterRegistrations } from '@/lib/vending/adapterRegistry';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
+import { locationService } from '@/services/locationService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * Provisions a new physical Discovery Machine (§ MACHINE INSTALLATION
@@ -14,6 +16,11 @@ import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
  *
  * Admins only: registering a machine hands out the secret a device
  * signs with, so a warehouse login is not enough to mint one.
+ *
+ * Giving it an owner at registration also needs `owners.manage`, and
+ * placing it at a location needs `machines.relocate` — the same
+ * permissions those changes need on their own. The registration is
+ * audited; the secret never is.
  */
 export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -39,6 +46,7 @@ export async function POST(request: Request): Promise<Response> {
     hardwareVersion,
     firmwareVersion,
     ownerPartnerId,
+    locationId,
   } = (body ?? {}) as Record<string, unknown>;
 
   if (machineCode !== undefined && machineCode !== null && (typeof machineCode !== 'string' || !machineCode)) {
@@ -63,6 +71,19 @@ export async function POST(request: Request): Promise<Response> {
   if (ownerPartnerId !== undefined && ownerPartnerId !== null && typeof ownerPartnerId !== 'string') {
     return Response.json({ error: 'ownerPartnerId must be a string when provided' }, { status: 400 });
   }
+  if (locationId !== undefined && locationId !== null && (typeof locationId !== 'string' || !locationId)) {
+    return Response.json({ error: 'locationId must be a string when provided' }, { status: 400 });
+  }
+  if (ownerPartnerId && !hasPermission(session, 'owners.manage')) {
+    return forbiddenForPermission('owners.manage');
+  }
+  if (locationId && !hasPermission(session, 'machines.relocate')) {
+    return forbiddenForPermission('machines.relocate');
+  }
+  const location = locationId ? await locationService.findById(session.businessId, locationId as string) : null;
+  if (locationId && !location) {
+    return Response.json({ error: `Location ${locationId as string} not found` }, { status: 400 });
+  }
 
   try {
     const { machineId, machineCode: assignedMachineCode, credential } = await machineService.provisionDevice({
@@ -76,7 +97,25 @@ export async function POST(request: Request): Promise<Response> {
       ownerPartnerId: (ownerPartnerId as string | null) ?? null,
       actor: session.uid,
     });
-    return Response.json({ machineId, machineCode: assignedMachineCode, credential }, { status: 201 });
+    if (location) {
+      await machineService.relocate(
+        session.businessId,
+        machineId,
+        { locationId: locationId as string, latitude: location.latitude ?? null, longitude: location.longitude ?? null, address: location.address ?? null, venueName: location.name },
+        session.uid,
+        'Placed at registration',
+      );
+    }
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'register_machine',
+      entityType: 'machine',
+      entityId: machineId,
+      after: { machineCode: assignedMachineCode, serialNumber, manufacturer, model, ownerPartnerId: (ownerPartnerId as string | null) ?? null, locationId: (locationId as string | null) ?? null, credentialId: credential.credentialId },
+      machineId,
+    });
+    return Response.json({ machineId, machineCode: assignedMachineCode, credential }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'could not register machine' }, { status: 400 });
   }

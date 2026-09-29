@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { provisionDeviceMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({
+const { provisionDeviceMock, verifyStaffSessionFromRequestMock, relocateMock, findLocationMock, recordAuditLogMock } = vi.hoisted(() => ({
   provisionDeviceMock: vi.fn(),
   verifyStaffSessionFromRequestMock: vi.fn(),
+  relocateMock: vi.fn(),
+  findLocationMock: vi.fn(),
+  recordAuditLogMock: vi.fn(),
 }));
 
 vi.mock('@/services/machineService', () => ({
-  machineService: { provisionDevice: provisionDeviceMock },
+  machineService: { provisionDevice: provisionDeviceMock, relocate: relocateMock },
 }));
+vi.mock('@/services/locationService', () => ({ locationService: { findById: findLocationMock } }));
+vi.mock('@/lib/audit/recordAuditLog', () => ({ recordAuditLog: recordAuditLogMock }));
 
 vi.mock('@/lib/auth/session', () => ({
   verifyStaffSessionFromRequest: verifyStaffSessionFromRequestMock,
@@ -104,5 +109,43 @@ describe('POST /api/vending/register', () => {
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toContain('already in use');
+  });
+});
+
+describe('POST /api/vending/register — owner, place and audit', () => {
+  const REGISTERED = { machineId: 'm-9', machineCode: 'SQ-MCH-000009', credential: { credentialId: 'cred-9', machineId: 'm-9', secret: 'f'.repeat(64), issuedAt: '2026-01-01T00:00:00.000Z' } };
+  const withPermissions = (permissions: string[]) => ({ ...STAFF_SESSION, roles: ['admin'], effectivePermissions: permissions });
+
+  it('audits the registration without the key, and never lets the response be cached', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    provisionDeviceMock.mockResolvedValue(REGISTERED);
+    const response = await registerRoute(jsonRequest(VALID_BODY));
+    expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(recordAuditLogMock).toHaveBeenCalledWith(expect.any(Request), expect.objectContaining({ action: 'register_machine', entityId: 'm-9', machineId: 'm-9' }));
+    expect(JSON.stringify(recordAuditLogMock.mock.calls)).not.toContain('f'.repeat(64));
+  });
+
+  it('needs owners.manage to set an owner and machines.relocate to place it, checked before anything is created', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(withPermissions(['machines.create']));
+    const owner = await registerRoute(jsonRequest({ ...VALID_BODY, ownerPartnerId: 'p-1' }));
+    expect(owner.status).toBe(403);
+    expect((await owner.json()).permission).toBe('owners.manage');
+    const place = await registerRoute(jsonRequest({ ...VALID_BODY, locationId: 'loc-1' }));
+    expect(place.status).toBe(403);
+    expect((await place.json()).permission).toBe('machines.relocate');
+    expect(provisionDeviceMock).not.toHaveBeenCalled();
+  });
+
+  it('places the new machine at a real location, and refuses an unknown one before registering', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(withPermissions(['machines.create', 'machines.relocate']));
+    findLocationMock.mockResolvedValueOnce(null);
+    expect((await registerRoute(jsonRequest({ ...VALID_BODY, locationId: 'nowhere' }))).status).toBe(400);
+    expect(provisionDeviceMock).not.toHaveBeenCalled();
+
+    findLocationMock.mockResolvedValueOnce({ name: 'Campus', latitude: -1.3, longitude: 36.8, address: 'Madaraka' });
+    provisionDeviceMock.mockResolvedValue(REGISTERED);
+    expect((await registerRoute(jsonRequest({ ...VALID_BODY, locationId: 'loc-1' }))).status).toBe(201);
+    expect(relocateMock).toHaveBeenCalledWith('biz-1', 'm-9', { locationId: 'loc-1', latitude: -1.3, longitude: 36.8, address: 'Madaraka', venueName: 'Campus' }, 'staff-1', 'Placed at registration');
   });
 });
