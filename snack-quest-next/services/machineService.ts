@@ -7,6 +7,7 @@ import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepos
 import { partnerRepository } from '@/repositories/partnerRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
+import { machineSubscriptionRepository } from '@/repositories/machineSubscriptionRepository';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
 import { isRegisteredAdapterKey, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
@@ -263,6 +264,11 @@ class MachineService {
     const agreement = await partnerMachineAgreementRepository.findActiveForMachine(businessId, machineId);
     if (agreement) {
       throw new OwnerReassignmentError('This machine still has an active agreement with its current owner. End that agreement first.');
+    }
+    // Settlements take the machine's open subscription off whoever owns it, so the old owner's must end first.
+    const subscription = await machineSubscriptionRepository.findActiveForMachine(businessId, machineId);
+    if (subscription) {
+      throw new OwnerReassignmentError('This machine still has a subscription for its current owner. Cancel it first.');
     }
 
     await adminFirestore.runTransaction(async (tx) => {

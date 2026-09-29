@@ -153,11 +153,23 @@ describe('POST /api/vending/machines/[id]/subscription', () => {
 });
 
 describe('PATCH /api/vending/machines/[id]/subscription/[subscriptionId]', () => {
-  function patch(body: unknown) {
+  function patch(body: unknown, machineId = 'm-1') {
     return subscriptionPatch(new Request('http://localhost/x', { method: 'PATCH', body: JSON.stringify(body) }), {
-      params: Promise.resolve({ id: 'm-1', subscriptionId: 'sub-1' }),
+      params: Promise.resolve({ id: machineId, subscriptionId: 'sub-1' }),
     });
   }
+
+  // The route checks the subscription really is this machine's before acting on it.
+  beforeEach(async () => {
+    await adminFirestore.collection('machineSubscriptions').doc('sub-1').set({ businessId: 'biz-1', machineId: 'm-1', partnerId: 'p-1', status: 'active', lastPaymentStatus: 'unpaid', arrearsKes: 0 });
+  });
+
+  it('404s a subscription that belongs to a different machine, and changes nothing', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    const response = await patch({ action: 'cancel' }, 'm-other');
+    expect(response.status).toBe(404);
+    expect(cancelSubscriptionMock).not.toHaveBeenCalled();
+  });
 
   it('403s a non-admin session', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);

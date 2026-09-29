@@ -53,6 +53,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (parsedEnd <= parsedStart) {
     return Response.json({ error: 'periodEnd must be after periodStart' }, { status: 400 });
   }
+  // A period still running would settle before all its sales are in.
+  if (parsedEnd.getTime() > Date.now()) {
+    return Response.json({ error: 'The period can’t end in the future — its sales aren’t all in yet.' }, { status: 400 });
+  }
 
   const machine = await machineRepository.findById(session.businessId, id);
   if (!machine) {

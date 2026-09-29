@@ -42,6 +42,10 @@ export async function PATCH(
 
   try {
     const before = await machineSubscriptionRepository.findById(session.businessId, subscriptionId);
+    // The subscription must be this machine's — never act on one by id alone.
+    if (!before || before.machineId !== machineId) {
+      return Response.json({ error: 'Subscription not found for this machine.' }, { status: 404 });
+    }
     switch (action as Action) {
       case 'recordPayment':
         await machineSubscriptionService.recordPeriodPayment(session.businessId, subscriptionId);

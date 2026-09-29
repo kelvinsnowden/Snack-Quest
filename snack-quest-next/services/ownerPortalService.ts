@@ -26,7 +26,7 @@ import {
 import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { ownerSince, clipStartDate, withinTenure } from '@/lib/vending/ownerTenure';
-import { isCustomerSale, type Location, type Machine, type MachineConnectivityStatus, type MachineEventType, type MachineSubscription } from '@/types';
+import { isCustomerSale, type Location, type Machine, type MachineConnectivityStatus, type MachineEventType, type MachineSubscription, type MachineTransactionStatus } from '@/types';
 
 export { PartnerDoesNotOwnMachineError, CameraNotFoundError };
 
@@ -101,6 +101,33 @@ export interface OwnerRecentActivityItem {
   amountKes: number;
   dispensedAt: string;
 }
+
+/**
+ * A payment on the owner's machine in the owner's words. Only `sold`
+ * counts as a sale (and towards settlements); the others explain money
+ * a customer paid that didn't become one.
+ */
+export type OwnerSaleStatus = 'sold' | 'under_review' | 'refund_due' | 'refunded' | 'in_progress';
+
+export interface OwnerSaleItem {
+  transactionId: string;
+  machineId: string;
+  machineCode: string;
+  productName: string;
+  amountKes: number;
+  status: OwnerSaleStatus;
+  at: string;
+}
+
+const OWNER_SALE_STATUS: Partial<Record<MachineTransactionStatus, OwnerSaleStatus>> = {
+  dispensed: 'sold',
+  manual_review: 'under_review',
+  paid_vend_failed: 'refund_due',
+  refund_requested: 'refund_due',
+  refunded: 'refunded',
+  paid: 'in_progress',
+  vend_authorized: 'in_progress',
+};
 
 export interface OwnerAlertItem {
   id: string;
@@ -381,7 +408,7 @@ class OwnerPortalService {
     const ownedMachineIds = new Set(machines.map((m) => m.id));
     const machineCodeById = new Map(machines.map((m) => [m.id, m.machineCode]));
 
-    await alertService.evaluateIfStale(businessId);
+    // As the last scheduled sweep left them; an owner's page never runs the fleet-wide sweep.
     const openAlerts = await alertService.listOpen(businessId);
 
     return openAlerts
@@ -422,6 +449,35 @@ class OwnerPortalService {
       productName: names.get(data.productId) ?? data.productId,
       amountKes: data.amountKes,
       dispensedAt: (data.dispensedAt ?? data.createdAt).toDate().toISOString(),
+    }));
+  }
+
+  /**
+   * Recent paid sales on the owner's machines with where each stands —
+   * sold, being checked, refund due or refunded — so an owner can see why
+   * a payment they know about isn't in their sales. Payments that never
+   * completed aren't shown; nothing is shown from before this owner's
+   * time with a machine; staff test vends never appear.
+   */
+  async getSalesWithStatus(businessId: string, partnerId: string, limit = 20, machineId?: string): Promise<OwnerSaleItem[]> {
+    const machines = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
+    const codes = new Map(machines.map((m) => [m.id, m.machineCode]));
+    const sinceById = new Map(machines.map((m) => [m.id, m.since]));
+    const pages = await Promise.all(machines.map(({ id }) => machineTransactionRepository.listByBusiness(businessId, { machineId: id, limit: Math.max(limit, 20) })));
+    const rows = pages
+      .flatMap((page) => page.transactions)
+      .filter(({ data }) => isCustomerSale(data) && OWNER_SALE_STATUS[data.status] !== undefined && withinTenure(data.createdAt, sinceById.get(data.machineId) ?? null))
+      .sort((a, b) => (b.data.dispensedAt ?? b.data.createdAt).toMillis() - (a.data.dispensedAt ?? a.data.createdAt).toMillis())
+      .slice(0, limit);
+    const names = await this.resolveProductNames(businessId, Array.from(new Set(rows.map(({ data }) => data.productId))));
+    return rows.map(({ id, data }) => ({
+      transactionId: id,
+      machineId: data.machineId,
+      machineCode: codes.get(data.machineId) ?? data.machineId,
+      productName: names.get(data.productId) ?? data.productId,
+      amountKes: data.amountKes,
+      status: OWNER_SALE_STATUS[data.status] as OwnerSaleStatus,
+      at: (data.dispensedAt ?? data.createdAt).toDate().toISOString(),
     }));
   }
 

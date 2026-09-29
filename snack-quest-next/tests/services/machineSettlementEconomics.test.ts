@@ -10,6 +10,13 @@ import { machineSubscriptionService } from '@/services/machineSubscriptionServic
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 
+/** A subscription is charged to the machine's owner, so the machine is given to that owner first (as it would be in real use). */
+async function subscribeAsOwner(input: Parameters<typeof machineSubscriptionService.createSubscription>[0]) {
+  await adminFirestore.collection('machines').doc(input.machineId).update({ ownerPartnerId: input.partnerId });
+  return machineSubscriptionService.createSubscription(input);
+}
+
+
 const BUSINESS_ID = 'biz-settlement-economics-test';
 
 beforeEach(async () => {
@@ -103,7 +110,7 @@ describe('machineSettlementService — COGS', () => {
     const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
     const adapter = new MockVendingAdapter();
     const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
-    await machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 2_000, frequency: 'monthly' });
+    await subscribeAsOwner({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 2_000, frequency: 'monthly' });
 
     const periodStart = new Date(Date.now() - 60_000);
     await dispenseOneSale(adapter, machineId);

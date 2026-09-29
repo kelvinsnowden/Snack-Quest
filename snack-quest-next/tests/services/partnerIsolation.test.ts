@@ -7,6 +7,13 @@ import { machineAssortmentService } from '@/services/machineAssortmentService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSettlementService } from '@/services/machineSettlementService';
 
+/** A subscription is charged to the machine's owner, so the machine is given to that owner first (as it would be in real use). */
+async function subscribeAsOwner(input: Parameters<typeof machineSubscriptionService.createSubscription>[0]) {
+  await adminFirestore.collection('machines').doc(input.machineId).update({ ownerPartnerId: input.partnerId });
+  return machineSubscriptionService.createSubscription(input);
+}
+
+
 /**
  * Cross-business isolation (§ SECURITY: "Partner A can only see
  * Partner A's machines/sales/inventory/settlements/withdrawals, never
@@ -71,7 +78,7 @@ describe('cross-business partner isolation', () => {
       actor: 'staff-1',
     });
     const partnerIdA = await partnerService.create({ businessId: BUSINESS_A, name: 'Owner A', actor: 'staff-1' });
-    await machineSubscriptionService.createSubscription({
+    await subscribeAsOwner({
       businessId: BUSINESS_A,
       machineId: machineA,
       partnerId: partnerIdA,

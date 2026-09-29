@@ -105,6 +105,12 @@ class MachineSettlementRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSettlement }));
   }
 
+  /** Every settlement in one status across the fleet — the finance queue of drafts waiting to be finalized. */
+  async listByStatus(businessId: string, status: MachineSettlementStatus): Promise<{ id: string; data: MachineSettlement }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('status', '==', status).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSettlement }));
+  }
+
   /** Every `draft` settlement whose period ended before `before`, fleet-wide — the Alert Center's own settlement-failure sweep: a settlement that should have been finalized by now and wasn't. */
   async listStaleDrafts(businessId: string, before: Date): Promise<{ id: string; data: MachineSettlement }[]> {
     const snapshot = await adminFirestore

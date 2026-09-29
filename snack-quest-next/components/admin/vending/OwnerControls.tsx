@@ -615,7 +615,7 @@ export function MachineOwnerControl({
   if (hasActiveAgreement) {
     return (
       <p className="text-muted-foreground text-sm">
-        To change the owner, first end the active agreement on the owner’s page.
+        To change the owner, first end the active agreement on the owner’s page and cancel any owner subscription.
       </p>
     );
   }

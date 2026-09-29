@@ -1,8 +1,8 @@
 import 'server-only';
 
-import { Timestamp } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { machineSettlementRepository, IllegalSettlementTransitionError, MachineSettlementNotFoundError, OverlappingSettlementPeriodError } from '@/repositories/machineSettlementRepository';
+import { machineSettlementRepository, IllegalSettlementTransitionError, MachineSettlementNotFoundError, OverlappingSettlementPeriodError, type MachineSettlementInput } from '@/repositories/machineSettlementRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
@@ -14,6 +14,14 @@ import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnersh
 import { isCustomerSale, type MachineSettlement } from '@/types';
 
 export { MachineSettlementNotFoundError, IllegalSettlementTransitionError, OverlappingSettlementPeriodError };
+
+/** A change the settlement's current state doesn't allow, with a message for the person who asked. */
+export class SettlementChangeRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SettlementChangeRefusedError';
+  }
+}
 
 /** The period asked for includes time when someone other than this owner held the machine. */
 export class OwnershipChangedDuringPeriodError extends Error {
@@ -147,6 +155,23 @@ class MachineSettlementService {
    * atomic with the write itself.
    */
   async createDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date; actor: string }): Promise<string> {
+    return machineSettlementRepository.createIfNoOverlap(await this.computeDraft(input));
+  }
+
+  /**
+   * The numbers a draft for this period would hold, without saving
+   * anything — what the settlement screen shows before someone commits
+   * to a draft. Runs the same ownership check as `createDraft`, and
+   * reports (rather than throws) a clash with an existing settlement.
+   */
+  async previewDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date }): Promise<{ draft: MachineSettlementInput; overlapsSettlementId: string | null }> {
+    const draft = await this.computeDraft({ ...input, actor: 'preview' });
+    const existing = await machineSettlementRepository.listByMachine(input.businessId, input.machineId);
+    const clash = existing.find(({ data }) => data.periodStart.toMillis() < input.periodEnd.getTime() && data.periodEnd.toMillis() > input.periodStart.getTime());
+    return { draft, overlapsSettlementId: clash?.id ?? null };
+  }
+
+  private async computeDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date; actor: string }): Promise<MachineSettlementInput> {
     await this.assertOwnedThroughout(input.businessId, input.machineId, input.partnerId, input.periodStart, input.periodEnd);
     const [{ grossSalesKes, refundsKes, failedVendRefundsKes, outcomeConflictCount }, { cogsKes, unpricedSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
       this.computeGrossForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
@@ -166,7 +191,7 @@ class MachineSettlementService {
 
     const distributableOwnerKes = grossSalesKes - refundsKes - cogsKes - subscriptionChargedKes;
 
-    return machineSettlementRepository.createIfNoOverlap({
+    return {
       businessId: input.businessId,
       machineId: input.machineId,
       partnerId: input.partnerId,
@@ -189,6 +214,45 @@ class MachineSettlementService {
       failedVendRefundsKes,
       outcomeConflictCount,
       createdBy: input.actor,
+    };
+  }
+
+  /**
+   * A correction on a draft, with a required reason — shown on the
+   * settlement and added to what finalize credits. Only a draft can be
+   * adjusted; a finalized settlement has already been paid into the
+   * owner's balance.
+   */
+  async setAdjustment(businessId: string, settlementId: string, adjustmentKes: number, reason: string, actor: string): Promise<{ before: number; after: number }> {
+    if (!Number.isInteger(adjustmentKes) || Math.abs(adjustmentKes) > 10_000_000) {
+      throw new SettlementChangeRefusedError('The adjustment must be a whole number of shillings.');
+    }
+    const trimmed = reason.trim();
+    if (adjustmentKes !== 0 && !trimmed) {
+      throw new SettlementChangeRefusedError('Say why the settlement is being adjusted.');
+    }
+    return adminFirestore.runTransaction(async (tx) => {
+      const found = await machineSettlementRepository.getInTransaction(tx, businessId, settlementId);
+      if (!found) throw new MachineSettlementNotFoundError(settlementId);
+      if (found.data.status !== 'draft') throw new SettlementChangeRefusedError('Only a draft can be adjusted.');
+      tx.update(found.ref, { adjustmentKes, adjustmentReason: adjustmentKes === 0 ? null : trimmed.slice(0, 500), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+      return { before: found.data.adjustmentKes, after: adjustmentKes };
+    });
+  }
+
+  /**
+   * Throws a draft away — nothing was credited, so nothing is undone.
+   * Used when the numbers are wrong (e.g. a sale was resolved after the
+   * draft was made) and the period needs preparing again. The caller
+   * audits the discarded numbers.
+   */
+  async discardDraft(businessId: string, settlementId: string): Promise<MachineSettlement> {
+    return adminFirestore.runTransaction(async (tx) => {
+      const found = await machineSettlementRepository.getInTransaction(tx, businessId, settlementId);
+      if (!found) throw new MachineSettlementNotFoundError(settlementId);
+      if (found.data.status !== 'draft') throw new SettlementChangeRefusedError('Only a draft can be discarded; this one has been finalized.');
+      tx.delete(found.ref);
+      return found.data;
     });
   }
 
@@ -228,7 +292,7 @@ class MachineSettlementService {
    * `finalize()` call on an already-`finalized` settlement throws
    * `IllegalSettlementTransitionError` rather than crediting again.
    */
-  async finalize(businessId: string, settlementId: string, actor: string): Promise<void> {
+  async finalize(businessId: string, settlementId: string, actor: string, expectedAmountKes?: number): Promise<void> {
     await adminFirestore.runTransaction(async (tx) => {
       const found = await machineSettlementRepository.getInTransaction(tx, businessId, settlementId);
       if (!found) {
@@ -237,7 +301,15 @@ class MachineSettlementService {
       if (found.data.status !== 'draft') {
         throw new IllegalSettlementTransitionError(found.data.status, 'finalized');
       }
+      // Who bears a conflicting sale's loss is a business decision; the draft's figures aren't final until it's made.
+      if ((found.data.outcomeConflictCount ?? 0) > 0) {
+        throw new SettlementChangeRefusedError(`${found.data.outcomeConflictCount} sale(s) in this period have conflicting outcomes. Resolve them under Sales to review, then discard this draft and prepare it again.`);
+      }
       const amountKes = found.data.distributableOwnerKes + found.data.adjustmentKes;
+      // The amount the person confirmed must still be the amount credited — a draft changed since it was shown is refused, not paid.
+      if (expectedAmountKes !== undefined && expectedAmountKes !== amountKes) {
+        throw new SettlementChangeRefusedError(`This settlement now credits KES ${amountKes.toLocaleString('en-KE')}, not the KES ${expectedAmountKes.toLocaleString('en-KE')} you confirmed. Reload and check it again.`);
+      }
       creditEarningsInTransaction(tx, found.data.partnerId, amountKes, {
         type: 'settlement',
         settlementId,

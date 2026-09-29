@@ -1,5 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { machineSettlementService, MachineSettlementNotFoundError, IllegalSettlementTransitionError } from '@/services/machineSettlementService';
+import { machineSettlementService, MachineSettlementNotFoundError, IllegalSettlementTransitionError, SettlementChangeRefusedError } from '@/services/machineSettlementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
@@ -22,9 +22,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
+  // The caller states the amount they reviewed; it has to match what finalize credits.
+  let body: Record<string, unknown> = {};
+  try {
+    body = ((await request.json()) ?? {}) as Record<string, unknown>;
+  } catch {
+    return Response.json({ error: 'Send the amount you reviewed as expectedAmountKes.' }, { status: 400 });
+  }
+  if (typeof body.expectedAmountKes !== 'number' || !Number.isInteger(body.expectedAmountKes)) {
+    return Response.json({ error: 'Send the amount you reviewed as expectedAmountKes.' }, { status: 400 });
+  }
   try {
     const before = await machineSettlementService.findById(session.businessId, id);
-    await machineSettlementService.finalize(session.businessId, id, session.uid);
+    await machineSettlementService.finalize(session.businessId, id, session.uid, body.expectedAmountKes);
     const after = await machineSettlementService.findById(session.businessId, id);
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -41,7 +51,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error instanceof MachineSettlementNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
-    if (error instanceof IllegalSettlementTransitionError) {
+    if (error instanceof IllegalSettlementTransitionError || error instanceof SettlementChangeRefusedError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
     throw error;

@@ -11,6 +11,7 @@ import { machineSettlementService } from '@/services/machineSettlementService';
 import { restockTaskService } from '@/services/restockTaskService';
 import { withdrawalService } from '@/services/withdrawalService';
 import { cameraService } from '@/services/cameraService';
+import { alertService } from '@/services/alertService';
 import { ownerPortalService, PartnerDoesNotOwnMachineError, NothingToRestockError, CameraNotFoundError } from '@/services/ownerPortalService';
 import { vendingRollupService } from '@/services/vendingRollupService';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
@@ -249,6 +250,29 @@ describe('OwnerPortalService.getRecentActivity', () => {
   });
 });
 
+describe('OwnerPortalService.getSalesWithStatus', () => {
+  it('shows each paid sale with where it stands, and leaves out payments that never completed', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Status Owner', actor: 'staff-1' });
+    const skuId = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Status Snack', imageUrl: null, expectedUnitCostKes: 50, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    const yesterday = dateKey(new Date(Date.now() - DAY_MS));
+    const { machineId } = await seedDispensedSale(partnerId, skuId, yesterday);
+    const base = (await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get()).docs[0].data();
+    const add = (status: string, paymentMethod = 'mpesa') => adminFirestore.collection('machineTransactions').add({ ...base, status, paymentMethod, dispensedAt: null, createdAt: new Date() });
+    await add('manual_review');
+    await add('refunded');
+    await add('paid_vend_failed');
+    await add('payment_failed');
+    await add('dispensed', 'diagnostic');
+
+    const sales = await ownerPortalService.getSalesWithStatus(BUSINESS_ID, partnerId, 20);
+    expect(sales.map((sale) => sale.status).sort()).toEqual(['refund_due', 'refunded', 'sold', 'under_review']);
+    expect(sales.every((sale) => sale.productName === 'Status Snack')).toBe(true);
+  });
+});
+
 describe('after a machine changes owner', () => {
   it('shows the new owner nothing from before the handover, and the old owner loses the machine entirely', async () => {
     const oldOwner = await partnerService.create({ businessId: BUSINESS_ID, name: 'Seller', actor: 'staff-1' });
@@ -478,6 +502,8 @@ describe('OwnerPortalService.getAlerts', () => {
     await adminFirestore.collection('machines').doc(machineA).update({ status: 'active', lastSeenAt: longOffline });
     await adminFirestore.collection('machines').doc(machineB).update({ status: 'active', lastSeenAt: longOffline });
 
+    // Alerts are raised by the scheduled sweep, not by reading them.
+    await alertService.evaluateAndSync(BUSINESS_ID);
     const alertsForA = await ownerPortalService.getAlerts(BUSINESS_ID, partnerA);
     expect(alertsForA.length).toBeGreaterThan(0);
     expect(alertsForA.every((alert) => alert.machineId === machineA)).toBe(true);

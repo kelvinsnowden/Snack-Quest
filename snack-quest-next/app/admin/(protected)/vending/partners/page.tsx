@@ -35,11 +35,18 @@ export default async function AdminVendingPartnersPage() {
             {partners.length} owner{partners.length === 1 ? '' : 's'} — people and companies who own machines Snack Quest runs.
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        {canSeeMoney ? (
+          <Button asChild variant="outline">
+            <Link href="/admin/vending/settlements">Settlements to finalize</Link>
+          </Button>
+        ) : null}
         {hasPermission(session, 'owners.manage') ? (
           <Button asChild>
             <Link href="/admin/vending/partners/new">Add owner</Link>
           </Button>
         ) : null}
+        </div>
       </div>
 
       <Card>
