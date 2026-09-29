@@ -12,10 +12,14 @@ NEXT/SCALE" sections.
 
 ## 1. The daily rhythm: start at the Alert Center
 
-`/admin/vending/alerts` (Alert Center) is the front door. It re-runs a
-live sweep on every page load (`alertService.evaluateAndSync`) — the
-list is never stale by more than the time since the page was opened.
-Ten alert types can appear, each carrying a severity
+`/admin/vending/alerts` (Alert Center) is the front door. Alerts are
+checked on a schedule (the fast-recovery job, every few minutes when its
+external scheduler is set up, and once a day by `reconcile-vending-commands`
+as a backstop), not
+when the page opens; the header says when they were last checked, and
+**Check now** runs the sweep immediately. Each alert has a link to the
+screen that fixes it (restock planning, the sale, the manufacturer, …).
+Alert types each carry a severity
 (`critical`/`warning`/`info`) and, for anything not a fleet-level
 condition, the machine and location it's about.
 
@@ -46,8 +50,8 @@ a blank note (`ResolutionRequiredError`) rather than let "resolved" mean
 
 | Type | Severity | What it means | What to do |
 |---|---|---|---|
-| `machine_offline` | critical | No heartbeat past the offline threshold, on a machine marked `active` | Check the machine's own detail page (§3 below) for its last-seen time and recent telemetry; if it's a real outage, this is a site visit, not something fixed from the admin. |
-| `heartbeat_missing` | warning | Heartbeat is late but not yet offline | Watch it — if it doesn't clear on its own within a sweep or two, it's about to become `machine_offline`. |
+| `machine_offline` | critical | Not heard from past the offline threshold, or the machine reports itself offline, on a machine marked `active`. Planned maintenance doesn't raise it | Check the machine's own detail page (§3 below) for its last-seen time and recent telemetry; if it's a real outage, this is a site visit, not something fixed from the admin. |
+| `heartbeat_missing` | warning | Missed its last check-ins but not yet offline. Machines on an integration are expected every 60 seconds by default; machines on direct telemetry every 4 minutes | Watch it — if it doesn't clear on its own within a sweep or two, it's about to become `machine_offline`. |
 | `stockout` | critical | A slot's `currentQuantity` is `0` | Go to Restock Command Center (§3) or the machine's own Restock tasks card and create/advance a restock task (§4). Clears itself the moment stock is recorded. |
 | `stockout_risk` | warning | A slot is at or below the low-stock threshold, not yet empty | Same fix as `stockout`, with more lead time — this is the alert that exists so you never have to find out about a stockout only after it's already happened. |
 | `machine_fault` | critical | A real fault telemetry report from the device | Look at the machine's diagnostics panel (fault code, capability status) to decide whether it's a remote fix (a remote command, §3 of `docs/VENDING_OS_ARCHITECTURE.md`) or needs a technician. Resolve with a note once you know what happened — it never clears itself. |
@@ -118,6 +122,15 @@ worth a different response:
   already-paid transaction, so this shouldn't happen in normal
   operation.
 
+- **Ledger check** — each night the money, dispense and stock records
+  of the last 7 days are checked against each other: a sale that
+  completed but never took stock, stock taken twice for one sale, a
+  refund owed for over a day, a machine that contradicted a money
+  decision. Findings stay listed until someone resolves them; each
+  links to its sale. With `ops.jobs.run` you can run the whole nightly
+  reconciliation from here — it includes refunds the sweep can prove
+  are owed, so it is not a read-only check.
+
 **What this page cannot tell you, honestly:** duplicate payments and
 unmatched *payments* (an M-Pesa callback that matched no transaction
 at all) aren't detected today — see §10 below. If a customer disputes
@@ -182,29 +195,60 @@ there's always a record of when a count happened and what it found —
 including a count that finds no discrepancy at all, which is still
 worth recording as "we checked, it was correct."
 
+**Count vs ledger.** A different question: does each slot's recorded
+count equal the sum of its stock movements? The slots page has **Check
+counts against the stock ledger**. They should always agree; if one
+doesn't, something changed the count outside the ledger. With
+`machine_inventory.adjust` you can set that slot's count to the
+ledger's figure, with a reason (audited; no stock movement is written
+because no stock moved). If the shelf itself is then off, do a normal
+physical count as above. A ledger that adds up below zero is refused —
+that needs investigating, not copying.
+
+The slots page can also download the machine's stock movements as CSV
+(`machine_inventory.export`, last 30 days by default).
+
 ## 7. Settlements and owner payouts
 
-A machine's settlement moves `draft → finalized`. Creating a draft
-computes gross sales, COGS, and the subscription charge for the
-period automatically — you're not entering numbers by hand. **Review
-before finalizing**: finalizing is the one action that actually
-credits the owner's wallet, and it cannot be undone or re-run for the
-same period (a second finalize on an already-finalized settlement is
-refused, not a double payment). If a settlement's own numbers look
-wrong, that's a "don't finalize yet, investigate" situation, not
-something to fix by finalizing and adjusting later.
+**Preparing** (`owner_finance.settlements.manage`): open the owner, then
+**Settlements** (`/admin/vending/partners/{id}/settlements`). Pick a
+machine and whole Nairobi days, preview, and save a draft. The draft
+computes gross sales, refunds, cost of goods and the subscription
+charge from the records — you don't type numbers. A period can't end in
+the future or include days the machine belonged to someone else. Add an
+adjustment only with a reason (both are shown on the CSV). Discard a
+draft that's wrong and prepare it again.
+
+**Finalizing** (`owner_finance.settlements.finalize`): drafts waiting
+are at `/admin/vending/settlements`. You type the amount being credited
+to finalize; it is refused if the draft still has sales under review or
+the amount no longer matches what the draft would credit (someone
+changed it since you looked). Finalizing credits the owner's wallet
+once; it can't be undone or run twice for the same period. The owner's
+revenue share on an agreement is shown for reference only — what is
+credited is sales minus refunds, cost of goods and subscription, plus
+any adjustment.
+
+**Subscriptions**: the machine's setup page has a subscription card
+(`owner_finance.subscriptions.manage` to change it). A subscription can
+only be for the machine's current owner, in whole shillings. Recording
+a payment or waiving a charge clears arrears. A machine's owner can't be
+changed while a subscription is open: end it first.
 
 **Machine Owners** (`/admin/vending/partners`) is where you see an
 owner's wallet balance, ledger, subscriptions, settlements, and
 withdrawal history, and where you'd request a withdrawal on their
-behalf if needed. Owners can also do this themselves now — see §8.
+behalf if needed. `owners.export` downloads the owner list with contact
+details (audited, as it is personal data). An owner's page also shows,
+per machine, the 30-day summary their portal is built from.
 
 ## 8. The Owner Portal — what an owner can do without you
 
 Machine owners have their own login (`/partner/login`, separate from
 staff and creator sessions) and can see their own wallet balance and
 ledger, subscription status, per-machine economics, and settlement
-history — and can request their own withdrawal, the same engine
+history. Each sale shows where it stands: sold, under review, refund
+due, refunded or in progress. They can request their own withdrawal, the same engine
 described in §7, scoped so they can only ever draw against their own
 balance. They can also record their own location expenses (rent,
 placement fee, electricity) for their own bookkeeping — **this never
@@ -270,14 +314,49 @@ When you add an owner with an email, their page shows a message to send them: th
 
 ## 9. Audit log
 
-`/admin/audit-logs`, filterable by entity type (`alert`, `withdrawal`,
-`machineSettlement`, and the rest of the vending domain's mutating
-entities). Every financial write described in this runbook — a
-subscription payment recorded, a settlement finalized, an alert
-acknowledged or resolved, a withdrawal requested — has a real entry
-here: who did it, when, and (for most entity types) the before/after
-values. This is the first place to look when a number needs
-explaining after the fact.
+`/admin/audit-logs` filters by area (machines, settlements, alerts, …),
+person, machine code and a range of Nairobi days. Every financial write
+in this runbook has an entry: who, when, and (for most) the before and
+after values. `audit.export` downloads what you've filtered as CSV (up
+to 5,000 rows; the download itself is logged). Machine setup, owner and
+manufacturer pages each have a **History** card with their latest
+entries. This is the first place to look when a number needs explaining
+after the fact.
+
+## 9a. Scheduled jobs, rebuilding analytics, search
+
+**Operations** (`/admin/operations`) shows every scheduled job's health
+and recent runs. With `ops.jobs.run`, **Run now** runs a job the same
+way its schedule does; if it's already running, the second run is
+refused rather than run twice. **Rebuild machine analytics** rebuilds
+machine, owner and network daily figures for up to 92 finished days —
+use it after correcting a sale, price or owner change older than three
+days (the nightly job only covers the last three). Days are analytics
+days (UTC); today can't be rebuilt until it's over.
+
+**Online / offline** means the same thing on every page and alert: a
+machine connected through a manufacturer integration uses that
+integration's check-in interval, its own "I'm offline" report and staff
+maintenance; one on direct telemetry is expected every 4 minutes. The
+reason ("Says it is offline", "In maintenance") shows next to the
+badge.
+
+**Search** (the admin search box) finds machines by code, serial or
+venue, a machine sale by its reference or M-Pesa receipt, owners,
+locations and manufacturers. You only see results for pages you can
+open.
+
+**Sales intelligence** has tabs for location types, comparing
+locations, a product by type of place, and **Plan a new machine**,
+which ranks the products that sold best at places of the same kind in
+the last 30 days. It is a ranking of past sales, not a forecast.
+
+**Manufacturers**: a manufacturer's page can edit its details and each
+model. Changing a certified model's capabilities or adapter revokes its
+certification (the form warns first). **Integration keys**
+(`/admin/vending/integrations/credentials`, super admin by default)
+lists every manufacturer key with who issued it, when it expires and
+when it was last used.
 
 ## 10. Known gaps — what this system honestly cannot do yet
 
@@ -292,8 +371,8 @@ Named here so nobody discovers them by surprise mid-incident:
   `unpaid`/`waived` state is staff-recorded, never auto-charged via a
   scheduled Daraja push — a real payments decision for a future pass.
 - **No automatic re-charge or reminder for a `settlement_failure`
-  alert beyond the alert itself.** Finalizing stays a deliberate,
-  `ADMIN_ONLY` action.
+  alert beyond the alert itself.** Finalizing stays a deliberate
+  action (`owner_finance.settlements.finalize`).
 - **`expiry_risk` is an approximation** (§2) — it reads the most
   recent restock's `expiresAt`, not a real batch-level inventory draw.
   Treat it as "probably this batch," not a guarantee.
@@ -301,7 +380,11 @@ Named here so nobody discovers them by surprise mid-incident:
   Restock Command Center tells you what's urgent fleet-wide; it
   doesn't sequence a technician's actual route.
 - **A paused slot doesn't raise an alert yet** (§8a). It shows on the
-  slot page and the machine page, not in the Alert Center.
+  slot, machine and fleet pages, not in the Alert Center.
+- **The new-machine planner and location comparisons rank past sales.**
+  With few locations of a kind, one site's result is all there is.
+- **The vending M-Pesa reversal has only been tested against a stubbed
+  gateway**, not Safaricom's sandbox.
 - **Bulk slot and product changes run one at a time** from your
   browser. If one fails part-way, the message says which ones were
   already done.

@@ -17,7 +17,7 @@ Companion document: `docs/hardware/M109E_COMPATIBILITY_AUDIT.md`, the byte-level
 
 ### Status since this audit
 
-Phases 0 to 3 of the roadmap (§25) are built.
+Phases 0 to 5 of the roadmap (§25) are built.
 
 **Phase 0 and 1:**
 - **Route guards (S2, R2)**: machine registration, slot mapping and price changes need their own permissions (below). Warehouse can still switch a slot on or off.
@@ -32,7 +32,7 @@ Phases 0 to 3 of the roadmap (§25) are built.
 - **G-H5**: `/admin/vending/sales` has filters and a CSV export (audited).
 
 **Phase 2, permissions (G-H8, G-C7, G-H9):**
-- `lib/auth/permissions.ts` defines 94 permissions, plus templates that reproduce each role's earlier access, minus S1 to S3.
+- `lib/auth/permissions.ts` defines the permissions (98 after Phase 5), plus templates that reproduce each role's earlier access, minus S1 to S3.
 - Every staff API route checks a permission, not a role. A test scans every route file to confirm this.
 - Admin pages and the navigation follow the same permissions.
 - `/admin/staff/[uid]` edits one person's access: a starting template, individual grants and removals, and a summary of changes before saving. No one can edit their own access or grant a permission they don't hold. Changes are audited.
@@ -67,12 +67,36 @@ Phases 0 to 3 of the roadmap (§25) are built.
   - `/admin/vending/products` and `/admin/vending/products/[catalogue]/[id]` show which machines carry each product, and add it to or remove it from many machines at once.
 - **G-H12**, slot quarantine: a jam, unknown result or sensor failure pauses the slot. It comes back only through **Return to sale**, with a note, and that is audited. The slot page shows the last 20 results for each slot.
 
+**Phase 4, owner money:**
+- **G-H1**, settlements: `/admin/vending/partners/[id]/settlements` and a drafts queue at `/admin/vending/settlements`.
+  - Pick whole Nairobi days, preview, save a draft; adjust a draft with a reason; discard it.
+  - Finalize by typing the amount being credited. Refused if the draft has unresolved sales or the amount no longer matches.
+  - Periods can't end in the future or cover another owner's time. CSV per owner, audited.
+- **G-H2**, subscriptions: a card on the machine setup page. Only for the machine's current owner, whole shillings. The edit route checks the subscription belongs to that machine. An owner can't be changed while a subscription is open.
+- **Owner portal**: each sale shows sold, under review, refund due, refunded or in progress, within the owner's own time.
+
+**Phase 5, visibility and control:**
+- **G-C9**: the fleet page reads one `machineFleetSummary` per machine, 50 to a page, refreshed nightly and on view when missing or older than 15 minutes.
+- **Alerts** are checked on the schedule and on "Check now", never on page load. The page says when they were last checked.
+- **G-H7**: the audit log filters by area, person, machine and Nairobi days; CSV (`audit.export`); a History card on machine setup, owner and manufacturer pages.
+- **G-H11 / G-M7**: every scheduled job has **Run now** on Operations (`ops.jobs.run`), under the same lease as its schedule. A form rebuilds machine, owner and network analytics for up to 92 finished days. Each job's work lives in `services/jobs/`.
+- **G-M1**: intelligence tabs for location types, comparing up to four locations, a product's performance by type of place, every product at a location, and **Plan a new machine**. The planner ranks the last 30 days' sales at places of the same kind; it says it doesn't predict. The list can be added to a machine's catalogue. An owner's admin page shows what that owner's portal is built from.
+- **G-M3**: global search finds machines, machine sales (reference or M-Pesa receipt), owners, locations and manufacturers. Each kind of result needs the permission for its page; before this, search ignored permissions.
+- **G-M4**: CSV of a machine's stock movements (`machine_inventory.export`) and of the owner list (`owners.export`). Sales, settlements and the audit log already had CSV.
+- **G-M5**: each alert links to the screen that fixes it.
+- **G-M6**: the reconciliation page lists open findings of the nightly ledger check (money, dispenses and stock against each other), with the sale and a resolve action.
+- **G-M8**: a machine's slots page compares each slot's count with its stock ledger. Where they differ, `machine_inventory.adjust` can set the count to the ledger's figure, with a reason, in one transaction.
+- **G-H14**: one liveness answer (`lib/vending/machineStatus.ts`) for the fleet, machine and owner pages, the overview counts and offline alerts. It knows a machine that reports itself offline and one in maintenance.
+- **G-M10**: `machine.manufacturer` is written in the same transaction as the integration's `adapterKey`. A test holds that they stay equal, so every adapter lookup resolves the same adapter. The call sites were not rewritten.
+- **G-H3**: manufacturers and models can be edited on the manufacturer page. Changing a certified model's capabilities or adapter warns first, then revokes the certification. Documentation addresses must be http(s).
+- **G-H10**: `/admin/vending/integrations/credentials` lists every inbound and outbound manufacturer key with issuer, expiry and last use (`integrations.credentials.manage`, super admin by default).
+
 **Still open:**
-- G-H1 to G-H4, G-H7, G-H10, G-H11 and G-H14.
-- The medium-priority gaps except G-M2 and G-M9.
-- A paused slot doesn't raise an Alert Center alert yet. It shows on the slot page and the machine page.
+- Every high- and medium-priority gap in the gap tables (G-H1 to G-H14, G-M1 to G-M10) now has an implementation. The Future items in §24 do not.
+- A paused slot doesn't raise an Alert Center alert yet. It shows on the slot page, the machine page and the fleet page.
 - The vending reversal has only been tested against a stubbed gateway, not Safaricom's sandbox.
 - Snapshot images still have no storage.
+- The new pages have no browser tests; they were checked by type-checking, lint and the API and service tests behind them.
 - None of this has been tested against an M109E or any real manufacturer hardware.
 
 ### How to read priorities
