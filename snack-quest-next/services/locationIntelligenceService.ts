@@ -29,7 +29,7 @@ export interface LocationDna {
   stockoutRatePct: number;
   /** Assorted to at least one of this location's machines, zero units sold across the whole window. */
   deadStockProductIds: string[];
-  /** UTC hour-of-day (0-23) sale counts, summed across every machine at this location. */
+  /** Nairobi hour-of-day (0-23) sale counts, summed across every machine at this location. */
   peakHours: number[];
   /** Day-of-week (0=Sunday..6=Saturday) sale counts, summed across every machine at this location. */
   peakDays: number[];

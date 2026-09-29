@@ -17,6 +17,8 @@ import { hasPermission } from '@/lib/auth/permissions';
 import { auditLogRepository } from '@/repositories/auditLogRepository';
 import { actorNamesFor } from '@/lib/audit/actorNames';
 import { EntityHistory } from '@/components/admin/EntityHistory';
+import { ownerIntelligenceService } from '@/services/ownerIntelligenceService';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { BUSINESS_TIME_ZONE } from '@/lib/vending/businessClock';
 import { OwnerForm, OwnerStatusControl, PortalInvite, NewAgreementForm, AgreementActions } from '@/components/admin/vending/OwnerControls';
@@ -56,6 +58,11 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
   const sortedAgreements = [...agreements].sort((a, b) => ['active', 'draft', 'terminated'].indexOf(a.data.status) - ['active', 'draft', 'terminated'].indexOf(b.data.status));
   const history = hasPermission(session, 'audit.view') ? await auditLogRepository.listForEntities(session.businessId, [partnerId, ...agreements.map(({ id }) => id)], 15) : null;
   const historyNames = history ? await actorNamesFor(history) : new Map<string, string>();
+  // The same per-machine summary the owner's portal is built from, so staff can see what the owner sees.
+  const ownerView = hasPermission(session, 'analytics.vending.view')
+    ? (await Promise.all(machines.slice(0, 12).map(({ id }) => ownerIntelligenceService.getMachineOwnerSummary(session.businessId, partnerId, id, 30).catch(() => null)))).filter((row) => row !== null)
+    : null;
+  const ownerViewProducts = ownerView ? await snackItemRepository.findManyById(ownerView.map((row) => row.topProductId).filter((id): id is string => Boolean(id))) : new Map();
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -347,6 +354,45 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
         </CardContent>
       </Card>
         </>
+      ) : null}
+
+      {ownerView && ownerView.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">What the owner sees (last 30 days)</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Machine</th>
+                    <th className="px-6 py-3 text-right font-medium">Sales</th>
+                    <th className="px-6 py-3 text-right font-medium">Revenue</th>
+                    <th className="px-6 py-3 font-medium">Best seller</th>
+                    <th className="px-6 py-3 text-right font-medium">Selling / carried</th>
+                    <th className="px-6 py-3 text-right font-medium">Faults</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {ownerView.map((row) => (
+                    <tr key={row.machineId} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 font-medium text-foreground">{machineCode.get(row.machineId) ?? row.machineId}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{row.transactionCount}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">KES {row.revenueKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{row.topProductId ? (ownerViewProducts.get(row.topProductId)?.name ?? row.topProductId) : '—'}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">
+                        {row.stockHealth.sellableCount} / {row.stockHealth.assortmentCount}
+                      </td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{row.faultCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {machines.length > 12 ? <p className="px-6 py-3 text-xs text-muted-foreground">Showing the first 12 of {machines.length} machines.</p> : null}
+          </CardContent>
+        </Card>
       ) : null}
 
       {history ? (

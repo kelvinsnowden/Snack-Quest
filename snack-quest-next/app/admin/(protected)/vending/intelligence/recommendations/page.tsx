@@ -8,6 +8,7 @@ import { RecommendationActions } from '@/components/admin/RecommendationActions'
 import { GenerateRecommendationsButton } from '@/components/admin/GenerateRecommendationsButton';
 import { scheduledJobService } from '@/services/scheduledJobService';
 import type { RecommendationStatus } from '@/types';
+import { IntelligenceTabs } from '@/components/admin/vending/IntelligenceTabs';
 
 export const metadata: Metadata = { title: 'Recommendations' };
 
@@ -37,6 +38,7 @@ export default async function AdminRecommendationsPage({ searchParams }: { searc
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <IntelligenceTabs current="recommendations" />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Recommendations</h1>

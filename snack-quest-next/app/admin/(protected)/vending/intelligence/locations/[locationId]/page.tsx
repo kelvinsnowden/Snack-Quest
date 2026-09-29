@@ -7,6 +7,9 @@ import { locationService } from '@/services/locationService';
 import { locationIntelligenceService, LocationNotFoundError } from '@/services/locationIntelligenceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { IntelligenceTabs } from '@/components/admin/vending/IntelligenceTabs';
+import { productIntelligenceService } from '@/services/productIntelligenceService';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 
 export const metadata: Metadata = { title: 'Location detail' };
 
@@ -37,9 +40,12 @@ export default async function AdminLocationIntelligenceDetailPage({ params }: { 
   const peakDayIndex = dna.peakDays.reduce((best, val, idx) => (val > dna.peakDays[best] ? idx : best), 0);
   const anyHourSales = dna.peakHours.some((v) => v > 0);
   const anyDaySales = dna.peakDays.some((v) => v > 0);
+  const products = (await productIntelligenceService.getLocationProductPerformance(session.businessId, locationId, 30)).sort((a, b) => b.revenueKes - a.revenueKes);
+  const productNames = await snackItemRepository.findManyById(products.map((p) => p.productId));
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <IntelligenceTabs current="locations" />
       <div>
         <Link href="/admin/vending/intelligence/locations" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" aria-hidden="true" />
@@ -146,6 +152,48 @@ export default async function AdminLocationIntelligenceDetailPage({ params }: { 
         <CardContent className="grid grid-cols-2 gap-4">
           <DetailStat label="Peak hour (Nairobi time)" value={anyHourSales ? HOUR_LABELS[peakHourIndex] : 'insufficient data'} />
           <DetailStat label="Peak day" value={anyDaySales ? DAY_LABELS[peakDayIndex] : 'insufficient data'} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Every product here</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {products.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">Nothing carried here has rollup data in the last 30 days.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-6 py-3 font-medium">Product</th>
+                    <th className="px-6 py-3 text-right font-medium">Units</th>
+                    <th className="px-6 py-3 text-right font-medium">Revenue</th>
+                    <th className="px-6 py-3 text-right font-medium">Margin</th>
+                    <th className="px-6 py-3 text-right font-medium">Per day</th>
+                    <th className="px-6 py-3 text-right font-medium">Days out of stock</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {products.map((p) => (
+                    <tr key={p.productId} className="border-b border-border last:border-0">
+                      <td className="px-6 py-3 font-medium text-foreground">
+                        <Link href={`/admin/vending/intelligence/products/${encodeURIComponent(p.productId)}`} className="hover:underline">
+                          {productNames.get(p.productId)?.name ?? p.productId}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{p.unitsSold}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">KES {p.revenueKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{p.marginPct !== null ? `${p.marginPct}%` : '—'}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{p.velocityPerDay}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{p.stockoutFrequencyPct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
