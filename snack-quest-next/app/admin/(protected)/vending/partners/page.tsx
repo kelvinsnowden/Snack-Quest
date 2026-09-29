@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { hasPermission } from '@/lib/auth/permissions';
 import { machineRepository } from '@/repositories/machineRepository';
 
+/** A file download, not a page — so a plain link, not `next/link`. */
+const OWNERS_CSV = '/api/vending/partners/export';
+
 export const metadata: Metadata = { title: 'Machine Owners' };
 
 /**
@@ -38,7 +41,7 @@ export default async function AdminVendingPartnersPage() {
         <div className="flex flex-wrap gap-2">
         {hasPermission(session, 'owners.export') ? (
           <Button asChild variant="outline">
-            <a href="/api/vending/partners/export">Download CSV</a>
+            <a href={OWNERS_CSV}>Download CSV</a>
           </Button>
         ) : null}
         {canSeeMoney ? (
