@@ -10,6 +10,9 @@ import { IntegrationStatusBadge } from '@/components/admin/IntegrationStatusBadg
 import { INTEGRATION_PROVIDER_LABELS } from '@/lib/integrations/statusFormat';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDateTime, formatKes } from '@/lib/orders/format';
+import { hasPermission } from '@/lib/auth/permissions';
+import { dateKey } from '@/lib/analytics/dateKey';
+import { RunJobNowButton, RebuildAnalyticsForm } from '@/components/admin/JobControls';
 
 export const metadata: Metadata = { title: 'Operations' };
 
@@ -59,6 +62,9 @@ const RUN_STATUS_BADGE: Record<ScheduledJobRunStatus, 'success' | 'warning' | 'd
 export default async function AdminOperationsPage() {
   const session = await requireStaffSession();
   const snapshot = await operationsService.getSnapshot(session.businessId);
+  const canRunJobs = hasPermission(session, 'ops.jobs.run');
+  const yesterday = dateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const weekBefore = dateKey(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
 
   return (
     <div className="flex flex-col gap-6">
@@ -316,7 +322,8 @@ export default async function AdminOperationsPage() {
                   <th className="py-2 pr-4 font-medium">State</th>
                   <th className="py-2 pr-4 font-medium">Last run</th>
                   <th className="py-2 pr-4 font-medium">Last success</th>
-                  <th className="py-2 font-medium">Last error</th>
+                  <th className="py-2 pr-4 font-medium">Last error</th>
+                  {canRunJobs ? <th className="py-2 font-medium"><span className="sr-only">Run</span></th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -326,7 +333,8 @@ export default async function AdminOperationsPage() {
                     <td className="py-2 pr-4"><Badge variant={JOB_STATE_BADGE[job.state]}>{job.state.replace('_', ' ')}</Badge></td>
                     <td className="py-2 pr-4 text-muted-foreground tabular-nums">{job.lastRunAt ? new Date(job.lastRunAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
                     <td className="py-2 pr-4 text-muted-foreground tabular-nums">{job.lastSuccessAt ? new Date(job.lastSuccessAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
-                    <td className="py-2 text-muted-foreground">{job.state === 'ok' ? '—' : job.lastError ?? '—'}</td>
+                    <td className="py-2 pr-4 text-muted-foreground">{job.state === 'ok' ? '—' : job.lastError ?? '—'}</td>
+                    {canRunJobs ? <td className="py-2"><RunJobNowButton jobName={job.jobName} /></td> : null}
                   </tr>
                 ))}
               </tbody>
@@ -362,6 +370,17 @@ export default async function AdminOperationsPage() {
           )}
         </div>
       </Section>
+
+      {canRunJobs ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Rebuild machine analytics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RebuildAnalyticsForm defaultStart={weekBefore} defaultEnd={yesterday} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

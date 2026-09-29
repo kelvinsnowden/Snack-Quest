@@ -156,6 +156,7 @@ export const PERMISSIONS = [
   { key: 'audit.view', label: 'See the audit log', group: 'System' },
   { key: 'audit.export', label: 'Download the audit log', group: 'System' },
   { key: 'settings.view', label: 'See settings, jobs and storage', group: 'System' },
+  { key: 'ops.jobs.run', label: 'Run scheduled jobs now and rebuild analytics', group: 'System' },
   { key: 'settings.manage', label: 'Change business settings and feature flags', group: 'System' },
   { key: 'settings.storage.manage', label: 'Delete stored files', group: 'System' },
   { key: 'settings.integrations.manage', label: 'Change payment, SMS and WhatsApp credentials', group: 'System' },

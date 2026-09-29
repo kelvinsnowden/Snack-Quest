@@ -40,6 +40,7 @@ export const AUDIT_AREAS: Record<string, string> = {
   manufacturerApiCredential: 'Manufacturer API keys',
   kioskScreenImage: 'Screen artwork',
   intelligenceRecommendation: 'Recommendations',
+  scheduledJob: 'Scheduled jobs',
 };
 
 export interface AuditFilters {
