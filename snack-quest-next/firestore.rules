@@ -519,6 +519,10 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
+    match /machineSlotPriceHistory/{entryId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     match /restockTasks/{taskId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

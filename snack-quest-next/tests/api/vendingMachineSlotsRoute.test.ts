@@ -124,7 +124,8 @@ describe('PATCH /api/vending/machines/[id]/slots', () => {
 
     const response = await patchReq({ slotCode: 'A01', priceKes: 400, enabled: false });
     expect(response.status).toBe(200);
-    expect(setPriceMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', 400);
+    // The acting user is passed along so the price change is recorded against them.
+    expect(setPriceMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', 400, 'staff-1');
     expect(setEnabledMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', false);
     const body = await response.json();
     expect(body.slot.priceKes).toBe(400);

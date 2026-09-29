@@ -96,6 +96,12 @@ class MachineAssortmentRepository {
     await adminFirestore.collection(PRICE_HISTORY_COLLECTION).add({ ...historyEntry, createdAt: now });
   }
 
+  /** Every machine's row for one product — "which machines carry this". One equality query on the product, then filtered to the business. */
+  async listByProduct(businessId: string, productCatalogue: MachineAssortment['productCatalogue'], productId: string): Promise<MachineAssortment[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('productId', '==', productId).get();
+    return snapshot.docs.map((doc) => doc.data() as MachineAssortment).filter((row) => row.productCatalogue === productCatalogue);
+  }
+
   async listPriceHistory(businessId: string, machineId: string, productId: string): Promise<MachineAssortmentPriceHistoryEntry[]> {
     const snapshot = await adminFirestore
       .collection(PRICE_HISTORY_COLLECTION)

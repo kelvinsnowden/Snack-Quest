@@ -44,6 +44,34 @@ export interface MachineSlot {
   updatedAt: Timestamp;
   /** When the stock ledger last changed `currentQuantity` (a sale, restock or adjustment). Absent until the first movement. */
   stockChangedAt?: Timestamp | null;
+  /**
+   * Set when a vend on this slot ended in a jam, an unknown result or a
+   * sensor failure: the slot is switched off (`enabled: false`) so no
+   * one else pays for it until someone checks it and returns it to sale
+   * (`machineSlotService.releaseQuarantine`). Absent or null when clear.
+   * Only Snack Quest stops selling it; nothing is sent to the machine.
+   */
+  quarantine?: SlotQuarantine | null;
+}
+
+export interface SlotQuarantine {
+  reason: 'jam' | 'unknown' | 'sensor_failure';
+  /** The sale that tripped it, so whoever checks the slot can find the customer too. */
+  transactionId: string | null;
+  since: Timestamp;
+}
+
+/** `machineSlotPriceHistory/{entryId}` — every change to a slot's price, oldest first; written by `machineSlotService` whenever a price actually changes. */
+export interface MachineSlotPriceHistoryEntry {
+  businessId: string;
+  machineId: string;
+  slotCode: string;
+  /** What the slot held when the price changed — prices follow the slot, but the history is read per product. */
+  productId: string | null;
+  fromKes: number | null;
+  toKes: number;
+  changedBy: string;
+  createdAt: Timestamp;
 }
 
 export function machineSlotDocId(machineId: string, slotCode: string): string {

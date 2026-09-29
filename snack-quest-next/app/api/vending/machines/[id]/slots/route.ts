@@ -76,9 +76,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const beforeSlots = await machineSlotService.listByMachine(session.businessId, id);
     const before = beforeSlots.find((slot) => slot.slotCode === slotCode);
+    // A paused slot comes back through "Return to sale", which records that someone checked it.
+    if (enabled === true && before?.quarantine) {
+      return Response.json({ error: `Slot ${slotCode} was paused after a ${before.quarantine.reason.replace('_', ' ')}. Check it, then use Return to sale.` }, { status: 409 });
+    }
 
     if (priceKes !== undefined) {
-      await machineSlotService.setPrice(session.businessId, id, slotCode, priceKes);
+      await machineSlotService.setPrice(session.businessId, id, slotCode, priceKes, session.uid);
     }
     if (enabled !== undefined) {
       await machineSlotService.setEnabled(session.businessId, id, slotCode, enabled);

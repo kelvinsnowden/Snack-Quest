@@ -175,7 +175,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
             {machine.model} · adapter {machine.manufacturer} · Serial {machine.serialNumber}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <MachineStatusBadge status={machine.status} />
           <MachineConnectivityBadge status={connectivityStatus} />
           <Link
@@ -183,6 +183,18 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
             className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             Set up machine
+          </Link>
+          <Link
+            href={`/admin/vending/${machineId}/slots`}
+            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
+          >
+            Slots
+          </Link>
+          <Link
+            href={`/admin/vending/${machineId}/catalogue`}
+            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
+          >
+            What it sells
           </Link>
           <Link
             href={`/admin/vending/${machineId}/screen`}
@@ -476,7 +488,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                       <td className="px-6 py-3 text-muted-foreground">
                         {slot.currentQuantity} / {slot.capacity}
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground">{slot.enabled ? 'Yes' : 'No'}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{slot.quarantine ? 'Paused — check it' : slot.enabled ? 'Yes' : 'No'}</td>
                     </tr>
                   ))}
                 </tbody>

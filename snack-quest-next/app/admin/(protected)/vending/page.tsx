@@ -144,11 +144,16 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
           <h1 className="text-2xl font-semibold text-foreground">Vending Machines</h1>
           <p className="text-sm text-muted-foreground">Network Overview &mdash; {overview.machineCount} machine{overview.machineCount === 1 ? '' : 's'} across the fleet.</p>
         </div>
-        {hasPermission(session, 'machines.create') ? (
-          <Button asChild>
-            <Link href="/admin/vending/new">Register a machine</Link>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/vending/products">Products on machines</Link>
           </Button>
-        ) : null}
+          {hasPermission(session, 'machines.create') ? (
+            <Button asChild>
+              <Link href="/admin/vending/new">Register a machine</Link>
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">

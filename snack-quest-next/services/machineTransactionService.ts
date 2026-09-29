@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
+import { machineSlotService } from '@/services/machineSlotService';
 import {
   machineTransactionRepository,
   MachineTransactionNotFoundError,
@@ -722,6 +723,8 @@ class MachineTransactionService {
 
     if (decision.kind === 'complete_sale' || decision.kind === 'fail_sale' || decision.kind === 'review') {
       await this.dispenser.recordOutcome(input.businessId, found.id, report.status, report.failureReason);
+      // A jam or an unknown result: stop selling from this slot until someone checks it.
+      await machineSlotService.quarantineAfterVend(input.businessId, found.data.machineId, found.data.slotId, report.status, found.id);
       await machineEventService.record({
         businessId: input.businessId,
         machineId: input.machineId,

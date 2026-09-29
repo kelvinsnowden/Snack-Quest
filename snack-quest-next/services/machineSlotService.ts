@@ -6,7 +6,28 @@ import { machineRepository, MachineNotFoundError } from '@/repositories/machineR
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
 import { findSlotMappingConflicts } from '@/lib/vending/slotMapping';
-import type { MachineSlot } from '@/types';
+import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
+import type { DispenseResultStatus } from '@/lib/vending/hardwareAdapter';
+import type { MachineSlot, SlotQuarantine } from '@/types';
+
+/** A slot change the machine's current state doesn't allow — e.g. swapping the product while stock of the old one is still inside. */
+export class SlotChangeRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SlotChangeRefusedError';
+  }
+}
+
+/** Vend results after which nobody knows whether the product is stuck, dropped late or never left — the slot stops selling until someone looks. */
+export const QUARANTINE_RESULTS: readonly SlotQuarantine['reason'][] = ['jam', 'unknown', 'sensor_failure'];
+
+export interface SlotHealth {
+  slotCode: string;
+  /** Up to the last 20 finished vends on this slot, newest first. */
+  recent: DispenseResultStatus[];
+  successes: number;
+  problems: number;
+}
 
 export class SlotMappingError extends Error {
   constructor(message: string) {
@@ -40,6 +61,7 @@ class MachineSlotService {
     priceKes: number;
     capacity: number;
     position: number;
+    actor?: string;
   }): Promise<void> {
     const machine = await machineRepository.findById(input.businessId, input.machineId);
     if (!machine) {
@@ -59,8 +81,127 @@ class MachineSlotService {
       enabled: existing?.enabled ?? true,
       position: input.position,
     });
+    if (!existing || existing.priceKes !== input.priceKes) {
+      await machineSlotRepository.appendPriceHistory({ businessId: input.businessId, machineId: input.machineId, slotCode: input.slotCode, productId: input.productId, fromKes: existing?.priceKes ?? null, toKes: input.priceKes, changedBy: input.actor ?? 'system' });
+    }
     const adapter = this.resolveAdapter(machine.manufacturer);
     await adapter.setPrice(input.machineId, input.slotCode, input.priceKes);
+  }
+
+  /**
+   * A staff edit to one slot, from the slot editor. Adds the checks a
+   * person needs that `configureSlot` (also used by seeding) doesn't:
+   * the product can't change while the old product's stock is still in
+   * the slot — that stock would be sold and counted as the new product —
+   * and capacity can't drop below what's inside. Returns the slot before
+   * and after, for the audit log.
+   */
+  async editSlot(input: {
+    businessId: string;
+    machineId: string;
+    slotCode: string;
+    productId: string | null;
+    productCatalogue: MachineSlot['productCatalogue'];
+    priceKes: number;
+    capacity: number;
+    position: number;
+    actor: string;
+  }): Promise<{ before: MachineSlot | null; after: MachineSlot | null }> {
+    const before = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotCode);
+    if (before) {
+      const productChanges = before.productId !== input.productId || (input.productId !== null && before.productCatalogue !== input.productCatalogue);
+      if (productChanges && before.currentQuantity > 0) {
+        throw new SlotChangeRefusedError(`Slot ${input.slotCode} still holds ${before.currentQuantity} of its current product. Empty it (stock adjustment) before putting a different product in.`);
+      }
+      if (input.capacity < before.currentQuantity) {
+        throw new SlotChangeRefusedError(`Slot ${input.slotCode} holds ${before.currentQuantity}; capacity can’t be less than that.`);
+      }
+    }
+    await this.configureSlot(input);
+    const after = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotCode);
+    return { before, after };
+  }
+
+  /**
+   * Copies another machine's slot layout — slot codes, products,
+   * capacities, positions and (only with `includePrices`) prices — onto
+   * this one. Stock is never copied. Checked as a whole first: any slot
+   * here that would change product while holding stock stops the copy
+   * before anything is written. Slots here that the source doesn't have
+   * are left alone. Without `includePrices`, a slot that is new here
+   * can't be priced, so the copy is refused if there are any.
+   */
+  async copyLayout(businessId: string, fromMachineId: string, toMachineId: string, options: { includePrices: boolean; actor: string }): Promise<{ copied: string[] }> {
+    if (fromMachineId === toMachineId) throw new SlotChangeRefusedError('Choose a different machine to copy from.');
+    const [source, target, sourceSlots, targetSlots] = await Promise.all([
+      machineRepository.findById(businessId, fromMachineId),
+      machineRepository.findById(businessId, toMachineId),
+      machineSlotRepository.listByMachine(businessId, fromMachineId),
+      machineSlotRepository.listByMachine(businessId, toMachineId),
+    ]);
+    if (!source) throw new MachineNotFoundError(fromMachineId);
+    if (!target) throw new MachineNotFoundError(toMachineId);
+    if (sourceSlots.length === 0) throw new SlotChangeRefusedError(`${source.machineCode} has no slots to copy.`);
+    const existing = new Map(targetSlots.map((slot) => [slot.slotCode, slot]));
+    const problems: string[] = [];
+    for (const slot of sourceSlots) {
+      const here = existing.get(slot.slotCode);
+      if (!here && !options.includePrices) problems.push(`${slot.slotCode} is new here and needs a price`);
+      if (here && here.currentQuantity > 0 && (here.productId !== slot.productId || here.productCatalogue !== slot.productCatalogue)) problems.push(`${slot.slotCode} still holds ${here.currentQuantity} of a different product`);
+      if (here && slot.capacity < here.currentQuantity) problems.push(`${slot.slotCode} holds more than the copied capacity`);
+    }
+    if (problems.length > 0) throw new SlotChangeRefusedError(`Nothing was copied: ${problems.join('; ')}.`);
+    for (const slot of sourceSlots) {
+      const here = existing.get(slot.slotCode);
+      await this.configureSlot({
+        businessId,
+        machineId: toMachineId,
+        slotCode: slot.slotCode,
+        productId: slot.productId,
+        productCatalogue: slot.productCatalogue,
+        priceKes: options.includePrices || !here ? slot.priceKes : here.priceKes,
+        capacity: slot.capacity,
+        position: slot.position,
+        actor: options.actor,
+      });
+    }
+    return { copied: sourceSlots.map((slot) => slot.slotCode) };
+  }
+
+  /**
+   * Stops a slot selling after a vend whose result leaves the product's
+   * whereabouts unknown. Snack Quest simply stops offering and charging
+   * for it; nothing is sent to the machine, so this works for every
+   * manufacturer. Does nothing for other results or an already-paused slot.
+   */
+  async quarantineAfterVend(businessId: string, machineId: string, slotCode: string, status: DispenseResultStatus, transactionId: string | null): Promise<boolean> {
+    if (!(QUARANTINE_RESULTS as readonly string[]).includes(status)) return false;
+    return machineSlotRepository.quarantine(businessId, machineId, slotCode, status as SlotQuarantine['reason'], transactionId);
+  }
+
+  /** "Return to sale": someone checked the slot. Clears the quarantine and switches it back on. */
+  async releaseQuarantine(businessId: string, machineId: string, slotCode: string): Promise<SlotQuarantine> {
+    const released = await machineSlotRepository.releaseQuarantine(businessId, machineId, slotCode);
+    if (!released) throw new SlotChangeRefusedError(`Slot ${slotCode} isn’t paused.`);
+    return released;
+  }
+
+  /** Each slot's recent vend results, from the dispense ledger — what shows a slot that keeps jamming before it's paused. */
+  async slotHealth(businessId: string, machineId: string): Promise<SlotHealth[]> {
+    const commands = await machineDispenseCommandRepository.listByMachine(businessId, machineId, 300);
+    const bySlot = new Map<string, DispenseResultStatus[]>();
+    for (const command of commands) {
+      if (!command.dispenseResultStatus) continue;
+      const list = bySlot.get(command.slotCode) ?? [];
+      if (list.length < 20) list.push(command.dispenseResultStatus);
+      bySlot.set(command.slotCode, list);
+    }
+    return [...bySlot.entries()].map(([slotCode, recent]) => ({
+      slotCode,
+      recent,
+      successes: recent.filter((status) => status === 'success').length,
+      problems: recent.filter((status) => status !== 'success').length,
+    }));
   }
 
   /**
@@ -110,7 +251,7 @@ class MachineSlotService {
     return machineSlotRepository.listByMachine(businessId, machineId);
   }
 
-  async setPrice(businessId: string, machineId: string, slotCode: string, priceKes: number): Promise<void> {
+  async setPrice(businessId: string, machineId: string, slotCode: string, priceKes: number, actor = 'system'): Promise<void> {
     if (!Number.isInteger(priceKes) || priceKes < 0 || priceKes > MAX_PRICE_KES) {
       throw new SlotMappingError(`priceKes must be a whole number of shillings between 0 and ${MAX_PRICE_KES}`);
     }
@@ -118,7 +259,11 @@ class MachineSlotService {
     if (!machine) {
       throw new MachineNotFoundError(machineId);
     }
+    const before = await machineSlotRepository.findBySlotCode(businessId, machineId, slotCode);
     await machineSlotRepository.updatePrice(businessId, machineId, slotCode, priceKes);
+    if (before && before.priceKes !== priceKes) {
+      await machineSlotRepository.appendPriceHistory({ businessId, machineId, slotCode, productId: before.productId, fromKes: before.priceKes, toKes: priceKes, changedBy: actor });
+    }
     const adapter = this.resolveAdapter(machine.manufacturer);
     await adapter.setPrice(machineId, slotCode, priceKes);
   }

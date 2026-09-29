@@ -275,6 +275,39 @@ class MachineAssortmentService {
   }
 
   /**
+   * "Copy range from…": makes this machine carry everything another
+   * machine carries. Each product is assorted here with the source's
+   * category and position; screen text stays this machine's own, slot
+   * links are left for whoever loads the slots, and price overrides are
+   * only copied when asked (the route requires `pricing.manage` for it).
+   * Products this machine already carries keep their own settings.
+   */
+  async copyRange(businessId: string, fromMachineId: string, toMachineId: string, options: { includePriceOverrides: boolean; actor: string }): Promise<{ added: number; alreadyCarried: number }> {
+    if (fromMachineId === toMachineId) {
+      throw new MerchandisingValidationError('Choose a different machine to copy from.');
+    }
+    const [source, target] = await Promise.all([machineRepository.findById(businessId, fromMachineId), machineRepository.findById(businessId, toMachineId)]);
+    if (!source) throw new MachineNotFoundError(fromMachineId);
+    if (!target) throw new MachineNotFoundError(toMachineId);
+    const [sourceRows, targetRows] = await Promise.all([machineAssortmentRepository.listByMachine(businessId, fromMachineId), machineAssortmentRepository.listByMachine(businessId, toMachineId)]);
+    const carried = new Set(targetRows.filter((row) => row.assorted).map((row) => `${row.productCatalogue}:${row.productId}`));
+    let added = 0;
+    let alreadyCarried = 0;
+    for (const row of sourceRows.filter((entry) => entry.assorted)) {
+      if (carried.has(`${row.productCatalogue}:${row.productId}`)) {
+        alreadyCarried += 1;
+        continue;
+      }
+      await this.assortProduct({ businessId, machineId: toMachineId, productId: row.productId, productCatalogue: row.productCatalogue, displayOrder: row.displayOrder, category: row.category, actor: options.actor });
+      if (options.includePriceOverrides && row.priceOverrideKes !== null) {
+        await this.setPriceOverride(businessId, toMachineId, row.productCatalogue, row.productId, row.priceOverrideKes, options.actor);
+      }
+      added += 1;
+    }
+    return { added, alreadyCarried };
+  }
+
+  /**
    * Every assorted product on one machine with the product's own name,
    * description and photo beside this machine's overrides — what the
    * admin screen editor needs to show "what the customer sees" and what
