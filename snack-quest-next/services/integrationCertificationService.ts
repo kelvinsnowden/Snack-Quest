@@ -5,7 +5,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { isProductionDeployment } from '@/lib/vending/deploymentEnvironment';
 import { livenessOfIntegration } from '@/lib/vending/machineLiveness';
-import { machineTransactionService } from '@/services/machineTransactionService';
+import { machineTransactionService, SlotUnavailableForSaleError } from '@/services/machineTransactionService';
 import { dispenseCommandService } from '@/services/dispenseCommandService';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
@@ -204,8 +204,17 @@ class IntegrationCertificationService {
 
     // 6. A command that expires while the machine holds it.
     let expiredSale: string | null = null;
+    let expiredSkipped: string | null = null;
     if (subject.pollWithoutExecuting) {
-      expiredSale = await this.sandboxSale(businessId, machineId, slot.slotCode, runId, 3);
+      try {
+        expiredSale = await this.sandboxSale(businessId, machineId, slot.slotCode, runId, 3);
+      } catch (error) {
+        // The earlier failing sale can leave the slot quarantined (an `unknown` outcome does). The step can't run: not verified, never a crashed run.
+        if (!(error instanceof SlotUnavailableForSaleError)) throw error;
+        expiredSkipped = `no sale could be made for this step (${error.message})`;
+      }
+    }
+    if (expiredSale) {
       await subject.pollWithoutExecuting();
       const command = await machineDispenseCommandRepository.findByTransactionId(businessId, expiredSale);
       if (command && command.status === 'sent') {
@@ -222,6 +231,7 @@ class IntegrationCertificationService {
       sale,
       failingSale,
       expiredSale,
+      expiredSkipped,
       duplicateSale,
       offline,
       retransmit,
@@ -283,6 +293,8 @@ class IntegrationCertificationService {
       sale: string;
       failingSale: string;
       expiredSale: string | null;
+      /** Why the expiry step couldn't run, when the subject supports holding but no sale could be made. */
+      expiredSkipped?: string | null;
       duplicateSale: string | null;
       offline: { sale: string; statusWhileOffline: string | null } | null;
       retransmit: { status: number; result: string | null } | null;
@@ -356,7 +368,7 @@ class IntegrationCertificationService {
             expired?.status === 'paid_vend_failed' && !expired.outcomeConflict && (await saleMovements(run.expiredSale)) === 0 && ackedBeforeOutcome(expiredCommand),
             `expired command ended "${expiredCommand?.status}", sale "${expired?.status}"${expired?.outcomeConflict ? ' — the machine reported an outcome for a command it was told not to run' : ''}`,
           )
-        : result('timeout_handling', null, 'subject cannot hold a command without executing it (control endpoint POST /hold-next-commands); the contract suite cannot pass without it'),
+        : result('timeout_handling', null, run.expiredSkipped ?? 'subject cannot hold a command without executing it (control endpoint POST /hold-next-commands); the contract suite cannot pass without it'),
       run.duplicateSale && duplicateCommand
         ? await (async () => {
             const reports = await outcomeReports(duplicateCommand.commandRef);
