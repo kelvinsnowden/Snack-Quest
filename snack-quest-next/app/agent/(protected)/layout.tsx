@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { hasPermission } from '@/lib/auth/permissions';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminUserMenu } from '@/components/admin/AdminUserMenu';
@@ -44,9 +46,17 @@ export default async function AgentLayout({ children }: { children: React.ReactN
       */}
       {session.viewingAs ? <ViewAsSwitcher viewingAs={session.viewingAs} /> : null}
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 md:px-6">
-        <div className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Snack Quest" width={32} height={32} className="size-8 rounded-lg object-cover" />
-          <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Agent</span>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Image src="/logo.png" alt="Snack Quest" width={32} height={32} className="size-8 rounded-lg object-cover" />
+            <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Agent</span>
+          </div>
+          {hasPermission(session, 'sales.view') ? (
+            <nav className="flex items-center gap-1">
+              <Link href="/agent" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-border/40 hover:text-foreground">Conversations</Link>
+              <Link href="/agent/machine-sales" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-border/40 hover:text-foreground">Machine sales</Link>
+            </nav>
+          ) : null}
         </div>
         <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'agent'} roles={session.roles} />
       </header>

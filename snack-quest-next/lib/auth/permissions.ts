@@ -281,7 +281,8 @@ const FINANCE_PERMISSIONS: PermissionKey[] = [
   'owner_finance.view',
 ];
 
-const SUPPORT_PERMISSIONS: PermissionKey[] = ['support.conversations.handle', 'logistics.courier.book'];
+// Support can look a machine sale up to answer a customer; deciding it or refunding stays with finance and admins.
+const SUPPORT_PERMISSIONS: PermissionKey[] = ['support.conversations.handle', 'logistics.courier.book', 'sales.view'];
 
 /**
  * The bundles people are given. The four that carry a role's name
@@ -316,7 +317,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   },
   { key: 'warehouse', label: 'Warehouse', description: 'Packing, shopping runs and machine restocking.', permissions: WAREHOUSE_PERMISSIONS },
   { key: 'finance', label: 'Finance', description: 'Machine sales, refunds and owner money. Read-only on machines.', permissions: FINANCE_PERMISSIONS },
-  { key: 'agent', label: 'Support', description: 'Customer conversations and courier bookings.', permissions: SUPPORT_PERMISSIONS },
+  { key: 'agent', label: 'Support', description: 'Customer conversations, courier bookings, and looking up machine sales.', permissions: SUPPORT_PERMISSIONS },
   {
     key: 'marketing',
     label: 'Marketing',

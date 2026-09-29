@@ -5,6 +5,7 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { saleTraceService, type SaleTrace, type SaleTraceQuery, type SaleVerdict } from '@/services/saleTraceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { saleQueryFromReference } from '@/lib/vending/saleSearch';
 
 export const metadata: Metadata = { title: 'Trace a Sale' };
 
@@ -24,12 +25,7 @@ function toQuery(params: Record<string, string | string[] | undefined>): SaleTra
   const value = (key: string) => (typeof params[key] === 'string' ? (params[key] as string).trim() : '');
   const reference = value('reference');
   if (reference) {
-    // Receipts, refs and ids look different enough that support shouldn't have to say which one they have.
-    if (/^TXN-/i.test(reference)) return { transactionRef: reference.toUpperCase() };
-    if (/^DSP-/i.test(reference)) return { commandRef: reference.toUpperCase() };
-    if (reference.startsWith('ws_CO_')) return { checkoutRequestId: reference };
-    if (/^[A-Za-z0-9]{8,12}$/.test(reference) && /\d/.test(reference) && /[A-Za-z]/.test(reference)) return { paymentRef: reference.toUpperCase() };
-    return { transactionId: reference };
+    return saleQueryFromReference(reference);
   }
   const machineCode = value('machineCode');
   const at = new Date(value('at'));
