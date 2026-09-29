@@ -1,4 +1,4 @@
-import { ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
+import { ADMIN_ONLY, ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
 import { readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { machineSlotService } from '@/services/machineSlotService';
@@ -19,11 +19,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  * Sets which manufacturer slot name each Snack Quest slot answers to
  * (`{ mappings: [{ slotCode, manufacturerSlotId | null }] }`). Applied
  * all-or-nothing; refused if two slots would end up claiming one
- * manufacturer name.
+ * manufacturer name. Admins only: the mapping decides which motor turns
+ * for a paid sale, so a wrong one dispenses the wrong product.
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) => {
+  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

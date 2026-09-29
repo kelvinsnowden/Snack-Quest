@@ -1,5 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
+import { hasStaffRole, ADMIN_ONLY, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineAssortmentService, MerchandisingValidationError, type MerchandisingPatch } from '@/services/machineAssortmentService';
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
 import { serializeMachineAssortment } from '@/lib/vending/serialize';
@@ -86,6 +86,11 @@ export async function PATCH(
   }
   if (priceOverrideKes !== undefined && priceOverrideKes !== null && (typeof priceOverrideKes !== 'number' || !Number.isFinite(priceOverrideKes) || priceOverrideKes < 0)) {
     return Response.json({ error: 'priceOverrideKes must be a non-negative number or null' }, { status: 400 });
+  }
+  // Warehouse staff run the machine's range and screen; what a customer
+  // is charged is an admin decision.
+  if (priceOverrideKes !== undefined && !hasStaffRole(session, ADMIN_ONLY)) {
+    return Response.json({ error: 'Only an admin can change a price.' }, { status: 403 });
   }
 
   try {

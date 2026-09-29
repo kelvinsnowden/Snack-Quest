@@ -7,6 +7,7 @@ import { machineTransactionRepository } from '@/repositories/machineTransactionR
 import { dateKey } from '@/lib/analytics/dateKey';
 import { trailingWindow, classifyDataQuality, type DataQuality } from '@/services/machineAssortmentIntelligenceService';
 import { isCustomerSale, type Machine } from '@/types';
+import { businessHourAndWeekday } from '@/lib/vending/businessClock';
 
 const MAX_MACHINES_PER_BUSINESS = 10000;
 
@@ -32,9 +33,9 @@ export interface ProductPerformance {
 }
 
 export interface TimeIntelligence {
-  /** `unitsSold` by UTC hour-of-day (0-23), summed over the window — bounded, cached-by-caller read, never an unbounded scan (§ TIME INTELLIGENCE). */
+  /** `unitsSold` by Nairobi hour-of-day (0-23), summed over the window — bounded, cached-by-caller read, never an unbounded scan (§ TIME INTELLIGENCE). */
   byHour: number[];
-  /** `unitsSold` by day-of-week, `0` = Sunday through `6` = Saturday. */
+  /** `unitsSold` by Nairobi day-of-week, `0` = Sunday through `6` = Saturday. */
   byWeekday: number[];
   windowDays: number;
   dataQuality: DataQuality;
@@ -181,8 +182,9 @@ class ProductIntelligenceService {
         continue;
       }
       const at = data.createdAt.toDate();
-      byHour[at.getUTCHours()] += 1;
-      byWeekday[at.getUTCDay()] += 1;
+      const { hour, weekday } = businessHourAndWeekday(at);
+      byHour[hour] += 1;
+      byWeekday[weekday] += 1;
       daysWithSales.add(dateKey(at));
     }
 

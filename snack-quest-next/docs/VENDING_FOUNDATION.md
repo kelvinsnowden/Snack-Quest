@@ -326,11 +326,12 @@ still accurate.
 - **No load testing at fleet scale** (50/100/500 machines) — the same
   gap `FLEET_ARCHITECTURE_AUDIT.md` §7 already flagged as not yet done,
   now also true of `rebuild-vending-rollups`'s own per-machine fan-out.
-- **No refund reversal** — `requestRefund`/`markRefunded` record the
-  state; nothing here calls Daraja's B2C reversal. The existing
-  `refunds`/`orders` refund flow was not extended to cover vending
-  transactions, since the two are deliberately separate collections
-  (see `machineTransaction.ts`'s own doc comment).
+- **Refund reversal: built later, not yet sandbox-tested.** Vending
+  refunds now go through `vendingSaleReviewService`. Its M-Pesa reversal
+  reuses the box-order Daraja reversal call and records attempts in its
+  own `vendingRefunds` ledger, kept separate from `refunds`. It is offered
+  only for single-item payments, and it has not yet been run against
+  Safaricom's sandbox. See `VENDING_OPERATIONS_RUNBOOK.md` §5a.
 
 Nothing in this list is a bug — each is a boundary the brief itself
 drew, restated here so the next phase knows exactly where the domain

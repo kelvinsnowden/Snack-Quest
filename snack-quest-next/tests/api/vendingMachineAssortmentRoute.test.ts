@@ -206,6 +206,15 @@ describe('PATCH /api/vending/machines/[id]/assortment/[productCatalogue]/[produc
     expect(response.status).toBe(403);
   });
 
+  it('refuses a price override from warehouse, and changes nothing else in that request', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(WAREHOUSE_SESSION);
+    const response = await patch({ visible: false, priceOverrideKes: 10 });
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toMatch(/Only an admin/);
+    expect(setPriceOverrideMock).not.toHaveBeenCalled();
+    expect(setVisibleMock).not.toHaveBeenCalled();
+  });
+
   it('applies how the product looks on this screen — null clears a machine-specific value', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(WAREHOUSE_SESSION);
     listByMachineMock.mockResolvedValue([ASSORTMENT_ROW]);

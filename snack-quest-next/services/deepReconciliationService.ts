@@ -103,7 +103,8 @@ class DeepReconciliationService {
       if (sales > 0 && transaction.status !== 'dispensed' && !conflictWithStock) {
         discrepancies.push({ kind: 'stock_moved_without_dispensed_sale', transactionId, machineId: transaction.machineId, detail: `Stock moved but the sale is "${transaction.status}".` });
       }
-      if (transaction.status === 'paid_vend_failed' && isCustomerSale(transaction) && now.getTime() - transaction.updatedAt.toMillis() > REFUND_OWED_ALERT_MS) {
+      // Owed and not yet sent: failed vends nobody has acted on, and refunds decided but never paid out.
+      if ((transaction.status === 'paid_vend_failed' || transaction.status === 'refund_requested') && isCustomerSale(transaction) && now.getTime() - transaction.updatedAt.toMillis() > REFUND_OWED_ALERT_MS) {
         discrepancies.push({ kind: 'refund_owed_too_long', transactionId, machineId: transaction.machineId, detail: `KES ${transaction.amountKes} owed back since ${transaction.updatedAt.toDate().toISOString()}.` });
       }
       if (transaction.outcomeConflict && !transaction.outcomeConflict.resolved) {

@@ -545,6 +545,12 @@ service cloud.firestore {
     // Artwork staff choose for the customer machine screen. Written only
     // through `kioskScreenService`; machines read their own resolved set
     // through a device-authenticated route, never this collection.
+    // Money returned to vending customers — written only by
+    // `vendingSaleReviewService` (and the Daraja reversal callback).
+    match /vendingRefunds/{refundId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     match /kioskScreenImages/{imageId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

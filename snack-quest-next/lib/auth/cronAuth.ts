@@ -11,7 +11,15 @@ export function isAuthorizedCronRequest(request: Request): boolean {
   if (!expectedSecret || !authHeader) {
     return false;
   }
-  const expected = Buffer.from(`Bearer ${expectedSecret}`, 'utf8');
-  const presented = Buffer.from(authHeader, 'utf8');
-  return presented.length === expected.length && timingSafeEqual(presented, expected);
+  return secretsMatch(authHeader, `Bearer ${expectedSecret}`);
+}
+
+/**
+ * Compares a presented shared secret with the expected one in constant
+ * time, so response timing never reveals how much of a guess was right.
+ */
+export function secretsMatch(presented: string, expected: string): boolean {
+  const presentedBytes = Buffer.from(presented, 'utf8');
+  const expectedBytes = Buffer.from(expected, 'utf8');
+  return presentedBytes.length === expectedBytes.length && timingSafeEqual(presentedBytes, expectedBytes);
 }

@@ -176,6 +176,7 @@ describe('partnerDailySummary / partners security rules — directly keyed by pa
 
 describe('staff-only vending collections — no partner read at all', () => {
   const STAFF_ONLY_COLLECTIONS = [
+    'vendingRefunds',
     'machineInventoryMovements',
     'machineTelemetryEvents',
     'machineLocationHistory',

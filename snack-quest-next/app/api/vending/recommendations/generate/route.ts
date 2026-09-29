@@ -2,16 +2,21 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recommendationEngineService } from '@/services/recommendationEngineService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
+import { scheduledJobService } from '@/services/scheduledJobService';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
-type GenerateScope = 'restock' | 'dead_stock' | 'product_opportunities';
-const VALID_SCOPES: GenerateScope[] = ['restock', 'dead_stock', 'product_opportunities'];
+type GenerateScope = 'restock' | 'dead_stock' | 'product_opportunities' | 'fleet';
+const VALID_SCOPES: GenerateScope[] = ['restock', 'dead_stock', 'product_opportunities', 'fleet'];
 
 /**
  * On-demand recommendation generation (§ RESTOCK/DEAD STOCK/PRODUCT
  * OPPORTUNITY, feeding § RECOMMENDATION ENGINE). `restock`/`dead_stock`
  * need a `machineId` — a per-machine analysis; `product_opportunities`
- * is network-wide. Writes `pending` recommendation records; never
- * executes anything itself.
+ * is network-wide. `fleet` runs all of them for every selling machine —
+ * the same run as the nightly `generate-recommendations` job, recorded
+ * under that job's name so the two can never overlap and Operations
+ * shows it. Writes `pending` recommendation records; never executes
+ * anything itself.
  */
 export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -33,8 +38,26 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof scope !== 'string' || !VALID_SCOPES.includes(scope as GenerateScope)) {
     return Response.json({ error: `scope must be one of: ${VALID_SCOPES.join(', ')}` }, { status: 400 });
   }
-  if (scope !== 'product_opportunities' && typeof machineId !== 'string') {
+  if ((scope === 'restock' || scope === 'dead_stock') && typeof machineId !== 'string') {
     return Response.json({ error: 'machineId is required for this scope' }, { status: 400 });
+  }
+
+  if (scope === 'fleet') {
+    const outcome = await scheduledJobService.run(session.businessId, 'generate-recommendations', (job) =>
+      recommendationEngineService.generateForFleet(session.businessId, session.uid, (id, error) => job.itemError(`machine ${id}`, error)),
+    );
+    if (outcome.status === 'skipped') {
+      return Response.json({ error: 'Recommendations are already being generated. Try again in a few minutes.' }, { status: 409 });
+    }
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'generate_recommendations',
+      entityType: 'intelligenceRecommendation',
+      entityId: outcome.runId ?? 'fleet',
+      after: { ...outcome.summary, status: outcome.status },
+    });
+    return Response.json({ status: outcome.status, summary: outcome.summary, errors: outcome.errors }, { status: outcome.status === 'failed' ? 500 : 201 });
   }
 
   try {

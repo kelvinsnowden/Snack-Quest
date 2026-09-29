@@ -1,5 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
+import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineService } from '@/services/machineService';
 import { isRegisteredAdapterKey, listAdapterRegistrations } from '@/lib/vending/adapterRegistry';
 
@@ -11,13 +11,16 @@ import { isRegisteredAdapterKey, listAdapterRegistrations } from '@/lib/vending/
  * same auth model `/api/admin/**` already uses), not a device-auth
  * one. The plaintext secret in the response is returned exactly once;
  * there is no way to retrieve it again after this call.
+ *
+ * Admins only: registering a machine hands out the secret a device
+ * signs with, so a warehouse login is not enough to mint one.
  */
 export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
+  if (!hasStaffRole(session, ADMIN_ONLY)) {
     return forbiddenResponse();
   }
 

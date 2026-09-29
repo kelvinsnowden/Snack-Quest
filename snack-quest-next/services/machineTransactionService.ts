@@ -1099,13 +1099,43 @@ class MachineTransactionService {
     return { resolvedFailed, flaggedForManualReview, stillPending };
   }
 
-  /** The customer's money is owed back — recorded, never itself moved. See `docs/VENDING_FOUNDATION.md` for why the actual reversal is explicitly not wired here. */
-  async requestRefund(businessId: string, transactionId: string): Promise<void> {
-    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refund_requested');
+  /**
+   * A person checked a sale under review and the customer did get the
+   * product (the camera shows it, the slot count dropped, the customer
+   * confirmed). Completes the sale exactly as a machine report would —
+   * same status, same one stock movement per sale — and marks any
+   * contradicting machine report as settled by that decision. Only from
+   * `manual_review`: a sale the machine already said failed is never
+   * turned into revenue by hand.
+   */
+  async confirmDeliveredAfterReview(businessId: string, transactionId: string, actor: string): Promise<void> {
+    const transaction = await machineTransactionRepository.findById(businessId, transactionId);
+    if (!transaction) {
+      throw new MachineTransactionNotFoundError(transactionId);
+    }
+    const settled = transaction.outcomeConflict ? { outcomeConflict: { ...transaction.outcomeConflict, resolved: true } } : {};
+    await machineTransactionRepository.moveStatus(businessId, transactionId, 'dispensed', settled, { expectedFrom: ['manual_review'] });
+    await this.recordSaleMovement(businessId, transaction.machineId, transactionId, transaction.slotId, actor, transaction);
   }
 
+  /**
+   * The customer's money is owed back: recorded as intent. Moving the
+   * money is `vendingSaleReviewService` (an M-Pesa reversal, or a refund
+   * a person sent and recorded). From a failed vend, or from review once
+   * a person has decided the product did not come out.
+   */
+  async requestRefund(businessId: string, transactionId: string): Promise<void> {
+    const transaction = await machineTransactionRepository.findById(businessId, transactionId);
+    if (!transaction) {
+      throw new MachineTransactionNotFoundError(transactionId);
+    }
+    const settled = transaction.outcomeConflict ? { outcomeConflict: { ...transaction.outcomeConflict, resolved: true } } : {};
+    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refund_requested', settled, { expectedFrom: ['paid_vend_failed', 'manual_review'] });
+  }
+
+  /** The money is confirmed back with the customer. Safe to repeat: a second confirmation of the same refund changes nothing. */
   async markRefunded(businessId: string, transactionId: string): Promise<void> {
-    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refunded');
+    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refunded', {}, { expectedFrom: ['refund_requested'], allowNoop: true });
   }
 
   async findById(businessId: string, transactionId: string): Promise<MachineTransaction | null> {

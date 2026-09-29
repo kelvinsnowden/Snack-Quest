@@ -1,4 +1,5 @@
 import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { SALE_STATUS_LABEL } from '@/lib/vending/saleStatus';
 import type { MachineTransactionStatus } from '@/types';
 
 const VARIANT_FOR_STATUS: Record<MachineTransactionStatus, BadgeProps['variant']> = {
@@ -13,18 +14,7 @@ const VARIANT_FOR_STATUS: Record<MachineTransactionStatus, BadgeProps['variant']
   manual_review: 'danger',
 };
 
-const LABEL_FOR_STATUS: Record<MachineTransactionStatus, string> = {
-  pending: 'Pending payment',
-  payment_failed: 'Payment failed',
-  paid: 'Paid',
-  vend_authorized: 'Vend authorized',
-  dispensed: 'Dispensed',
-  paid_vend_failed: 'Paid — vend failed',
-  refund_requested: 'Refund requested',
-  refunded: 'Refunded',
-  manual_review: 'Needs review',
-};
-
+/** A sale's state in the same words on every screen (`SALE_STATUS_LABEL`). */
 export function MachineTransactionStatusBadge({ status }: { status: MachineTransactionStatus }) {
-  return <Badge variant={VARIANT_FOR_STATUS[status]}>{LABEL_FOR_STATUS[status]}</Badge>;
+  return <Badge variant={VARIANT_FOR_STATUS[status]}>{SALE_STATUS_LABEL[status]}</Badge>;
 }

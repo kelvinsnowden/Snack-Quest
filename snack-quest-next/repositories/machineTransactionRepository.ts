@@ -292,7 +292,7 @@ class MachineTransactionRepository {
   /** One bounded page, newest first — the admin/finance list view's own read, same shape as `machineRepository.listByBusiness`. Never unbounded like `streamRange`, which exists for rollup rebuilds, not a request handler. */
   async listByBusiness(
     businessId: string,
-    options: { machineId?: string; status?: MachineTransactionStatus; limit?: number; cursor?: string } = {},
+    options: { machineId?: string; status?: MachineTransactionStatus; since?: Date; until?: Date; limit?: number; cursor?: string } = {},
   ): Promise<{ transactions: { id: string; data: MachineTransaction }[]; nextCursor: string | null }> {
     const pageSize = options.limit ?? 50;
     let query = adminFirestore.collection(COLLECTION).where('businessId', '==', businessId) as FirebaseFirestore.Query;
@@ -301,6 +301,13 @@ class MachineTransactionRepository {
     }
     if (options.status) {
       query = query.where('status', '==', options.status);
+    }
+    // Same field the list is ordered by, so every existing (…, createdAt) index still serves it.
+    if (options.since) {
+      query = query.where('createdAt', '>=', options.since);
+    }
+    if (options.until) {
+      query = query.where('createdAt', '<', options.until);
     }
     query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
     if (options.cursor) {

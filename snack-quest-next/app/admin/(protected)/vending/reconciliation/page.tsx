@@ -54,7 +54,11 @@ export default async function AdminVendingReconciliationPage() {
                 <tbody>
                   {summary.manualReviewTransactions.map((issue) => (
                     <tr key={issue.transactionId} className="border-b border-border last:border-0">
-                      <td className="px-6 py-3 font-mono text-xs text-foreground">{issue.transactionId}</td>
+                      <td className="px-6 py-3 font-mono text-xs">
+                        <Link href={`/admin/vending/sales/${issue.transactionId}`} className="text-primary hover:underline">
+                          {issue.transactionId}
+                        </Link>
+                      </td>
                       <td className="px-6 py-3">
                         <Link href={`/admin/vending/${issue.machineId}`} className="text-primary hover:underline">
                           {issue.machineId}

@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react';
 import type { AdminSection } from '@/lib/auth/adminSections';
 import {
+  HandCoins,
+  ListChecks,
   Receipt,
   Banknote,
   BarChart3,
@@ -134,6 +136,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/sales', label: 'Sales', icon: HandCoins, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/sales/review', label: 'Sales to Review', shortLabel: 'Review', icon: ListChecks, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/trace', label: 'Trace a Sale', shortLabel: 'Trace', icon: Search, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/reconciliation', label: 'Payment Reconciliation', shortLabel: 'Reconciliation', icon: GitCompareArrows, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/integrations', label: 'Machine Integrations', shortLabel: 'Integrations', icon: Plug, section: 'vending', group: 'Vending' },

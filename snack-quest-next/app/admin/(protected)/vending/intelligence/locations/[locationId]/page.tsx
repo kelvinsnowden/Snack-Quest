@@ -144,7 +144,7 @@ export default async function AdminLocationIntelligenceDetailPage({ params }: { 
           <CardTitle>Timing</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
-          <DetailStat label="Peak hour (UTC)" value={anyHourSales ? HOUR_LABELS[peakHourIndex] : 'insufficient data'} />
+          <DetailStat label="Peak hour (Nairobi time)" value={anyHourSales ? HOUR_LABELS[peakHourIndex] : 'insufficient data'} />
           <DetailStat label="Peak day" value={anyDaySales ? DAY_LABELS[peakDayIndex] : 'insufficient data'} />
         </CardContent>
       </Card>

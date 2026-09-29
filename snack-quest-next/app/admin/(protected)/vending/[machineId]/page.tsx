@@ -648,8 +648,9 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle>Recent transactions</CardTitle>
+          <Link href={`/admin/vending/sales?machineCode=${encodeURIComponent(machine.machineCode)}`} className="text-sm text-primary hover:underline">All sales for this machine</Link>
         </CardHeader>
         <CardContent className="p-0">
           {transactionPage.transactions.length === 0 ? (
@@ -668,7 +669,9 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                 <tbody>
                   {transactionPage.transactions.map(({ id, data }) => (
                     <tr key={id} className="border-b border-border last:border-0">
-                      <td className="px-6 py-3 font-medium text-foreground">{data.transactionRef}</td>
+                      <td className="px-6 py-3 font-medium">
+                        <Link href={`/admin/vending/sales/${id}`} className="text-primary hover:underline">{data.transactionRef}</Link>
+                      </td>
                       <td className="px-6 py-3">
                         <MachineTransactionStatusBadge status={data.status} />
                       </td>

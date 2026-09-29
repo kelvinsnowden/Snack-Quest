@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { verifyStaffSessionFromRequestMock, getNetworkOverviewMock, getLocationDnaMock, listByBusinessMock, approveMock, generateRestockRecommendationsMock } = vi.hoisted(() => ({
+const { verifyStaffSessionFromRequestMock, getNetworkOverviewMock, getLocationDnaMock, listByBusinessMock, approveMock, generateRestockRecommendationsMock, generateForFleetMock, runJobMock } = vi.hoisted(() => ({
   verifyStaffSessionFromRequestMock: vi.fn(),
   getNetworkOverviewMock: vi.fn(),
   getLocationDnaMock: vi.fn(),
   listByBusinessMock: vi.fn(),
   approveMock: vi.fn(),
   generateRestockRecommendationsMock: vi.fn(),
+  generateForFleetMock: vi.fn(),
+  runJobMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/session', () => ({
@@ -31,9 +33,13 @@ vi.mock('@/services/recommendationEngineService', async () => {
       listByBusiness: listByBusinessMock,
       approve: approveMock,
       generateRestockRecommendations: generateRestockRecommendationsMock,
+      generateForFleet: generateForFleetMock,
     },
   };
 });
+
+vi.mock('@/services/scheduledJobService', () => ({ scheduledJobService: { run: runJobMock } }));
+vi.mock('@/lib/audit/recordAuditLog', () => ({ recordAuditLog: vi.fn() }));
 
 import { GET as networkGet } from '@/app/api/vending/intelligence/network/route';
 import { GET as locationGet } from '@/app/api/vending/intelligence/locations/[id]/route';
@@ -173,5 +179,40 @@ describe('POST /api/vending/recommendations/generate', () => {
     const response = await generatePost(new Request('http://localhost/x', { method: 'POST', body: JSON.stringify({ scope: 'restock', machineId: 'm-1' }) }));
     expect(response.status).toBe(201);
     expect(generateRestockRecommendationsMock).toHaveBeenCalledWith('biz-1', 'm-1', 'staff-1');
+  });
+});
+
+describe('POST /api/vending/recommendations/generate — fleet', () => {
+  const fleet = () => generatePost(new Request('http://localhost/x', { method: 'POST', body: JSON.stringify({ scope: 'fleet' }) }));
+
+  it('runs the fleet generation as the nightly job, so the two never overlap', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(ADMIN_SESSION);
+    generateForFleetMock.mockResolvedValue({ machinesChecked: 3, restock: 2, deadStock: 1, productOpportunities: 0 });
+    runJobMock.mockImplementation(async (_businessId: string, _job: string, body: (job: { itemError: () => void }) => Promise<Record<string, unknown>>) => ({
+      runId: 'run-1',
+      status: 'succeeded',
+      summary: await body({ itemError: vi.fn() }),
+      errors: [],
+      durationMs: 5,
+    }));
+    const response = await fleet();
+    expect(response.status).toBe(201);
+    expect(runJobMock).toHaveBeenCalledWith('biz-1', 'generate-recommendations', expect.any(Function));
+    expect(generateForFleetMock).toHaveBeenCalledWith('biz-1', 'staff-1', expect.any(Function));
+    expect((await response.json()).summary).toEqual({ machinesChecked: 3, restock: 2, deadStock: 1, productOpportunities: 0 });
+  });
+
+  it('409s while the nightly run is already going', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(ADMIN_SESSION);
+    runJobMock.mockResolvedValue({ runId: null, status: 'skipped', summary: {}, errors: [], durationMs: 0 });
+    const response = await fleet();
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toMatch(/already being generated/);
+  });
+
+  it('403s a role that does not run machines', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
+    expect((await fleet()).status).toBe(403);
+    expect(runJobMock).not.toHaveBeenCalled();
   });
 });

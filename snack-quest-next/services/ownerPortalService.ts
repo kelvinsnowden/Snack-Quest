@@ -9,8 +9,7 @@ import { machineSubscriptionService } from '@/services/machineSubscriptionServic
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
-import { snackItemRepository } from '@/repositories/snackItemRepository';
-import { packageRepository } from '@/repositories/packageRepository';
+import { resolveVendingProductNames } from '@/lib/vending/productNames';
 import { withdrawalService } from '@/services/withdrawalService';
 import { alertService } from '@/services/alertService';
 import { machineSlotService, LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
@@ -302,27 +301,7 @@ class OwnerPortalService {
    * a product that has since been deleted from both.
    */
   private async resolveProductNames(businessId: string, productIds: string[]): Promise<Map<string, string>> {
-    const names = new Map<string, string>();
-    if (productIds.length === 0) {
-      return names;
-    }
-    const snackItems = await snackItemRepository.findManyById(productIds);
-    const missing: string[] = [];
-    for (const id of productIds) {
-      const item = snackItems.get(id);
-      if (item) {
-        names.set(id, item.name);
-      } else {
-        missing.push(id);
-      }
-    }
-    if (missing.length > 0) {
-      const packages = await Promise.all(missing.map((id) => packageRepository.findById(businessId, id)));
-      missing.forEach((id, index) => {
-        names.set(id, packages[index]?.name ?? id);
-      });
-    }
-    return names;
+    return resolveVendingProductNames(businessId, productIds);
   }
 
   /**

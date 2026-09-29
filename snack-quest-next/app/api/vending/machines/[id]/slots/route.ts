@@ -1,5 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
+import { hasStaffRole, ADMIN_ONLY, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSlotService } from '@/services/machineSlotService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSlot } from '@/lib/vending/serialize';
@@ -15,6 +15,10 @@ import { recordAuditLog } from '@/lib/audit/recordAuditLog';
  * Reassigning a slot's product/capacity is `configureSlot`, not
  * exposed here yet — this route only covers the two adjustments an
  * operator makes routinely, not a full re-provision.
+ *
+ * Switching a slot on or off is routine machine work (a jammed lane
+ * has to stop selling now), so warehouse staff may; changing what a
+ * customer is charged is an admin decision.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -60,6 +64,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (enabled !== undefined && typeof enabled !== 'boolean') {
     return Response.json({ error: 'enabled must be a boolean' }, { status: 400 });
+  }
+  if (priceKes !== undefined && !hasStaffRole(session, ADMIN_ONLY)) {
+    return Response.json({ error: 'Only an admin can change a price.' }, { status: 403 });
   }
 
   try {

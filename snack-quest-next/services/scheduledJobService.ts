@@ -22,6 +22,7 @@ export const SCHEDULED_JOBS = {
   'retry-notifications': { everyMs: 24 * HOUR_MS, leaseMs: 10 * 60 * 1000, trigger: 'vercel.json (daily)' },
   'rebuild-analytics-rollups': { everyMs: 24 * HOUR_MS, leaseMs: 10 * 60 * 1000, trigger: 'vercel.json (daily)' },
   'rebuild-vending-rollups': { everyMs: 24 * HOUR_MS, leaseMs: 10 * 60 * 1000, trigger: 'vercel.json (daily)' },
+  'generate-recommendations': { everyMs: 24 * HOUR_MS, leaseMs: 10 * 60 * 1000, trigger: 'vercel.json (daily), or "Generate now" on the Recommendations page' },
 } as const;
 
 export type ScheduledJobName = keyof typeof SCHEDULED_JOBS;

@@ -58,6 +58,12 @@ describe('deep reconciliation', () => {
     expect(alerts.size).toBe(1);
   });
 
+  it('also flags a refund decided but never sent', async () => {
+    const id = await sale('failed');
+    await adminFirestore.collection('machineTransactions').doc(id).update({ status: 'refund_requested', updatedAt: Timestamp.fromDate(new Date(Date.now() - 2 * 24 * 3_600_000)) });
+    expect(await kinds()).toEqual(['refund_owed_too_long']);
+  });
+
   it('flags an unresolved outcome conflict until someone resolves it', async () => {
     const id = await sale('failed');
     const { vendRef } = (await adminFirestore.collection('machineTransactions').doc(id).get()).data() as { vendRef: string };

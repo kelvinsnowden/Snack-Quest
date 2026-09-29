@@ -109,10 +109,8 @@ worth a different response:
 - **Payments needing review** — a transaction stuck in
   `manual_review`: an amount mismatch, a payment that timed out with
   no device report ever arriving, or a device that explicitly
-  reported "I don't know what happened." Look at the transaction's
-  own detail (machine, amount, failure reason) to decide the outcome
-  by hand — this queue exists specifically because these are the
-  cases nothing in the system can safely resolve on its own.
+  reported "I don't know what happened." Each row links to the sale's
+  own page, where it is resolved — see §5a.
 - **Unmatched vend reports** — a device reported dispensing something
   that matched no known transaction. Rare, and worth investigating as
   a possible hardware/protocol anomaly rather than a routine item —
@@ -125,6 +123,52 @@ unmatched *payments* (an M-Pesa callback that matched no transaction
 at all) aren't detected today — see §10 below. If a customer disputes
 being charged twice, that's a manual look at the Daraja transaction
 log, not something this page will surface for you yet.
+
+## 5a. Sales to review and refunds
+
+`/admin/vending/sales/review` is the queue of every sale the system
+would not decide on its own, oldest first:
+
+- **Needs checking** (`manual_review`) — the machine couldn't say
+  whether the product came out. Check the slot count, the camera or
+  the customer, then either **Customer got it** (the sale becomes
+  delivered revenue and one item leaves the slot) or **Refund**.
+- **Refund owed** (`paid_vend_failed`) — the machine reported it did
+  not dispense. **Refund**.
+- **Refund to send** (`refund_requested`) — the refund is decided;
+  send the money:
+  - **Reverse M-Pesa payment** asks Safaricom to return the payment.
+    Offered only when the sale was the only item on that M-Pesa
+    payment. A cart is one payment, and the system does not assume
+    Safaricom will reverse part of one. The sale is marked refunded when
+    Safaricom's result arrives, usually within minutes.
+  - **Record refund sent another way** is for everything else: send the
+    money yourself (M-Pesa business app, cash at the site) and enter
+    its confirmation code. Snack Quest can't verify that payment, so
+    your name goes on the record.
+
+Every decision needs a written reason. It is saved on the sale's
+history and in the audit log. Only admins and finance can decide;
+everyone else with vending access can read the sale page.
+
+The money goes back at most once. While a reversal is with
+Safaricom, nothing else can be sent. A reversal that was started but
+never acknowledged (for example, the server stopped mid-send) is never
+retried automatically: check the M-Pesa statement, and after 10
+minutes you can record what actually happened.
+
+**Not verified yet:** the reversal uses the same Daraja Transaction
+Reversal call as box-order refunds. It is covered by automated tests
+against a stubbed gateway, not yet against Safaricom's sandbox. The
+customer is not sent an SMS for a vending refund, because vending sales
+do not store the customer's phone number.
+
+`/admin/vending/sales` lists every sale with filters for state,
+machine and dates (Nairobi days), and **Download CSV** exports the
+filtered list (up to 5,000 rows; admin and finance only; audited).
+
+Deep reconciliation now also flags a refund decided but not sent for
+more than a day (`refund_owed_too_long`).
 
 ## 6. Stock discrepancies — physical counts
 

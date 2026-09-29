@@ -9,6 +9,8 @@ import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
 import { notificationService } from '@/services/notificationService';
 import { formatOrderNumber } from '@/lib/orders/format';
+import { vendingRefundRepository } from '@/repositories/vendingRefundRepository';
+import { vendingSaleReviewService } from '@/services/vendingSaleReviewService';
 import type { Refund, RefundStatus } from '@/types';
 
 export { OrderNotFoundError };
@@ -129,6 +131,8 @@ class RefundService {
       businessId,
       result.originatorConversationId,
     );
+    // Not a box-order refund? It may be a vending sale's (`vendingSaleReviewService`) — same Safaricom callback, separate ledger.
+    const vendingMatch = match ? null : await vendingRefundRepository.findByOriginatorConversationId(businessId, result.originatorConversationId);
 
     const idempotency = await webhookEventRepository.recordIfNew({
       businessId,
@@ -136,9 +140,15 @@ class RefundService {
       eventKind: 'reversal_result',
       providerEventId: result.originatorConversationId,
       payload: payload as Record<string, unknown>,
-      relatedEntityId: match?.id ?? null,
+      relatedEntityId: match?.id ?? vendingMatch?.id ?? null,
     });
     if (!idempotency.isNew) {
+      return;
+    }
+
+    if (!match && vendingMatch) {
+      await vendingSaleReviewService.applyReversalResult(businessId, vendingMatch, result);
+      await webhookEventRepository.markProcessed(businessId, 'daraja', result.originatorConversationId);
       return;
     }
 

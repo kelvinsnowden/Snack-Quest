@@ -30,6 +30,10 @@
     {
       "path": "/api/cron/reconcile-vending-commands",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/generate-recommendations",
+      "schedule": "0 8 * * *"
     }
   ]
 }

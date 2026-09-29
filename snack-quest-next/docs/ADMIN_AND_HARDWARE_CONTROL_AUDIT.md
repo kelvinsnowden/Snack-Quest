@@ -15,6 +15,26 @@ Companion document: `docs/hardware/M109E_COMPATIBILITY_AUDIT.md`, the byte-level
 
 **Nothing in the product was changed to produce this report.**
 
+### Status since this audit
+
+Phases 0 and 1 of the roadmap (§25) are built:
+
+- **Route guards (S2, R2)** — machine registration and slot mapping are admin-only. Price changes (slot price, machine price override) are admin-only. Warehouse can still switch a slot on or off.
+- **G-H13** — peak hours and peak days use Nairobi time (`lib/vending/businessClock.ts`).
+- **G-H6** — recommendations are generated nightly (`/api/cron/generate-recommendations`, 08:00 UTC, after the rollups). The Recommendations page has **Generate now** and shows the last run.
+- **S7** — the internal agent key is compared in constant time.
+- **G-C1 / B1** — sales to review and refunds:
+  - Pages: `/admin/vending/sales/review` and `/admin/vending/sales/[id]`.
+  - Actions: confirm delivered, refund, reverse the M-Pesa payment (single-item payments only), or record a refund sent another way.
+  - A new `vendingRefunds` ledger ensures the money goes back at most once. Admin and finance only; every decision is audited.
+  - See `docs/VENDING_OPERATIONS_RUNBOOK.md` §5a.
+- **G-H5** — `/admin/vending/sales` has filters and a CSV export (admin and finance only; audited).
+
+**Still open:**
+- Everything from Phase 2 onward.
+- The vending reversal has only been tested against a stubbed gateway, not Safaricom's sandbox.
+- Snapshot images still have no storage.
+
 ### How to read priorities
 
 - **Critical:** the business cannot be operated safely or at all without it, or there is a real security exposure.

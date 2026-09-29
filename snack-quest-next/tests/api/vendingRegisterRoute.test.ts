@@ -41,15 +41,17 @@ describe('POST /api/vending/register', () => {
     expect(provisionDeviceMock).not.toHaveBeenCalled();
   });
 
-  it('403s a staff session with no admin/warehouse role', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
-    const response = await registerRoute(jsonRequest(VALID_BODY));
-    expect(response.status).toBe(403);
+  it('403s every role but admin — warehouse included, since registering hands out a device secret', async () => {
+    for (const session of [AGENT_SESSION, WAREHOUSE_SESSION, { ...STAFF_SESSION, roles: ['finance'] }]) {
+      verifyStaffSessionFromRequestMock.mockResolvedValue(session);
+      const response = await registerRoute(jsonRequest(VALID_BODY));
+      expect(response.status).toBe(403);
+    }
     expect(provisionDeviceMock).not.toHaveBeenCalled();
   });
 
-  it('200s for warehouse, provisioning and returning the one-time credential', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(WAREHOUSE_SESSION);
+  it('201s for an admin, provisioning and returning the one-time credential', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     provisionDeviceMock.mockResolvedValue({
       machineId: 'm-1',
       credential: { credentialId: 'cred-1', machineId: 'm-1', secret: 'plaintext-secret', issuedAt: '2024-01-01T00:00:00.000Z' },

@@ -1,4 +1,5 @@
 import { conversationService } from '@/services/conversationService';
+import { secretsMatch } from '@/lib/auth/cronAuth';
 
 /**
  * The one real wire a human agent has today for the Nairobi
@@ -28,7 +29,7 @@ export async function POST(
 ): Promise<Response> {
   const expectedKey = process.env.INTERNAL_AGENT_API_KEY;
   const providedKey = request.headers.get('x-internal-api-key');
-  if (!expectedKey || !providedKey || providedKey !== expectedKey) {
+  if (!expectedKey || !providedKey || !secretsMatch(providedKey, expectedKey)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
