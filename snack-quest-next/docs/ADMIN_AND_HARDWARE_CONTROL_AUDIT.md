@@ -17,7 +17,7 @@ Companion document: `docs/hardware/M109E_COMPATIBILITY_AUDIT.md`, the byte-level
 
 ### Status since this audit
 
-Phases 0 to 5 of the roadmap (§25) are built.
+Phases 0 to 5 of the roadmap (§25) are built. Phase 6 is built as far as it can be without the machine.
 
 **Phase 0 and 1:**
 - **Route guards (S2, R2)**: machine registration, slot mapping and price changes need their own permissions (below). Warehouse can still switch a slot on or off.
@@ -91,13 +91,21 @@ Phases 0 to 5 of the roadmap (§25) are built.
 - **G-H3**: manufacturers and models can be edited on the manufacturer page. Changing a certified model's capabilities or adapter warns first, then revokes the certification. Documentation addresses must be http(s).
 - **G-H10**: `/admin/vending/integrations/credentials` lists every inbound and outbound manufacturer key with issuer, expiry and last use (`integrations.credentials.manage`, super admin by default).
 
+**Phase 6, hardware (no hardware yet):**
+- **27**: the manufacturer questions are ready to send in English and Chinese (`docs/hardware/M109E_MANUFACTURER_LETTER.md`). **They have not been sent**; Snack Quest has to send them.
+- **28**: the Machine Agent for the M109E is in `machine-agent/`, built from the protocol document against a fake board (see its README). The certification harness was run against it with the fake board:
+  - **Conservative policy** (the only one allowed until acceptance test S5): **NOT CERTIFIED**. `inventory` failed: the M109E can't count stock, and the agent sends no made-up numbers. `failure_handling` failed: an empty lane is reported `unknown`, not `failed`. `timeout_handling` was not verified, because the resulting slot quarantine blocked that step.
+  - **Curtain negatives trusted** (what S5 would allow): NOT CERTIFIED on `inventory` only.
+  - Such a run can never be recorded as model evidence. **Decision needed:** a model that can't count stock can never pass `inventory`. Either the harness learns "not applicable for a model that declares no inventory capability" (a harness rule change, for you to decide), or M109E machines stay uncertified for production.
+- **29**: an acceptance record for §10 (`docs/hardware/M109E_ACCEPTANCE_RECORD.template.json`) and a gate (`machine-agent/acceptance/acceptanceRecord.ts`). Capabilities, and the agent's safety settings, come only from tests that passed with a date, tester and evidence. Every test is "not run".
+
 **Still open:**
 - Every high- and medium-priority gap in the gap tables (G-H1 to G-H14, G-M1 to G-M10) now has an implementation. The Future items in §24 do not.
 - A paused slot doesn't raise an Alert Center alert yet. It shows on the slot page, the machine page and the fleet page.
 - The vending reversal has only been tested against a stubbed gateway, not Safaricom's sandbox.
 - Snapshot images still have no storage.
 - The new pages have no browser tests; they were checked by type-checking, lint and the API and service tests behind them.
-- None of this has been tested against an M109E or any real manufacturer hardware.
+- None of this has been tested against an M109E or any real manufacturer hardware. The agent has no real serial transport yet; it waits on the host answer (Q7).
 
 ### How to read priorities
 

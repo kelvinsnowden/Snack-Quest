@@ -1,6 +1,10 @@
 # M109E control card × Snack Quest OS — hardware compatibility audit
 
 **Status:** audit only. No production code, adapter or API contract was changed to produce this.
+
+> **Build status (Phase 6):** the category A pieces of §8.1 are built in `machine-agent/`, from this document and against a fake board. See `machine-agent/README.md`. None of it has touched an M109E. The §9 questions are ready to send (`M109E_MANUFACTURER_LETTER.md`), but not sent. The acceptance record for §10 is `M109E_ACCEPTANCE_RECORD.template.json`, with every test "not run".
+>
+> **Until those tests pass, the capability list in §7.4 is a proposal, not a declaration.** The gate in `machine-agent/acceptance/acceptanceRecord.ts` declares each capability only when every test behind it has passed.
 **Sources:**
 - **Manufacturer (authoritative for hardware):** `M109E型售货机控制卡` protocol document (.docx, 15 pages per its own metadata, 981 words, last modified 2024‑10‑19, revision 2). The copy supplied starts at **§4**; sections 1–3 are not in it. It has no printed page numbers, so citations below use the document's own section numbers (§4.1 … §6), command codes (e.g. `05H`) and its four embedded tables (Workbook1–4, shown as images under §5.9, §5.11, §5.12, §5.13).
 - **Snack Quest (authoritative for our requirements):** this repository at commit `4c18af7`.

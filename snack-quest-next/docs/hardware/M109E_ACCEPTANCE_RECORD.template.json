@@ -1,0 +1,179 @@
+{
+  "machine": {
+    "model": "M109E",
+    "boardIdHex": null,
+    "hostDescription": null,
+    "firmwareVersion": null
+  },
+  "findings": {
+    "resultClearing": "unknown",
+    "doorInput": null
+  },
+  "results": {
+    "C1": {
+      "result": "not_run"
+    },
+    "C2": {
+      "result": "not_run"
+    },
+    "C3": {
+      "result": "not_run"
+    },
+    "C4": {
+      "result": "not_run"
+    },
+    "C5": {
+      "result": "not_run"
+    },
+    "C6": {
+      "result": "not_run"
+    },
+    "M1": {
+      "result": "not_run"
+    },
+    "M2": {
+      "result": "not_run"
+    },
+    "M3": {
+      "result": "not_run"
+    },
+    "M4": {
+      "result": "not_run"
+    },
+    "M5": {
+      "result": "not_run"
+    },
+    "M6": {
+      "result": "not_run"
+    },
+    "M7": {
+      "result": "not_run"
+    },
+    "M8": {
+      "result": "not_run"
+    },
+    "M9": {
+      "result": "not_run"
+    },
+    "S1": {
+      "result": "not_run"
+    },
+    "S2": {
+      "result": "not_run"
+    },
+    "S3": {
+      "result": "not_run"
+    },
+    "S4": {
+      "result": "not_run"
+    },
+    "S5": {
+      "result": "not_run"
+    },
+    "S6": {
+      "result": "not_run"
+    },
+    "S7": {
+      "result": "not_run"
+    },
+    "S8": {
+      "result": "not_run"
+    },
+    "S9": {
+      "result": "not_run"
+    },
+    "S10": {
+      "result": "not_run"
+    },
+    "S11": {
+      "result": "not_run"
+    },
+    "S12": {
+      "result": "not_run"
+    },
+    "R1": {
+      "result": "not_run"
+    },
+    "R2": {
+      "result": "not_run"
+    },
+    "R3": {
+      "result": "not_run"
+    },
+    "R4": {
+      "result": "not_run"
+    },
+    "R5": {
+      "result": "not_run"
+    },
+    "R6": {
+      "result": "not_run"
+    },
+    "R7": {
+      "result": "not_run"
+    },
+    "R8": {
+      "result": "not_run"
+    },
+    "R9": {
+      "result": "not_run"
+    },
+    "R10": {
+      "result": "not_run"
+    },
+    "R11": {
+      "result": "not_run"
+    },
+    "R12": {
+      "result": "not_run"
+    },
+    "R13": {
+      "result": "not_run"
+    },
+    "X1": {
+      "result": "not_run"
+    },
+    "X2": {
+      "result": "not_run"
+    },
+    "X3": {
+      "result": "not_run"
+    },
+    "X4": {
+      "result": "not_run"
+    },
+    "X5": {
+      "result": "not_run"
+    },
+    "X6": {
+      "result": "not_run"
+    },
+    "X7": {
+      "result": "not_run"
+    },
+    "X8": {
+      "result": "not_run"
+    },
+    "P1": {
+      "result": "not_run"
+    },
+    "P2": {
+      "result": "not_run"
+    },
+    "P3": {
+      "result": "not_run"
+    },
+    "P4": {
+      "result": "not_run"
+    },
+    "P5": {
+      "result": "not_run"
+    },
+    "P6": {
+      "result": "not_run"
+    },
+    "P7": {
+      "result": "not_run"
+    }
+  }
+}
