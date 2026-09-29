@@ -31,10 +31,19 @@ describe('GET /api/vending/reconciliation', () => {
     expect(getReconciliationIssuesMock).not.toHaveBeenCalled();
   });
 
-  it('403s an agent session — this is finance/warehouse territory, same as the vending transactions/analytics reads', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
+  it('403s anyone without sales.view', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['admin'], effectivePermissions: ['machines.view'] });
     const response = await reconciliationGet(new Request('http://localhost/api/vending/reconciliation'));
     expect(response.status).toBe(403);
+    expect((await response.json()).permission).toBe('sales.view');
+    expect(getReconciliationIssuesMock).not.toHaveBeenCalled();
+  });
+
+  it('lets Support read it — their template includes sales.view, for answering customers', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
+    getReconciliationIssuesMock.mockResolvedValue({});
+    const response = await reconciliationGet(new Request('http://localhost/api/vending/reconciliation'));
+    expect(response.status).toBe(200);
   });
 
   it("200s the summary, scoped to the session's own businessId", async () => {

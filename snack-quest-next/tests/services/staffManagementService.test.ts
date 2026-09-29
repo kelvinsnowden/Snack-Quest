@@ -369,7 +369,7 @@ describe('StaffManagementService.setAccess', () => {
     await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: null, granted: ['integrations.credentials.manage'], revoked: [] }, admin)).rejects.toBeInstanceOf(PermissionEscalationError);
     await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: 'admin', granted: [], revoked: [] }, { uid: 'someone', permissions: ['support.conversations.handle'] })).rejects.toBeInstanceOf(PermissionEscalationError);
     // Taking access away is always allowed.
-    await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: null, granted: [], revoked: ['logistics.courier.book'] }, { uid: 'someone', permissions: [] })).resolves.toMatchObject({ after: ['support.conversations.handle'] });
+    await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: null, granted: [], revoked: ['logistics.courier.book'] }, { uid: 'someone', permissions: [] })).resolves.toMatchObject({ after: ['support.conversations.handle', 'sales.view'] });
   });
 
   it('refuses your own access, a super admin, unknown templates and unknown permissions', async () => {

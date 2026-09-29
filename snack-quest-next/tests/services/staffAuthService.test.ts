@@ -1,3 +1,4 @@
+import { ALL_PERMISSIONS } from '@/lib/auth/permissions';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adminAuth, adminFirestore } from '@/lib/firebase/admin';
 import { businessRepository } from '@/repositories/businessRepository';
@@ -169,6 +170,8 @@ describe('StaffAuthService.verifySessionCookie', () => {
       roles: ['super_admin'],
       businessId: BUSINESS_ID,
       permissions: [],
+      template: null,
+      effectivePermissions: [...ALL_PERMISSIONS],
     });
   });
 

@@ -17,12 +17,19 @@ beforeEach(() => {
 });
 
 describe('GET /api/vending/trace', () => {
-  it('is staff-only, and not for agents', async () => {
+  it('is staff-only, and needs sales.view', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValueOnce(null);
     expect((await get('paymentRef=R1')).status).toBe(401);
-    verifyStaffSessionFromRequestMock.mockResolvedValueOnce({ ...STAFF, roles: ['agent'] });
-    expect((await get('paymentRef=R1')).status).toBe(403);
+    verifyStaffSessionFromRequestMock.mockResolvedValueOnce({ ...STAFF, roles: ['admin'], effectivePermissions: ['machines.view'] });
+    const denied = await get('paymentRef=R1');
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).permission).toBe('sales.view');
     expect(traceMock).not.toHaveBeenCalled();
+  });
+
+  it('lets Support trace a sale — their template includes sales.view, for answering customers', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValueOnce({ ...STAFF, roles: ['agent'] });
+    expect((await get('paymentRef=R1')).status).toBe(200);
   });
 
   it('traces by one reference, scoped to the session business', async () => {
