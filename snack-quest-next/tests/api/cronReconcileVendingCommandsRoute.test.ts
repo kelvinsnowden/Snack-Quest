@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { reconcileStuckCommandsMock, sweepTimedOutMock, probeMock, recordMock, recoverySweepMock } = vi.hoisted(() => ({
+const { reconcileStuckCommandsMock, sweepTimedOutMock, probeMock, recordMock, recoverySweepMock, evaluateAndSyncMock } = vi.hoisted(() => ({
+  evaluateAndSyncMock: vi.fn(),
   recoverySweepMock: vi.fn(),
   reconcileStuckCommandsMock: vi.fn(),
   sweepTimedOutMock: vi.fn(),
@@ -22,6 +23,10 @@ vi.mock('@/services/machineIntegrationService', () => ({
 
 vi.mock('@/services/dispenseRecoveryService', () => ({
   dispenseRecoveryService: { sweep: recoverySweepMock },
+}));
+
+vi.mock('@/services/alertService', () => ({
+  alertService: { evaluateAndSync: evaluateAndSyncMock },
 }));
 
 vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
@@ -85,6 +90,8 @@ describe('GET /api/cron/reconcile-vending-commands', () => {
     expect(sweepTimedOutMock).toHaveBeenCalledWith('snack-quest');
     expect(probeMock).toHaveBeenCalledWith('snack-quest');
     expect(recoverySweepMock).toHaveBeenCalledWith('snack-quest');
+    // The daily backstop for the alert check, in case the fast-recovery scheduler isn't running.
+    expect(evaluateAndSyncMock).toHaveBeenCalledWith('snack-quest');
     expect(await response.json()).toMatchObject({ ok: true, expired: 2, dispenseTimedOut: 1, integrationsProbed: 3, integrationProbesFailed: 1, recoveryExamined: 0 });
   });
 
