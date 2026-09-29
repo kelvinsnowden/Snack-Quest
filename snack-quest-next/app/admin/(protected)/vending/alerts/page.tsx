@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { CheckAlertsNowButton } from '@/components/admin/vending/CheckAlertsNowButton';
 import { AlertActions } from '@/components/admin/AlertActions';
+import { alertFixLink } from '@/lib/vending/alertFixLink';
+import { machineRepository } from '@/repositories/machineRepository';
 
 export const metadata: Metadata = { title: 'Alert Center' };
 
@@ -51,6 +53,8 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
 export default async function AdminVendingAlertsPage() {
   const session = await requireStaffSession();
   const [alerts, lastEvaluatedAt] = await Promise.all([alertService.listOpen(session.businessId), alertService.lastEvaluatedAt(session.businessId)]);
+  const fixLinks = new Map(alerts.map(({ id, data }) => [id, alertFixLink(data.type, data.machineId, data.dedupeKey)]));
+  const machineCodes = new Map((await machineRepository.listAllForBusiness(session.businessId)).map(({ id, data }) => [id, data.machineCode]));
   const serialized = alerts
     .map(({ id, data }) => serializeAlert(id, data))
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.createdAt.localeCompare(a.createdAt));
@@ -111,7 +115,7 @@ export default async function AdminVendingAlertsPage() {
                         <td className="px-6 py-3">
                           {alert.machineId ? (
                             <Link href={`/admin/vending/${alert.machineId}`} className="text-primary hover:underline">
-                              {alert.machineId}
+                              {machineCodes.get(alert.machineId) ?? alert.machineId}
                             </Link>
                           ) : (
                             <span className="text-muted-foreground">&mdash;</span>
@@ -120,6 +124,11 @@ export default async function AdminVendingAlertsPage() {
                         <td className="px-6 py-3 text-muted-foreground">
                           <p>{alert.title}</p>
                           <p className="text-xs">{alert.detail}</p>
+                          {fixLinks.get(alert.id) ? (
+                            <Link href={fixLinks.get(alert.id)!.href} className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
+                              {fixLinks.get(alert.id)!.label} →
+                            </Link>
+                          ) : null}
                           {alert.status === 'acknowledged' ? (
                             <p className="mt-1 text-xs text-muted-foreground">Acknowledged by {alert.assignee ?? 'staff'}</p>
                           ) : null}
