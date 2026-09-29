@@ -36,4 +36,14 @@ export interface StaffProfile extends AuditFields {
    */
   permissions: string[];
   department: string;
+  /**
+   * The role template this person was given (`lib/auth/permissions.ts`
+   * `ROLE_TEMPLATES`). Absent or null means the default for their role —
+   * and, for an admin, the older section narrowing above still applies.
+   */
+  template?: string | null;
+  /** Permissions added on top of the template, one by one. */
+  grantedPermissions?: string[];
+  /** Permissions taken away from the template, one by one. */
+  revokedPermissions?: string[];
 }

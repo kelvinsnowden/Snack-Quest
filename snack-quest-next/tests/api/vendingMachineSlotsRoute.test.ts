@@ -110,7 +110,7 @@ describe('PATCH /api/vending/machines/[id]/slots', () => {
 
     const priced = await patchReq({ slotCode: 'A01', priceKes: 10, enabled: true });
     expect(priced.status).toBe(403);
-    expect((await priced.json()).error).toMatch(/Only an admin/);
+    expect((await priced.json()).permission).toBe('pricing.manage');
     expect(setPriceMock).not.toHaveBeenCalled();
     // Refused as a whole: the enable half of a refused request does not slip through.
     expect(setEnabledMock).toHaveBeenCalledTimes(1);

@@ -1,5 +1,4 @@
-import { ADMIN_ONLY, ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { toJsonSafe } from '@/lib/vending/serializeIntegration';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { manufacturerRegistryService, RegistryValidationError } from '@/services/manufacturerRegistryService';
@@ -17,7 +16,7 @@ import { INTEGRATION_TYPES, type IntegrationType } from '@/types';
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) => {
+  return withPermission(request, 'integrations.view', async (session) => {
     const manufacturer = await manufacturerRegistryService.requireManufacturer(session.businessId, id);
     const [models, credentials, apiCredentials, integrations] = await Promise.all([
       manufacturerRegistryService.listModels(session.businessId, id),
@@ -63,7 +62,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.manufacturers.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

@@ -1,13 +1,9 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   referralService,
   ReferralLinkNotFoundError,
 } from '@/services/referralService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Pauses or resumes a creator's referral link (§ referral system
@@ -25,8 +21,8 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'marketing.campaigns.manage')) {
+    return forbiddenForPermission('marketing.campaigns.manage');
   }
 
   const { linkId } = await params;

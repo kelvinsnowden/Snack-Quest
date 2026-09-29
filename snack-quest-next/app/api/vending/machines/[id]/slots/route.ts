@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSlotService } from '@/services/machineSlotService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSlot } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, hasAnyPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A machine's own slots (§ CORE ENTITIES 2). `GET` is the panel-layout
@@ -25,8 +25,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.view')) {
+    return forbiddenForPermission('machines.view');
   }
 
   const { id } = await params;
@@ -39,8 +39,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasAnyPermission(session, ['machines.slots.toggle', 'pricing.manage'])) {
+    return forbiddenForPermission('machines.slots.toggle');
   }
 
   const { id } = await params;
@@ -65,8 +65,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (enabled !== undefined && typeof enabled !== 'boolean') {
     return Response.json({ error: 'enabled must be a boolean' }, { status: 400 });
   }
-  if (priceKes !== undefined && !hasStaffRole(session, ADMIN_ONLY)) {
-    return Response.json({ error: 'Only an admin can change a price.' }, { status: 403 });
+  // Refused whole: the switch half of a request never applies without the price half.
+  if (enabled !== undefined && !hasPermission(session, 'machines.slots.toggle')) {
+    return forbiddenForPermission('machines.slots.toggle');
+  }
+  if (priceKes !== undefined && !hasPermission(session, 'pricing.manage')) {
+    return forbiddenForPermission('pricing.manage');
   }
 
   try {

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { marketingEmailService, MarketingEmailNotFoundError } from '@/services/marketingEmailService';
 import { SEGMENT_LABEL } from '@/lib/marketingEmails/segmentLabels';
 import { MarketingEmailForm } from '@/components/admin/MarketingEmailForm';
@@ -20,7 +20,7 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
   const session = await requireStaffSession();
   const { id } = await params;
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return (
       <Card className="flex max-w-2xl flex-col items-center gap-3 p-10 text-center">
         <ShieldAlert className="size-8 text-warning" aria-hidden="true" />

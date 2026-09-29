@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recipeService, RecipeValidationError } from '@/services/recipeService';
 import { serializeSnackItem } from '@/lib/recipes/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { parseSnackItemBody } from '@/lib/recipes/parseSnackItemBody';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** The snack catalogue (§ Box Recipes). Admin rather than super-admin: keeping it current is routine operational work, and gating it higher is how prices go stale. */
 export async function GET(request: Request): Promise<Response> {
@@ -11,8 +11,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.view')) {
+    return forbiddenForPermission('products.view');
   }
 
   const activeOnly = new URL(request.url).searchParams.get('activeOnly') === 'true';
@@ -25,8 +25,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.snacks.manage')) {
+    return forbiddenForPermission('products.snacks.manage');
   }
 
   let body: unknown;

@@ -1,5 +1,4 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   notificationTemplateService,
   NotificationTemplateNotFoundError,
@@ -7,6 +6,7 @@ import {
   type NotificationTemplateUpdateInput,
 } from '@/services/notificationTemplateService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 interface UpdateBody {
   subject?: unknown;
@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.notifications.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -52,7 +52,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.notifications.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

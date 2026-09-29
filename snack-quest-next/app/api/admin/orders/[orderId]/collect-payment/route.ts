@@ -1,13 +1,9 @@
-import {
-  hasStaffRole,
-  ADMIN_OR_WAREHOUSE,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { orderRepository } from '@/repositories/orderRepository';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { paymentService } from '@/services/paymentService';
 import { formatOrderNumber } from '@/lib/orders/format';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Sends the M-Pesa prompt for an order the customer is paying for on
@@ -36,8 +32,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'orders.collect_payment')) {
+    return forbiddenForPermission('orders.collect_payment');
   }
 
   const { orderId } = await params;

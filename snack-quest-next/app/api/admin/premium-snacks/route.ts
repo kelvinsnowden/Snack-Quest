@@ -1,6 +1,6 @@
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * `GET /api/admin/premium-snacks` (§ staff pick the snacks too) — the
@@ -40,8 +40,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.view')) {
+    return forbiddenForPermission('products.view');
   }
 
   const snacks = await snackItemRepository.listForStaffPacking(session.businessId);

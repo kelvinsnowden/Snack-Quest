@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   campaignService,
@@ -15,6 +10,7 @@ import {
 } from '@/repositories/campaignRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { Campaign, CampaignStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface UpdateCampaignBody {
   title?: unknown;
@@ -137,8 +133,8 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'marketing.campaigns.manage')) {
+    return forbiddenForPermission('marketing.campaigns.manage');
   }
 
   const { campaignId } = await params;

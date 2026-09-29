@@ -1,5 +1,4 @@
-import { ADMIN_ONLY } from '@/lib/auth/requireStaffRole';
-import { readJsonObject, requiredString, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { readJsonObject, requiredString, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { manufacturerApiCredentialService } from '@/services/manufacturerApiCredentialService';
 import type { MachineIntegrationEnvironment } from '@/types';
@@ -12,7 +11,7 @@ import type { MachineIntegrationEnvironment } from '@/types';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; environment: string }> }): Promise<Response> {
   const { id, environment } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.credentials.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

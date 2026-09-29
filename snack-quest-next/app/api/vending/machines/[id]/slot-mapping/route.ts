@@ -1,5 +1,4 @@
-import { ADMIN_ONLY, ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
-import { readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { readJsonObject, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { machineSlotService } from '@/services/machineSlotService';
 import { RegistryValidationError } from '@/services/manufacturerRegistryService';
@@ -9,7 +8,7 @@ import { toJsonSafe } from '@/lib/vending/serializeIntegration';
 /** The mapping's full history for this machine, newest first — append-only, never rewritten. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) => {
+  return withPermission(request, 'machines.view', async (session) => {
     const history = await slotMappingHistoryRepository.listForMachine(session.businessId, id);
     return Response.json(toJsonSafe({ history }));
   });
@@ -24,7 +23,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'machines.slots.configure', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

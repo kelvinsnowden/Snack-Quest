@@ -1,5 +1,4 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   marketingSmsService,
   MarketingSmsNotFoundError,
@@ -9,6 +8,7 @@ import {
 import { parseSmsDraftBody, type SmsDraftBody } from '@/lib/marketingSms/parseDraftBody';
 import { serializeSmsCampaign } from '@/lib/marketingSms/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /** One campaign: read, edit while it is still a draft, or discard it (§ Admin: Marketing SMS). */
 
@@ -27,7 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -49,7 +49,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -91,7 +91,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

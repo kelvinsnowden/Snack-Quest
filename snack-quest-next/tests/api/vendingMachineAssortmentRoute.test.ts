@@ -210,7 +210,7 @@ describe('PATCH /api/vending/machines/[id]/assortment/[productCatalogue]/[produc
     verifyStaffSessionFromRequestMock.mockResolvedValue(WAREHOUSE_SESSION);
     const response = await patch({ visible: false, priceOverrideKes: 10 });
     expect(response.status).toBe(403);
-    expect((await response.json()).error).toMatch(/Only an admin/);
+    expect((await response.json()).permission).toBe('pricing.manage');
     expect(setPriceOverrideMock).not.toHaveBeenCalled();
     expect(setVisibleMock).not.toHaveBeenCalled();
   });

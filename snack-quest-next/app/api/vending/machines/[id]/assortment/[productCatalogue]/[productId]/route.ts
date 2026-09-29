@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineAssortmentService, MerchandisingValidationError, type MerchandisingPatch } from '@/services/machineAssortmentService';
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
 import { serializeMachineAssortment } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineAssortment } from '@/types';
+import { hasPermission, hasAnyPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 type RouteParams = { id: string; productCatalogue: string; productId: string };
 
@@ -29,8 +29,8 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasAnyPermission(session, ['machine_catalog.manage', 'machine_screen.manage', 'pricing.manage'])) {
+    return forbiddenForPermission('machine_catalog.manage');
   }
 
   const { id: machineId, productCatalogue: rawCatalogue, productId } = await params;
@@ -87,10 +87,18 @@ export async function PATCH(
   if (priceOverrideKes !== undefined && priceOverrideKes !== null && (typeof priceOverrideKes !== 'number' || !Number.isFinite(priceOverrideKes) || priceOverrideKes < 0)) {
     return Response.json({ error: 'priceOverrideKes must be a non-negative number or null' }, { status: 400 });
   }
-  // Warehouse staff run the machine's range and screen; what a customer
-  // is charged is an admin decision.
-  if (priceOverrideKes !== undefined && !hasStaffRole(session, ADMIN_ONLY)) {
-    return Response.json({ error: 'Only an admin can change a price.' }, { status: 403 });
+  // Three different decisions share this endpoint, each with its own
+  // permission: what the machine carries, how it looks on the screen, and
+  // what a customer is charged. A request is refused whole if any part of
+  // it isn't allowed, so nothing half-applies.
+  if ((unassort !== undefined || slotCode !== undefined || visible !== undefined) && !hasPermission(session, 'machine_catalog.manage')) {
+    return forbiddenForPermission('machine_catalog.manage');
+  }
+  if (hasMerchandising && !hasPermission(session, 'machine_screen.manage')) {
+    return forbiddenForPermission('machine_screen.manage');
+  }
+  if (priceOverrideKes !== undefined && !hasPermission(session, 'pricing.manage')) {
+    return forbiddenForPermission('pricing.manage');
   }
 
   try {
@@ -158,8 +166,8 @@ export async function GET(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.view')) {
+    return forbiddenForPermission('machines.view');
   }
 
   const { id: machineId, productId } = await params;

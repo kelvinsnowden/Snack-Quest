@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { sendMessageMock, sendButtonsMock, verifyStaffSessionFromRequestMock, isSuperAdminMock } = vi.hoisted(() => ({
+const { sendMessageMock, sendButtonsMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({
   sendMessageMock: vi.fn(),
   sendButtonsMock: vi.fn(),
   verifyStaffSessionFromRequestMock: vi.fn(),
-  isSuperAdminMock: vi.fn(),
 }));
 
 vi.mock('@/lib/integrations/whatchimp/whatchimpGateway', () => ({
@@ -15,7 +14,6 @@ vi.mock('@/lib/auth/session', () => ({
   verifyStaffSessionFromRequest: verifyStaffSessionFromRequestMock,
 }));
 
-vi.mock('@/lib/auth/requireSuperAdmin', () => ({ isSuperAdmin: isSuperAdminMock }));
 
 vi.mock('@/lib/audit/recordAuditLog', () => ({ recordAuditLog: vi.fn() }));
 
@@ -36,7 +34,6 @@ function call(body: unknown): Promise<Response> {
 beforeEach(() => {
   vi.clearAllMocks();
   verifyStaffSessionFromRequestMock.mockResolvedValue(SESSION);
-  isSuperAdminMock.mockReturnValue(true);
 });
 
 describe('POST /api/admin/whatchimp/send-test-message', () => {
@@ -47,7 +44,8 @@ describe('POST /api/admin/whatchimp/send-test-message', () => {
   });
 
   it('403s a non-super-admin — this sends a real message, so it is the most restricted tier', async () => {
-    isSuperAdminMock.mockReturnValue(false);
+    // A plain admin does not hold settings.integrations.manage by default.
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...SESSION, roles: ['admin'] });
     expect((await call({ phone: '254712345678', kind: 'text' })).status).toBe(403);
     expect(sendMessageMock).not.toHaveBeenCalled();
   });

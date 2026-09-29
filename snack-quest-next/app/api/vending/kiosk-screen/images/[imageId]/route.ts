@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { kioskScreenService, KioskScreenValidationError } from '@/services/kioskScreenService';
 import { kioskScreenImageRepository, KioskScreenImageNotFoundError } from '@/repositories/kioskScreenImageRepository';
 import { serializeKioskScreenImage } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 type RouteParams = { imageId: string };
 
@@ -17,8 +17,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<Rout
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machine_screen.manage')) {
+    return forbiddenForPermission('machine_screen.manage');
   }
   const { imageId } = await params;
 
@@ -84,8 +84,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<Rou
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machine_screen.manage')) {
+    return forbiddenForPermission('machine_screen.manage');
   }
   const { imageId } = await params;
 

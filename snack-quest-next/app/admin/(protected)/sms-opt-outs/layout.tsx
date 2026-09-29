@@ -1,6 +1,6 @@
-import { requireAdminSection } from '@/lib/auth/requireAdminSection';
+import { requireAdminPage } from '@/lib/auth/requireAdminSection';
 
 export default async function SmsOptOutsSectionLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminSection('marketing');
+  await requireAdminPage('marketing', 'marketing.optouts.manage');
   return children;
 }

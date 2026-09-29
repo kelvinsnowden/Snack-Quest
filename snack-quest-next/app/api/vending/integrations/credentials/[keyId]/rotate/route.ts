@@ -1,5 +1,4 @@
-import { ADMIN_ONLY } from '@/lib/auth/requireStaffRole';
-import { readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { readJsonObject, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
 
@@ -12,7 +11,7 @@ import { integrationCredentialService } from '@/services/integrationCredentialSe
  */
 export async function POST(request: Request, { params }: { params: Promise<{ keyId: string }> }): Promise<Response> {
   const { keyId } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.credentials.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

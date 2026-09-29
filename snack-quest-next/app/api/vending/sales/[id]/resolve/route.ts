@@ -1,5 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_FINANCE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
+import { hasPermission, hasAnyPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { vendingSaleReviewService, SaleReviewError, SALE_REVIEW_ACTIONS, type SaleReviewAction } from '@/services/vendingSaleReviewService';
 
@@ -7,8 +7,8 @@ const STATUS_FOR: Record<SaleReviewError['code'], number> = { not_found: 404, in
 
 /**
  * A person's decision on a vending sale the system would not decide on
- * its own: `{ action, note, reference? }`. Admin or finance only — this
- * decides what happens to a customer's money. Every decision is audited
+ * its own: `{ action, note, reference? }`. Confirming or refunding needs
+ * `sales.review.resolve`; sending the money needs `sales.refund`. Every decision is audited
  * with the note the person wrote.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -16,8 +16,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_FINANCE)) {
-    return forbiddenResponse();
+  if (!hasAnyPermission(session, ['sales.review.resolve', 'sales.refund'])) {
+    return forbiddenForPermission('sales.review.resolve');
   }
   const { id } = await params;
 
@@ -36,6 +36,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if (reference !== undefined && reference !== null && typeof reference !== 'string') {
     return Response.json({ error: 'reference must be a string' }, { status: 400 });
+  }
+  // Deciding what happened is one permission; sending money back is another.
+  const needed = action === 'reverse_payment' || action === 'record_refund' ? 'sales.refund' : 'sales.review.resolve';
+  if (!hasPermission(session, needed)) {
+    return forbiddenForPermission(needed);
   }
 
   try {

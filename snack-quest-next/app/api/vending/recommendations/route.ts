@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recommendationEngineService } from '@/services/recommendationEngineService';
 import { serializeIntelligenceRecommendation } from '@/lib/vending/serialize';
 import type { RecommendationStatus, RecommendationType } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_TYPES: RecommendationType[] = ['RESTOCK', 'ASSORTMENT_CHANGE', 'REMOVE_PRODUCT', 'MOVE_PRODUCT', 'PRICE_REVIEW', 'PRODUCT_OPPORTUNITY', 'LOCATION_PROFILE'];
 const VALID_STATUSES: RecommendationStatus[] = ['pending', 'approved', 'dismissed'];
@@ -13,8 +13,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'analytics.vending.view')) {
+    return forbiddenForPermission('analytics.vending.view');
   }
 
   const url = new URL(request.url);

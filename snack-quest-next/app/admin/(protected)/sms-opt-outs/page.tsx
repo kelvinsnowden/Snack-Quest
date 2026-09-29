@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { smsOptOutRepository } from '@/repositories/smsOptOutRepository';
 import { serializeSmsOptOut } from '@/lib/marketingSms/serialize';
 import { SmsOptOutManager } from '@/components/admin/SmsOptOutManager';
@@ -29,7 +29,7 @@ export default async function AdminSmsOptOutsPage() {
         </p>
       </div>
 
-      <SmsOptOutManager optOuts={optOuts.map(serializeSmsOptOut)} canRemove={isSuperAdmin(session)} />
+      <SmsOptOutManager optOuts={optOuts.map(serializeSmsOptOut)} canRemove={hasPermission(session, 'marketing.optouts.remove')} />
     </div>
   );
 }

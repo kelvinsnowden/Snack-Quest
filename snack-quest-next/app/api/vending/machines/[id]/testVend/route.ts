@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineTransactionService, DiagnosticVendRequestError, SlotUnavailableForSaleError } from '@/services/machineTransactionService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * `POST` — the diagnostics page's "Test vend" action. It really dispenses
@@ -21,8 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.test_vend')) {
+    return forbiddenForPermission('machines.test_vend');
   }
 
   const { id } = await params;

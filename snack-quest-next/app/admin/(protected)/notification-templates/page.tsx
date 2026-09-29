@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ShieldAlert, ChevronRight } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { notificationTemplateService } from '@/services/notificationTemplateService';
 import { templateEventLabel } from '@/lib/notifications/templateLabels';
 import { Card } from '@/components/ui/card';
@@ -20,7 +20,7 @@ const CHANNEL_LABEL: Record<string, string> = {
 export default async function NotificationTemplatesPage() {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.notifications.manage')) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Notification Templates</h1>

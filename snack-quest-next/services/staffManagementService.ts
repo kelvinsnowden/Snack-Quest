@@ -8,6 +8,7 @@ import { notificationService } from '@/services/notificationService';
 import { isAdminSection } from '@/lib/auth/adminSections';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import type { Role, StaffRole } from '@/types';
+import { effectivePermissions, findTemplate, isPermissionKey, type PermissionKey } from '@/lib/auth/permissions';
 
 export class StaffValidationError extends Error {
   constructor(message: string) {
@@ -58,6 +59,28 @@ export interface StaffListItem {
   disabled: boolean;
   lastSignInAt: string | null;
   createdAt: string | null;
+  /** Every role on the account (`users/{uid}.roles`). */
+  roles: string[];
+  /** The role template chosen for them, or null for their role's default. */
+  template: string | null;
+  grantedPermissions: string[];
+  revokedPermissions: string[];
+  /** What they can actually do right now. */
+  effectivePermissions: PermissionKey[];
+}
+
+export interface StaffAccessInput {
+  template: string | null;
+  granted: string[];
+  revoked: string[];
+}
+
+/** Someone tried to give access they don't hold themselves. */
+export class PermissionEscalationError extends Error {
+  constructor(readonly permissions: string[]) {
+    super(`You can only give access you have yourself. You don’t have: ${permissions.join(', ')}.`);
+    this.name = 'PermissionEscalationError';
+  }
 }
 
 function validatePermissions(permissions: string[]): void {
@@ -100,6 +123,20 @@ async function generateStaffPasswordLink(email: string): Promise<string> {
   }
 }
 
+/** What an account can do, from its roles and stored access. */
+function accessOf(
+  roles: readonly string[],
+  profile: { template?: string | null; grantedPermissions?: string[]; revokedPermissions?: string[]; permissions: string[] },
+): Pick<StaffListItem, 'roles' | 'template' | 'grantedPermissions' | 'revokedPermissions' | 'effectivePermissions'> {
+  return {
+    roles: [...roles],
+    template: profile.template ?? null,
+    grantedPermissions: profile.grantedPermissions ?? [],
+    revokedPermissions: profile.revokedPermissions ?? [],
+    effectivePermissions: effectivePermissions({ roles, template: profile.template, granted: profile.grantedPermissions, revoked: profile.revokedPermissions, legacySections: profile.permissions }),
+  };
+}
+
 class StaffManagementService {
   async listStaff(businessId: string): Promise<StaffListItem[]> {
     const profiles = await staffRepository.listByBusiness(businessId);
@@ -125,8 +162,62 @@ class StaffManagementService {
         disabled: authRecord?.disabled ?? false,
         lastSignInAt: isoOrNull(authRecord?.metadata.lastSignInTime),
         createdAt: profile.data.createdAt?.toDate ? profile.data.createdAt.toDate().toISOString() : null,
+        ...accessOf(user?.roles ?? [profile.data.role], profile.data),
       };
     });
+  }
+
+  async getStaffMember(businessId: string, uid: string): Promise<StaffListItem | null> {
+    const all = await this.listStaff(businessId);
+    return all.find((member) => member.uid === uid) ?? null;
+  }
+
+  /**
+   * Changes what someone may do: a role template, plus permissions added
+   * or taken away one by one. Never your own access, and never access you
+   * don't hold yourself — so nobody can hand out more than they have.
+   * Grants already in the template and removals not in it are dropped, so
+   * what's stored is exactly the difference from the template.
+   */
+  async setAccess(
+    businessId: string,
+    uid: string,
+    input: StaffAccessInput,
+    actor: { uid: string; permissions: readonly string[] },
+  ): Promise<{ before: PermissionKey[]; after: PermissionKey[]; stored: StaffAccessInput }> {
+    if (uid === actor.uid) {
+      throw new CannotModifySelfError('change your own access');
+    }
+    if (input.template !== null && !findTemplate(input.template)) {
+      throw new StaffValidationError(`Unknown role template "${input.template}".`);
+    }
+    const unknown = [...input.granted, ...input.revoked].filter((key) => !isPermissionKey(key));
+    if (unknown.length > 0) {
+      throw new StaffValidationError(`Unknown permission(s): ${unknown.join(', ')}.`);
+    }
+    const profile = await this.requireProfile(businessId, uid);
+    const user = await userRepository.findById(uid);
+    const roles = user?.roles ?? [profile.role];
+    if (roles.includes('super_admin')) {
+      throw new StaffValidationError('A super admin always has every permission. Change their role first to narrow what they can do.');
+    }
+
+    const templatePermissions = new Set<string>(
+      findTemplate(input.template)?.permissions ?? effectivePermissions({ roles, legacySections: input.template === null ? profile.permissions : [] }),
+    );
+    const granted = [...new Set(input.granted)].filter((key) => !templatePermissions.has(key)).sort();
+    const revoked = [...new Set(input.revoked)].filter((key) => templatePermissions.has(key)).sort();
+    const stored: StaffAccessInput = { template: input.template, granted, revoked };
+
+    const before = accessOf(roles, profile).effectivePermissions;
+    const after = effectivePermissions({ roles, template: stored.template, granted, revoked, legacySections: profile.permissions });
+    const beyondActor = after.filter((key) => !before.includes(key) && !actor.permissions.includes(key));
+    if (beyondActor.length > 0) {
+      throw new PermissionEscalationError(beyondActor);
+    }
+
+    await staffRepository.update(uid, { template: stored.template, grantedPermissions: granted, revokedPermissions: revoked }, actor.uid);
+    return { before, after, stored };
   }
 
   /**

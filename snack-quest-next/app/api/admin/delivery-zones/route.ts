@@ -1,14 +1,10 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import {
   deliveryZoneService,
   DeliveryZoneValidationError,
 } from '@/services/deliveryZoneService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface SetZoneFeeBody {
   zone?: unknown;
@@ -24,8 +20,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'logistics.view')) {
+    return forbiddenForPermission('logistics.view');
   }
 
   const result = await deliveryZoneService.listZones(session.businessId);
@@ -38,8 +34,8 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'logistics.manage')) {
+    return forbiddenForPermission('logistics.manage');
   }
 
   let body: SetZoneFeeBody;

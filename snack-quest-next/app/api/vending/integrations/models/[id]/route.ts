@@ -1,12 +1,11 @@
-import { ADMIN_ONLY } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
 
 /** Updates a model. Changing its capabilities or adapter after certification revokes the certification. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.models.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

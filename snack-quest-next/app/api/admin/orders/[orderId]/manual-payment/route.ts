@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { paymentService } from '@/services/paymentService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { ManualPaymentMethod } from '@/types';
+import { hasPermission } from '@/lib/auth/permissions';
 
 const MANUAL_PAYMENT_METHODS: ManualPaymentMethod[] = ['cash', 'mpesa_manual', 'bank_transfer'];
 
@@ -30,7 +30,7 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'payments.record_manual')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

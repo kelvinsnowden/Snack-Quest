@@ -1,5 +1,4 @@
-import { ADMIN_ONLY } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { probeManufacturerApi } from '@/lib/vending/contract/outboundProbe';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
@@ -13,7 +12,7 @@ import { manufacturerApiCredentialService } from '@/services/manufacturerApiCred
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.certify', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) return body;
     const integration = await machineIntegrationRepository.findByMachineId(session.businessId, id);

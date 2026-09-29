@@ -1,14 +1,10 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import {
   featureFlagService,
   UnknownFeatureFlagError,
 } from '@/services/featureFlagService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface SetFlagBody {
   key?: unknown;
@@ -21,8 +17,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'settings.view')) {
+    return forbiddenForPermission('settings.view');
   }
 
   const flags = await featureFlagService.listFlags(session.businessId);
@@ -35,8 +31,8 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'settings.manage')) {
+    return forbiddenForPermission('settings.manage');
   }
 
   let body: SetFlagBody;

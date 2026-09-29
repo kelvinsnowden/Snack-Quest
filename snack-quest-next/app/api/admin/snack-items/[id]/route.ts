@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recipeService, RecipeValidationError, SnackItemNotFoundError } from '@/services/recipeService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { parseSnackItemBody } from '@/lib/recipes/parseSnackItemBody';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 function errorResponse(error: unknown): Response | null {
   if (error instanceof SnackItemNotFoundError) {
@@ -19,8 +19,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.snacks.manage')) {
+    return forbiddenForPermission('products.snacks.manage');
   }
 
   let body: unknown;
@@ -61,8 +61,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.snacks.manage')) {
+    return forbiddenForPermission('products.snacks.manage');
   }
 
   const { id } = await params;

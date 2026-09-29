@@ -1,11 +1,11 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import {
   machineInventoryMovementService,
   SlotNotFoundError,
   DiscrepancyReasonRequiredError,
 } from '@/services/machineInventoryMovementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * § STOCK DISCREPANCY — a physical count against a slot's expected
@@ -20,8 +20,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machine_inventory.adjust')) {
+    return forbiddenForPermission('machine_inventory.adjust');
   }
 
   const { id } = await params;

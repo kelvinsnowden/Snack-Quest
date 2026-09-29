@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { restockTaskService, RestockTaskHasNoItemsError, RestockTaskQuantityError, SlotNotFoundError } from '@/services/restockTaskService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeRestockTask } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A machine's restock tasks (§ RESTOCKING, docs/INVENTORY_ARCHITECTURE.md
@@ -22,8 +22,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'restock.view')) {
+    return forbiddenForPermission('restock.view');
   }
 
   const url = new URL(request.url);
@@ -45,8 +45,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'restock.plan')) {
+    return forbiddenForPermission('restock.plan');
   }
 
   let body: unknown;

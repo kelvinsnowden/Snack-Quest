@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recommendationEngineService, RecommendationNotFoundError, IllegalRecommendationTransitionError } from '@/services/recommendationEngineService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** A staff decision to act on a recommendation (§ RECOMMENDATION ENGINE: never auto-executed). `actionTaken` is what the staff member actually did, in their own words. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -8,8 +8,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'recommendations.act')) {
+    return forbiddenForPermission('recommendations.act');
   }
 
   const { id } = await params;

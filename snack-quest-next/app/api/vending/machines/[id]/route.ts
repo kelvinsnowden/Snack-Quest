@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineService, MachineNotFoundError, PartnerDoesNotOwnMachineError, IllegalMachineStatusTransitionError } from '@/services/machineService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
 import { serializeMachine } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineStatus } from '@/types';
+import { hasPermission, hasAnyPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_STATUSES: MachineStatus[] = ['provisioning', 'installing', 'testing', 'active', 'maintenance', 'offline', 'decommissioned'];
 
@@ -25,8 +25,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.view')) {
+    return forbiddenForPermission('machines.view');
   }
 
   const { id } = await params;
@@ -43,7 +43,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return Response.json({ error: error.message }, { status: 404 });
     }
     if (error instanceof PartnerDoesNotOwnMachineError) {
-      return forbiddenResponse();
+      return forbiddenForPermission('machines.view');
     }
     throw error;
   }
@@ -62,8 +62,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasAnyPermission(session, ['machines.status.manage', 'machines.relocate'])) {
+    return forbiddenForPermission('machines.status.manage');
   }
 
   const { id } = await params;
@@ -84,6 +84,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
     return Response.json({ error: 'locationId must be a string or null' }, { status: 400 });
+  }
+  if (status !== undefined && !hasPermission(session, 'machines.status.manage')) {
+    return forbiddenForPermission('machines.status.manage');
+  }
+  if (locationId !== undefined && !hasPermission(session, 'machines.relocate')) {
+    return forbiddenForPermission('machines.relocate');
   }
 
   try {

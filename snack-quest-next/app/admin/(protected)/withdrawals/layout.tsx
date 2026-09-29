@@ -1,6 +1,6 @@
-import { requireAdminSection } from '@/lib/auth/requireAdminSection';
+import { requireAdminPage } from '@/lib/auth/requireAdminSection';
 
 export default async function WithdrawalsSectionLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminSection('finance');
+  await requireAdminPage('finance', 'finance.view');
   return children;
 }

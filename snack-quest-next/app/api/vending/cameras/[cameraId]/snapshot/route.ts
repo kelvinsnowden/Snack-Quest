@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { cameraService, CameraNotFoundError, CameraCapabilityNotSupportedError } from '@/services/cameraService';
 import { serializeCameraSnapshot } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { CameraSnapshotReason } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const CAMERA_SNAPSHOT_REASONS: CameraSnapshotReason[] = ['dispense_evidence', 'machine_diagnostic', 'fault_evidence', 'admin_test', 'manual_capture'];
 
@@ -21,8 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'cameras.operate')) {
+    return forbiddenForPermission('cameras.operate');
   }
 
   const { cameraId } = await params;

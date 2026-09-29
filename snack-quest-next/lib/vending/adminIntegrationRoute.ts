@@ -1,7 +1,6 @@
 import 'server-only';
 
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { forbiddenResponse, hasStaffRole } from '@/lib/auth/requireStaffRole';
 import { UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { ManufacturerNotFoundError } from '@/repositories/manufacturerRepository';
 import { MachineModelNotFoundError } from '@/repositories/machineModelRepository';
@@ -23,26 +22,26 @@ import { ManufacturerApiCredentialError } from '@/services/manufacturerApiCreden
 import { ManufacturerApiCredentialNotFoundError } from '@/repositories/manufacturerApiCredentialRepository';
 import { UnsafeManufacturerUrlError } from '@/lib/vending/outboundUrl';
 import type { StaffSession } from '@/services/staffAuthService';
-import type { Role } from '@/types';
+import { hasPermission, forbiddenForPermission, type PermissionKey } from '@/lib/auth/permissions';
 
 /**
  * Shared shape of the staff-facing integration console routes
  * (`/api/vending/integrations/**`, `/api/vending/machines/[id]/integration*`):
- * staff session → role check → JSON body → service call, with every
+ * staff session → permission check → JSON body → service call, with every
  * domain error mapped to one status in one place so the routes stay a
  * few lines each and can never disagree about what a 409 means.
  */
-export async function withStaffRoles(
+export async function withPermission(
   request: Request,
-  roles: readonly Role[],
+  permission: PermissionKey,
   handler: (session: StaffSession) => Promise<Response>,
 ): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, roles)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, permission)) {
+    return forbiddenForPermission(permission);
   }
   try {
     return await handler(session);

@@ -1,11 +1,11 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   integrationSettingsService,
   IntegrationValidationError,
   UnknownIntegrationProviderError,
 } from '@/services/integrationSettingsService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /** A single integration's status + masked field values (§ Integration Portal). */
 export async function GET(
@@ -16,7 +16,7 @@ export async function GET(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.integrations.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -45,7 +45,7 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.integrations.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

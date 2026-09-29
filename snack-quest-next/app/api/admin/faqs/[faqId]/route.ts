@@ -1,11 +1,7 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { faqRepository, type FaqInput } from '@/repositories/faqRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface UpdateFaqBody {
   question?: unknown;
@@ -52,8 +48,8 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'content.manage')) {
+    return forbiddenForPermission('content.manage');
   }
 
   const { faqId } = await params;
@@ -100,8 +96,8 @@ export async function DELETE(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'content.manage')) {
+    return forbiddenForPermission('content.manage');
   }
 
   const { faqId } = await params;

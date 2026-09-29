@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { marketingSmsService, MarketingSmsValidationError } from '@/services/marketingSmsService';
 import { parseSmsDraftBody, type SmsDraftBody } from '@/lib/marketingSms/parseDraftBody';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * What this campaign would reach and cost, without sending it
@@ -19,7 +19,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

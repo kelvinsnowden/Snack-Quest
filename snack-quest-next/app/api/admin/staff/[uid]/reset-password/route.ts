@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { staffManagementService, StaffNotFoundError } from '@/services/staffManagementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /** Generates a fresh password-reset link for a staff account (§ Staff Management). Never logs the link itself. */
 export async function POST(
@@ -12,7 +12,7 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'users.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

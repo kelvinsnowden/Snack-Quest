@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { serviceLevelLabel } from '@/lib/delivery/deliveryPricing';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { CorrectManualPaymentDialog } from '@/components/admin/CorrectManualPaymentDialog';
 import { orderRepository } from '@/repositories/orderRepository';
 import { packageRepository } from '@/repositories/packageRepository';
@@ -347,7 +347,7 @@ export default async function AdminOrderDetailPage({
                 hand if they should get one after all.
               </p>
             ) : null}
-            {payment.manualPayment && isSuperAdmin(session) ? (
+            {payment.manualPayment && hasPermission(session, 'payments.record_manual') ? (
               <CorrectManualPaymentDialog
                 orderId={orderId}
                 currentMethod={payment.manualPayment.method}
@@ -453,7 +453,7 @@ export default async function AdminOrderDetailPage({
                 />
               </>
             ) : null}
-            {isSuperAdmin(session) && boxes.length > 0 ? (
+            {hasPermission(session, 'orders.contents.edit') && boxes.length > 0 ? (
               <ChangeOrderBoxDialog
                 orderId={orderId}
                 boxes={boxes.map(({ id, data }) => ({ id, name: data.name, priceKes: data.priceKes }))}

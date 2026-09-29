@@ -1,13 +1,13 @@
 import { authenticateDevice } from '@/lib/vending/deviceAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineTransactionService } from '@/services/machineTransactionService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { UnrecognisedHardwarePayloadError } from '@/lib/vending/hardwareAdapter';
 import { serializeMachineTransaction } from '@/lib/vending/serialize';
 import type { MachineTransactionStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_STATUSES: MachineTransactionStatus[] = [
   'pending',
@@ -75,8 +75,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'sales.view')) {
+    return forbiddenForPermission('sales.view');
   }
 
   const url = new URL(request.url);

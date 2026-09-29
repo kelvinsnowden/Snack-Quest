@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { smsOptOutRepository } from '@/repositories/smsOptOutRepository';
 import { serializeSmsOptOut } from '@/lib/marketingSms/serialize';
 import { normalizeKenyanPhone, InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * The opt-out register, for staff (§ Admin: SMS opt-outs).
@@ -21,8 +21,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'marketing.optouts.manage')) {
+    return forbiddenForPermission('marketing.optouts.manage');
   }
 
   const [optOuts, total] = await Promise.all([
@@ -39,8 +39,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'marketing.optouts.manage')) {
+    return forbiddenForPermission('marketing.optouts.manage');
   }
 
   let body: unknown;

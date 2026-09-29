@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { serviceLevelLabel } from '@/lib/delivery/deliveryPricing';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { orderRepository } from '@/repositories/orderRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import { Card } from '@/components/ui/card';
@@ -90,7 +90,7 @@ export default async function AdminOrdersPage({
             {dict.orders.subtitle}
           </p>
         </div>
-        <StaffInitiatedOrderDialog boxes={orderableBoxes} canRecordManualPayment={isSuperAdmin(session)} />
+        <StaffInitiatedOrderDialog boxes={orderableBoxes} canRecordManualPayment={hasPermission(session, 'payments.record_manual')} />
       </div>
 
       <Card className="p-4">

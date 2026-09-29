@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { discountCodeRepository } from '@/repositories/discountCodeRepository';
 import { normalizeDiscountCode, validateDiscountCodeInput } from '@/lib/checkout/discountCode';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * Discount codes for staff to create and manage (§ discount codes).
@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.discounts.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.discounts.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -109,7 +109,7 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.discounts.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

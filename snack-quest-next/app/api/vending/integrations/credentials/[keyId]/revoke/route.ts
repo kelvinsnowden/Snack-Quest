@@ -1,12 +1,11 @@
-import { ADMIN_ONLY } from '@/lib/auth/requireStaffRole';
-import { readJsonObject, requiredString, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { readJsonObject, requiredString, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
 
 /** Revocation — immediate on this instance, and within the credential cache TTL (30 s) on every other (lib/vending/credentialCache.ts). */
 export async function POST(request: Request, { params }: { params: Promise<{ keyId: string }> }): Promise<Response> {
   const { keyId } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.credentials.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

@@ -1,5 +1,4 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   marketingEmailService,
   MarketingEmailNotFoundError,
@@ -7,6 +6,7 @@ import {
   MarketingEmailValidationError,
 } from '@/services/marketingEmailService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 // A real per-recipient send loop over real SMTP/SendGrid connections
 // can run well past the platform's default function timeout — this
@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.send')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

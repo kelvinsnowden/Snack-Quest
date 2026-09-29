@@ -1,5 +1,4 @@
-import { ADMIN_ONLY, ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, requiredString, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, requiredString, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { toJsonSafe } from '@/lib/vending/serializeIntegration';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { machineIntegrationService } from '@/services/machineIntegrationService';
@@ -8,7 +7,7 @@ import type { MachineIntegrationEnvironment } from '@/types';
 /** The machine's Integration card: manufacturer, model, adapter, lifecycle state, health, capability matrix and anything blocking activation. Admin console only — never part of an owner response. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) =>
+  return withPermission(request, 'integrations.view', async (session) =>
     Response.json(toJsonSafe(await machineIntegrationService.getView(session.businessId, id))),
   );
 }
@@ -16,7 +15,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 /** CONFIGURE — (re)writes the integration and drops it to "configured"; testing and activation must follow. */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.machines.configure', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

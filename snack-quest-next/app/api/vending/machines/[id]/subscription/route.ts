@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSubscriptionService, MachineAlreadyHasActiveSubscriptionError } from '@/services/machineSubscriptionService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSubscription } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineSubscriptionFrequency } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_FREQUENCIES: MachineSubscriptionFrequency[] = ['weekly', 'monthly'];
 
@@ -21,8 +21,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.view')) {
+    return forbiddenForPermission('owner_finance.view');
   }
 
   const { id } = await params;
@@ -35,8 +35,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.subscriptions.manage')) {
+    return forbiddenForPermission('owner_finance.subscriptions.manage');
   }
 
   const { id } = await params;

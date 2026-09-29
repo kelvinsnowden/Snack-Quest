@@ -1,11 +1,10 @@
-import { ADMIN_ONLY } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, requiredString, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, requiredString, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
 
 /** Registers a machine model under a manufacturer, with the capabilities its hardware physically has. */
 export async function POST(request: Request): Promise<Response> {
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.models.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

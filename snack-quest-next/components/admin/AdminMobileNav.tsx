@@ -40,17 +40,19 @@ import type { AdminSection } from '@/lib/auth/adminSections';
 export function AdminMobileNav({
   businessName,
   visibleSections,
+  permissions = null,
 }: {
   businessName: string;
   /** `null` means unrestricted (§ Staff access control) — every section shows. */
   visibleSections: AdminSection[] | null;
+  permissions?: readonly string[] | null;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const pathname = usePathname();
   const { dict } = useI18n();
 
-  const items = useMemo(() => visibleNavItems(visibleSections), [visibleSections]);
+  const items = useMemo(() => visibleNavItems(visibleSections, permissions), [visibleSections, permissions]);
 
   // The bottom bar's "More" opens this same drawer rather than owning a
   // second one — see `AdminBottomBar` for why it asks by event instead

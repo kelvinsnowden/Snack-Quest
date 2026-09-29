@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   deliveryService,
@@ -10,6 +5,7 @@ import {
   InvalidShipmentTransitionError,
 } from '@/services/deliveryService';
 import type { ShipmentStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_STATUSES: ShipmentStatus[] = [
   'pending',
@@ -29,8 +25,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'logistics.manage')) {
+    return forbiddenForPermission('logistics.manage');
   }
 
   const { shipmentId } = await params;

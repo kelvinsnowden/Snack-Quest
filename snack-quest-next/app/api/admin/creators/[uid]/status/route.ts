@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   creatorAdminService,
@@ -11,6 +6,7 @@ import {
 } from '@/services/creatorAdminService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { CreatorStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_STATUSES: CreatorStatus[] = ['pending', 'active', 'suspended'];
 
@@ -23,8 +19,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'creators.manage')) {
+    return forbiddenForPermission('creators.manage');
   }
 
   const { uid } = await params;

@@ -1,11 +1,7 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { reviewService, ReviewValidationError, MAX_REVIEW_PHOTOS } from '@/services/reviewService';
 import { StorageUploadError, StorageValidationError } from '@/lib/storage/errors';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * `POST /api/admin/reviews` (§ reviews that arrive on WhatsApp) — a
@@ -27,8 +23,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'content.manage')) {
+    return forbiddenForPermission('content.manage');
   }
 
   let formData: FormData;

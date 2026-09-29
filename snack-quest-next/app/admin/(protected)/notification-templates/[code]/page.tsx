@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { notificationTemplateService, NotificationTemplateNotFoundError } from '@/services/notificationTemplateService';
 import { templateEventLabel } from '@/lib/notifications/templateLabels';
 import { NotificationTemplateForm } from '@/components/admin/NotificationTemplateForm';
@@ -14,7 +14,7 @@ export default async function NotificationTemplateEditPage({ params }: { params:
   const session = await requireStaffSession();
   const { code } = await params;
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.notifications.manage')) {
     return (
       <Card className="flex max-w-2xl flex-col items-center gap-3 p-10 text-center">
         <ShieldAlert className="size-8 text-warning" aria-hidden="true" />

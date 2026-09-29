@@ -1,5 +1,4 @@
-import { ADMIN_ONLY, ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, requiredString, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, requiredString, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { listAdapterRegistrations } from '@/lib/vending/adapterRegistry';
 import { toJsonSafe } from '@/lib/vending/serializeIntegration';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
@@ -8,7 +7,7 @@ import { INTEGRATION_TYPES, type IntegrationType } from '@/types';
 
 /** The registry at a glance — every manufacturer, every model, and every adapter the codebase can speak through. */
 export async function GET(request: Request): Promise<Response> {
-  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) => {
+  return withPermission(request, 'integrations.view', async (session) => {
     const [manufacturers, models] = await Promise.all([
       manufacturerRegistryService.listManufacturers(session.businessId),
       manufacturerRegistryService.listModels(session.businessId),
@@ -24,7 +23,7 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  return withStaffRoles(request, ADMIN_ONLY, async (session) => {
+  return withPermission(request, 'integrations.manufacturers.manage', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

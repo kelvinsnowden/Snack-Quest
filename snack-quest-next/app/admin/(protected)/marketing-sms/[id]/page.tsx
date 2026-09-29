@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { marketingSmsService, MarketingSmsNotFoundError } from '@/services/marketingSmsService';
 import { serializeSmsCampaign } from '@/lib/marketingSms/serialize';
 import { SMS_SEGMENT_LABEL } from '@/lib/marketingSms/segmentLabels';
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: 'SMS campaign' };
 export default async function MarketingSmsCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
         <Card className="flex flex-col items-center gap-3 p-10 text-center">

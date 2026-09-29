@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { integrationSettingsService } from '@/services/integrationSettingsService';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /** Lists every integration's status + masked field values (§ Integration Portal). */
 export async function GET(request: Request): Promise<Response> {
@@ -8,7 +8,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.integrations.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

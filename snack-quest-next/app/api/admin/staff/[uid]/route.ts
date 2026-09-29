@@ -1,5 +1,4 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   staffManagementService,
   StaffValidationError,
@@ -9,6 +8,7 @@ import {
 } from '@/services/staffManagementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { StaffRole } from '@/types';
+import { hasPermission } from '@/lib/auth/permissions';
 
 interface PatchStaffBody {
   role?: unknown;
@@ -39,7 +39,7 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'users.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -114,7 +114,7 @@ export async function DELETE(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'users.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

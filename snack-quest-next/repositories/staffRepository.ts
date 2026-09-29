@@ -53,7 +53,7 @@ class StaffRepository {
   }
 
   /** § Staff Management — role/department edits, never `businessId` (a staff member never moves tenants). */
-  async update(uid: string, patch: Partial<Pick<StaffProfile, 'role' | 'department' | 'permissions'>>, actor: string): Promise<void> {
+  async update(uid: string, patch: Partial<Pick<StaffProfile, 'role' | 'department' | 'permissions' | 'template' | 'grantedPermissions' | 'revokedPermissions'>>, actor: string): Promise<void> {
     await adminFirestore
       .collection(COLLECTION)
       .doc(uid)

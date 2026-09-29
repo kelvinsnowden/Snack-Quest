@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recommendationEngineService } from '@/services/recommendationEngineService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { scheduledJobService } from '@/services/scheduledJobService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 type GenerateScope = 'restock' | 'dead_stock' | 'product_opportunities' | 'fleet';
 const VALID_SCOPES: GenerateScope[] = ['restock', 'dead_stock', 'product_opportunities', 'fleet'];
@@ -23,8 +23,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'recommendations.act')) {
+    return forbiddenForPermission('recommendations.act');
   }
 
   let body: unknown;

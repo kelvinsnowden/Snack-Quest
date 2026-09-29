@@ -1,11 +1,11 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   marketingSmsService,
   MarketingSmsNotFoundError,
   MarketingSmsValidationError,
 } from '@/services/marketingSmsService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /** Retries exactly the recipients a prior attempt failed for — never the whole list again (§ Admin: Marketing SMS). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -13,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.send')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

@@ -1,5 +1,4 @@
-import { ADMIN_OR_WAREHOUSE } from '@/lib/auth/requireStaffRole';
-import { optionalString, readJsonObject, withStaffRoles } from '@/lib/vending/adminIntegrationRoute';
+import { optionalString, readJsonObject, withPermission } from '@/lib/vending/adminIntegrationRoute';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { RegistryValidationError } from '@/services/manufacturerRegistryService';
@@ -14,7 +13,7 @@ const MAX_MAINTENANCE_HOURS = 72;
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params;
-  return withStaffRoles(request, ADMIN_OR_WAREHOUSE, async (session) => {
+  return withPermission(request, 'integrations.machines.maintenance', async (session) => {
     const body = await readJsonObject(request);
     if (body instanceof Response) {
       return body;

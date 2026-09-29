@@ -1,10 +1,4 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   conversationService,
   WebCheckoutConflictError,
@@ -17,6 +11,7 @@ import type {
   WebCheckoutResponse,
 } from '@/types/webCheckout';
 import type { ManualPaymentMethod } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const MANUAL_PAYMENT_METHODS: ManualPaymentMethod[] = ['cash', 'mpesa_manual', 'bank_transfer'];
 
@@ -55,8 +50,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'orders.create')) {
+    return forbiddenForPermission('orders.create');
   }
 
   let body: unknown;
@@ -116,9 +111,9 @@ export async function POST(request: Request): Promise<Response> {
     | undefined;
 
   if (rawManualPayment !== undefined && rawManualPayment !== null) {
-    if (!isSuperAdmin(session)) {
+    if (!hasPermission(session, 'payments.record_manual')) {
       return Response.json(
-        { error: 'Only a super admin can record an order as already paid.' },
+        { error: 'forbidden', permission: 'payments.record_manual', message: 'You don’t have permission to record an order as already paid.' },
         { status: 403 },
       );
     }

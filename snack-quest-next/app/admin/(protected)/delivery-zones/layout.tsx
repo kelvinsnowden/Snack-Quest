@@ -1,6 +1,6 @@
-import { requireAdminSection } from '@/lib/auth/requireAdminSection';
+import { requireAdminPage } from '@/lib/auth/requireAdminSection';
 
 export default async function DeliveryZonesSectionLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminSection('orders');
+  await requireAdminPage('orders', 'logistics.view');
   return children;
 }

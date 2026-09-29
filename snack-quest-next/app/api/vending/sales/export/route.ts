@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_FINANCE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { vendingSalesService, SalesFilterError, SALES_EXPORT_LIMIT } from '@/services/vendingSalesService';
 import { SALE_STATUS_FILTERS } from '@/lib/vending/saleStatus';
 import type { MachineTransactionStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * The sales list as a CSV download, with the same filters as the page
@@ -17,8 +17,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_FINANCE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'sales.export')) {
+    return forbiddenForPermission('sales.export');
   }
   const params = new URL(request.url).searchParams;
   const status = params.get('status') || undefined;

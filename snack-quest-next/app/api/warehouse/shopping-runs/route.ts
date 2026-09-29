@@ -1,26 +1,24 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { shoppingRunService, ShoppingRunValidationError } from '@/services/shoppingRunService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * `/api/warehouse/shopping-runs` (§ Box Recipes).
  *
- * Gated to the same roles as the Warehouse workspace itself rather than
- * to admins: the people who create and work a shopping run are exactly
+ * Gated by `warehouse_fulfilment.manage` (warehouse staff and admins by
+ * default) rather than an admin-only permission: the people who create and work a shopping run are exactly
  * the warehouse staff this portal exists for, and requiring an admin
  * would mean a runner cannot start their own trip.
  */
-function canUseWarehouse(roles: string[]): boolean {
-  return roles.some((role) => role === 'warehouse' || role === 'admin' || role === 'super_admin');
-}
 
 export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!canUseWarehouse(session.roles)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!hasPermission(session, 'warehouse_fulfilment.manage')) {
+    return forbiddenForPermission('warehouse_fulfilment.manage');
   }
 
   let body: unknown;

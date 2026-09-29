@@ -1,10 +1,6 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Lists this business's staff-action trail (§ Admin: Audit Logs), newest first, optionally filtered to one entity type. */
 export async function GET(request: Request): Promise<Response> {
@@ -12,8 +8,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'audit.view')) {
+    return forbiddenForPermission('audit.view');
   }
 
   const { searchParams } = new URL(request.url);

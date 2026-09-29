@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { inventoryService } from '@/services/inventoryService';
 import {
@@ -11,6 +6,7 @@ import {
   InsufficientStockError,
 } from '@/repositories/packageRepository';
 import type { InventoryMovementReason } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_REASONS: InventoryMovementReason[] = [
   'restock',
@@ -33,8 +29,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'warehouse_inventory.adjust')) {
+    return forbiddenForPermission('warehouse_inventory.adjust');
   }
 
   const { packageId } = await params;

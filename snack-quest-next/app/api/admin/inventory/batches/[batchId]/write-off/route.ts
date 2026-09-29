@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   inventoryService,
@@ -11,6 +6,7 @@ import {
   InvalidWriteOffQuantityError,
 } from '@/services/inventoryService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_REASONS = ['expired', 'written_off'] as const;
 type WriteOffReason = (typeof VALID_REASONS)[number];
@@ -24,8 +20,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'warehouse_inventory.adjust')) {
+    return forbiddenForPermission('warehouse_inventory.adjust');
   }
 
   const { batchId } = await params;

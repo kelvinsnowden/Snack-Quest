@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { hasPermission } from '@/lib/auth/permissions';
 import { manufacturerRepository } from '@/repositories/manufacturerRepository';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
 import { integrationCredentialService } from '@/services/integrationCredentialService';
@@ -32,6 +33,7 @@ export const metadata: Metadata = { title: 'Manufacturer' };
 export default async function ManufacturerPage({ params }: { params: Promise<{ manufacturerId: string }> }) {
   const { manufacturerId } = await params;
   const session = await requireStaffSession();
+  const canManageKeys = hasPermission(session, 'integrations.credentials.manage');
   const manufacturer = await manufacturerRepository.findById(session.businessId, manufacturerId);
   if (!manufacturer) {
     notFound();
@@ -143,16 +145,20 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
           <CardTitle>Credentials</CardTitle>
         </CardHeader>
         <CardContent>
-          <CredentialsPanel
-            manufacturerId={manufacturerId}
-            credentials={toJsonSafe(credentials) as CredentialRow[]}
-            canIssueProduction={manufacturer.onboardingStage === 'production'}
-            machines={machines.map(({ integration }) => ({ machineId: integration.machineId, machineCode: integration.machineCode, environment: integration.environment }))}
-          />
+          {canManageKeys ? (
+            <CredentialsPanel
+              manufacturerId={manufacturerId}
+              credentials={toJsonSafe(credentials) as CredentialRow[]}
+              canIssueProduction={manufacturer.onboardingStage === 'production'}
+              machines={machines.map(({ integration }) => ({ machineId: integration.machineId, machineCode: integration.machineCode, environment: integration.environment }))}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">{credentials.length} key{credentials.length === 1 ? '' : 's'} issued. Issuing, rotating and revoking keys needs the “Issue, rotate and revoke manufacturer keys” permission.</p>
+          )}
         </CardContent>
       </Card>
 
-      {adapter?.direction !== 'inbound' ? (
+      {adapter?.direction !== 'inbound' && canManageKeys ? (
         <Card>
           <CardHeader>
             <CardTitle>API key for calling {manufacturer.name}</CardTitle>

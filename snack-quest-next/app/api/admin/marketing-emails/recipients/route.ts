@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { marketingEmailService, MARKETING_EMAIL_SEGMENTS } from '@/services/marketingEmailService';
 import type { MarketingEmailSegment } from '@/types';
+import { hasPermission } from '@/lib/auth/permissions';
 
 interface RecipientsBody {
   segment?: unknown;
@@ -15,7 +15,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

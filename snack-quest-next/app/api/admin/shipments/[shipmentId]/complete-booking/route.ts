@@ -1,14 +1,10 @@
-import {
-  hasStaffRole,
-  ADMIN_AGENT_OR_WAREHOUSE,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   deliveryService,
   ShipmentNotFoundError,
   InvalidShipmentTransitionError,
 } from '@/services/deliveryService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Records a manually-booked courier's reference (§ Admin: Delivery
@@ -27,8 +23,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_AGENT_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'logistics.courier.book')) {
+    return forbiddenForPermission('logistics.courier.book');
   }
 
   const { shipmentId } = await params;

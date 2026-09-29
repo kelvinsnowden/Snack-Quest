@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { locationIntelligenceService, LocationNotFoundError } from '@/services/locationIntelligenceService';
 import { networkIntelligenceService } from '@/services/networkIntelligenceService';
 import { parseWindowDays } from '@/lib/vending/intelligenceQueryParams';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * One location's Location DNA (§ LOCATION DNA), or, with `?compare=id2,id3`,
@@ -15,8 +15,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'analytics.vending.view')) {
+    return forbiddenForPermission('analytics.vending.view');
   }
 
   const { id } = await params;

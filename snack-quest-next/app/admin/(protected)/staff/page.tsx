@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { staffManagementService } from '@/services/staffManagementService';
 import { StaffTable } from '@/components/admin/StaffTable';
 import { InviteStaffDialog } from '@/components/admin/InviteStaffDialog';
@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: 'Staff' };
 export default async function AdminStaffPage() {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'users.manage')) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Staff</h1>

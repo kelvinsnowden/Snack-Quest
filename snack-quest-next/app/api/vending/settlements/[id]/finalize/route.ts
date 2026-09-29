@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSettlementService, MachineSettlementNotFoundError, IllegalSettlementTransitionError } from '@/services/machineSettlementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Finalizes a `draft` settlement and credits `distributableOwnerKes +
@@ -17,8 +17,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.settlements.finalize')) {
+    return forbiddenForPermission('owner_finance.settlements.finalize');
   }
 
   const { id } = await params;

@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { cameraService, CameraNotFoundError, IllegalCameraTransitionError } from '@/services/cameraService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** POST — takes a camera out of service. `ADMIN_ONLY`, same tier as `activate`. */
 export async function POST(request: Request, { params }: { params: Promise<{ cameraId: string }> }): Promise<Response> {
@@ -9,8 +9,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'cameras.manage')) {
+    return forbiddenForPermission('cameras.manage');
   }
 
   const { cameraId } = await params;

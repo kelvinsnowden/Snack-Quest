@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Camera, History, ReceiptText, ShoppingBasket } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_FINANCE } from '@/lib/auth/requireStaffRole';
+import { hasPermission } from '@/lib/auth/permissions';
 import { vendingSaleReviewService, SaleReviewError, type SaleReviewDetail } from '@/services/vendingSaleReviewService';
 import { resolveVendingProductNames } from '@/lib/vending/productNames';
 import { BUSINESS_TIME_ZONE } from '@/lib/vending/businessClock';
@@ -60,8 +60,16 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ tra
   }
   const { sale, trace, refunds, cartSiblings, snapshots, history, actions, machineCode } = detail;
   const names = await resolveVendingProductNames(session.businessId, [sale.productId, ...cartSiblings.map(({ sale: s }) => s.productId)]);
-  const canDecide = hasStaffRole(session, ADMIN_OR_FINANCE);
+  const canResolve = hasPermission(session, 'sales.review.resolve');
+  const canRefund = hasPermission(session, 'sales.refund');
+  const canDecide = canResolve || canRefund;
   const anyAction = actions.some((entry) => entry.allowed);
+  // What this person may do on top of what the sale allows.
+  const myActions = actions.map((entry) => {
+    const needsRefund = entry.action === 'reverse_payment' || entry.action === 'record_refund';
+    const permitted = needsRefund ? canRefund : canResolve;
+    return permitted || !entry.allowed ? entry : { ...entry, allowed: false, reason: needsRefund ? 'You don’t have permission to send refunds.' : 'You don’t have permission to decide sales.' };
+  });
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
@@ -121,9 +129,9 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ tra
           </CardHeader>
           <CardContent>
             {canDecide ? (
-              <SaleReviewActions transactionId={transactionId} amountLabel={formatKes(sale.amountKes)} actions={actions} />
+              <SaleReviewActions transactionId={transactionId} amountLabel={formatKes(sale.amountKes)} actions={myActions} />
             ) : (
-              <p className="text-sm text-muted-foreground">{anyAction ? 'An admin or someone in finance decides what happens to this sale. Share this page with them.' : 'Nothing to decide on this sale right now.'}</p>
+              <p className="text-sm text-muted-foreground">{anyAction ? 'Someone with permission to decide sales handles this one. Share this page with them.' : 'Nothing to decide on this sale right now.'}</p>
             )}
           </CardContent>
         </Card>

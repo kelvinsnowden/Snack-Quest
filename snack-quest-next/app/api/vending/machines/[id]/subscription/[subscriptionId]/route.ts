@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSubscriptionRepository, MachineSubscriptionNotFoundError, IllegalSubscriptionTransitionError } from '@/repositories/machineSubscriptionRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_ACTIONS = ['recordPayment', 'waivePeriod', 'pause', 'resume', 'cancel'] as const;
 type Action = (typeof VALID_ACTIONS)[number];
@@ -22,8 +22,8 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.subscriptions.manage')) {
+    return forbiddenForPermission('owner_finance.subscriptions.manage');
   }
 
   const { id: machineId, subscriptionId } = await params;

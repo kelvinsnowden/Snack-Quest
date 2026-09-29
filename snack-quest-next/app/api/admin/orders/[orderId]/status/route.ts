@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_OR_WAREHOUSE,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   orderService,
@@ -10,6 +5,7 @@ import {
   InvalidOrderTransitionError,
 } from '@/services/orderService';
 import type { OrderStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_STATUSES: OrderStatus[] = [
   'pending',
@@ -35,8 +31,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'orders.status.update')) {
+    return forbiddenForPermission('orders.status.update');
   }
 
   const { orderId } = await params;

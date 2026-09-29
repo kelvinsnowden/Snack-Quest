@@ -1,6 +1,6 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { saleTraceService, type SaleTraceQuery } from '@/services/saleTraceService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * GET — trace a sale end to end ("customer paid at 14:32, no snack").
@@ -13,8 +13,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'sales.view')) {
+    return forbiddenForPermission('sales.view');
   }
 
   const params = new URL(request.url).searchParams;

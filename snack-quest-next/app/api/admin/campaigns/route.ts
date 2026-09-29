@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   campaignService,
@@ -10,6 +5,7 @@ import {
 } from '@/services/campaignService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { Campaign, CampaignStatus } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface CreateCampaignBody {
   title?: unknown;
@@ -102,8 +98,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'marketing.campaigns.manage')) {
+    return forbiddenForPermission('marketing.campaigns.manage');
   }
 
   let body: CreateCampaignBody;
