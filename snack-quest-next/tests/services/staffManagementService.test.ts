@@ -11,7 +11,9 @@ import {
   StaffNotFoundError,
   CannotModifySelfError,
   LastSuperAdminError,
+  PermissionEscalationError,
 } from '@/services/staffManagementService';
+import { effectivePermissions, ALL_PERMISSIONS } from '@/lib/auth/permissions';
 import { getIdTokenForUid } from '../helpers/authEmulator';
 
 const BUSINESS_ID = 'biz-staff-mgmt-test';
@@ -23,7 +25,7 @@ async function cleanCollections() {
   }
 }
 
-async function seedStaff(email: string, role: 'super_admin' | 'admin' | 'agent', displayName = 'Test Staff') {
+async function seedStaff(email: string, role: 'super_admin' | 'admin' | 'agent' | 'warehouse' | 'finance', displayName = 'Test Staff') {
   const record = await adminAuth.createUser({ email, password: 'test-password-123' });
   createdUids.push(record.uid);
   await userRepository.create(record.uid, { email, roles: [role], displayName, photoURL: null }, 'system');
@@ -340,5 +342,44 @@ describe('StaffManagementService.resetPassword', () => {
   it('throws StaffNotFoundError for a uid on a different business', async () => {
     const uid = await seedStaff('wrong-business@example.com', 'agent');
     await expect(staffManagementService.resetPassword('some-other-biz', uid)).rejects.toBeInstanceOf(StaffNotFoundError);
+  });
+});
+
+describe('StaffManagementService.setAccess', () => {
+  const superAdmin = { uid: 'the-super-admin', permissions: [...ALL_PERMISSIONS] };
+
+  it('gives a template, adds and removes single permissions, and the session sees it on the next request', async () => {
+    const uid = await seedStaff('access-warehouse@example.com', 'warehouse');
+    const result = await staffManagementService.setAccess(BUSINESS_ID, uid, { template: 'machine_operations', granted: ['sales.export', 'pricing.manage'], revoked: ['cameras.manage'] }, superAdmin);
+    // pricing.manage is already in the template, so it isn't stored as a grant.
+    expect(result.stored).toEqual({ template: 'machine_operations', granted: ['sales.export'], revoked: ['cameras.manage'] });
+    expect(result.after).toContain('pricing.manage');
+    expect(result.after).toContain('sales.export');
+    expect(result.after).not.toContain('cameras.manage');
+
+    const profile = await staffRepository.findById(uid);
+    expect(profile).toMatchObject({ template: 'machine_operations', grantedPermissions: ['sales.export'], revokedPermissions: ['cameras.manage'] });
+    const listed = await staffManagementService.getStaffMember(BUSINESS_ID, uid);
+    expect(listed?.effectivePermissions).toEqual(result.after);
+  });
+
+  it('never lets someone give access they don’t hold themselves', async () => {
+    const uid = await seedStaff('access-target@example.com', 'agent');
+    const admin = { uid: 'an-admin', permissions: effectivePermissions({ roles: ['admin'] }) };
+    await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: null, granted: ['integrations.credentials.manage'], revoked: [] }, admin)).rejects.toBeInstanceOf(PermissionEscalationError);
+    await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: 'admin', granted: [], revoked: [] }, { uid: 'someone', permissions: ['support.conversations.handle'] })).rejects.toBeInstanceOf(PermissionEscalationError);
+    // Taking access away is always allowed.
+    await expect(staffManagementService.setAccess(BUSINESS_ID, uid, { template: null, granted: [], revoked: ['logistics.courier.book'] }, { uid: 'someone', permissions: [] })).resolves.toMatchObject({ after: ['support.conversations.handle'] });
+  });
+
+  it('refuses your own access, a super admin, unknown templates and unknown permissions', async () => {
+    const self = await seedStaff('access-self@example.com', 'admin');
+    const boss = await seedStaff('access-boss@example.com', 'super_admin');
+    const other = await seedStaff('access-other@example.com', 'finance');
+    await expect(staffManagementService.setAccess(BUSINESS_ID, self, { template: 'marketing', granted: [], revoked: [] }, { uid: self, permissions: [...ALL_PERMISSIONS] })).rejects.toBeInstanceOf(CannotModifySelfError);
+    await expect(staffManagementService.setAccess(BUSINESS_ID, boss, { template: 'marketing', granted: [], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffValidationError);
+    await expect(staffManagementService.setAccess(BUSINESS_ID, other, { template: 'god_mode', granted: [], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffValidationError);
+    await expect(staffManagementService.setAccess(BUSINESS_ID, other, { template: null, granted: ['everything'], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffValidationError);
+    await expect(staffManagementService.setAccess('another-business', other, { template: null, granted: [], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffNotFoundError);
   });
 });
