@@ -17,10 +17,7 @@ import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
  * exact same engine a creator withdrawal already goes through.
  * `ADMIN_ONLY` for the write — it reserves real money.
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ partnerId: string }> },
-): Promise<Response> {
+export async function GET(request: Request, { params }: { params: Promise<{ partnerId: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -32,12 +29,7 @@ export async function GET(
   const { partnerId } = await params;
   const url = new URL(request.url);
   const cursor = url.searchParams.get('cursor') ?? undefined;
-  const { withdrawals, nextCursor } =
-    await withdrawalService.listWithdrawalsForOwner(
-      session.businessId,
-      partnerId,
-      { cursor },
-    );
+  const { withdrawals, nextCursor } = await withdrawalService.listWithdrawalsForOwner(session.businessId, partnerId, { cursor });
   return Response.json({
     withdrawals: withdrawals.map(({ id, data }) => ({
       id,
@@ -52,10 +44,7 @@ export async function GET(
   });
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ partnerId: string }> },
-): Promise<Response> {
+export async function POST(request: Request, { params }: { params: Promise<{ partnerId: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -74,15 +63,8 @@ export async function POST(
   }
 
   const { amountKes, phoneNumber } = (body ?? {}) as Record<string, unknown>;
-  if (
-    typeof amountKes !== 'number' ||
-    !Number.isFinite(amountKes) ||
-    amountKes <= 0
-  ) {
-    return Response.json(
-      { error: 'amountKes must be a positive number' },
-      { status: 400 },
-    );
+  if (typeof amountKes !== 'number' || !Number.isFinite(amountKes) || amountKes <= 0) {
+    return Response.json({ error: 'amountKes must be a positive number' }, { status: 400 });
   }
   if (typeof phoneNumber !== 'string' || !phoneNumber) {
     return Response.json({ error: 'phoneNumber is required' }, { status: 400 });
@@ -104,10 +86,7 @@ export async function POST(
     if (error instanceof InsufficientPartnerBalanceError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
-    if (
-      error instanceof WithdrawalBelowMinimumError ||
-      error instanceof WithdrawalAboveMaximumError
-    ) {
+    if (error instanceof WithdrawalBelowMinimumError || error instanceof WithdrawalAboveMaximumError) {
       return Response.json({ error: error.message }, { status: 400 });
     }
     throw error;

@@ -1,15 +1,9 @@
 import 'server-only';
 
-import {
-  machineService,
-  PartnerDoesNotOwnMachineError,
-} from '@/services/machineService';
+import { machineService, PartnerDoesNotOwnMachineError } from '@/services/machineService';
 import { partnerService } from '@/services/partnerService';
 import { locationService } from '@/services/locationService';
-import {
-  ownerIntelligenceService,
-  type OwnerMachineSummary,
-} from '@/services/ownerIntelligenceService';
+import { ownerIntelligenceService, type OwnerMachineSummary } from '@/services/ownerIntelligenceService';
 import { machineSettlementService } from '@/services/machineSettlementService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
@@ -18,17 +12,11 @@ import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { resolveVendingProductNames } from '@/lib/vending/productNames';
 import { withdrawalService } from '@/services/withdrawalService';
 import { alertService } from '@/services/alertService';
-import {
-  machineSlotService,
-  LOW_STOCK_THRESHOLD_FRACTION,
-} from '@/services/machineSlotService';
+import { machineSlotService, LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
 import { restockTaskService } from '@/services/restockTaskService';
 import { cameraService, CameraNotFoundError } from '@/services/cameraService';
 import { machineEventRepository } from '@/repositories/machineEventRepository';
-import {
-  defaultVendingAdapterResolver,
-  UnsupportedManufacturerError,
-} from '@/lib/vending/adapterRegistry';
+import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import {
   HardwareAuthenticationError,
   HardwareTimeoutError,
@@ -37,19 +25,8 @@ import {
 } from '@/lib/vending/hardwareAdapter';
 import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
 import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
-import {
-  ownerSince,
-  clipStartDate,
-  withinTenure,
-} from '@/lib/vending/ownerTenure';
-import {
-  isCustomerSale,
-  type Location,
-  type Machine,
-  type MachineConnectivityStatus,
-  type MachineEventType,
-  type MachineSubscription,
-} from '@/types';
+import { ownerSince, clipStartDate, withinTenure } from '@/lib/vending/ownerTenure';
+import { isCustomerSale, type Location, type Machine, type MachineConnectivityStatus, type MachineEventType, type MachineSubscription } from '@/types';
 
 export { PartnerDoesNotOwnMachineError, CameraNotFoundError };
 
@@ -70,21 +47,12 @@ export interface OwnerMachineCard {
 
 export interface OwnerDashboard {
   partner: { id: string; name: string; contactEmail: string | null };
-  wallet: {
-    earnedKes: number;
-    availableKes: number;
-    pendingKes: number;
-    withdrawnKes: number;
-  };
+  wallet: { earnedKes: number; availableKes: number; pendingKes: number; withdrawnKes: number };
   machines: OwnerMachineCard[];
   summary: OwnerDashboardSummary;
 }
 
-const PENDING_WITHDRAWAL_STATUSES = new Set([
-  'pending',
-  'submitting',
-  'approved',
-]);
+const PENDING_WITHDRAWAL_STATUSES = new Set(['pending', 'submitting', 'approved']);
 
 /**
  * Sums this partner's own withdrawals into `pendingKes`/`withdrawnKes`
@@ -93,18 +61,12 @@ const PENDING_WITHDRAWAL_STATUSES = new Set([
  * remotely transaction-volume-sized, so a firm page cap here is a
  * safety bound, not a real limit anyone will hit.
  */
-async function sumWithdrawals(
-  businessId: string,
-  partnerId: string,
-): Promise<{ pendingKes: number; withdrawnKes: number }> {
+async function sumWithdrawals(businessId: string, partnerId: string): Promise<{ pendingKes: number; withdrawnKes: number }> {
   let pendingKes = 0;
   let withdrawnKes = 0;
   let cursor: string | undefined;
   for (let page = 0; page < 20; page += 1) {
-    const { withdrawals, nextCursor } =
-      await withdrawalService.listWithdrawalsForOwner(businessId, partnerId, {
-        cursor,
-      });
+    const { withdrawals, nextCursor } = await withdrawalService.listWithdrawalsForOwner(businessId, partnerId, { cursor });
     for (const { data } of withdrawals) {
       if (data.status === 'paid') {
         withdrawnKes += data.amountKes;
@@ -171,8 +133,7 @@ export interface OwnerMachineHealth {
   recentEvents: OwnerMachineHealthEvent[];
 }
 
-export type OwnerSlotStatus =
-  'in_stock' | 'low_stock' | 'out_of_stock' | 'empty_slot';
+export type OwnerSlotStatus = 'in_stock' | 'low_stock' | 'out_of_stock' | 'empty_slot';
 
 export interface OwnerSlotInventoryItem {
   slotCode: string;
@@ -204,9 +165,7 @@ export interface OwnerDashboardSummary {
 
 export class NothingToRestockError extends Error {
   constructor(machineId: string) {
-    super(
-      `Machine ${machineId} has no low-stock or out-of-stock slots to restock`,
-    );
+    super(`Machine ${machineId} has no low-stock or out-of-stock slots to restock`);
     this.name = 'NothingToRestockError';
   }
 }
@@ -219,16 +178,8 @@ export interface OwnerMachineDetail {
   lastHeartbeatAt: string | null;
   lastSaleAt: string | null;
   lastRestock: { taskId: string; status: string; createdAt: string } | null;
-  location: {
-    id: string;
-    name: string;
-    city: string;
-    area: string | null;
-  } | null;
-  performanceByWindow: Record<
-    (typeof OWNER_PERFORMANCE_WINDOWS_DAYS)[number],
-    OwnerMachineSummary
-  >;
+  location: { id: string; name: string; city: string; area: string | null } | null;
+  performanceByWindow: Record<(typeof OWNER_PERFORMANCE_WINDOWS_DAYS)[number], OwnerMachineSummary>;
   /** Distributable profit summed from this machine's own finalized/paid settlements — machine-attributable, unlike the pooled wallet balance (§ OWNER WALLET: never pretend a per-machine split of a pooled balance). */
   lifetimeDistributableProfitKes: number;
 }
@@ -248,11 +199,7 @@ export type OwnerLiveViewCapability =
   | { mode: 'relay_url'; url: string; expiresAt: string };
 
 class OwnerPortalService {
-  async getDashboard(
-    businessId: string,
-    partnerId: string,
-    windowDays = 30,
-  ): Promise<OwnerDashboard> {
+  async getDashboard(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboard> {
     const partner = await partnerService.findById(businessId, partnerId);
     if (!partner) {
       throw new PartnerDoesNotOwnMachineError(partnerId, '(no machine)');
@@ -263,34 +210,22 @@ class OwnerPortalService {
       machineSubscriptionService.listByPartner(businessId, partnerId),
       this.getDashboardSummary(businessId, partnerId, windowDays),
     ]);
-    const locationById = new Map<string, Location>(
-      locations.map(({ id, data }) => [id, data]),
-    );
-    const subscriptionByMachine = new Map<string, MachineSubscription>(
-      subscriptions.map(({ data }) => [data.machineId, data]),
-    );
+    const locationById = new Map<string, Location>(locations.map(({ id, data }) => [id, data]));
+    const subscriptionByMachine = new Map<string, MachineSubscription>(subscriptions.map(({ data }) => [data.machineId, data]));
 
     const cards: OwnerMachineCard[] = await Promise.all(
       machines.map(async ({ id: machineId, data: machine }) => {
-        const summary = await ownerIntelligenceService.getMachineOwnerSummary(
-          businessId,
-          partnerId,
-          machineId,
-          30,
-        );
+        const summary = await ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30);
         return {
           machineId,
           machineCode: machine.machineCode,
           status: machine.status,
           connectivity: deriveConnectivityStatus(machine.lastSeenAt),
-          locationName: machine.locationId
-            ? (locationById.get(machine.locationId)?.name ?? null)
-            : null,
+          locationName: machine.locationId ? locationById.get(machine.locationId)?.name ?? null : null,
           revenueKes: summary.revenueKes,
           unitsSold: summary.unitsSold,
           stockHealth: summary.stockHealth,
-          subscriptionStatus:
-            subscriptionByMachine.get(machineId)?.status ?? null,
+          subscriptionStatus: subscriptionByMachine.get(machineId)?.status ?? null,
         };
       }),
     );
@@ -300,97 +235,39 @@ class OwnerPortalService {
     // Snack Quest cash as owner balance") — `pendingKes`/`withdrawnKes`
     // are the one thing not already cached anywhere, so they're summed
     // from the partner's own withdrawal history.
-    const { pendingKes, withdrawnKes } = await sumWithdrawals(
-      businessId,
-      partnerId,
-    );
+    const { pendingKes, withdrawnKes } = await sumWithdrawals(businessId, partnerId);
 
     return {
-      partner: {
-        id: partnerId,
-        name: partner.name,
-        contactEmail: partner.contactEmail,
-      },
-      wallet: {
-        earnedKes: partner.lifetimeEarnedKes,
-        availableKes: partner.availableCashKes,
-        pendingKes,
-        withdrawnKes,
-      },
+      partner: { id: partnerId, name: partner.name, contactEmail: partner.contactEmail },
+      wallet: { earnedKes: partner.lifetimeEarnedKes, availableKes: partner.availableCashKes, pendingKes, withdrawnKes },
       machines: cards,
       summary,
     };
   }
 
-  async getMachineDetail(
-    businessId: string,
-    partnerId: string,
-    machineId: string,
-  ): Promise<OwnerMachineDetail> {
-    const machine = await machineService.assertPartnerOwnsMachine(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async getMachineDetail(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineDetail> {
+    const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     const since = ownerSince(machine);
 
-    const [
-      performanceEntries,
-      lastSalePage,
-      restockRows,
-      settlementRows,
-      location,
-    ] = await Promise.all([
-      Promise.all(
-        OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) =>
-          ownerIntelligenceService.getMachineOwnerSummary(
-            businessId,
-            partnerId,
-            machineId,
-            days,
-          ),
-        ),
-      ),
+    const [performanceEntries, lastSalePage, restockRows, settlementRows, location] = await Promise.all([
+      Promise.all(OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, days))),
       // A few, not one: a staff test vend is dispensed too, and isn't a sale.
-      machineTransactionRepository.listByBusiness(businessId, {
-        machineId,
-        status: 'dispensed',
-        limit: 5,
-      }),
+      machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
       restockTaskRepository.listByMachine(businessId, machineId, 1),
       machineSettlementService.listByMachine(businessId, machineId),
-      machine.locationId
-        ? locationService.findById(businessId, machine.locationId)
-        : Promise.resolve(null),
+      machine.locationId ? locationService.findById(businessId, machine.locationId) : Promise.resolve(null),
     ]);
 
     const performanceByWindow = Object.fromEntries(
-      OWNER_PERFORMANCE_WINDOWS_DAYS.map((days, index) => [
-        days,
-        performanceEntries[index],
-      ]),
-    ) as Record<
-      (typeof OWNER_PERFORMANCE_WINDOWS_DAYS)[number],
-      OwnerMachineSummary
-    >;
+      OWNER_PERFORMANCE_WINDOWS_DAYS.map((days, index) => [days, performanceEntries[index]]),
+    ) as Record<(typeof OWNER_PERFORMANCE_WINDOWS_DAYS)[number], OwnerMachineSummary>;
 
     // Only this owner's time with the machine: a previous owner's sales, restocks and settlements stay theirs.
-    const settlements = settlementRows.filter(
-      ({ data }) => data.partnerId === partnerId,
-    );
-    const lastSale =
-      lastSalePage.transactions.find(
-        ({ data }) =>
-          isCustomerSale(data) &&
-          withinTenure(data.dispensedAt ?? data.createdAt, since),
-      ) ?? null;
-    const lastRestockRow =
-      restockRows.find(({ data }) => withinTenure(data.createdAt, since)) ??
-      null;
+    const settlements = settlementRows.filter(({ data }) => data.partnerId === partnerId);
+    const lastSale = lastSalePage.transactions.find(({ data }) => isCustomerSale(data) && withinTenure(data.dispensedAt ?? data.createdAt, since)) ?? null;
+    const lastRestockRow = restockRows.find(({ data }) => withinTenure(data.createdAt, since)) ?? null;
     const lifetimeDistributableProfitKes = settlements
-      .filter(
-        ({ data }) => data.status === 'finalized' || data.status === 'paid',
-      )
+      .filter(({ data }) => data.status === 'finalized' || data.status === 'paid')
       .reduce((sum, { data }) => sum + data.distributableOwnerKes, 0);
 
     return {
@@ -398,58 +275,23 @@ class OwnerPortalService {
       machineCode: machine.machineCode,
       status: machine.status,
       connectivity: deriveConnectivityStatus(machine.lastSeenAt),
-      lastHeartbeatAt: machine.lastSeenAt
-        ? machine.lastSeenAt.toDate().toISOString()
-        : null,
-      lastSaleAt: lastSale
-        ? (lastSale.data.dispensedAt?.toDate().toISOString() ?? null)
-        : null,
-      lastRestock: lastRestockRow
-        ? {
-            taskId: lastRestockRow.id,
-            status: lastRestockRow.data.status,
-            createdAt: lastRestockRow.data.createdAt.toDate().toISOString(),
-          }
-        : null,
-      location: location
-        ? {
-            id: machine.locationId as string,
-            name: location.name,
-            city: location.city,
-            area: location.area,
-          }
-        : null,
+      lastHeartbeatAt: machine.lastSeenAt ? machine.lastSeenAt.toDate().toISOString() : null,
+      lastSaleAt: lastSale ? lastSale.data.dispensedAt?.toDate().toISOString() ?? null : null,
+      lastRestock: lastRestockRow ? { taskId: lastRestockRow.id, status: lastRestockRow.data.status, createdAt: lastRestockRow.data.createdAt.toDate().toISOString() } : null,
+      location: location ? { id: machine.locationId as string, name: location.name, city: location.city, area: location.area } : null,
       performanceByWindow,
       lifetimeDistributableProfitKes,
     };
   }
 
   /** Every owned machine, or just one — `assertPartnerOwnsMachine` still runs for the single-machine case, so a caller can never widen scope by passing an id that isn't actually theirs. */
-  private async resolveOwnedMachineIds(
-    businessId: string,
-    partnerId: string,
-    machineId?: string,
-  ): Promise<{ id: string; machineCode: string; since: Date | null }[]> {
+  private async resolveOwnedMachineIds(businessId: string, partnerId: string, machineId?: string): Promise<{ id: string; machineCode: string; since: Date | null }[]> {
     if (machineId) {
-      const machine = await machineService.assertPartnerOwnsMachine(
-        businessId,
-        partnerId,
-        machineId,
-      );
-      return [
-        {
-          id: machineId,
-          machineCode: machine.machineCode,
-          since: ownerSince(machine),
-        },
-      ];
+      const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
+      return [{ id: machineId, machineCode: machine.machineCode, since: ownerSince(machine) }];
     }
     const machines = await partnerService.listMachines(businessId, partnerId);
-    return machines.map(({ id, data }) => ({
-      id,
-      machineCode: data.machineCode,
-      since: ownerSince(data),
-    }));
+    return machines.map(({ id, data }) => ({ id, machineCode: data.machineCode, since: ownerSince(data) }));
   }
 
   /**
@@ -462,10 +304,7 @@ class OwnerPortalService {
    * sized). Falls back to the raw id, never a fabricated label, for
    * a product that has since been deleted from both.
    */
-  private async resolveProductNames(
-    businessId: string,
-    productIds: string[],
-  ): Promise<Map<string, string>> {
+  private async resolveProductNames(businessId: string, productIds: string[]): Promise<Map<string, string>> {
     return resolveVendingProductNames(businessId, productIds);
   }
 
@@ -475,27 +314,13 @@ class OwnerPortalService {
    * rather than a gap in the series (a chart with holes reads as
    * missing data, not as "nothing happened").
    */
-  async getSalesTrend(
-    businessId: string,
-    partnerId: string,
-    windowDays = 30,
-    machineId?: string,
-  ): Promise<OwnerSalesTrendPoint[]> {
-    const machines = await this.resolveOwnedMachineIds(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async getSalesTrend(businessId: string, partnerId: string, windowDays = 30, machineId?: string): Promise<OwnerSalesTrendPoint[]> {
+    const machines = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const byDate = new Map<string, { revenueKes: number; unitsSold: number }>();
     for (const { id, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(
-        businessId,
-        id,
-        clipStartDate(startDate, since),
-        endDate,
-      );
+      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
       for (const [date, rollup] of rollups) {
         const existing = byDate.get(date) ?? { revenueKes: 0, unitsSold: 0 };
         existing.revenueKes += rollup.grossSalesKes;
@@ -510,45 +335,23 @@ class OwnerPortalService {
     while (cursor <= end) {
       const date = cursor.toISOString().slice(0, 10);
       const entry = byDate.get(date);
-      points.push({
-        date,
-        revenueKes: entry?.revenueKes ?? 0,
-        unitsSold: entry?.unitsSold ?? 0,
-      });
+      points.push({ date, revenueKes: entry?.revenueKes ?? 0, unitsSold: entry?.unitsSold ?? 0 });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
     return points;
   }
 
   /** § TOP SELLING PRODUCTS — summed across every machine in scope, sorted by revenue, real names resolved from the actual catalogue rows. */
-  async getTopProducts(
-    businessId: string,
-    partnerId: string,
-    windowDays = 30,
-    machineId?: string,
-    limit = 10,
-  ): Promise<OwnerTopProduct[]> {
-    const machines = await this.resolveOwnedMachineIds(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async getTopProducts(businessId: string, partnerId: string, windowDays = 30, machineId?: string, limit = 10): Promise<OwnerTopProduct[]> {
+    const machines = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const totals = new Map<string, { unitsSold: number; revenueKes: number }>();
     for (const { id, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(
-        businessId,
-        id,
-        clipStartDate(startDate, since),
-        endDate,
-      );
+      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
       for (const rollup of rollups.values()) {
         for (const [productId, product] of Object.entries(rollup.byProduct)) {
-          const existing = totals.get(productId) ?? {
-            unitsSold: 0,
-            revenueKes: 0,
-          };
+          const existing = totals.get(productId) ?? { unitsSold: 0, revenueKes: 0 };
           existing.unitsSold += product.unitsSold;
           existing.revenueKes += product.grossSalesKes;
           totals.set(productId, existing);
@@ -556,17 +359,9 @@ class OwnerPortalService {
       }
     }
 
-    const names = await this.resolveProductNames(
-      businessId,
-      Array.from(totals.keys()),
-    );
+    const names = await this.resolveProductNames(businessId, Array.from(totals.keys()));
     return Array.from(totals.entries())
-      .map(([productId, total]) => ({
-        productId,
-        name: names.get(productId) ?? productId,
-        unitsSold: total.unitsSold,
-        revenueKes: total.revenueKes,
-      }))
+      .map(([productId, total]) => ({ productId, name: names.get(productId) ?? productId, unitsSold: total.unitsSold, revenueKes: total.revenueKes }))
       .sort((a, b) => b.revenueKes - a.revenueKes)
       .slice(0, limit);
   }
@@ -581,10 +376,7 @@ class OwnerPortalService {
    * default; nothing here is ever attributable to a machine this
    * partner doesn't own.
    */
-  async getAlerts(
-    businessId: string,
-    partnerId: string,
-  ): Promise<OwnerAlertItem[]> {
+  async getAlerts(businessId: string, partnerId: string): Promise<OwnerAlertItem[]> {
     const machines = await this.resolveOwnedMachineIds(businessId, partnerId);
     const ownedMachineIds = new Set(machines.map((m) => m.id));
     const machineCodeById = new Map(machines.map((m) => [m.id, m.machineCode]));
@@ -593,17 +385,13 @@ class OwnerPortalService {
     const openAlerts = await alertService.listOpen(businessId);
 
     return openAlerts
-      .filter(
-        ({ data }) => data.machineId && ownedMachineIds.has(data.machineId),
-      )
+      .filter(({ data }) => data.machineId && ownedMachineIds.has(data.machineId))
       .map(({ id, data }) => ({
         id,
         type: data.type,
         severity: data.severity,
         machineId: data.machineId,
-        machineCode: data.machineId
-          ? (machineCodeById.get(data.machineId) ?? null)
-          : null,
+        machineCode: data.machineId ? machineCodeById.get(data.machineId) ?? null : null,
         title: data.title,
         detail: data.detail,
         createdAt: data.createdAt.toDate().toISOString(),
@@ -611,50 +399,21 @@ class OwnerPortalService {
   }
 
   /** § RECENT ACTIVITY — the owner's own most recent dispensed sales, newest first, across every machine in scope. */
-  async getRecentActivity(
-    businessId: string,
-    partnerId: string,
-    limit = 10,
-    machineId?: string,
-  ): Promise<OwnerRecentActivityItem[]> {
-    const machines = await this.resolveOwnedMachineIds(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async getRecentActivity(businessId: string, partnerId: string, limit = 10, machineId?: string): Promise<OwnerRecentActivityItem[]> {
+    const machines = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
     const machineCodeById = new Map(machines.map((m) => [m.id, m.machineCode]));
     const sinceById = new Map(machines.map((m) => [m.id, m.since]));
 
     const perMachine = await Promise.all(
-      machines.map(({ id }) =>
-        machineTransactionRepository.listByBusiness(businessId, {
-          machineId: id,
-          status: 'dispensed',
-          limit,
-        }),
-      ),
+      machines.map(({ id }) => machineTransactionRepository.listByBusiness(businessId, { machineId: id, status: 'dispensed', limit })),
     );
     const transactions = perMachine
       .flatMap((page) => page.transactions)
-      .filter(
-        ({ data }) =>
-          isCustomerSale(data) &&
-          withinTenure(
-            data.dispensedAt ?? data.createdAt,
-            sinceById.get(data.machineId) ?? null,
-          ),
-      );
-    transactions.sort(
-      (a, b) =>
-        (b.data.dispensedAt?.toMillis() ?? 0) -
-        (a.data.dispensedAt?.toMillis() ?? 0),
-    );
+      .filter(({ data }) => isCustomerSale(data) && withinTenure(data.dispensedAt ?? data.createdAt, sinceById.get(data.machineId) ?? null));
+    transactions.sort((a, b) => (b.data.dispensedAt?.toMillis() ?? 0) - (a.data.dispensedAt?.toMillis() ?? 0));
     const top = transactions.slice(0, limit);
 
-    const names = await this.resolveProductNames(
-      businessId,
-      Array.from(new Set(top.map(({ data }) => data.productId))),
-    );
+    const names = await this.resolveProductNames(businessId, Array.from(new Set(top.map(({ data }) => data.productId))));
 
     return top.map(({ id, data }) => ({
       transactionId: id,
@@ -679,35 +438,20 @@ class OwnerPortalService {
    * `app/admin/(protected)/vending/[machineId]/page.tsx`'s own
    * `runDiagnostics` already holds for staff.
    */
-  async getMachineHealth(
-    businessId: string,
-    partnerId: string,
-    machineId: string,
-  ): Promise<OwnerMachineHealth> {
-    const machine = await machineService.assertPartnerOwnsMachine(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async getMachineHealth(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineHealth> {
+    const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     const since = ownerSince(machine);
     const connectivity = deriveConnectivityStatus(machine.lastSeenAt);
     const controllerOnline = connectivity === 'online';
 
-    const [openAlerts, cameras, machineEvents, recentDispensed] =
-      await Promise.all([
-        alertService.listOpen(businessId, { machineId }),
-        cameraService.listByMachine(businessId, machineId),
-        machineEventRepository.listByMachine(businessId, machineId, 20),
-        machineTransactionRepository.listByBusiness(businessId, {
-          machineId,
-          status: 'dispensed',
-          limit: 5,
-        }),
-      ]);
+    const [openAlerts, cameras, machineEvents, recentDispensed] = await Promise.all([
+      alertService.listOpen(businessId, { machineId }),
+      cameraService.listByMachine(businessId, machineId),
+      machineEventRepository.listByMachine(businessId, machineId, 20),
+      machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
+    ]);
 
-    const paymentSystemOk = !openAlerts.some(
-      ({ data }) => data.type === 'payment_reconciliation_issue',
-    );
+    const paymentSystemOk = !openAlerts.some(({ data }) => data.type === 'payment_reconciliation_issue');
 
     let temperatureCelsius: number | null = null;
     let doorOpen: boolean | null = null;
@@ -733,17 +477,9 @@ class OwnerPortalService {
 
     let cameraStatus: OwnerMachineHealth['cameraStatus'] = 'none';
     if (cameras.length > 0) {
-      if (
-        cameras.some(
-          ({ data }) => data.status === 'active' && data.lastHealthOk !== false,
-        )
-      ) {
+      if (cameras.some(({ data }) => data.status === 'active' && data.lastHealthOk !== false)) {
         cameraStatus = 'active';
-      } else if (
-        cameras.some(
-          ({ data }) => data.status === 'error' || data.lastHealthOk === false,
-        )
-      ) {
+      } else if (cameras.some(({ data }) => data.status === 'error' || data.lastHealthOk === false)) {
         cameraStatus = 'issue';
       } else {
         cameraStatus = 'not_configured';
@@ -756,53 +492,26 @@ class OwnerPortalService {
       // the machine. Only owner-meaningful types, in owner language;
       // never the manufacturer's native event names or the channel.
       ...machineEvents
-        .filter(
-          ({ data }) =>
-            OWNER_EVENT_LABEL[data.type] !== undefined &&
-            withinTenure(data.occurredAt, since),
-        )
+        .filter(({ data }) => OWNER_EVENT_LABEL[data.type] !== undefined && withinTenure(data.occurredAt, since))
         .slice(0, 10)
         .map(({ id, data }) => ({
           id,
           label: OWNER_EVENT_LABEL[data.type] as string,
-          detail:
-            data.type === 'MACHINE_ERROR' && typeof data.data.code === 'string'
-              ? `Code ${data.data.code}`
-              : null,
+          detail: data.type === 'MACHINE_ERROR' && typeof data.data.code === 'string' ? `Code ${data.data.code}` : null,
           occurredAt: data.occurredAt.toDate().toISOString(),
         })),
-      ...recentDispensed.transactions
-        .filter(
-          ({ data }) =>
-            isCustomerSale(data) &&
-            withinTenure(data.dispensedAt ?? data.createdAt, since),
-        )
-        .map(({ id, data }) => ({
-          id,
-          label: 'Vend completed',
-          detail: `KES ${data.amountKes.toLocaleString('en-KE')}`,
-          occurredAt: (data.dispensedAt ?? data.createdAt)
-            .toDate()
-            .toISOString(),
-        })),
-      ...openAlerts.map(({ id, data }) => ({
+      ...recentDispensed.transactions.filter(({ data }) => isCustomerSale(data) && withinTenure(data.dispensedAt ?? data.createdAt, since)).map(({ id, data }) => ({
         id,
-        label: data.title,
-        detail: data.detail,
-        occurredAt: data.createdAt.toDate().toISOString(),
+        label: 'Vend completed',
+        detail: `KES ${data.amountKes.toLocaleString('en-KE')}`,
+        occurredAt: (data.dispensedAt ?? data.createdAt).toDate().toISOString(),
       })),
-    ].sort(
-      (a, b) =>
-        new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
-    );
+      ...openAlerts.map(({ id, data }) => ({ id, label: data.title, detail: data.detail, occurredAt: data.createdAt.toDate().toISOString() })),
+    ].sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 
     return {
       machineId,
-      overallHealthy:
-        controllerOnline &&
-        paymentSystemOk &&
-        cameraStatus !== 'issue' &&
-        openAlerts.length === 0,
+      overallHealthy: controllerOnline && paymentSystemOk && cameraStatus !== 'issue' && openAlerts.length === 0,
       connectivity,
       controllerOnline,
       paymentSystemOk,
@@ -815,21 +524,10 @@ class OwnerPortalService {
   }
 
   /** § INVENTORY tab — this machine's own slots, with the same low-stock threshold `machineSlotService.checkLowStock` already uses, never a second one to keep in sync by hand. */
-  async getMachineInventory(
-    businessId: string,
-    partnerId: string,
-    machineId: string,
-  ): Promise<OwnerMachineInventory> {
-    await machineService.assertPartnerOwnsMachine(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async getMachineInventory(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineInventory> {
+    await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     const slots = await machineSlotService.listByMachine(businessId, machineId);
-    const names = await this.resolveProductNames(
-      businessId,
-      slots.map((s) => s.productId).filter((id): id is string => id !== null),
-    );
+    const names = await this.resolveProductNames(businessId, slots.map((s) => s.productId).filter((id): id is string => id !== null));
 
     const items: OwnerSlotInventoryItem[] = slots.map((slot) => {
       let status: OwnerSlotStatus;
@@ -837,10 +535,7 @@ class OwnerPortalService {
         status = 'empty_slot';
       } else if (slot.currentQuantity <= 0) {
         status = 'out_of_stock';
-      } else if (
-        slot.capacity > 0 &&
-        slot.currentQuantity / slot.capacity <= LOW_STOCK_THRESHOLD_FRACTION
-      ) {
+      } else if (slot.capacity > 0 && slot.currentQuantity / slot.capacity <= LOW_STOCK_THRESHOLD_FRACTION) {
         status = 'low_stock';
       } else {
         status = 'in_stock';
@@ -848,9 +543,7 @@ class OwnerPortalService {
       return {
         slotCode: slot.slotCode,
         productId: slot.productId,
-        productName: slot.productId
-          ? (names.get(slot.productId) ?? slot.productId)
-          : null,
+        productName: slot.productId ? names.get(slot.productId) ?? slot.productId : null,
         currentQuantity: slot.currentQuantity,
         capacity: slot.capacity,
         priceKes: slot.priceKes,
@@ -879,23 +572,11 @@ class OwnerPortalService {
    * rather than opening an empty or meaningless task when nothing on
    * this machine is actually low.
    */
-  async requestRestock(
-    businessId: string,
-    partnerId: string,
-    machineId: string,
-    actor: string,
-  ): Promise<string> {
-    await machineService.assertPartnerOwnsMachine(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async requestRestock(businessId: string, partnerId: string, machineId: string, actor: string): Promise<string> {
+    await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     const slots = await machineSlotService.listByMachine(businessId, machineId);
     const needsRestock = slots.filter(
-      (slot) =>
-        slot.productId &&
-        slot.capacity > 0 &&
-        slot.currentQuantity / slot.capacity <= LOW_STOCK_THRESHOLD_FRACTION,
+      (slot) => slot.productId && slot.capacity > 0 && slot.currentQuantity / slot.capacity <= LOW_STOCK_THRESHOLD_FRACTION,
     );
     if (needsRestock.length === 0) {
       throw new NothingToRestockError(machineId);
@@ -916,93 +597,42 @@ class OwnerPortalService {
   }
 
   /** Every camera call below scopes through the camera's own `machineId` — an owner can never reach a camera on a machine they don't own by guessing a `cameraId`. */
-  private async assertPartnerOwnsCamera(
-    businessId: string,
-    partnerId: string,
-    cameraId: string,
-  ) {
+  private async assertPartnerOwnsCamera(businessId: string, partnerId: string, cameraId: string) {
     const camera = await cameraService.findById(businessId, cameraId);
     if (!camera) {
       throw new CameraNotFoundError(cameraId);
     }
-    const machine = await machineService.assertPartnerOwnsMachine(
-      businessId,
-      partnerId,
-      camera.machineId,
-    );
+    const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, camera.machineId);
     return Object.assign(camera, { ownerSince: ownerSince(machine) });
   }
 
   /** § CAMERA tab. Deliberately read + test + capture only — configuring credentials or activating a camera stays a staff-only action, the same `ADMIN_ONLY` bar the admin routes already hold; an owner sees and uses a camera, never reconfigures one. */
-  async listCamerasForMachine(
-    businessId: string,
-    partnerId: string,
-    machineId: string,
-  ) {
-    await machineService.assertPartnerOwnsMachine(
-      businessId,
-      partnerId,
-      machineId,
-    );
+  async listCamerasForMachine(businessId: string, partnerId: string, machineId: string) {
+    await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     return cameraService.listByMachine(businessId, machineId);
   }
 
-  async getCameraDiagnosticsForOwner(
-    businessId: string,
-    partnerId: string,
-    cameraId: string,
-  ) {
-    const camera = await this.assertPartnerOwnsCamera(
-      businessId,
-      partnerId,
-      cameraId,
-    );
+  async getCameraDiagnosticsForOwner(businessId: string, partnerId: string, cameraId: string) {
+    const camera = await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
     return { camera, diagnostics: await cameraService.getDiagnostics(camera) };
   }
 
-  async testCameraConnectionForOwner(
-    businessId: string,
-    partnerId: string,
-    cameraId: string,
-    actor: string,
-  ) {
+  async testCameraConnectionForOwner(businessId: string, partnerId: string, cameraId: string, actor: string) {
     await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
     return cameraService.testConnection(businessId, cameraId, actor);
   }
 
   /** `reason: 'manual_capture'` — an owner-initiated capture, never `dispense_evidence` (that reason is reserved for a real vend's own transactionId, which an owner action here never has). */
-  async captureCameraSnapshotForOwner(
-    businessId: string,
-    partnerId: string,
-    cameraId: string,
-    actor: string,
-  ) {
+  async captureCameraSnapshotForOwner(businessId: string, partnerId: string, cameraId: string, actor: string) {
     await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
-    return cameraService.captureSnapshot(businessId, {
-      cameraId,
-      reason: 'manual_capture',
-      actor,
-    });
+    return cameraService.captureSnapshot(businessId, { cameraId, reason: 'manual_capture', actor });
   }
 
   /** Only snapshots from this owner's time with the machine. */
-  async listCameraSnapshotsForOwner(
-    businessId: string,
-    partnerId: string,
-    cameraId: string,
-  ) {
-    const camera = await this.assertPartnerOwnsCamera(
-      businessId,
-      partnerId,
-      cameraId,
-    );
-    const snapshots = await cameraService.listSnapshotsByCamera(
-      businessId,
-      cameraId,
-    );
-    return snapshots.filter((row) =>
-      withinTenure(row.data.capturedAt, camera.ownerSince),
-    );
+  async listCameraSnapshotsForOwner(businessId: string, partnerId: string, cameraId: string) {
+    const camera = await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
+    const snapshots = await cameraService.listSnapshotsByCamera(businessId, cameraId);
+    return snapshots.filter((row) => withinTenure(row.data.capturedAt, camera.ownerSince));
   }
 
   /**
@@ -1017,31 +647,17 @@ class OwnerPortalService {
    * address. When it ships, only this method changes: `{ mode:
    * 'relay_url', url, expiresAt }`.
    */
-  async getCameraStreamInfoForOwner(
-    businessId: string,
-    partnerId: string,
-    cameraId: string,
-  ): Promise<OwnerLiveViewCapability> {
+  async getCameraStreamInfoForOwner(businessId: string, partnerId: string, cameraId: string): Promise<OwnerLiveViewCapability> {
     await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
     const info = await cameraService.getStreamInfo(businessId, cameraId);
     return {
       mode: 'unavailable',
       cameraOnline: info.available,
-      reason:
-        'Live view needs the Snack Quest streaming relay, which is not enabled yet. Snapshots are available.',
+      reason: 'Live view needs the Snack Quest streaming relay, which is not enabled yet. Snapshots are available.',
     };
   }
 
-  private async sumRollupsAcross(
-    businessId: string,
-    machines: { id: string; since: Date | null }[],
-    startDate: string,
-    endDate: string,
-  ): Promise<{
-    revenueKes: number;
-    unitsSold: number;
-    grossProfitKes: number;
-  }> {
+  private async sumRollupsAcross(businessId: string, machines: { id: string; since: Date | null }[], startDate: string, endDate: string): Promise<{ revenueKes: number; unitsSold: number; grossProfitKes: number }> {
     if (new Date(startDate) > new Date(endDate)) {
       return { revenueKes: 0, unitsSold: 0, grossProfitKes: 0 };
     }
@@ -1049,12 +665,7 @@ class OwnerPortalService {
     let unitsSold = 0;
     let grossProfitKes = 0;
     for (const { id: machineId, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(
-        businessId,
-        machineId,
-        clipStartDate(startDate, since),
-        endDate,
-      );
+      const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate);
       for (const rollup of rollups.values()) {
         revenueKes += rollup.grossSalesKes;
         unitsSold += rollup.unitsSold;
@@ -1081,19 +692,10 @@ class OwnerPortalService {
    * fabricated 0% or an infinite%) when the prior window had nothing
    * to compare against.
    */
-  async getDashboardSummary(
-    businessId: string,
-    partnerId: string,
-    windowDays = 30,
-  ): Promise<OwnerDashboardSummary> {
+  async getDashboardSummary(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboardSummary> {
     const machines = await partnerService.listMachines(businessId, partnerId);
-    const owned = machines.map(({ id, data }) => ({
-      id,
-      since: ownerSince(data),
-    }));
-    const activeMachineCount = machines.filter(
-      ({ data }) => data.status === 'active',
-    ).length;
+    const owned = machines.map(({ id, data }) => ({ id, since: ownerSince(data) }));
+    const activeMachineCount = machines.filter(({ data }) => data.status === 'active').length;
 
     const { startDate: curStart, endDate: curEnd } = trailingWindow(windowDays);
     const prevEnd = shiftDateKey(curStart, -1);
@@ -1113,25 +715,15 @@ class OwnerPortalService {
       return sum + (data.amountKes / periodDays) * windowDays;
     }, 0);
 
-    const netEarningsKes = Math.round(
-      current.grossProfitKes - proratedSubscriptionKes,
-    );
-    const previousNetEarningsKes = Math.round(
-      previous.grossProfitKes - proratedSubscriptionKes,
-    );
+    const netEarningsKes = Math.round(current.grossProfitKes - proratedSubscriptionKes);
+    const previousNetEarningsKes = Math.round(previous.grossProfitKes - proratedSubscriptionKes);
 
     return {
       windowDays,
       totalSalesKes: current.revenueKes,
-      totalSalesTrendPct: percentChange(
-        current.revenueKes,
-        previous.revenueKes,
-      ),
+      totalSalesTrendPct: percentChange(current.revenueKes, previous.revenueKes),
       netEarningsKes,
-      netEarningsTrendPct: percentChange(
-        netEarningsKes,
-        previousNetEarningsKes,
-      ),
+      netEarningsTrendPct: percentChange(netEarningsKes, previousNetEarningsKes),
       totalVends: current.unitsSold,
       totalVendsTrendPct: percentChange(current.unitsSold, previous.unitsSold),
       activeMachineCount,

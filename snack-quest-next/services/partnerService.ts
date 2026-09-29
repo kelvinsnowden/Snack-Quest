@@ -16,17 +16,10 @@ export class PartnerValidationError extends Error {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanText(
-  value: string | null | undefined,
-  max: number,
-  label: string,
-): string | null {
+function cleanText(value: string | null | undefined, max: number, label: string): string | null {
   if (value === null || value === undefined) return null;
   const trimmed = value.trim();
-  if (trimmed.length > max)
-    throw new PartnerValidationError(
-      `${label} is too long (${max} characters at most).`,
-    );
+  if (trimmed.length > max) throw new PartnerValidationError(`${label} is too long (${max} characters at most).`);
   return trimmed || null;
 }
 
@@ -45,44 +38,19 @@ class PartnerService {
    * must be a real address and no other owner in the business may hold
    * it, otherwise a sign-up could claim the wrong record.
    */
-  private async checkContactEmail(
-    businessId: string,
-    contactEmail: string | null,
-    exceptPartnerId: string | null,
-  ): Promise<string | null> {
+  private async checkContactEmail(businessId: string, contactEmail: string | null, exceptPartnerId: string | null): Promise<string | null> {
     if (!contactEmail) return null;
     const normalized = contactEmail.trim().toLowerCase();
-    if (!EMAIL.test(normalized) || normalized.length > 200)
-      throw new PartnerValidationError(
-        'That email address doesn’t look right.',
-      );
-    const other = await partnerRepository.findOtherByContactEmail(
-      businessId,
-      normalized,
-      exceptPartnerId,
-    );
-    if (other)
-      throw new PartnerValidationError(
-        `Another owner (${other.data.name}) already uses that email.`,
-      );
+    if (!EMAIL.test(normalized) || normalized.length > 200) throw new PartnerValidationError('That email address doesn’t look right.');
+    const other = await partnerRepository.findOtherByContactEmail(businessId, normalized, exceptPartnerId);
+    if (other) throw new PartnerValidationError(`Another owner (${other.data.name}) already uses that email.`);
     return normalized;
   }
 
-  async create(input: {
-    businessId: string;
-    name: string;
-    contactEmail?: string | null;
-    contactPhone?: string | null;
-    note?: string | null;
-    actor: string;
-  }): Promise<string> {
+  async create(input: { businessId: string; name: string; contactEmail?: string | null; contactPhone?: string | null; note?: string | null; actor: string }): Promise<string> {
     const name = cleanText(input.name, 120, 'Name');
     if (!name) throw new PartnerValidationError('Name is required.');
-    const contactEmail = await this.checkContactEmail(
-      input.businessId,
-      cleanText(input.contactEmail, 200, 'Email'),
-      null,
-    );
+    const contactEmail = await this.checkContactEmail(input.businessId, cleanText(input.contactEmail, 200, 'Email'), null);
     return partnerRepository.create({
       businessId: input.businessId,
       name,
@@ -97,10 +65,7 @@ class PartnerService {
     });
   }
 
-  async findById(
-    businessId: string,
-    partnerId: string,
-  ): Promise<Partner | null> {
+  async findById(businessId: string, partnerId: string): Promise<Partner | null> {
     return partnerRepository.findById(businessId, partnerId);
   }
 
@@ -114,55 +79,31 @@ class PartnerService {
   async update(
     businessId: string,
     partnerId: string,
-    changes: {
-      name?: string;
-      contactEmail?: string | null;
-      contactPhone?: string | null;
-      note?: string | null;
-      status?: PartnerStatus;
-    },
+    changes: { name?: string; contactEmail?: string | null; contactPhone?: string | null; note?: string | null; status?: PartnerStatus },
     actor: string,
   ): Promise<{ before: Partner; after: Partner }> {
     const before = await partnerRepository.findById(businessId, partnerId);
-    if (!before || before.deletedAt)
-      throw new PartnerValidationError('Owner not found.');
-    const next: Partial<
-      Pick<
-        Partner,
-        'name' | 'contactEmail' | 'contactPhone' | 'note' | 'status'
-      >
-    > = {};
+    if (!before || before.deletedAt) throw new PartnerValidationError('Owner not found.');
+    const next: Partial<Pick<Partner, 'name' | 'contactEmail' | 'contactPhone' | 'note' | 'status'>> = {};
     if (changes.name !== undefined) {
       const name = cleanText(changes.name, 120, 'Name');
       if (!name) throw new PartnerValidationError('Name is required.');
       next.name = name;
     }
-    if (changes.contactEmail !== undefined)
-      next.contactEmail = await this.checkContactEmail(
-        businessId,
-        cleanText(changes.contactEmail, 200, 'Email'),
-        partnerId,
-      );
-    if (changes.contactPhone !== undefined)
-      next.contactPhone = cleanText(changes.contactPhone, 40, 'Phone');
-    if (changes.note !== undefined)
-      next.note = cleanText(changes.note, 1000, 'Note');
+    if (changes.contactEmail !== undefined) next.contactEmail = await this.checkContactEmail(businessId, cleanText(changes.contactEmail, 200, 'Email'), partnerId);
+    if (changes.contactPhone !== undefined) next.contactPhone = cleanText(changes.contactPhone, 40, 'Phone');
+    if (changes.note !== undefined) next.note = cleanText(changes.note, 1000, 'Note');
     if (changes.status !== undefined) {
-      if (changes.status !== 'active' && changes.status !== 'suspended')
-        throw new PartnerValidationError('Status must be active or suspended.');
+      if (changes.status !== 'active' && changes.status !== 'suspended') throw new PartnerValidationError('Status must be active or suspended.');
       next.status = changes.status;
     }
-    if (Object.keys(next).length === 0)
-      throw new PartnerValidationError('Nothing to change.');
+    if (Object.keys(next).length === 0) throw new PartnerValidationError('Nothing to change.');
     await partnerRepository.update(partnerId, next, actor);
     return { before, after: { ...before, ...next } };
   }
 
   async listAgreements(businessId: string, partnerId: string) {
-    return partnerMachineAgreementRepository.listByPartner(
-      businessId,
-      partnerId,
-    );
+    return partnerMachineAgreementRepository.listByPartner(businessId, partnerId);
   }
 
   /**
@@ -183,46 +124,22 @@ class PartnerService {
     note: string | null;
     actor: string;
   }): Promise<string> {
-    const partner = await partnerRepository.findById(
-      input.businessId,
-      input.partnerId,
-    );
-    if (!partner || partner.deletedAt)
-      throw new PartnerValidationError('Owner not found.');
-    const machine = await machineRepository.findById(
-      input.businessId,
-      input.machineId,
-    );
+    const partner = await partnerRepository.findById(input.businessId, input.partnerId);
+    if (!partner || partner.deletedAt) throw new PartnerValidationError('Owner not found.');
+    const machine = await machineRepository.findById(input.businessId, input.machineId);
     if (!machine) throw new PartnerValidationError('Machine not found.');
-    if (machine.ownerPartnerId !== input.partnerId)
-      throw new PartnerValidationError(
-        `${machine.machineCode} doesn’t belong to ${partner.name}. Give them the machine first.`,
-      );
-    if (input.status === 'active' && partner.status !== 'active')
-      throw new PartnerValidationError(
-        'That owner is suspended; an agreement can only start as a draft.',
-      );
+    if (machine.ownerPartnerId !== input.partnerId) throw new PartnerValidationError(`${machine.machineCode} doesn’t belong to ${partner.name}. Give them the machine first.`);
+    if (input.status === 'active' && partner.status !== 'active') throw new PartnerValidationError('That owner is suspended; an agreement can only start as a draft.');
     const pct = input.revenueSharePartnerPct;
-    if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100))
-      throw new PartnerValidationError(
-        'Owner’s share must be between 0 and 100 percent.',
-      );
+    if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) throw new PartnerValidationError('Owner’s share must be between 0 and 100 percent.');
     return partnerMachineAgreementRepository.createChecked({
       businessId: input.businessId,
       partnerId: input.partnerId,
       machineId: input.machineId,
       status: input.status,
       revenueSharePartnerPct: pct,
-      operatingCostNote: cleanText(
-        input.operatingCostNote,
-        1000,
-        'Operating cost note',
-      ),
-      effectiveFrom: (input.effectiveFrom
-        ? Timestamp.fromDate(input.effectiveFrom)
-        : input.status === 'active'
-          ? Timestamp.now()
-          : null) as unknown as PartnerMachineAgreement['effectiveFrom'],
+      operatingCostNote: cleanText(input.operatingCostNote, 1000, 'Operating cost note'),
+      effectiveFrom: (input.effectiveFrom ? Timestamp.fromDate(input.effectiveFrom) : input.status === 'active' ? Timestamp.now() : null) as unknown as PartnerMachineAgreement['effectiveFrom'],
       effectiveTo: null,
       documentRef: cleanText(input.documentRef, 500, 'Document reference'),
       note: cleanText(input.note, 1000, 'Note'),
@@ -231,35 +148,14 @@ class PartnerService {
   }
 
   /** Starts a draft agreement or ends one. Only an agreement on a machine the owner still holds can start. */
-  async transitionAgreement(
-    businessId: string,
-    partnerId: string,
-    agreementId: string,
-    to: 'active' | 'terminated',
-    actor: string,
-  ): Promise<PartnerMachineAgreement> {
-    const agreement = await partnerMachineAgreementRepository.findById(
-      businessId,
-      agreementId,
-    );
-    if (!agreement || agreement.partnerId !== partnerId)
-      throw new PartnerValidationError('Agreement not found.');
+  async transitionAgreement(businessId: string, partnerId: string, agreementId: string, to: 'active' | 'terminated', actor: string): Promise<PartnerMachineAgreement> {
+    const agreement = await partnerMachineAgreementRepository.findById(businessId, agreementId);
+    if (!agreement || agreement.partnerId !== partnerId) throw new PartnerValidationError('Agreement not found.');
     if (to === 'active') {
-      const machine = await machineRepository.findById(
-        businessId,
-        agreement.machineId,
-      );
-      if (!machine || machine.ownerPartnerId !== partnerId)
-        throw new PartnerValidationError(
-          'This owner no longer has that machine, so the agreement can’t start.',
-        );
+      const machine = await machineRepository.findById(businessId, agreement.machineId);
+      if (!machine || machine.ownerPartnerId !== partnerId) throw new PartnerValidationError('This owner no longer has that machine, so the agreement can’t start.');
     }
-    return partnerMachineAgreementRepository.transition(
-      businessId,
-      agreementId,
-      to,
-      actor,
-    );
+    return partnerMachineAgreementRepository.transition(businessId, agreementId, to, actor);
   }
 
   async listByBusiness(businessId: string) {

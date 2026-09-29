@@ -196,9 +196,21 @@ describe('admin routes', () => {
   const put = (body: unknown) => new Request('http://localhost/x', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const post = (body: unknown = {}) => new Request('http://localhost/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-  it('are admin-only', async () => {
+  // Manufacturer keys are super-admin only: a plain admin can't list, set, roll back or revoke them.
+  beforeEach(() => {
+    sessionMock.mockResolvedValue({ uid: 'admin-1', email: 'a@example.com', displayName: 'A', roles: ['super_admin'], businessId: BUSINESS_ID });
+  });
+
+  it('are super-admin only', async () => {
     sessionMock.mockResolvedValue({ uid: 'w-1', email: 'w@example.com', displayName: 'W', roles: ['warehouse'], businessId: BUSINESS_ID });
     expect((await setRoute(put({ baseUrl: 'https://api.outco.example', apiKey: KEY_ONE }), ctx('sandbox'))).status).toBe(403);
+    expect((await listRoute(new Request('http://localhost/x'), ctx())).status).toBe(403);
+    sessionMock.mockResolvedValue({ uid: 'admin-2', email: 'b@example.com', displayName: 'B', roles: ['admin'], businessId: BUSINESS_ID });
+    const adminSet = await setRoute(put({ baseUrl: 'https://api.outco.example', apiKey: KEY_ONE }), ctx('sandbox'));
+    expect(adminSet.status).toBe(403);
+    expect((await adminSet.json()).permission).toBe('integrations.credentials.manage');
+    expect((await rollbackRoute(post(), ctx('sandbox'))).status).toBe(403);
+    expect((await revokeRoute(post({ reason: 'x' }), ctx('sandbox'))).status).toBe(403);
     expect((await listRoute(new Request('http://localhost/x'), ctx())).status).toBe(403);
     sessionMock.mockResolvedValue(null);
     expect((await setRoute(put({ baseUrl: 'https://api.outco.example', apiKey: KEY_ONE }), ctx('sandbox'))).status).toBe(401);

@@ -21,10 +21,7 @@ export class AgreementConflictError extends Error {
   }
 }
 
-export type PartnerMachineAgreementInput = Omit<
-  PartnerMachineAgreement,
-  'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy'
-> & {
+export type PartnerMachineAgreementInput = Omit<PartnerMachineAgreement, 'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy'> & {
   createdBy: string;
 };
 
@@ -52,42 +49,20 @@ class PartnerMachineAgreementRepository {
     const ref = adminFirestore.collection(COLLECTION).doc();
     await adminFirestore.runTransaction(async (tx) => {
       if (input.status === 'active') {
-        await this.assertNoOtherActiveInTransaction(
-          tx,
-          input.businessId,
-          input.machineId,
-          null,
-        );
+        await this.assertNoOtherActiveInTransaction(tx, input.businessId, input.machineId, null);
       }
       const now = FieldValue.serverTimestamp();
-      tx.set(ref, {
-        ...input,
-        createdAt: now,
-        updatedAt: now,
-        updatedBy: input.createdBy,
-        deletedAt: null,
-      });
+      tx.set(ref, { ...input, createdAt: now, updatedAt: now, updatedBy: input.createdBy, deletedAt: null });
     });
     return ref.id;
   }
 
-  private async assertNoOtherActiveInTransaction(
-    tx: FirebaseFirestore.Transaction,
-    businessId: string,
-    machineId: string,
-    exceptId: string | null,
-  ): Promise<void> {
+  private async assertNoOtherActiveInTransaction(tx: FirebaseFirestore.Transaction, businessId: string, machineId: string, exceptId: string | null): Promise<void> {
     const snapshot = await tx.get(
-      adminFirestore
-        .collection(COLLECTION)
-        .where('businessId', '==', businessId)
-        .where('machineId', '==', machineId)
-        .where('status', '==', 'active'),
+      adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('machineId', '==', machineId).where('status', '==', 'active'),
     );
     if (snapshot.docs.some((doc) => doc.id !== exceptId)) {
-      throw new AgreementConflictError(
-        'This machine already has an active agreement. End it before starting another.',
-      );
+      throw new AgreementConflictError('This machine already has an active agreement. End it before starting another.');
     }
   }
 
@@ -97,12 +72,7 @@ class PartnerMachineAgreementRepository {
    * can't both succeed. Terminating stamps `effectiveTo` (now, unless
    * one was already set); activating stamps `effectiveFrom` if unset.
    */
-  async transition(
-    businessId: string,
-    agreementId: string,
-    to: 'active' | 'terminated',
-    actor: string,
-  ): Promise<PartnerMachineAgreement> {
+  async transition(businessId: string, agreementId: string, to: 'active' | 'terminated', actor: string): Promise<PartnerMachineAgreement> {
     const ref = adminFirestore.collection(COLLECTION).doc(agreementId);
     return adminFirestore.runTransaction(async (tx) => {
       const snapshot = await tx.get(ref);
@@ -110,27 +80,13 @@ class PartnerMachineAgreementRepository {
       if (!data || data.businessId !== businessId || data.deletedAt) {
         throw new AgreementNotFoundError(agreementId);
       }
-      const allowed =
-        to === 'active'
-          ? data.status === 'draft'
-          : data.status === 'draft' || data.status === 'active';
+      const allowed = to === 'active' ? data.status === 'draft' : data.status === 'draft' || data.status === 'active';
       if (!allowed) {
-        throw new AgreementConflictError(
-          `An agreement that is ${data.status} can’t become ${to}.`,
-        );
+        throw new AgreementConflictError(`An agreement that is ${data.status} can’t become ${to}.`);
       }
-      const changes: Record<string, unknown> = {
-        status: to,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: actor,
-      };
+      const changes: Record<string, unknown> = { status: to, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor };
       if (to === 'active') {
-        await this.assertNoOtherActiveInTransaction(
-          tx,
-          businessId,
-          data.machineId,
-          agreementId,
-        );
+        await this.assertNoOtherActiveInTransaction(tx, businessId, data.machineId, agreementId);
         if (!data.effectiveFrom) changes.effectiveFrom = Timestamp.now();
       } else if (!data.effectiveTo) {
         changes.effectiveTo = Timestamp.now();
@@ -140,29 +96,13 @@ class PartnerMachineAgreementRepository {
     });
   }
 
-  async listByMachine(
-    businessId: string,
-    machineId: string,
-  ): Promise<{ id: string; data: PartnerMachineAgreement }[]> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
-      .where('machineId', '==', machineId)
-      .get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as PartnerMachineAgreement,
-    }));
+  async listByMachine(businessId: string, machineId: string): Promise<{ id: string; data: PartnerMachineAgreement }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('machineId', '==', machineId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as PartnerMachineAgreement }));
   }
 
-  async findById(
-    businessId: string,
-    agreementId: string,
-  ): Promise<PartnerMachineAgreement | null> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .doc(agreementId)
-      .get();
+  async findById(businessId: string, agreementId: string): Promise<PartnerMachineAgreement | null> {
+    const snapshot = await adminFirestore.collection(COLLECTION).doc(agreementId).get();
     if (!snapshot.exists) {
       return null;
     }
@@ -171,10 +111,7 @@ class PartnerMachineAgreementRepository {
   }
 
   /** The active agreement for a machine, if any — what `machineSettlementService` reads terms from. A machine may have at most one active agreement at a time; callers do not need to reconcile more than one. */
-  async findActiveForMachine(
-    businessId: string,
-    machineId: string,
-  ): Promise<{ id: string; data: PartnerMachineAgreement } | null> {
+  async findActiveForMachine(businessId: string, machineId: string): Promise<{ id: string; data: PartnerMachineAgreement } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
@@ -182,29 +119,17 @@ class PartnerMachineAgreementRepository {
       .where('status', '==', 'active')
       .limit(1)
       .get();
-    return snapshot.empty
-      ? null
-      : {
-          id: snapshot.docs[0].id,
-          data: snapshot.docs[0].data() as PartnerMachineAgreement,
-        };
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as PartnerMachineAgreement };
   }
 
-  async listByPartner(
-    businessId: string,
-    partnerId: string,
-  ): Promise<{ id: string; data: PartnerMachineAgreement }[]> {
+  async listByPartner(businessId: string, partnerId: string): Promise<{ id: string; data: PartnerMachineAgreement }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
       .where('partnerId', '==', partnerId)
       .get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as PartnerMachineAgreement,
-    }));
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as PartnerMachineAgreement }));
   }
 }
 
-export const partnerMachineAgreementRepository =
-  new PartnerMachineAgreementRepository();
+export const partnerMachineAgreementRepository = new PartnerMachineAgreementRepository();

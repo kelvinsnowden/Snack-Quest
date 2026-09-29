@@ -1,10 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { partnerService } from '@/services/partnerService';
 import { listEarningsLedger } from '@/repositories/partnerRepository';
-import {
-  serializePartnerWallet,
-  serializePartnerEarningsLedgerEntry,
-} from '@/lib/vending/serialize';
+import { serializePartnerWallet, serializePartnerEarningsLedgerEntry } from '@/lib/vending/serialize';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
@@ -17,10 +14,7 @@ import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
  * other partner-financial read in this fleet: staff who can already
  * see the whole business's numbers, not partner-specific auth.
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ partnerId: string }> },
-): Promise<Response> {
+export async function GET(request: Request, { params }: { params: Promise<{ partnerId: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -32,10 +26,7 @@ export async function GET(
   const { partnerId } = await params;
   const partner = await partnerService.findById(session.businessId, partnerId);
   if (!partner) {
-    return Response.json(
-      { error: `Partner ${partnerId} not found` },
-      { status: 404 },
-    );
+    return Response.json({ error: `Partner ${partnerId} not found` }, { status: 404 });
   }
 
   const ledger = await listEarningsLedger(partnerId);

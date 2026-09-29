@@ -16,9 +16,7 @@ export class PartnerNotFoundError extends Error {
 
 export class InsufficientPartnerBalanceError extends Error {
   constructor(partnerId: string, requested: number, available: number) {
-    super(
-      `Partner ${partnerId} has only ${available} available, cannot reserve ${requested}`,
-    );
+    super(`Partner ${partnerId} has only ${available} available, cannot reserve ${requested}`);
     this.name = 'InsufficientPartnerBalanceError';
   }
 }
@@ -49,25 +47,14 @@ export async function reserveBalanceInTransaction(
     throw new PartnerNotFoundError(partnerId);
   }
   if (data.availableCashKes < amountKes) {
-    throw new InsufficientPartnerBalanceError(
-      partnerId,
-      amountKes,
-      data.availableCashKes,
-    );
+    throw new InsufficientPartnerBalanceError(partnerId, amountKes, data.availableCashKes);
   }
   tx.update(ref, { availableCashKes: FieldValue.increment(-amountKes) });
 }
 
 /** The reverse of `reserveBalanceInTransaction` — a rejected or failed withdrawal releases the hold back to the partner. */
-export function refundBalanceInTransaction(
-  tx: Transaction,
-  businessId: string,
-  partnerId: string,
-  amountKes: number,
-): void {
-  tx.update(partnerRef(partnerId), {
-    availableCashKes: FieldValue.increment(amountKes),
-  });
+export function refundBalanceInTransaction(tx: Transaction, businessId: string, partnerId: string, amountKes: number): void {
+  tx.update(partnerRef(partnerId), { availableCashKes: FieldValue.increment(amountKes) });
 }
 
 /**
@@ -90,26 +77,16 @@ export function creditEarningsInTransaction(
     lifetimeEarnedKes: FieldValue.increment(amountKes),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  const ledgerRef = partnerRef(partnerId)
-    .collection(EARNINGS_LEDGER_SUBCOLLECTION)
-    .doc();
+  const ledgerRef = partnerRef(partnerId).collection(EARNINGS_LEDGER_SUBCOLLECTION).doc();
   tx.set(ledgerRef, { ...entry, createdAt: FieldValue.serverTimestamp() });
 }
 
-export async function listEarningsLedger(
-  partnerId: string,
-): Promise<PartnerEarningsLedgerEntry[]> {
-  const snapshot = await partnerRef(partnerId)
-    .collection(EARNINGS_LEDGER_SUBCOLLECTION)
-    .orderBy('createdAt', 'desc')
-    .get();
+export async function listEarningsLedger(partnerId: string): Promise<PartnerEarningsLedgerEntry[]> {
+  const snapshot = await partnerRef(partnerId).collection(EARNINGS_LEDGER_SUBCOLLECTION).orderBy('createdAt', 'desc').get();
   return snapshot.docs.map((doc) => doc.data() as PartnerEarningsLedgerEntry);
 }
 
-export type PartnerInput = Omit<
-  Partner,
-  'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy'
-> & {
+export type PartnerInput = Omit<Partner, 'createdAt' | 'updatedAt' | 'deletedAt' | 'updatedBy'> & {
   createdBy: string;
 };
 
@@ -127,14 +104,8 @@ class PartnerRepository {
     return ref.id;
   }
 
-  async findById(
-    businessId: string,
-    partnerId: string,
-  ): Promise<Partner | null> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .doc(partnerId)
-      .get();
+  async findById(businessId: string, partnerId: string): Promise<Partner | null> {
+    const snapshot = await adminFirestore.collection(COLLECTION).doc(partnerId).get();
     if (!snapshot.exists) {
       return null;
     }
@@ -142,33 +113,20 @@ class PartnerRepository {
     return data.businessId === businessId ? data : null;
   }
 
-  async listByBusiness(
-    businessId: string,
-  ): Promise<{ id: string; data: Partner }[]> {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
-      .get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as Partner,
-    }));
+  async listByBusiness(businessId: string): Promise<{ id: string; data: Partner }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as Partner }));
   }
 
   /** § partner authentication — the login-side lookup, by the Firebase Auth uid a prior `register()` already linked. At most one partner can hold a given uid (`register` only ever links an unclaimed one), so `limit(1)` is safe. */
-  async findByAuthUid(
-    businessId: string,
-    authUid: string,
-  ): Promise<{ id: string; data: Partner } | null> {
+  async findByAuthUid(businessId: string, authUid: string): Promise<{ id: string; data: Partner } | null> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
       .where('authUid', '==', authUid)
       .limit(1)
       .get();
-    return snapshot.empty
-      ? null
-      : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as Partner };
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as Partner };
   }
 
   /**
@@ -181,67 +139,31 @@ class PartnerRepository {
    * account can never claim the same partner out from under the
    * first.
    */
-  async findUnclaimedByContactEmail(
-    businessId: string,
-    contactEmail: string,
-  ): Promise<{ id: string; data: Partner } | null> {
+  async findUnclaimedByContactEmail(businessId: string, contactEmail: string): Promise<{ id: string; data: Partner } | null> {
     const normalized = contactEmail.trim().toLowerCase();
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
-      .get();
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
     const match = snapshot.docs.find(
-      (doc) =>
-        (doc.data() as Partner).contactEmail?.trim().toLowerCase() ===
-          normalized && (doc.data() as Partner).authUid === null,
+      (doc) => (doc.data() as Partner).contactEmail?.trim().toLowerCase() === normalized && (doc.data() as Partner).authUid === null,
     );
     return match ? { id: match.id, data: match.data() as Partner } : null;
   }
 
   /** Another partner in this business already using `contactEmail` (case-insensitive) — used to keep claim emails unique, so a sign-up can never claim the wrong owner. */
-  async findOtherByContactEmail(
-    businessId: string,
-    contactEmail: string,
-    exceptPartnerId: string | null,
-  ): Promise<{ id: string; data: Partner } | null> {
+  async findOtherByContactEmail(businessId: string, contactEmail: string, exceptPartnerId: string | null): Promise<{ id: string; data: Partner } | null> {
     const normalized = contactEmail.trim().toLowerCase();
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where('businessId', '==', businessId)
-      .get();
-    const match = snapshot.docs.find(
-      (doc) =>
-        doc.id !== exceptPartnerId &&
-        (doc.data() as Partner).contactEmail?.trim().toLowerCase() ===
-          normalized,
-    );
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    const match = snapshot.docs.find((doc) => doc.id !== exceptPartnerId && (doc.data() as Partner).contactEmail?.trim().toLowerCase() === normalized);
     return match ? { id: match.id, data: match.data() as Partner } : null;
   }
 
   /** Staff edits to an owner's details or status. Never touches `authUid` or the wallet totals. */
-  async update(
-    partnerId: string,
-    changes: Partial<
-      Pick<
-        Partner,
-        'name' | 'contactEmail' | 'contactPhone' | 'note' | 'status'
-      >
-    >,
-    updatedBy: string,
-  ): Promise<void> {
-    await partnerRef(partnerId).update({
-      ...changes,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy,
-    });
+  async update(partnerId: string, changes: Partial<Pick<Partner, 'name' | 'contactEmail' | 'contactPhone' | 'note' | 'status'>>, updatedBy: string): Promise<void> {
+    await partnerRef(partnerId).update({ ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy });
   }
 
   /** § partner authentication — the one and only writer of `authUid`, called exactly once per partner, the moment `register()` links it. */
   async linkAuthUid(partnerId: string, authUid: string): Promise<void> {
-    await partnerRef(partnerId).update({
-      authUid,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await partnerRef(partnerId).update({ authUid, updatedAt: FieldValue.serverTimestamp() });
   }
 }
 

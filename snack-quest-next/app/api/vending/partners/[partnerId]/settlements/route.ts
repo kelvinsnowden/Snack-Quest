@@ -4,10 +4,7 @@ import { serializeMachineSettlement } from '@/lib/vending/serialize';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Every settlement across a partner's fleet, newest period first (§ SETTLEMENT). */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ partnerId: string }> },
-): Promise<Response> {
+export async function GET(request: Request, { params }: { params: Promise<{ partnerId: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -17,13 +14,6 @@ export async function GET(
   }
 
   const { partnerId } = await params;
-  const rows = await machineSettlementService.listByPartner(
-    session.businessId,
-    partnerId,
-  );
-  return Response.json({
-    settlements: rows.map(({ id, data }) =>
-      serializeMachineSettlement(id, data),
-    ),
-  });
+  const rows = await machineSettlementService.listByPartner(session.businessId, partnerId);
+  return Response.json({ settlements: rows.map(({ id, data }) => serializeMachineSettlement(id, data)) });
 }
