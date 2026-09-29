@@ -179,6 +179,12 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
           <MachineStatusBadge status={machine.status} />
           <MachineConnectivityBadge status={connectivityStatus} />
           <Link
+            href={`/admin/vending/${machineId}/setup`}
+            className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Set up machine
+          </Link>
+          <Link
             href={`/admin/vending/${machineId}/screen`}
             className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
           >

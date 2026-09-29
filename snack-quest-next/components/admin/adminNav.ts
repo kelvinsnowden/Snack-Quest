@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { AdminSection } from '@/lib/auth/adminSections';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import {
+  Building2,
   HandCoins,
   ListChecks,
   Receipt,
@@ -134,7 +135,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/vending/restock', label: 'Restock Command Center', shortLabel: 'Restock', icon: PackageSearch, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/partners', label: 'Machine Owners', shortLabel: 'Owners', icon: Banknote, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence', label: 'Network Intelligence', shortLabel: 'Intelligence', icon: BarChart3, section: 'vending', group: 'Vending' },
-  { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/locations', label: 'Locations', icon: Building2, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Location insights', icon: MapPinned, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/sales', label: 'Sales', icon: HandCoins, section: 'vending', group: 'Vending' },
