@@ -30,10 +30,10 @@ const ALERT_TYPES: AlertType[] = [
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 
 /**
- * § PART 6 — ALERT CENTER. Re-runs the sweep first if nobody has in
- * the last minute (`evaluateIfStale`) — the sweep reads the whole
- * fleet, so it can't run on every request — so the list is at most a
- * minute stale, never a stored view that drifts from live state.
+ * § PART 6 — ALERT CENTER. Lists open alerts as the last sweep left
+ * them. The sweep reads the whole fleet, so it runs on the schedule
+ * (vending-fast-recovery, every few minutes) and on "Check now"
+ * (`POST /api/vending/alerts/evaluate`), never on a read.
  */
 export async function GET(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
@@ -51,7 +51,6 @@ export async function GET(request: Request): Promise<Response> {
   const type = typeParam && (ALERT_TYPES as string[]).includes(typeParam) ? (typeParam as AlertType) : undefined;
   const severity = severityParam && (ALERT_SEVERITIES as string[]).includes(severityParam) ? (severityParam as AlertSeverity) : undefined;
 
-  await alertService.evaluateIfStale(session.businessId);
-  const alerts = await alertService.listOpen(session.businessId, { type, severity, machineId });
-  return Response.json({ alerts: alerts.map(({ id, data }) => serializeAlert(id, data)) });
+  const [alerts, lastEvaluatedAt] = await Promise.all([alertService.listOpen(session.businessId, { type, severity, machineId }), alertService.lastEvaluatedAt(session.businessId)]);
+  return Response.json({ alerts: alerts.map(({ id, data }) => serializeAlert(id, data)), lastEvaluatedAt: lastEvaluatedAt ? lastEvaluatedAt.toISOString() : null });
 }

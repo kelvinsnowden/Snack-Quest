@@ -495,6 +495,11 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
       allow write: if false;
     }
+    // One row per machine for the fleet page; written by the server only, read by staff (owners use their own portal).
+    match /machineFleetSummary/{machineId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     match /partnerDailySummary/{summaryId} {
       allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(resource.data.partnerId);
       allow write: if false;

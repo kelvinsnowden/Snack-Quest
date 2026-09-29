@@ -65,6 +65,7 @@ export * from './machineInventoryMovement';
 export * from './machineTelemetryEvent';
 export * from './machineLocationHistory';
 export * from './machineOwnershipHistory';
+export * from './machineFleetSummary';
 export * from './restockTask';
 export * from './partner';
 export * from './partnerMachineAgreement';

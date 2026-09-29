@@ -49,9 +49,6 @@ class NetworkOverviewService {
    * runs its own sweep + fetch, unchanged, for any standalone caller.
    */
   async getOverview(businessId: string, openAlerts?: { id: string; data: Alert }[]): Promise<OperationsNetworkOverview> {
-    if (!openAlerts) {
-      await alertService.evaluateIfStale(businessId);
-    }
 
     const [machines, locations, partners, resolvedOpenAlerts, openRestockTasks, pendingWithdrawals, intelligenceOverview] = await Promise.all([
       machineRepository.listAllStatuses(businessId),

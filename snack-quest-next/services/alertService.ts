@@ -98,6 +98,12 @@ class AlertService {
     if (failed.length > 0) {
       throw new Error(`alert evaluation incomplete: ${failed.map(({ name, error }) => `${name} (${error instanceof Error ? error.message : String(error)})`).join('; ')}`);
     }
+    await alertRepository.recordEvaluation(businessId);
+  }
+
+  /** When the last complete sweep finished — shown beside alert lists, since pages no longer run the sweep themselves. */
+  async lastEvaluatedAt(businessId: string): Promise<Date | null> {
+    return alertRepository.lastCompletedEvaluation(businessId);
   }
 
   /**
@@ -232,9 +238,10 @@ class AlertService {
   }
 
   /**
-   * The sweep for request paths (Alert Center, network overview, owner
-   * alerts): runs only if nobody has in the last minute. The sweep reads
-   * the whole fleet, so running it per page view made every page load
+   * The sweep on request, for the Alert Center's "Check now" button: runs
+   * only if nobody has in the last minute. Pages no longer run it on load
+   * (the scheduled fast-recovery job sweeps every few minutes); the sweep
+   * reads the whole fleet, so running it per page view made every load
    * O(fleet) and multiplied with the number of people looking.
    */
   async evaluateIfStale(businessId: string, minIntervalMs = alertEvaluationMinIntervalMs()): Promise<boolean> {

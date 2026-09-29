@@ -6,6 +6,7 @@ import { alertService } from '@/services/alertService';
 import { serializeAlert, type SerializedAlert } from '@/lib/vending/serialize';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { CheckAlertsNowButton } from '@/components/admin/vending/CheckAlertsNowButton';
 import { AlertActions } from '@/components/admin/AlertActions';
 
 export const metadata: Metadata = { title: 'Alert Center' };
@@ -42,15 +43,14 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
 };
 
 /**
- * § PART 6 — ALERT CENTER. Runs the sweep on every load (cheap,
- * idempotent — see `alertService.evaluateAndSync`'s own doc comment)
- * so this page is never a stale, separately-maintained view of the
- * fleet's own state.
+ * § PART 6 — ALERT CENTER. Shows open alerts as the last sweep left
+ * them. The sweep reads the whole fleet, so it runs every few minutes on
+ * the schedule and on "Check now", never on page load; the header says
+ * when it last ran.
  */
 export default async function AdminVendingAlertsPage() {
   const session = await requireStaffSession();
-  await alertService.evaluateIfStale(session.businessId);
-  const alerts = await alertService.listOpen(session.businessId);
+  const [alerts, lastEvaluatedAt] = await Promise.all([alertService.listOpen(session.businessId), alertService.lastEvaluatedAt(session.businessId)]);
   const serialized = alerts
     .map(({ id, data }) => serializeAlert(id, data))
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.createdAt.localeCompare(a.createdAt));
@@ -60,13 +60,19 @@ export default async function AdminVendingAlertsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Alert Center</h1>
-        <p className="text-sm text-muted-foreground">
-          {serialized.length === 0
-            ? 'No open alerts across the fleet.'
-            : `${criticalCount} critical, ${warningCount} warning — ${serialized.length} open in total.`}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Alert Center</h1>
+          <p className="text-sm text-muted-foreground">
+            {serialized.length === 0
+              ? 'No open alerts across the fleet.'
+              : `${criticalCount} critical, ${warningCount} warning — ${serialized.length} open in total.`}{' '}
+            {lastEvaluatedAt
+              ? `Last checked ${lastEvaluatedAt.toLocaleString('en-KE', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`
+              : 'Not checked yet.'}
+          </p>
+        </div>
+        <CheckAlertsNowButton />
       </div>
 
       <Card>

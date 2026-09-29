@@ -153,6 +153,17 @@ class AlertRepository {
    * load: a hundred staff and owners refreshing at once cause one
    * sweep, not a hundred.
    */
+  /** Records that a full sweep just ran — what "alerts last checked" shows. */
+  async recordEvaluation(businessId: string, at = new Date()): Promise<void> {
+    await adminFirestore.collection('alertEvaluationRuns').doc(businessId).set({ businessId, lastCompletedAt: at }, { merge: true });
+  }
+
+  async lastCompletedEvaluation(businessId: string): Promise<Date | null> {
+    const snapshot = await adminFirestore.collection('alertEvaluationRuns').doc(businessId).get();
+    const value = snapshot.get('lastCompletedAt') as FirebaseFirestore.Timestamp | undefined;
+    return value ? value.toDate() : null;
+  }
+
   async claimEvaluation(businessId: string, minIntervalMs: number, now = new Date()): Promise<boolean> {
     const ref = adminFirestore.collection('alertEvaluationRuns').doc(businessId);
     return adminFirestore.runTransaction(async (tx) => {
