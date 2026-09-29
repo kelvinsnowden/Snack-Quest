@@ -212,6 +212,62 @@ changes what they're paid**; Snack Quest's settlement math never
 reads those numbers. If an owner asks "why did entering my rent not
 change my payout," that's expected behavior, not a bug.
 
+## 8a. Setting up a new machine
+
+Each step needs its own permission; a step you can't do is shown read-only or not at all.
+
+1. **Register it:** `/admin/vending` → **Register a machine**.
+   - Enter the make, model and serial number. The machine code is optional; leave it blank to get the next `SQ-MCH` number.
+   - Optionally choose an owner and a location.
+   - The machine starts as **Registered** and can't take payments.
+   - The last step shows its first **screen key once**, with a QR code.
+2. **Pair the screen:** on the machine's tablet, open the camera, point it at the QR code and open the link. The screen saves the key and starts up.
+   - The key is never shown again. If it's lost, issue a new one (step 7).
+3. **Load its layout:** machine page → **Slots**.
+   - Add each slot (code, product, capacity, price), or **copy the layout** of a machine of the same model.
+   - Stock is never copied. Stock only arrives through a restock (§4).
+4. **Choose what it sells:** machine page → **What it sells**.
+   - Add products, or **copy the range** of a similar machine.
+   - Link each product to its slot. A product sells only when it is on this list, visible, linked to a slot that is on, and in stock.
+5. **Owner and agreement**, if someone else owns the machine:
+   - Its setup page → **Owner**.
+   - Then the owner's page → **Agreements**. Leave the owner's share blank until it is actually agreed; a blank share means settlements show no split.
+6. **Switch it on:** setup page → **Status** → Testing → Selling.
+7. **If a screen key leaks, or a tablet is replaced:** setup page → **Screen keys**.
+   - Leak: **New key…** with "Revoke every other key now". The screen stops until it is paired with the new key.
+   - Replaced tablet: issue a new key, pair the new tablet, then revoke the old key.
+
+### Paused slots
+
+After a **jam**, a vend with an **unknown result** or a **drop-sensor failure**, the slot pauses itself.
+
+**Why:** nobody knows whether the product is stuck or fell late, so it stops being offered and charged for.
+
+**How to deal with it:**
+1. The slot page shows paused slots with a pause icon, and the machine page shows "Paused — check it".
+2. Open the slot and follow **See the sale**. That customer may need a refund (§5a).
+3. Check the machine and fix what you find.
+4. Choose **Return to sale** and write down what you found.
+
+The slot can't be switched back on any other way. A slot whose recent vends keep failing is worth checking before it pauses: the slot page shows the last results for each slot.
+
+### Changing a machine's owner
+
+1. End the current agreement first. The change is refused while one is active.
+2. On the setup page, choose the new owner (or Snack Quest).
+
+After the change:
+- The new owner's portal shows nothing from before the change. The day of the change isn't shown in their daily figures.
+- A settlement can't span the change. Settle the old owner up to the change and the new owner from it.
+
+### Owners and the portal
+
+When you add an owner with an email, their page shows a message to send them: they sign up at `/partner/login` with that email.
+
+- Nothing is emailed automatically.
+- Each email can belong to only one owner.
+- **Suspend** signs them out and blocks sign-in. Their machines keep selling and their balance is untouched.
+
 ## 9. Audit log
 
 `/admin/audit-logs`, filterable by entity type (`alert`, `withdrawal`,
@@ -244,6 +300,14 @@ Named here so nobody discovers them by surprise mid-incident:
 - **No route-planning across many machines' restock tasks.** The
   Restock Command Center tells you what's urgent fleet-wide; it
   doesn't sequence a technician's actual route.
+- **A paused slot doesn't raise an alert yet** (§8a). It shows on the
+  slot page and the machine page, not in the Alert Center.
+- **Bulk slot and product changes run one at a time** from your
+  browser. If one fails part-way, the message says which ones were
+  already done.
+- **Ownership history starts at a machine's first change of owner.**
+  Before that, the owner at registration is taken as the owner
+  throughout.
 - **No mutual TLS or a device-credential revocation push.** A
   revoked device credential stops working on its next request, not
   instantly — see `docs/VENDING_OS_ARCHITECTURE.md` §7.

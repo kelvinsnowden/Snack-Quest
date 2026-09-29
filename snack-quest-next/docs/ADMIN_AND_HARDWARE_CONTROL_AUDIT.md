@@ -17,23 +17,63 @@ Companion document: `docs/hardware/M109E_COMPATIBILITY_AUDIT.md`, the byte-level
 
 ### Status since this audit
 
-Phases 0 and 1 of the roadmap (§25) are built:
+Phases 0 to 3 of the roadmap (§25) are built.
 
-- **Route guards (S2, R2)** — machine registration and slot mapping are admin-only. Price changes (slot price, machine price override) are admin-only. Warehouse can still switch a slot on or off.
-- **G-H13** — peak hours and peak days use Nairobi time (`lib/vending/businessClock.ts`).
-- **G-H6** — recommendations are generated nightly (`/api/cron/generate-recommendations`, 08:00 UTC, after the rollups). The Recommendations page has **Generate now** and shows the last run.
-- **S7** — the internal agent key is compared in constant time.
-- **G-C1 / B1** — sales to review and refunds:
+**Phase 0 and 1:**
+- **Route guards (S2, R2)**: machine registration, slot mapping and price changes need their own permissions (below). Warehouse can still switch a slot on or off.
+- **G-H13**: peak hours and peak days use Nairobi time (`lib/vending/businessClock.ts`).
+- **G-H6**: recommendations are generated nightly (`/api/cron/generate-recommendations`, 08:00 UTC, after the rollups). The Recommendations page has **Generate now** and shows the last run.
+- **S7**: the internal agent key is compared in constant time.
+- **G-C1 / B1**, sales to review and refunds:
   - Pages: `/admin/vending/sales/review` and `/admin/vending/sales/[id]`.
   - Actions: confirm delivered, refund, reverse the M-Pesa payment (single-item payments only), or record a refund sent another way.
-  - A new `vendingRefunds` ledger ensures the money goes back at most once. Admin and finance only; every decision is audited.
-  - See `docs/VENDING_OPERATIONS_RUNBOOK.md` §5a.
-- **G-H5** — `/admin/vending/sales` has filters and a CSV export (admin and finance only; audited).
+  - A `vendingRefunds` ledger ensures the money goes back at most once, and every decision is audited.
+  - See the runbook §5a.
+- **G-H5**: `/admin/vending/sales` has filters and a CSV export (audited).
+
+**Phase 2, permissions (G-H8, G-C7, G-H9):**
+- `lib/auth/permissions.ts` defines 94 permissions, plus templates that reproduce each role's earlier access, minus S1 to S3.
+- Every staff API route checks a permission, not a role. A test scans every route file to confirm this.
+- Admin pages and the navigation follow the same permissions.
+- `/admin/staff/[uid]` edits one person's access: a starting template, individual grants and removals, and a summary of changes before saving. No one can edit their own access or grant a permission they don't hold. Changes are audited.
+- Deliberate tightenings:
+  - Manufacturer API keys are super-admin only.
+  - Warehouse no longer sees owner money.
+  - Finance no longer edits locations.
+- Workspaces: Warehouse has machine restocks; Finance and Support have machine sales.
+
+**Phase 3, machine onboarding:**
+- **G-C6**: `/admin/vending/locations` (list, create, edit). Machine setup page (`/admin/vending/[id]/setup`): change status (retiring needs the code typed), move to another location with a reason, and location history.
+- **G-C2**, owners: `/admin/vending/partners`:
+  - Add, edit, suspend and reactivate owners.
+  - Contact emails are unique, because the email is how an owner claims the portal. The page shows a sign-up message to send; there is no automatic email.
+  - Agreements: record, start and end. At most one is active per machine, checked in a transaction. A blank share stays blank.
+  - Changing a machine's owner (setup page) is refused while an agreement is active. It writes `machineOwnershipHistory` and sets `machine.ownerSince`.
+  - Settlement drafts are refused for a period that includes another owner's time.
+  - The owner portal shows only the current owner's time with a machine.
+  - Owner money sections need `owner_finance.view`.
+- **G-C3 / G-M9 / S4**, registration and screen keys:
+  - `/admin/vending/new` registers a machine in three steps, with an audit entry that excludes the key.
+  - The setup page lists screen keys. Keys can be issued (shown once), replaced (revoking all others, for a leak) or revoked (reason required, machine code typed).
+  - QR pairing opens `/machine/<code>#pair=<key>`. The key is in the fragment, which never reaches a server, and the QR code is drawn in the browser.
+- **G-C4**, slots: `/admin/vending/[id]/slots`:
+  - A grid by tray row. Edit product, capacity and position; setting a price also needs `pricing.manage`.
+  - A slot's product can't change while it holds stock.
+  - Bulk price and on/off.
+  - Copy another machine's layout. Stock is never copied, and the copy is refused if it would change the product of a slot that holds stock.
+- **G-C5 / G-M2**, catalogue:
+  - `/admin/vending/[id]/catalogue`: add, remove, link to a slot, show or hide, set a machine price, copy another machine's range.
+  - A price history panel merges slot price changes (new `machineSlotPriceHistory`) with machine price overrides.
+  - `/admin/vending/products` and `/admin/vending/products/[catalogue]/[id]` show which machines carry each product, and add it to or remove it from many machines at once.
+- **G-H12**, slot quarantine: a jam, unknown result or sensor failure pauses the slot. It comes back only through **Return to sale**, with a note, and that is audited. The slot page shows the last 20 results for each slot.
 
 **Still open:**
-- Everything from Phase 2 onward.
+- G-H1 to G-H4, G-H7, G-H10, G-H11 and G-H14.
+- The medium-priority gaps except G-M2 and G-M9.
+- A paused slot doesn't raise an Alert Center alert yet. It shows on the slot page and the machine page.
 - The vending reversal has only been tested against a stubbed gateway, not Safaricom's sandbox.
 - Snapshot images still have no storage.
+- None of this has been tested against an M109E or any real manufacturer hardware.
 
 ### How to read priorities
 
