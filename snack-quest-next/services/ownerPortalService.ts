@@ -24,7 +24,8 @@ import {
   ProtocolNotConfiguredError,
 } from '@/lib/vending/hardwareAdapter';
 import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { ownerSince, clipStartDate, withinTenure } from '@/lib/vending/ownerTenure';
 import { isCustomerSale, type Location, type Machine, type MachineConnectivityStatus, type MachineEventType, type MachineSubscription, type MachineTransactionStatus } from '@/types';
 
@@ -37,7 +38,9 @@ export interface OwnerMachineCard {
   machineId: string;
   machineCode: string;
   status: Machine['status'];
-  connectivity: ReturnType<typeof deriveConnectivityStatus>;
+  connectivity: MachineConnectivityStatus;
+  /** Why, in words — e.g. "Says it is offline" (`LIVENESS_REASON_LABEL`). */
+  connectivityReason: string;
   locationName: string | null;
   revenueKes: number;
   unitsSold: number;
@@ -201,7 +204,8 @@ export interface OwnerMachineDetail {
   machineId: string;
   machineCode: string;
   status: Machine['status'];
-  connectivity: ReturnType<typeof deriveConnectivityStatus>;
+  connectivity: MachineConnectivityStatus;
+  connectivityReason: string;
   lastHeartbeatAt: string | null;
   lastSaleAt: string | null;
   lastRestock: { taskId: string; status: string; createdAt: string } | null;
@@ -226,6 +230,11 @@ export type OwnerLiveViewCapability =
   | { mode: 'relay_url'; url: string; expiresAt: string };
 
 class OwnerPortalService {
+  /** The one liveness answer (`machineLiveness`), the same the admin fleet and alerts use. */
+  private async livenessOf(businessId: string, machineId: string, machine: Machine) {
+    return machineLiveness(machine, await machineIntegrationRepository.findByMachineId(businessId, machineId));
+  }
+
   async getDashboard(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboard> {
     const partner = await partnerService.findById(businessId, partnerId);
     if (!partner) {
@@ -242,12 +251,13 @@ class OwnerPortalService {
 
     const cards: OwnerMachineCard[] = await Promise.all(
       machines.map(async ({ id: machineId, data: machine }) => {
-        const summary = await ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30);
+        const [summary, liveness] = await Promise.all([ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30), this.livenessOf(businessId, machineId, machine)]);
         return {
           machineId,
           machineCode: machine.machineCode,
           status: machine.status,
-          connectivity: deriveConnectivityStatus(machine.lastSeenAt),
+          connectivity: connectivityOf(liveness),
+          connectivityReason: LIVENESS_REASON_LABEL[liveness.reason],
           locationName: machine.locationId ? locationById.get(machine.locationId)?.name ?? null : null,
           revenueKes: summary.revenueKes,
           unitsSold: summary.unitsSold,
@@ -276,13 +286,14 @@ class OwnerPortalService {
     const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     const since = ownerSince(machine);
 
-    const [performanceEntries, lastSalePage, restockRows, settlementRows, location] = await Promise.all([
+    const [performanceEntries, lastSalePage, restockRows, settlementRows, location, liveness] = await Promise.all([
       Promise.all(OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, days))),
       // A few, not one: a staff test vend is dispensed too, and isn't a sale.
       machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
       restockTaskRepository.listByMachine(businessId, machineId, 1),
       machineSettlementService.listByMachine(businessId, machineId),
       machine.locationId ? locationService.findById(businessId, machine.locationId) : Promise.resolve(null),
+      this.livenessOf(businessId, machineId, machine),
     ]);
 
     const performanceByWindow = Object.fromEntries(
@@ -301,7 +312,8 @@ class OwnerPortalService {
       machineId,
       machineCode: machine.machineCode,
       status: machine.status,
-      connectivity: deriveConnectivityStatus(machine.lastSeenAt),
+      connectivity: connectivityOf(liveness),
+      connectivityReason: LIVENESS_REASON_LABEL[liveness.reason],
       lastHeartbeatAt: machine.lastSeenAt ? machine.lastSeenAt.toDate().toISOString() : null,
       lastSaleAt: lastSale ? lastSale.data.dispensedAt?.toDate().toISOString() ?? null : null,
       lastRestock: lastRestockRow ? { taskId: lastRestockRow.id, status: lastRestockRow.data.status, createdAt: lastRestockRow.data.createdAt.toDate().toISOString() } : null,
@@ -484,7 +496,7 @@ class OwnerPortalService {
   /**
    * § MACHINE HEALTH tab. `controllerOnline`/`networkOk` are both
    * restatements of the one real connectivity fact this codebase has
-   * (`deriveConnectivityStatus`) — this codebase does not have two
+   * (`machineLiveness`) — this codebase does not have two
    * independent signals for "is the controller reachable" and "is the
    * network good"; presenting them as two rows without inventing a
    * second measurement is a UI convenience, not a second fact. Live
@@ -497,7 +509,7 @@ class OwnerPortalService {
   async getMachineHealth(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineHealth> {
     const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
     const since = ownerSince(machine);
-    const connectivity = deriveConnectivityStatus(machine.lastSeenAt);
+    const connectivity = connectivityOf(await this.livenessOf(businessId, machineId, machine));
     const controllerOnline = connectivity === 'online';
 
     const [openAlerts, cameras, machineEvents, recentDispensed] = await Promise.all([

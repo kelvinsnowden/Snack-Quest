@@ -1,6 +1,13 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { machineService, MachineNotFoundError, PartnerDoesNotOwnMachineError, IllegalMachineStatusTransitionError } from '@/services/machineService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, connectivityOf } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import type { Machine, MachineConnectivityStatus } from '@/types';
+
+/** The same liveness answer the fleet page and alerts use. */
+async function connectivityFor(businessId: string, machineId: string, machine: Machine): Promise<MachineConnectivityStatus> {
+  return connectivityOf(machineLiveness(machine, await machineIntegrationRepository.findByMachineId(businessId, machineId)));
+}
 import { serializeMachine } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineStatus } from '@/types';
@@ -36,7 +43,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!machine) {
       return Response.json({ error: `Machine ${id} not found` }, { status: 404 });
     }
-    const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
+    const connectivityStatus = await connectivityFor(session.businessId, id, machine);
     return Response.json({ machine: serializeMachine(id, machine, connectivityStatus) });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {
@@ -128,7 +135,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       after: after ? { status: after.status, locationId: after.locationId } : null,
       machineId: id,
     });
-    const connectivityStatus = deriveConnectivityStatus(after!.lastSeenAt);
+    const connectivityStatus = await connectivityFor(session.businessId, id, after!);
     return Response.json({ machine: serializeMachine(id, after!, connectivityStatus) });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {

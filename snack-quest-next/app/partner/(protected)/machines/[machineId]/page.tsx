@@ -445,6 +445,7 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
           <span className={`flex items-center gap-1.5 text-sm font-medium capitalize ${detail.connectivity === 'online' ? 'text-success' : detail.connectivity === 'offline' ? 'text-danger' : 'text-warning'}`}>
             <CircleDot className="size-3.5" aria-hidden="true" />
             {detail.connectivity}
+            {detail.connectivityReason && detail.connectivity !== 'online' ? <span className="font-normal normal-case text-muted-foreground">· {detail.connectivityReason}</span> : null}
           </span>
         </div>
       </div>

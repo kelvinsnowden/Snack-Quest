@@ -65,7 +65,10 @@ export interface Machine extends AuditFields {
    * `'snack_quest_gateway'`, … The field keeps its original persisted
    * name; semantically it is *which adapter*, not the vendor's name
    * (that is `manufacturerId` → `manufacturers/{id}.name`). Set from the
-   * machine's integration once one is configured. Never read to
+   * machine's integration once one is configured — written in the same
+   * transaction as the integration's `adapterKey`, so the two are always
+   * equal and every adapter lookup resolves the same adapter
+   * (`machineIntegrationService.test.ts` holds that). Never read to
    * special-case behaviour outside the adapter layer.
    */
   manufacturer: string;

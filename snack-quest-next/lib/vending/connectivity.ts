@@ -2,6 +2,11 @@ import type { Timestamp } from 'firebase/firestore';
 import type { MachineConnectivityStatus } from '@/types';
 
 /**
+ * Not what pages, alerts or counts use: every one of those reads
+ * `machineLiveness` (`lib/vending/machineStatus.ts`), which also knows a
+ * machine that reports itself offline and one in planned maintenance.
+ * Kept for its tests and as the simplest reading of `lastSeenAt` alone.
+ *
  * Derives `MachineConnectivityStatus` from `Machine.lastSeenAt`
  * (§ MACHINE HEARTBEAT / REALTIME STATUS: "the admin should
  * immediately see 🟢 Online 🟡 Stale 🔴 Offline"). Never stored as its

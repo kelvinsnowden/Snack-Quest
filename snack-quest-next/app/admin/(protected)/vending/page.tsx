@@ -7,7 +7,8 @@ import { partnerRepository } from '@/repositories/partnerRepository';
 import { alertService } from '@/services/alertService';
 import { networkOverviewService } from '@/services/networkOverviewService';
 import { machineFleetSummaryService } from '@/services/machineFleetSummaryService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { MachineStatusBadge } from '@/components/admin/MachineStatusBadge';
@@ -15,7 +16,7 @@ import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivity
 import { formatDateTime } from '@/lib/orders/format';
 import { hasPermission } from '@/lib/auth/permissions';
 import { Button } from '@/components/ui/button';
-import type { Alert, Machine } from '@/types';
+import type { Alert, Machine, MachineConnectivityStatus } from '@/types';
 
 export const metadata: Metadata = { title: 'Vending Machines' };
 
@@ -33,7 +34,8 @@ const FLEET_FILTERS: { key: FleetFilter; label: string }[] = [
 interface FleetRow {
   id: string;
   data: Machine;
-  connectivityStatus: ReturnType<typeof deriveConnectivityStatus>;
+  connectivityStatus: MachineConnectivityStatus;
+  connectivityReason: string;
   ownerName: string | null;
   revenueKes7d: number;
   sellableCount: number;
@@ -67,11 +69,13 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
   const query = (rawQuery ?? '').trim().toLowerCase();
 
   // Alerts are as the last scheduled sweep left them (see the Alert Center); this page never runs the sweep.
-  const [machines, partners, openAlerts] = await Promise.all([
+  const [machines, partners, openAlerts, integrations] = await Promise.all([
     machineRepository.listAllForBusiness(session.businessId),
     partnerRepository.listByBusiness(session.businessId),
     alertService.listOpen(session.businessId),
+    machineIntegrationRepository.listByBusiness(session.businessId),
   ]);
+  const integrationByMachine = new Map(integrations.map((integration) => [integration.machineId, integration]));
   const overview = await networkOverviewService.getOverview(session.businessId, openAlerts);
 
   const ownerNameById = new Map(partners.map(({ id, data }) => [id, data.name]));
@@ -86,10 +90,12 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
   const candidates = machines
     .map(({ id, data }) => {
       const machineAlerts = alertsByMachine.get(id) ?? [];
+      const liveness = machineLiveness(data, integrationByMachine.get(id) ?? null);
       return {
         id,
         data,
-        connectivityStatus: deriveConnectivityStatus(data.lastSeenAt),
+        connectivityStatus: connectivityOf(liveness),
+        connectivityReason: LIVENESS_REASON_LABEL[liveness.reason],
         ownerName: data.ownerPartnerId ? ownerNameById.get(data.ownerPartnerId) ?? null : null,
         hasFault: machineAlerts.some((a) => a.type === 'machine_fault'),
         hasStockout: machineAlerts.some((a) => a.type === 'stockout'),
@@ -261,7 +267,9 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
                       <td className="px-6 py-3">
                         <div className="flex flex-col gap-1">
                           <MachineStatusBadge status={row.data.status} />
-                          <MachineConnectivityBadge status={row.connectivityStatus} />
+                          <span title={row.connectivityReason}>
+                            <MachineConnectivityBadge status={row.connectivityStatus} />
+                          </span>
                         </div>
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">{row.data.lastSeenAt ? formatDateTime(row.data.lastSeenAt) : 'Never'}</td>

@@ -13,7 +13,7 @@ import { ALERTING_EVENT_TYPES } from '@/lib/vending/machineEvents';
 import { alertRepository, AlertNotFoundError, AlertNotOpenError, type AlertConditionInput } from '@/repositories/alertRepository';
 import { vendingReconciliationService } from '@/services/vendingReconciliationService';
 import { LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
 import { detectManufacturerSilence } from '@/lib/vending/machineLiveness';
 import { findAdapterRegistration } from '@/lib/vending/adapterRegistry';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
@@ -321,30 +321,33 @@ class AlertService {
   }
 
   /**
-   * `machine_offline`/`heartbeat_missing` — read straight off
-   * `lib/vending/connectivity.ts`'s own `deriveConnectivityStatus`,
-   * the exact function the admin fleet view already uses to render
-   * 🟢/🟡/🔴. `stale` becomes the warning-level `heartbeat_missing`,
-   * `offline` becomes the critical `machine_offline` — two alert
-   * types over one derived signal, not two separate detections.
-   * Scoped to `active` machines only: a machine mid-install, in
-   * maintenance, or already staff-marked `offline` has no useful
-   * "is it unexpectedly quiet" signal — staff already know.
+   * `machine_offline`/`heartbeat_missing` — from `machineLiveness`, the
+   * same answer the fleet, machine and owner pages show. DEGRADED (missed
+   * check-ins) is the warning-level `heartbeat_missing`; OFFLINE (silent,
+   * or the machine says it's offline) is the critical `machine_offline`.
+   * Planned maintenance and UNKNOWN (never heard, or its manufacturer's
+   * whole fleet went quiet — `manufacturer_outage` covers that) raise
+   * nothing. Scoped to `active` machines only: a machine mid-install or
+   * already staff-marked offline has no useful "is it unexpectedly
+   * quiet" signal — staff already know.
    */
   private async evaluateConnectivity(businessId: string, machines: Awaited<ReturnType<typeof machineRepository.listAllStatuses>>): Promise<void> {
     const offlineKeys = new Set<string>();
     const staleKeys = new Set<string>();
+    const integrations = new Map((await machineIntegrationRepository.listByBusiness(businessId)).map((integration) => [integration.machineId, integration]));
+    const now = new Date();
     for (const m of machines) {
       if (m.status !== 'active') continue;
-      const connectivity = deriveConnectivityStatus(m.lastSeenAt);
-      if (connectivity === 'offline') {
+      const liveness = machineLiveness(m, integrations.get(m.id) ?? null, now);
+      if (liveness.state === 'OFFLINE' && !liveness.planned) {
         const key = `machine_offline:${m.id}`;
         offlineKeys.add(key);
-        await this.open({ businessId, type: 'machine_offline', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: 'Machine offline', detail: 'No heartbeat received past the offline threshold.' });
-      } else if (connectivity === 'stale') {
+        const detail = liveness.reason === 'reports_offline' ? 'The machine is in contact but reports itself offline.' : 'No contact past the offline threshold.';
+        await this.open({ businessId, type: 'machine_offline', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: `Machine offline — ${LIVENESS_REASON_LABEL[liveness.reason].toLowerCase()}`, detail });
+      } else if (liveness.state === 'DEGRADED') {
         const key = `heartbeat_missing:${m.id}`;
         staleKeys.add(key);
-        await this.open({ businessId, type: 'heartbeat_missing', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: 'Heartbeat missing', detail: 'No heartbeat received recently — not yet offline, but later than expected.' });
+        await this.open({ businessId, type: 'heartbeat_missing', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: 'Heartbeat missing', detail: 'Missed its last check-ins — not yet offline, but later than expected.' });
       }
     }
     await alertRepository.autoResolveMissing(businessId, 'machine_offline', offlineKeys);

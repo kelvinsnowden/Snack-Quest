@@ -17,7 +17,8 @@ import { restockTaskService } from '@/services/restockTaskService';
 import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
 import { cameraService } from '@/services/cameraService';
 import { serializeRestockTask, serializeCamera } from '@/lib/vending/serialize';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { HardwareAuthenticationError, HardwareTimeoutError, HardwareUnreachableError, ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
 import { ALL_HARDWARE_CAPABILITIES, HARDWARE_CAPABILITY_LABELS, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
@@ -154,7 +155,8 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     cameras.map(async ({ id, data }) => ({ id, camera: serializeCamera(id, data), diagnostics: await cameraService.getDiagnostics(data) })),
   );
 
-  const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
+  const liveness = machineLiveness(machine, await machineIntegrationRepository.findByMachineId(session.businessId, machineId));
+  const connectivityStatus = connectivityOf(liveness);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);
   const lastVendTransaction = transactionPage.transactions.find((t) => t.data.status === 'dispensed' || t.data.status === 'paid_vend_failed');
   const lastFaultEvent = telemetryEvents.find((e) => e.data.eventType === 'fault');
@@ -178,6 +180,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <div className="flex flex-wrap items-center gap-2">
           <MachineStatusBadge status={machine.status} />
           <MachineConnectivityBadge status={connectivityStatus} />
+          <span className="text-xs text-muted-foreground">{LIVENESS_REASON_LABEL[liveness.reason]}</span>
           <Link
             href={`/admin/vending/${machineId}/setup`}
             className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"

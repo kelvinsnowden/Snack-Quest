@@ -7,7 +7,8 @@ import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { withdrawalRepository } from '@/repositories/withdrawalRepository';
 import { networkIntelligenceService } from '@/services/networkIntelligenceService';
 import { alertService } from '@/services/alertService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import type { Alert } from '@/types';
 
 export interface OperationsNetworkOverview {
@@ -50,7 +51,7 @@ class NetworkOverviewService {
    */
   async getOverview(businessId: string, openAlerts?: { id: string; data: Alert }[]): Promise<OperationsNetworkOverview> {
 
-    const [machines, locations, partners, resolvedOpenAlerts, openRestockTasks, pendingWithdrawals, intelligenceOverview] = await Promise.all([
+    const [machines, locations, partners, resolvedOpenAlerts, openRestockTasks, pendingWithdrawals, intelligenceOverview, integrations] = await Promise.all([
       machineRepository.listAllStatuses(businessId),
       locationRepository.listByBusiness(businessId),
       partnerRepository.listByBusiness(businessId),
@@ -58,10 +59,14 @@ class NetworkOverviewService {
       restockTaskRepository.listOpenByBusiness(businessId),
       withdrawalRepository.listByBusiness(businessId, { status: 'pending', limit: 500 }),
       networkIntelligenceService.getNetworkOverview(businessId, 30),
+      machineIntegrationRepository.listByBusiness(businessId),
     ]);
 
-    const onlineMachineCount = machines.filter((m) => deriveConnectivityStatus(m.lastSeenAt) === 'online').length;
-    const offlineMachineCount = machines.filter((m) => deriveConnectivityStatus(m.lastSeenAt) === 'offline').length;
+    const integrationByMachine = new Map(integrations.map((integration) => [integration.machineId, integration]));
+    const now = new Date();
+    const states = machines.map((m) => machineLiveness(m, integrationByMachine.get(m.id) ?? null, now).state);
+    const onlineMachineCount = states.filter((state) => state === 'ONLINE').length;
+    const offlineMachineCount = states.filter((state) => state === 'OFFLINE').length;
     const activeMachineCount = machines.filter((m) => m.status === 'active').length;
 
     const countAlerts = (...types: string[]) => resolvedOpenAlerts.filter((a) => types.includes(a.data.type)).length;

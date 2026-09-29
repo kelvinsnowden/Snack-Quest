@@ -75,6 +75,15 @@ describe('configure', () => {
     expect(machine?.manufacturer).toBe('mock');
   });
 
+  it("keeps the machine's adapter key equal to its integration's, so every adapter lookup resolves the same adapter (G-M10)", async () => {
+    const ids = await createManufacturerWithModel(BUSINESS_ID, { adapterKey: 'shengma' });
+    const { machineId } = await provisionMachine(BUSINESS_ID, 'mock');
+    await service.configure(BUSINESS_ID, { machineId, ...ids, manufacturerMachineId: 'SHENGMA-7', environment: 'sandbox' }, 'staff-1');
+    const [machine, integration] = await Promise.all([machineService.findById(BUSINESS_ID, machineId), machineIntegrationRepository.findByMachineId(BUSINESS_ID, machineId)]);
+    expect(integration?.adapterKey).toBe('shengma');
+    expect(machine?.manufacturer).toBe(integration?.adapterKey);
+  });
+
   it('refuses a model from a different manufacturer', async () => {
     const a = await createManufacturerWithModel(BUSINESS_ID, { slug: 'maker-a' });
     const b = await createManufacturerWithModel(BUSINESS_ID, { slug: 'maker-b' });
