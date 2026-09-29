@@ -59,12 +59,17 @@ const RUN_STATUS_BADGE: Record<ScheduledJobRunStatus, 'success' | 'warning' | 'd
   skipped: 'outline',
 };
 
+/** The last seven finished analytics days, as the rebuild form's starting range. */
+function defaultRebuildRange(now = new Date()): { weekBefore: string; yesterday: string } {
+  const day = 24 * 60 * 60 * 1000;
+  return { weekBefore: dateKey(new Date(now.getTime() - 7 * day)), yesterday: dateKey(new Date(now.getTime() - day)) };
+}
+
 export default async function AdminOperationsPage() {
   const session = await requireStaffSession();
   const snapshot = await operationsService.getSnapshot(session.businessId);
   const canRunJobs = hasPermission(session, 'ops.jobs.run');
-  const yesterday = dateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
-  const weekBefore = dateKey(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  const { weekBefore, yesterday } = defaultRebuildRange();
 
   return (
     <div className="flex flex-col gap-6">
