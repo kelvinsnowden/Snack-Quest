@@ -214,7 +214,7 @@ class IntegrationCertificationService {
         expiredSkipped = `no sale could be made for this step (${error.message})`;
       }
     }
-    if (expiredSale) {
+    if (expiredSale && subject.pollWithoutExecuting) {
       await subject.pollWithoutExecuting();
       const command = await machineDispenseCommandRepository.findByTransactionId(businessId, expiredSale);
       if (command && command.status === 'sent') {
