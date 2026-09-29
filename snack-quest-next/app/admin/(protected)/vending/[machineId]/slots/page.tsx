@@ -39,6 +39,11 @@ export default async function MachineSlotsPage({ params }: { params: Promise<{ m
           {slots.length} slot{slots.length === 1 ? '' : 's'}
           {paused > 0 ? ` · ${paused} paused after a bad vend` : ''}. Stock only changes through restocks, sales and stock adjustments.
         </p>
+        {hasPermission(session, 'machine_inventory.export') ? (
+          <a href={`/api/vending/machines/${machineId}/stock-movements/export`} className="mt-1 inline-block text-sm text-primary hover:underline">
+            Download stock movements (last 30 days)
+          </a>
+        ) : null}
       </div>
       <Card>
         <CardContent className="p-4 sm:p-6">

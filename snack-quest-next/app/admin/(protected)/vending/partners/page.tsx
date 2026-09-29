@@ -36,6 +36,11 @@ export default async function AdminVendingPartnersPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+        {hasPermission(session, 'owners.export') ? (
+          <Button asChild variant="outline">
+            <a href="/api/vending/partners/export">Download CSV</a>
+          </Button>
+        ) : null}
         {canSeeMoney ? (
           <Button asChild variant="outline">
             <Link href="/admin/vending/settlements">Settlements to finalize</Link>

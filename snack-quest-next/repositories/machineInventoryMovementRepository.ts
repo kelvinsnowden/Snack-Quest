@@ -44,6 +44,20 @@ class MachineInventoryMovementRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineInventoryMovement }));
   }
 
+  /** One machine's movements in `[since, until)`, oldest first, at most `limit` — the stock-movement export. */
+  async listByMachineInRange(businessId: string, machineId: string, since: Date, until: Date, limit: number): Promise<{ id: string; data: MachineInventoryMovement }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('createdAt', '>=', since)
+      .where('createdAt', '<', until)
+      .orderBy('createdAt', 'asc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineInventoryMovement }));
+  }
+
   /**
    * Recomputes what a slot's `currentQuantity` *should* be by summing
    * every movement ever recorded for it — the reconciliation check
