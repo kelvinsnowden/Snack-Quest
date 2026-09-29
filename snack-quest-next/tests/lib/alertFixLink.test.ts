@@ -13,6 +13,8 @@ describe('alertFixLink', () => {
     expect(alertFixLink('manufacturer_outage', null, 'manufacturer_outage:mf-1')?.href).toBe('/admin/vending/integrations/mf-1');
     expect(alertFixLink('credential_revoked', null, 'credential_revoked:mf-1__production')?.href).toBe('/admin/vending/integrations/mf-1');
     expect(alertFixLink('job_failure', null, 'job_failure:retry-notifications')?.href).toBe('/admin/operations');
+    expect(alertFixLink('inventory_discrepancy', 'm-1', 'ledger:duplicate_stock_movement:t-4')?.href).toBe('/admin/vending/sales/t-4');
+    expect(alertFixLink('payment_reconciliation_issue', 'm-1', 'ledger:refund_owed_too_long:t-5')?.href).toBe('/admin/vending/sales/t-5');
   });
 
   it('never builds a link from a key of the wrong shape, and escapes ids', () => {

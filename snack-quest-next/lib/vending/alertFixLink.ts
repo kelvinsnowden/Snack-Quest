@@ -22,6 +22,9 @@ const enc = encodeURIComponent;
  */
 export function alertFixLink(type: AlertType, machineId: string | null, dedupeKey: string): AlertFixLink | null {
   const machine = machineId ? `/admin/vending/${enc(machineId)}` : null;
+  // Findings of the nightly ledger check (`deepReconciliationService`): `ledger:<kind>:<transactionId>`.
+  const ledger = dedupeKey.startsWith('ledger:') ? dedupeKey.split(':') : null;
+  if (ledger && ledger.length === 3 && ledger[2]) return { href: `/admin/vending/sales/${enc(ledger[2])}`, label: 'Open the sale' };
   switch (type) {
     case 'stockout':
     case 'stockout_risk':

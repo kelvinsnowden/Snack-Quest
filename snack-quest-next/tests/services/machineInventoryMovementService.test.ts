@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
 import { machineSlotService, MachineSlotService } from '@/services/machineSlotService';
-import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError, DiscrepancyReasonRequiredError } from '@/services/machineInventoryMovementService';
+import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError, DiscrepancyReasonRequiredError, LedgerAlignmentRefusedError } from '@/services/machineInventoryMovementService';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 
@@ -169,5 +169,36 @@ describe('recordDiscrepancyAdjustment', () => {
     await expect(
       machineInventoryMovementService.recordDiscrepancyAdjustment({ businessId: BUSINESS_ID, machineId, slotId: 'Z99', physicalCountQuantity: 3, reason: 'count', actor: 'staff-1' }),
     ).rejects.toBeInstanceOf(SlotNotFoundError);
+  });
+});
+
+describe('stock ledger check', () => {
+  const slotDoc = (machineId: string) => adminFirestore.collection('machineSlots').doc(`${machineId}__A01`);
+
+  it('reports each slot against its ledger, and sets a drifted count back to the ledger', async () => {
+    const { machineId } = await setUpSlot();
+    await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'restock', quantityDelta: 6, actor: 'staff-1' });
+    expect(await machineInventoryMovementService.reconcileMachine(BUSINESS_ID, machineId)).toEqual([{ slotCode: 'A01', productId: 'pkg-1', cached: 6, ledgerDerived: 6, matches: true }]);
+
+    // Something writes the count outside the ledger.
+    await slotDoc(machineId).update({ currentQuantity: 9 });
+    const [drifted] = await machineInventoryMovementService.reconcileMachine(BUSINESS_ID, machineId);
+    expect(drifted).toMatchObject({ cached: 9, ledgerDerived: 6, matches: false });
+
+    await expect(machineInventoryMovementService.alignSlotToLedger({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', reason: '  ' })).rejects.toThrow(LedgerAlignmentRefusedError);
+    expect(await machineInventoryMovementService.alignSlotToLedger({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', reason: 'count edited by hand' })).toEqual({ before: 9, after: 6, changed: true });
+    expect((await machineInventoryMovementService.reconcile(BUSINESS_ID, machineId, 'A01')).matches).toBe(true);
+    // No stock moved, so nothing was added to the ledger.
+    const movements = await adminFirestore.collection('machineInventoryMovements').where('machineId', '==', machineId).get();
+    expect(movements.size).toBe(1);
+    expect(await machineInventoryMovementService.alignSlotToLedger({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', reason: 'again' })).toEqual({ before: 6, after: 6, changed: false });
+  });
+
+  it("refuses another business's slot and a ledger that adds up below zero", async () => {
+    const { machineId } = await setUpSlot();
+    await expect(machineInventoryMovementService.alignSlotToLedger({ businessId: 'someone-else', machineId, slotCode: 'A01', reason: 'x' })).rejects.toThrow(SlotNotFoundError);
+    await adminFirestore.collection('machineInventoryMovements').add({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'manual_adjustment', quantityDelta: -3, beforeQuantity: 0, afterQuantity: -3, actor: 'test' });
+    await expect(machineInventoryMovementService.alignSlotToLedger({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', reason: 'x' })).rejects.toThrow(LedgerAlignmentRefusedError);
+    expect((await slotDoc(machineId).get()).data()?.currentQuantity).toBe(0);
   });
 });

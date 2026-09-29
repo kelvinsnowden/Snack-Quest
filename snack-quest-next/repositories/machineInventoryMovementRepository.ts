@@ -76,6 +76,12 @@ class MachineInventoryMovementRepository {
     return snapshot.docs.reduce((sum, doc) => sum + (doc.data() as MachineInventoryMovement).quantityDelta, 0);
   }
 
+  /** The same sum as `sumDeltasForSlot`, read inside a transaction so the result and a write based on it can't be split by a concurrent movement. */
+  async sumDeltasForSlotInTransaction(tx: Transaction, businessId: string, machineId: string, slotId: string): Promise<number> {
+    const snapshot = await tx.get(adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('machineId', '==', machineId).where('slotId', '==', slotId));
+    return snapshot.docs.reduce((sum, doc) => sum + (doc.data() as MachineInventoryMovement).quantityDelta, 0);
+  }
+
   /** Every movement of one reason in a window, cursor-paged — the rollup primitive for units-sold/restock-frequency metrics (§ ANALYTICS). */
   async *streamMovementsInRange(
     businessId: string,

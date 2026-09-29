@@ -8,8 +8,9 @@ import { machineService } from '@/services/machineService';
 import { machineSlotService } from '@/services/machineSlotService';
 import { machineRepository } from '@/repositories/machineRepository';
 import { listProductOptions } from '@/lib/vending/productOptions';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SlotEditor } from '@/components/admin/vending/SlotEditor';
+import { StockLedgerCheck } from '@/components/admin/vending/StockLedgerCheck';
 
 export const metadata: Metadata = { title: 'Slots' };
 
@@ -70,6 +71,15 @@ export default async function MachineSlotsPage({ params }: { params: Promise<{ m
             canPrice={hasPermission(session, 'pricing.manage')}
             canToggle={hasPermission(session, 'machines.slots.toggle')}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Stock ledger check</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <StockLedgerCheck machineId={machineId} canAlign={hasPermission(session, 'machine_inventory.adjust')} />
         </CardContent>
       </Card>
     </div>

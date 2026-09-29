@@ -23,6 +23,13 @@ export class InsufficientMachineStockError extends Error {
   }
 }
 
+export class LedgerAlignmentRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LedgerAlignmentRefusedError';
+  }
+}
+
 export class DiscrepancyReasonRequiredError extends Error {
   constructor() {
     super('A reason is required to record a stock discrepancy adjustment');
@@ -134,6 +141,49 @@ class MachineInventoryMovementService {
     }
     const ledgerDerived = await machineInventoryMovementRepository.sumDeltasForSlot(businessId, machineId, slotCode);
     return { cached: slot.currentQuantity, ledgerDerived, matches: slot.currentQuantity === ledgerDerived };
+  }
+
+  /** `reconcile` for every slot on one machine, in slot order. */
+  async reconcileMachine(businessId: string, machineId: string): Promise<{ slotCode: string; productId: string | null; cached: number; ledgerDerived: number; matches: boolean }[]> {
+    const slots = await machineSlotRepository.listByMachine(businessId, machineId);
+    const rows = await Promise.all(
+      slots.map(async (slot) => {
+        const ledgerDerived = await machineInventoryMovementRepository.sumDeltasForSlot(businessId, machineId, slot.slotCode);
+        return { slotCode: slot.slotCode, productId: slot.productId, cached: slot.currentQuantity, ledgerDerived, matches: slot.currentQuantity === ledgerDerived };
+      }),
+    );
+    return rows.sort((a, b) => a.slotCode.localeCompare(b.slotCode, undefined, { numeric: true }));
+  }
+
+  /**
+   * Puts a slot's cached count back in line with its ledger, after
+   * `reconcile` shows they disagree (something wrote the count outside
+   * `recordMovement`). The ledger is the record, so the count moves to
+   * it; no movement is written, because no stock moved. Read and write
+   * happen in one transaction, so a sale landing at the same moment
+   * can't be overwritten. Needs a reason; the caller audits it. If the
+   * shelf itself differs, a physical count
+   * (`recordDiscrepancyAdjustment`) comes after.
+   */
+  async alignSlotToLedger(input: { businessId: string; machineId: string; slotCode: string; reason: string }): Promise<{ before: number; after: number; changed: boolean }> {
+    if (!input.reason.trim()) {
+      throw new LedgerAlignmentRefusedError('Say why the count is being corrected.');
+    }
+    return adminFirestore.runTransaction(async (tx) => {
+      const slot = await machineSlotRepository.getInTransaction(tx, input.machineId, input.slotCode);
+      if (!slot || slot.businessId !== input.businessId) {
+        throw new SlotNotFoundError(input.machineId, input.slotCode);
+      }
+      const ledgerDerived = await machineInventoryMovementRepository.sumDeltasForSlotInTransaction(tx, input.businessId, input.machineId, input.slotCode);
+      if (ledgerDerived < 0) {
+        throw new LedgerAlignmentRefusedError(`The ledger for slot ${input.slotCode} adds up to ${ledgerDerived}, below zero — it needs investigating, not copying onto the slot.`);
+      }
+      if (ledgerDerived === slot.currentQuantity) {
+        return { before: slot.currentQuantity, after: ledgerDerived, changed: false };
+      }
+      machineSlotRepository.updateQuantityInTransaction(tx, input.machineId, input.slotCode, ledgerDerived);
+      return { before: slot.currentQuantity, after: ledgerDerived, changed: true };
+    });
   }
 
   /**
