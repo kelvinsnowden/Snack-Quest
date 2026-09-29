@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, TriangleAlert } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { shoppingRunService, ShoppingRunNotFoundError } from '@/services/shoppingRunService';
 import { serializeShoppingRun } from '@/lib/recipes/serialize';
 import { ShoppingRunList } from '@/components/warehouse/ShoppingRunList';
@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 export const metadata: Metadata = { title: 'Shopping list' };
 
 export default async function ShoppingRunPage({ params }: { params: Promise<{ runId: string }> }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('warehouse_fulfilment.manage');
   const { runId } = await params;
 
   let run;

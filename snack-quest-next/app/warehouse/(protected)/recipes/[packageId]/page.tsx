@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ImageOff, MapPin, TriangleAlert } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { recipeService } from '@/services/recipeService';
 import { Card } from '@/components/ui/card';
 
@@ -22,7 +22,7 @@ export const metadata: Metadata = { title: 'Recipe' };
  * useful, an empty square is confusing.
  */
 export default async function WarehouseRecipeDetailPage({ params }: { params: Promise<{ packageId: string }> }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('products.view');
   const { packageId } = await params;
   const recipe = await recipeService.getRecipe(session.businessId, packageId);
 

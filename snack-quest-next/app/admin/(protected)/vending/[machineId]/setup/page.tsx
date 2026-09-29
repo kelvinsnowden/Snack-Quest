@@ -72,7 +72,7 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
             <CardTitle className="text-base">Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <MachineStatusControl machineId={machineId} machineCode={machine.machineCode} status={machine.status} next={MACHINE_STATUS_TRANSITIONS[machine.status] ?? []} canEdit={hasPermission(session, 'machines.status.manage')} />
+            <MachineStatusControl machineId={machineId} machineCode={machine.machineCode} status={machine.status} next={(MACHINE_STATUS_TRANSITIONS[machine.status] ?? []).filter((to) => to !== 'decommissioned' || hasPermission(session, 'machines.decommission'))} canEdit={hasPermission(session, 'machines.status.manage')} />
           </CardContent>
         </Card>
 

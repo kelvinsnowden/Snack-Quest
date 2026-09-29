@@ -143,6 +143,15 @@ describe('PATCH /api/vending/machines/[id]', () => {
     expect(logs[0].data.after).toMatchObject({ status: 'maintenance' });
   });
 
+  it('403s retiring a machine without machines.decommission, even for someone who may change its status', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION); // Warehouse: may pause, may not retire
+    findByIdMock.mockResolvedValue(MACHINE);
+    const response = await patch({ status: 'decommissioned' });
+    expect(response.status).toBe(403);
+    expect((await response.json()).permission).toBe('machines.decommission');
+    expect(updateStatusMock).not.toHaveBeenCalled();
+  });
+
   it('200s a relocation, calling machineService.relocate with the new location fields', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     findByIdMock.mockResolvedValue(MACHINE);

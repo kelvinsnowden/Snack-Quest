@@ -76,6 +76,10 @@ async function provisionSimulatedMachine(adapter: MockVendingAdapter, caller: In
     model: 'simulated',
     actor: 'simulator',
   });
+  // Installed and commissioned: only an active machine takes money.
+  for (const status of ['installing', 'testing', 'active'] as const) {
+    await machineService.updateStatus(BUSINESS_ID, machineId, status, 'simulator');
+  }
   adapter.seedSlot(machineId, 'A01', { quantity });
   const slots = new MachineSlotService(() => adapter);
   await slots.configureSlot({

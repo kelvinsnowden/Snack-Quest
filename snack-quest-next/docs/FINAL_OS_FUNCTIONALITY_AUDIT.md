@@ -44,7 +44,7 @@
 4. **P1: new staff start with full role access.** An invite can't choose a template. A new product manager is a full admin until someone narrows them afterwards.
 5. **P1: decommissioning is irreversible, and the Warehouse template can do it.** It sits under `machines.status.manage`.
 6. **P1: owner subscription arrears are never detected.** `machineSubscriptionService.reconcileArrears` is written and tested, but no job or screen calls it. No subscription ever enters grace or `in_arrears`.
-7. **P1: unverified M-Pesa callbacks are accepted silently.** When no Daraja webhook secret is set, callbacks are accepted without verification, and a verified callback authorizes the vend directly. The only warning is a server log line. An admin can set the secret in Settings → Integrations, but nothing tells them it's missing.
+7. ~~**P1: unverified M-Pesa callbacks are accepted silently.**~~ **Corrected during implementation: not a gap.** The route does accept a callback unverified when no Daraja webhook secret is stored. But `lib/integrations/daraja/config.ts` generates and stores the secret (`ensureWebhookSecret`) before the first STK push, so every push carries it, and no pending sale exists that an unverified callback could credit.
 8. **P1: stock pulled out of a machine can't be recorded as what it is.** Expired, damaged or returned-to-warehouse items can only be removed as an anonymous count correction. Machine waste is only ever written for test vends, so waste can't be reported.
 9. **P1 (decision): machine restocks never draw down warehouse stock.** This is documented as deferred (`INVENTORY_ARCHITECTURE.md` §5), but the effect is that warehouse snack counts overstate after every restock.
 10. **P1 (money audit):** discount codes can be created and edited with no audit entry. Role changes are audited without the previous role.
@@ -119,13 +119,13 @@ Each gap has a class: A critical-ops · B security · C financial · D fleet · 
 | B-3 | Revenue on role-gated pages | B | A product manager or marketer sees company revenue, refunds and commissions by opening `/finance` or the dashboard. The only way to prevent it today is to not give them an admin-role account, which leaves them no workspace at all |
 | B-4 | No template at invite | B, E | An admin invites a product manager, then must remember to open their access and narrow it. Until they do, that person is a full admin |
 | B-5 | Arrears never computed | C | Finance must work out by hand, from the subscription card, which owners haven't paid. `in_arrears` never appears anywhere |
-| B-6 | Webhook secret missing is invisible | B, C | Nobody knows the callbacks are unverified unless they read server logs |
+| B-6 | ~~Webhook secret missing is invisible~~ | — | **Corrected: not a gap.** The secret is generated before the first STK push (see finding 7) |
 | B-7 | Typed stock removal | A, F | A restocker who pulls 6 expired sodas records "count is now 2 — expired". Waste reports, write-off costing and owner disputes can't tell expired from miscounted |
 | B-8 | Warehouse not drawn down by restocks | A, F | Warehouse must re-count and correct stock after every restock day, or live with overstated counts |
 | B-9 | Confirmation strategy, reserve target, serial, firmware | G, D | A developer edits Firestore. The documented "staff record what the physical machine uses" has no screen |
 | B-10 | Replace a machine, controller or host | D | No workflow. Staff improvise: re-point the integration's manufacturer machine id (allowed only with no dispense in flight), issue a new screen key, and leave the serial number wrong |
 | B-11 | Decommission checklist | D, A | Decommissioning writes only the status. Screen keys stay valid, the integration stays active, the subscription keeps billing, and open restock tasks stay open. (B-1's fix stops the sales; the rest still has to be done by hand) |
-| B-12 | Watchdog ignores never-run jobs | A | The every-5-minutes fast-recovery job runs from GitHub Actions. If its secrets were never set up, it has "never run" and `/api/cron/health` still says OK. Stuck vends then wait for the daily sweep |
+| B-12 | ~~Watchdog ignores never-run jobs~~ | — | **Corrected: mostly covered.** `scheduledJobService.health` reports a never-run job as **overdue** once other scheduled jobs have been running, naming its trigger (for example the GitHub Actions workflow). The only blind case is a brand-new deployment where nothing has run yet |
 | B-13 | Dispensed-sale dispute | C | A customer who got a stale product has no refund path. Finance refunds outside the system, and settlements never see it (`revenueReversalsForPeriod` returns 0 by design until the owner-loss rule is decided) |
 | B-14 | Product master data | E, F | Allergens, nutrition and barcode live in spreadsheets. The kiosk can't show them, and restock picking can't scan |
 | B-15 | View-as only by role | E | An admin can't check what "Product manager" or a specific person sees before handing access out |
@@ -416,15 +416,15 @@ The full catalogue is generated in `docs/RBAC_PERMISSION_CATALOG.md`: 93 permiss
 
 ## 17. Role templates
 
-Also in the catalogue.
+Also in the catalogue. Counts are after this pass.
 
 | Template | Permissions | For |
 |---|---:|---|
-| Super admin | 93 | Everything, including staff access and credentials |
-| Admin | 81 | Everything except the 12 super-admin-only permissions |
+| Super admin | 94 | Everything, including staff access and credentials |
+| Admin | 82 | Everything except the 12 super-admin-only permissions |
 | Machine operations | 32 | Fleet setup, catalogue, prices, stock, alerts |
 | Warehouse | 28 | Packing, shopping runs, machine restocking |
-| Finance | 13 | Machine sales, refunds, owner money |
+| Finance | 14 | Machine sales, refunds, owner money, and the Finance workspace (`finance.view`, added in this pass) |
 | Support | 3 | Conversations, couriers, looking up machine sales |
 | Marketing | 10 | Campaigns, creators, content, machine screen |
 | Product manager | 7 | Boxes, snacks, recipes |
@@ -449,14 +449,14 @@ Priority: **P0** blocks safe operation · **P1** blocks an important workflow ·
 | FA-04 | No template at invite (B-4) | B | **P1** | Build |
 | FA-05 | Decommission is permanent and held by Warehouse | B, D | **P1** | Build: a separate permission |
 | FA-06 | Arrears sweep never runs (B-5) | C | **P1** | Build: a daily job |
-| FA-07 | Unverified-callback risk invisible (B-6) | B, C | **P1** | Build: a visible warning. **Decision:** fail closed in production once the secret is set |
+| FA-07 | ~~Unverified-callback risk invisible (B-6)~~ | — | — | **Withdrawn:** the secret is generated before the first push. Optional hardening: fail closed in production once a secret exists |
 | FA-08 | Typed machine stock removal (B-7) | A, F | **P1** | Build |
 | FA-09 | Warehouse draw-down on restock (B-8) | A, F | **P1** | **Decision needed:** where it deducts (dispatch vs pick), what a discrepancy returns, and which ledger boxes and snacks use |
 | FA-10 | Discount codes unaudited; role change without "before" | C | **P1** | Build |
 | FA-11 | Decommission checklist (keys, integration, subscription, tasks) (B-11) | D | P2 | Next |
 | FA-12 | Machine details not editable (B-9) | G | P2 | Next |
 | FA-13 | Machine, controller and host replacement workflow (B-10) | D | P2 | Next (design) |
-| FA-14 | Watchdog ignores never-run jobs (B-12) | A | P2 | Next |
+| FA-14 | ~~Watchdog ignores never-run jobs (B-12)~~ | — | — | **Withdrawn:** already reported as overdue |
 | FA-15 | Dispensed-sale dispute and refund (B-13) | C | P2 | **Decision:** who bears the loss (owner vs Snack Quest) |
 | FA-16 | Product master data fields (B-14) | E, F | P2 | **Decision:** which fields, and where the kiosk shows them |
 | FA-17 | View-as by template or person (B-15) | E | P2 | Next |
@@ -512,4 +512,26 @@ Priority: **P0** blocks safe operation · **P1** blocks an important workflow ·
 
 ## 21. What this pass built
 
-*Filled in after implementation. See the status at the end of this file.*
+Every change keeps the chain intact: UI permission → page permission → API permission → service rule → transaction → audit.
+
+| Item | What changed | Where | Tests |
+|---|---|---|---|
+| **FA-01** (P0) | A customer payment is refused unless the machine's own status is `active`. A paused, offline, retired or not-yet-commissioned machine takes no money, whatever its integration says; the gateway is never called | `machineTransactionService.startCartPayment` | New: a paused, offline and retired machine each refused, with no push and no sale written. Fixtures that sold from a freshly provisioned machine now commission it first (installing → testing → active), as the v1 harness already did |
+| **FA-02** (P0) | One escalation rule for every staff change, enforced in the service with the actor's session: <br>• only a super admin can invite a super admin, promote to or demote from it, or disable, remove or reset the password of one;<br>• anyone else can only produce access that is a subset of their own, on invite (template or role), role change, and clearing legacy section limits;<br>• a reset link is only given for someone whose access is a subset of the actor's. <br>Refusals are 403s | `staffManagementService` (`StaffActor`, `SuperAdminOnlyError`), staff routes | New: a delegated user manager is refused on every path; a narrow manager can't invite an admin, promote to admin, clear section limits or take over a stronger account; within their own access it works |
+| **FA-04** (P1) | An invite can start from a template ("Starting access"). The escalation rule applies to the template | Invite dialog, `POST /api/admin/staff`, service | New: a product manager invited with the template holds `products.manage`, not `finance.view`; an unknown template is refused |
+| **FA-05** (P1) | **New permission `machines.decommission`** ("Retire a machine for good"). In Admin (and Super admin); not in Warehouse or Machine operations. The route checks it for `status: decommissioned`, and the setup page only offers "Retired" to people holding it | `permissions.ts`, `PATCH /api/vending/machines/[id]`, setup page | New: Warehouse gets 403 `machines.decommission` and nothing is written |
+| **FA-03** (P1) | Money and staff data behind permissions: <br>• `/admin/analytics` needs `finance.view` (page gate and navigation); <br>• the dashboard reads and shows revenue only with `finance.view`, and the staff count only with `users.manage`; <br>• every `/finance` page needs `finance.view`, and every `/warehouse` page its permission (`warehouse_fulfilment.manage` or `products.view`), through `requireWorkspacePage`. Someone without it lands on `/no-access`, which names the missing permission. <br>**The Finance template now includes `finance.view`**, so finance staff keep the workspace they already had | `lib/auth/requireWorkspacePage.ts`, `app/no-access`, workspace pages, dashboard, nav map | Covered by type-checking and the existing permission tests; there are no browser tests for these pages |
+| **FA-06** (P1) | A daily `reconcile-subscription-arrears` job (05:30 UTC, `vercel.json`) runs the existing arrears rule under a lease, records its run, and has Run now on Operations | `services/jobs/reconcileSubscriptionArrears.ts`, cron route, schedule table, registry | New: the job, run through the scheduler, opens grace on a past-due subscription and records its summary |
+| **FA-10** (P1) | Discount codes: create and edit are in the audit log (before/after; new "Discount codes" filter area). Staff role changes record the previous role | Discount-code route, staff route | Covered by the route tests; the role-change "before" by the staff route tests |
+
+**Not built in this pass**, in the order to do them:
+1. **FA-08:** typed stock removal from a machine (expired, damaged, returned). It needs a movement reason for each and a slot-page action. Unambiguous; next.
+2. **FA-11, FA-12, FA-17, FA-18:** P2.
+3. **Decisions for you:** FA-09 (warehouse draw-down), FA-15 (who bears a dispensed-sale refund), FA-16 (product fields).
+
+### Corrections to this audit found while building
+
+These are recorded above and struck through where they were wrong:
+- **FA-07 withdrawn.** The Daraja webhook secret is generated before the first STK push.
+- **FA-14 withdrawn.** The job watchdog already reports a never-run job as overdue once others run.
+- **The permission count** was 93 at the time of the audit and is **94** after this pass (`machines.decommission`).

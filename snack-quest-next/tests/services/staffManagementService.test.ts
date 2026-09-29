@@ -12,12 +12,18 @@ import {
   CannotModifySelfError,
   LastSuperAdminError,
   PermissionEscalationError,
+  SuperAdminOnlyError,
+  type StaffActor,
 } from '@/services/staffManagementService';
 import { effectivePermissions, ALL_PERMISSIONS } from '@/lib/auth/permissions';
 import { getIdTokenForUid } from '../helpers/authEmulator';
 
 const BUSINESS_ID = 'biz-staff-mgmt-test';
 const createdUids: string[] = [];
+/** A super admin making the change (holds everything). */
+const sa = (uid: string): StaffActor => ({ uid, roles: ['super_admin'], permissions: ALL_PERMISSIONS });
+/** A user manager who isn't a super admin: an admin who was also given users.manage. */
+const delegatedManager = (uid = 'delegated-manager'): StaffActor => ({ uid, roles: ['admin'], permissions: [...effectivePermissions({ roles: ['admin'] }), 'users.manage'] });
 
 async function cleanCollections() {
   for (const name of ['businesses', 'users', 'staffProfiles']) {
@@ -74,7 +80,7 @@ describe('StaffManagementService.inviteStaff', () => {
     const result = await staffManagementService.inviteStaff(
       BUSINESS_ID,
       { email: 'new-staff@example.com', displayName: 'New Staff', role: 'agent', department: 'Sales' },
-      'inviter-uid',
+      sa('inviter-uid'),
     );
     createdUids.push(result.uid);
 
@@ -104,7 +110,7 @@ describe('StaffManagementService.inviteStaff', () => {
     const result = await staffManagementService.inviteStaff(
       BUSINESS_ID,
       { email: 'was-customer@example.com', displayName: 'ignored', role: 'finance', department: 'Finance' },
-      'inviter-uid',
+      sa('inviter-uid'),
     );
 
     expect(result.uid).toBe(record.uid);
@@ -115,7 +121,7 @@ describe('StaffManagementService.inviteStaff', () => {
 
   it('reactivates a previously removed staffer on re-invite, so they can actually sign back in', async () => {
     const uid = await seedStaff('re-invited@example.com', 'agent');
-    await staffManagementService.removeStaff(BUSINESS_ID, uid, 'inviter-uid');
+    await staffManagementService.removeStaff(BUSINESS_ID, uid, sa('inviter-uid'));
 
     // Removed: not provisioned, and the Auth account is disabled —
     // confirms the "before" state this test is guarding against.
@@ -125,7 +131,7 @@ describe('StaffManagementService.inviteStaff', () => {
     const result = await staffManagementService.inviteStaff(
       BUSINESS_ID,
       { email: 're-invited@example.com', displayName: 'Re-Invited', role: 'agent', department: 'Ops' },
-      'inviter-uid',
+      sa('inviter-uid'),
     );
     expect(result.uid).toBe(uid);
 
@@ -153,7 +159,7 @@ describe('StaffManagementService.inviteStaff', () => {
       staffManagementService.inviteStaff(
         BUSINESS_ID,
         { email: 'already-staff@example.com', displayName: 'X', role: 'agent', department: 'Ops' },
-        'inviter-uid',
+        sa('inviter-uid'),
       ),
     ).rejects.toBeInstanceOf(StaffAlreadyExistsError);
   });
@@ -163,7 +169,7 @@ describe('StaffManagementService.inviteStaff', () => {
       staffManagementService.inviteStaff(
         BUSINESS_ID,
         { email: 'not-an-email', displayName: 'X', role: 'agent', department: 'Ops' },
-        'inviter-uid',
+        sa('inviter-uid'),
       ),
     ).rejects.toBeInstanceOf(StaffValidationError);
   });
@@ -173,7 +179,7 @@ describe('StaffManagementService.inviteStaff', () => {
       staffManagementService.inviteStaff(
         BUSINESS_ID,
         { email: 'valid@example.com', displayName: 'X', role: 'ceo' as never, department: 'Ops' },
-        'inviter-uid',
+        sa('inviter-uid'),
       ),
     ).rejects.toBeInstanceOf(StaffValidationError);
   });
@@ -182,7 +188,7 @@ describe('StaffManagementService.inviteStaff', () => {
     const result = await staffManagementService.inviteStaff(
       BUSINESS_ID,
       { email: 'unrestricted@example.com', displayName: 'X', role: 'admin', department: 'Ops' },
-      'inviter-uid',
+      sa('inviter-uid'),
     );
     createdUids.push(result.uid);
 
@@ -193,7 +199,7 @@ describe('StaffManagementService.inviteStaff', () => {
     const result = await staffManagementService.inviteStaff(
       BUSINESS_ID,
       { email: 'restricted@example.com', displayName: 'X', role: 'admin', department: 'Ops', permissions: ['orders', 'finance'] },
-      'inviter-uid',
+      sa('inviter-uid'),
     );
     createdUids.push(result.uid);
 
@@ -205,7 +211,7 @@ describe('StaffManagementService.inviteStaff', () => {
       staffManagementService.inviteStaff(
         BUSINESS_ID,
         { email: 'bad-permissions@example.com', displayName: 'X', role: 'admin', department: 'Ops', permissions: ['not-a-real-section'] },
-        'inviter-uid',
+        sa('inviter-uid'),
       ),
     ).rejects.toBeInstanceOf(StaffValidationError);
   });
@@ -215,16 +221,16 @@ describe('StaffManagementService.changePermissions', () => {
   it('restricts an unrestricted admin to specific sections', async () => {
     const uid = await seedStaff('restrict-me@example.com', 'admin');
 
-    await staffManagementService.changePermissions(BUSINESS_ID, uid, ['orders'], 'actor-uid');
+    await staffManagementService.changePermissions(BUSINESS_ID, uid, ['orders'], sa('actor-uid'));
 
     expect((await staffRepository.findById(uid))?.permissions).toEqual(['orders']);
   });
 
   it('clears restrictions back to unrestricted with an empty array', async () => {
     const uid = await seedStaff('unrestrict-me@example.com', 'admin');
-    await staffManagementService.changePermissions(BUSINESS_ID, uid, ['orders'], 'actor-uid');
+    await staffManagementService.changePermissions(BUSINESS_ID, uid, ['orders'], sa('actor-uid'));
 
-    await staffManagementService.changePermissions(BUSINESS_ID, uid, [], 'actor-uid');
+    await staffManagementService.changePermissions(BUSINESS_ID, uid, [], sa('actor-uid'));
 
     expect((await staffRepository.findById(uid))?.permissions).toEqual([]);
   });
@@ -232,13 +238,13 @@ describe('StaffManagementService.changePermissions', () => {
   it('rejects an unknown section', async () => {
     const uid = await seedStaff('bad-section@example.com', 'admin');
     await expect(
-      staffManagementService.changePermissions(BUSINESS_ID, uid, ['not-a-real-section'], 'actor-uid'),
+      staffManagementService.changePermissions(BUSINESS_ID, uid, ['not-a-real-section'], sa('actor-uid')),
     ).rejects.toBeInstanceOf(StaffValidationError);
   });
 
   it('throws StaffNotFoundError for a uid not on this business', async () => {
     await expect(
-      staffManagementService.changePermissions(BUSINESS_ID, 'nonexistent-uid', ['orders'], 'actor-uid'),
+      staffManagementService.changePermissions(BUSINESS_ID, 'nonexistent-uid', ['orders'], sa('actor-uid')),
     ).rejects.toBeInstanceOf(StaffNotFoundError);
   });
 });
@@ -247,7 +253,7 @@ describe('StaffManagementService.changeRole', () => {
   it('updates staffProfile.role, users.roles, and Auth custom claims together', async () => {
     const uid = await seedStaff('promote-me@example.com', 'agent');
 
-    await staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', 'actor-uid');
+    await staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', sa('actor-uid'));
 
     expect((await staffRepository.findById(uid))?.role).toBe('admin');
     expect((await userRepository.findById(uid))?.roles).toEqual(['admin']);
@@ -257,14 +263,14 @@ describe('StaffManagementService.changeRole', () => {
 
   it('refuses to let a super admin change their own role', async () => {
     const uid = await seedStaff('self-change@example.com', 'super_admin');
-    await expect(staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', uid)).rejects.toBeInstanceOf(
+    await expect(staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', sa(uid))).rejects.toBeInstanceOf(
       CannotModifySelfError,
     );
   });
 
   it('refuses to demote the last super admin', async () => {
     const uid = await seedStaff('only-super-admin@example.com', 'super_admin');
-    await expect(staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', 'other-actor-uid')).rejects.toBeInstanceOf(
+    await expect(staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', sa('other-actor-uid'))).rejects.toBeInstanceOf(
       LastSuperAdminError,
     );
   });
@@ -273,12 +279,12 @@ describe('StaffManagementService.changeRole', () => {
     const uid = await seedStaff('demote-me@example.com', 'super_admin');
     await seedStaff('other-super-admin@example.com', 'super_admin');
 
-    await staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', 'other-actor-uid');
+    await staffManagementService.changeRole(BUSINESS_ID, uid, 'admin', sa('other-actor-uid'));
     expect((await staffRepository.findById(uid))?.role).toBe('admin');
   });
 
   it('throws StaffNotFoundError for a uid not on this business', async () => {
-    await expect(staffManagementService.changeRole(BUSINESS_ID, 'nonexistent-uid', 'admin', 'actor-uid')).rejects.toBeInstanceOf(
+    await expect(staffManagementService.changeRole(BUSINESS_ID, 'nonexistent-uid', 'admin', sa('actor-uid'))).rejects.toBeInstanceOf(
       StaffNotFoundError,
     );
   });
@@ -288,21 +294,21 @@ describe('StaffManagementService.setDisabled', () => {
   it('disables and reactivates an Auth account', async () => {
     const uid = await seedStaff('disable-me@example.com', 'agent');
 
-    await staffManagementService.setDisabled(BUSINESS_ID, uid, true, 'actor-uid');
+    await staffManagementService.setDisabled(BUSINESS_ID, uid, true, sa('actor-uid'));
     expect((await adminAuth.getUser(uid)).disabled).toBe(true);
 
-    await staffManagementService.setDisabled(BUSINESS_ID, uid, false, 'actor-uid');
+    await staffManagementService.setDisabled(BUSINESS_ID, uid, false, sa('actor-uid'));
     expect((await adminAuth.getUser(uid)).disabled).toBe(false);
   });
 
   it('refuses to let a staff member disable themselves', async () => {
     const uid = await seedStaff('self-disable@example.com', 'admin');
-    await expect(staffManagementService.setDisabled(BUSINESS_ID, uid, true, uid)).rejects.toBeInstanceOf(CannotModifySelfError);
+    await expect(staffManagementService.setDisabled(BUSINESS_ID, uid, true, sa(uid))).rejects.toBeInstanceOf(CannotModifySelfError);
   });
 
   it('refuses to disable the last super admin', async () => {
     const uid = await seedStaff('last-super-disable@example.com', 'super_admin');
-    await expect(staffManagementService.setDisabled(BUSINESS_ID, uid, true, 'other-actor-uid')).rejects.toBeInstanceOf(
+    await expect(staffManagementService.setDisabled(BUSINESS_ID, uid, true, sa('other-actor-uid'))).rejects.toBeInstanceOf(
       LastSuperAdminError,
     );
   });
@@ -312,7 +318,7 @@ describe('StaffManagementService.removeStaff', () => {
   it('soft-deletes the profile/user and disables the Auth account', async () => {
     const uid = await seedStaff('remove-me@example.com', 'agent');
 
-    await staffManagementService.removeStaff(BUSINESS_ID, uid, 'actor-uid');
+    await staffManagementService.removeStaff(BUSINESS_ID, uid, sa('actor-uid'));
 
     expect(await staffRepository.findById(uid)).toBeNull();
     const authRecord = await adminAuth.getUser(uid);
@@ -321,27 +327,27 @@ describe('StaffManagementService.removeStaff', () => {
 
   it('refuses to remove the last super admin', async () => {
     const uid = await seedStaff('last-super-remove@example.com', 'super_admin');
-    await expect(staffManagementService.removeStaff(BUSINESS_ID, uid, 'other-actor-uid')).rejects.toBeInstanceOf(
+    await expect(staffManagementService.removeStaff(BUSINESS_ID, uid, sa('other-actor-uid'))).rejects.toBeInstanceOf(
       LastSuperAdminError,
     );
   });
 
   it('refuses to let a staff member remove themselves', async () => {
     const uid = await seedStaff('self-remove@example.com', 'admin');
-    await expect(staffManagementService.removeStaff(BUSINESS_ID, uid, uid)).rejects.toBeInstanceOf(CannotModifySelfError);
+    await expect(staffManagementService.removeStaff(BUSINESS_ID, uid, sa(uid))).rejects.toBeInstanceOf(CannotModifySelfError);
   });
 });
 
 describe('StaffManagementService.resetPassword', () => {
   it('generates a working reset link for an existing staff member', async () => {
     const uid = await seedStaff('reset-me@example.com', 'agent');
-    const { resetLink } = await staffManagementService.resetPassword(BUSINESS_ID, uid);
+    const { resetLink } = await staffManagementService.resetPassword(BUSINESS_ID, uid, sa('actor-uid'));
     expect(resetLink).toMatch(/^https?:\/\//);
   });
 
   it('throws StaffNotFoundError for a uid on a different business', async () => {
     const uid = await seedStaff('wrong-business@example.com', 'agent');
-    await expect(staffManagementService.resetPassword('some-other-biz', uid)).rejects.toBeInstanceOf(StaffNotFoundError);
+    await expect(staffManagementService.resetPassword('some-other-biz', uid, sa('actor-uid'))).rejects.toBeInstanceOf(StaffNotFoundError);
   });
 });
 
@@ -381,5 +387,64 @@ describe('StaffManagementService.setAccess', () => {
     await expect(staffManagementService.setAccess(BUSINESS_ID, other, { template: 'god_mode', granted: [], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffValidationError);
     await expect(staffManagementService.setAccess(BUSINESS_ID, other, { template: null, granted: ['everything'], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffValidationError);
     await expect(staffManagementService.setAccess('another-business', other, { template: null, granted: [], revoked: [] }, superAdmin)).rejects.toBeInstanceOf(StaffNotFoundError);
+  });
+});
+
+describe('escalation through invites, roles, sections and reset links', () => {
+  it('only a super admin can create, change or touch a super admin', async () => {
+    const boss = await seedStaff('boss@example.com', 'super_admin');
+    await seedStaff('boss-2@example.com', 'super_admin');
+    const staffer = await seedStaff('staffer@example.com', 'agent');
+    const manager = delegatedManager();
+
+    await expect(staffManagementService.inviteStaff(BUSINESS_ID, { email: 'new-boss@example.com', displayName: 'New', role: 'super_admin', department: 'Ops' }, manager)).rejects.toBeInstanceOf(SuperAdminOnlyError);
+    await expect(staffManagementService.changeRole(BUSINESS_ID, staffer, 'super_admin', manager)).rejects.toBeInstanceOf(SuperAdminOnlyError);
+    await expect(staffManagementService.changeRole(BUSINESS_ID, boss, 'agent', manager)).rejects.toBeInstanceOf(SuperAdminOnlyError);
+    await expect(staffManagementService.setDisabled(BUSINESS_ID, boss, true, manager)).rejects.toBeInstanceOf(SuperAdminOnlyError);
+    await expect(staffManagementService.removeStaff(BUSINESS_ID, boss, manager)).rejects.toBeInstanceOf(SuperAdminOnlyError);
+    await expect(staffManagementService.resetPassword(BUSINESS_ID, boss, manager)).rejects.toBeInstanceOf(SuperAdminOnlyError);
+    expect((await staffRepository.findById(boss))?.role).toBe('super_admin');
+
+    // A super admin can.
+    const { before } = await staffManagementService.changeRole(BUSINESS_ID, staffer, 'super_admin', sa(boss));
+    expect(before).toBe('agent');
+  });
+
+  it('nobody else can hand out more than they hold — by invite, role change, clearing section limits, or a reset link', async () => {
+    const narrow: StaffActor = { uid: 'narrow-manager', roles: ['admin'], permissions: ['users.manage', 'support.conversations.handle'] };
+    const staffer = await seedStaff('support@example.com', 'agent');
+    const admin = await seedStaff('an-admin@example.com', 'admin');
+
+    // Invite as a full admin: far more than they hold.
+    await expect(staffManagementService.inviteStaff(BUSINESS_ID, { email: 'too-much@example.com', displayName: 'X', role: 'admin', department: 'Ops' }, narrow)).rejects.toBeInstanceOf(PermissionEscalationError);
+    // Promote a support agent to admin.
+    await expect(staffManagementService.changeRole(BUSINESS_ID, staffer, 'admin', narrow)).rejects.toBeInstanceOf(PermissionEscalationError);
+    // A reset link into an account that can do more than they can.
+    await expect(staffManagementService.resetPassword(BUSINESS_ID, admin, narrow)).rejects.toBeInstanceOf(PermissionEscalationError);
+    // Clearing an admin's section limits is a grant like any other.
+    await staffRepository.update(admin, { permissions: ['conversations'] }, 'system');
+    await expect(staffManagementService.changePermissions(BUSINESS_ID, admin, [], narrow)).rejects.toBeInstanceOf(PermissionEscalationError);
+
+    // Within their own access, it works: invite with a narrow template they fully hold.
+    const support: StaffActor = { uid: 'support-lead', roles: ['admin'], permissions: ['users.manage', ...effectivePermissions({ roles: ['agent'] })] };
+    const invited = await staffManagementService.inviteStaff(BUSINESS_ID, { email: 'new-support@example.com', displayName: 'New Support', role: 'agent', department: 'Support' }, support);
+    createdUids.push(invited.uid);
+    expect((await staffManagementService.resetPassword(BUSINESS_ID, staffer, support)).resetLink).toBeTruthy();
+  });
+
+  it('an invite can start from a template, so new staff never begin with the whole role', async () => {
+    const invited = await staffManagementService.inviteStaff(
+      BUSINESS_ID,
+      { email: 'pm@example.com', displayName: 'Pat PM', role: 'admin', department: 'Product', template: 'product_manager' },
+      delegatedManager(),
+    );
+    createdUids.push(invited.uid);
+    const member = await staffManagementService.getStaffMember(BUSINESS_ID, invited.uid);
+    expect(member?.template).toBe('product_manager');
+    expect(member?.effectivePermissions).toContain('products.manage');
+    expect(member?.effectivePermissions).not.toContain('finance.view');
+    await expect(
+      staffManagementService.inviteStaff(BUSINESS_ID, { email: 'bad@example.com', displayName: 'Bad', role: 'admin', department: 'X', template: 'god_mode' }, sa('boss')),
+    ).rejects.toBeInstanceOf(StaffValidationError);
   });
 });

@@ -274,6 +274,15 @@ class MachineTransactionService {
     // dispense, so the customer is never asked to pay for it (and
     // then refunded). The gate's internal reason (suspension,
     // environment) is deliberately not part of the message.
+    // The machine's own status is what staff set when they pause, take
+    // offline or retire it; only an active machine takes money.
+    const machine = await machineRepository.findById(input.businessId, input.machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(input.machineId);
+    }
+    if (machine.status !== 'active') {
+      throw new SlotUnavailableForSaleError(input.machineId, input.slotIds.join(','), 'machine is not accepting orders');
+    }
     const gate = await machineIntegrationService.dispenseGate(input.businessId, input.machineId, 'pre_payment');
     if (!gate.allowed) {
       throw new SlotUnavailableForSaleError(input.machineId, input.slotIds.join(','), 'machine is not accepting orders');

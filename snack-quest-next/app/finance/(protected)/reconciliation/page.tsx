@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { Button } from '@/components/ui/button';
 import { UnmatchedPaymentsList } from '@/components/reconciliation/UnmatchedPaymentsList';
@@ -13,7 +13,7 @@ export default async function FinanceReconciliationPage({
 }: {
   searchParams: Promise<{ cursor?: string }>;
 }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('finance.view');
   const { cursor } = await searchParams;
 
   const { events, nextCursor } = await webhookEventRepository.listUnmatchedPayments(session.businessId, { cursor });

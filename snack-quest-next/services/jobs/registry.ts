@@ -19,6 +19,7 @@ const LOADERS: Record<ScheduledJobName, () => Promise<JobBody>> = {
   'retry-notifications': async () => (await import('./retryNotifications')).retryNotifications,
   'rebuild-analytics-rollups': async () => (await import('./rebuildAnalyticsRollups')).rebuildAnalyticsRollups,
   'rebuild-vending-rollups': async () => (await import('./rebuildVendingRollups')).rebuildVendingRollups,
+  'reconcile-subscription-arrears': async () => (await import('./reconcileSubscriptionArrears')).reconcileSubscriptionArrears,
   'generate-recommendations': async () => (await import('./generateRecommendations')).generateRecommendations,
 };
 

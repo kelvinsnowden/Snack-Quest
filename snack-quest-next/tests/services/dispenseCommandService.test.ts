@@ -1,3 +1,4 @@
+import { machineService } from '@/services/machineService';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
@@ -250,6 +251,10 @@ describe('integration gate', () => {
   it('a machine whose integration is not active never asks the customer to pay', async () => {
     const ids = await createManufacturerWithModel(BUSINESS_ID);
     const { machineId } = await paidTransaction();
+    // An active machine, so the refusal below is the integration's, not the machine status's.
+    for (const status of ['installing', 'testing', 'active'] as const) {
+      await machineService.updateStatus(BUSINESS_ID, machineId, status, 'staff-1');
+    }
     await machineIntegrationService.configure(BUSINESS_ID, { machineId, ...ids, manufacturerMachineId: 'M-2', environment: 'sandbox' }, 'staff-1');
     let stkPushes = 0;
     const gateway = { initiateStkPush: async () => { stkPushes += 1; return { checkoutRequestId: 'c', merchantRequestId: 'm', customerMessage: '' }; } } as unknown as PaymentGateway;

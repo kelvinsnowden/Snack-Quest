@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Undo2 } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { refundService } from '@/services/refundService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ export default async function FinanceRefundsPage({
 }: {
   searchParams: Promise<{ status?: string; cursor?: string }>;
 }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('finance.view');
   const { status, cursor } = await searchParams;
   const validStatus = STATUS_FILTERS.includes(status as RefundStatus) ? (status as RefundStatus) : undefined;
 

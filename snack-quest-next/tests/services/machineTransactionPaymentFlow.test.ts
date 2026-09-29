@@ -35,6 +35,13 @@ class FakePaymentGateway implements PaymentGateway {
   }
 }
 
+/** Installed, tested and active — only an active machine takes money. */
+async function commission(machineId: string) {
+  for (const status of ['installing', 'testing', 'active'] as const) {
+    await machineService.updateStatus(BUSINESS_ID, machineId, status, 'staff-1');
+  }
+}
+
 async function seedMachineWithSlot(adapter: MockVendingAdapter, quantity = 5) {
   const { machineId } = await machineService.provisionDevice({
     businessId: BUSINESS_ID,
@@ -44,6 +51,7 @@ async function seedMachineWithSlot(adapter: MockVendingAdapter, quantity = 5) {
     model: 'test-model',
     actor: 'staff-1',
   });
+  await commission(machineId);
   adapter.seedSlot(machineId, 'A01', { quantity });
   const slots = new MachineSlotService(() => adapter);
   await slots.configureSlot({
@@ -206,6 +214,23 @@ describe('initiateCartPayment', () => {
     const found = await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get();
     expect(found.docs).toHaveLength(1); // only A01's was ever created
     expect(found.docs[0].data().status).toBe('payment_failed');
+  });
+});
+
+describe('machine status', () => {
+  it('takes no money for a machine that is not active — paused, offline or retired — and never calls the gateway', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    const { machineId } = await seedMachineWithSlot(adapter);
+    const service = new MachineTransactionService(() => adapter, gateway);
+    for (const status of ['maintenance', 'offline', 'decommissioned'] as const) {
+      if (status === 'offline') await machineService.updateStatus(BUSINESS_ID, machineId, 'active', 'staff-1');
+      await machineService.updateStatus(BUSINESS_ID, machineId, status, 'staff-1');
+      await expect(service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01'], phoneNumber: '254712345678' })).rejects.toThrow('machine is not accepting orders');
+    }
+    expect(gateway.initiateStkPushMock).not.toHaveBeenCalled();
+    const found = await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get();
+    expect(found.docs).toHaveLength(0);
   });
 });
 

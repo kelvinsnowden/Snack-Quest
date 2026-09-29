@@ -32,7 +32,7 @@ Phases 0 to 5 of the roadmap (§25) are built. Phase 6 is built as far as it can
 - **G-H5**: `/admin/vending/sales` has filters and a CSV export (audited).
 
 **Phase 2, permissions (G-H8, G-C7, G-H9):**
-- `lib/auth/permissions.ts` defines the permissions (98 after Phase 5), plus templates that reproduce each role's earlier access, minus S1 to S3.
+- `lib/auth/permissions.ts` defines the permissions (93 after Phase 5, 94 after the final functionality audit; an earlier count of 98 included the five role templates), plus templates that reproduce each role's earlier access, minus S1 to S3.
 - Every staff API route checks a permission, not a role. A test scans every route file to confirm this.
 - Admin pages and the navigation follow the same permissions.
 - `/admin/staff/[uid]` edits one person's access: a starting template, individual grants and removals, and a summary of changes before saving. No one can edit their own access or grant a permission they don't hold. Changes are audited.

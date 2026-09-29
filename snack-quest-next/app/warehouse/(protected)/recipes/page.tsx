@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChefHat, ChevronRight, TriangleAlert } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { recipeService } from '@/services/recipeService';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: 'Recipes' };
  * side by side.
  */
 export default async function WarehouseRecipesPage() {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('products.view');
   const coverage = await recipeService.listRecipeCoverage(session.businessId);
 
   const withRecipe = coverage.filter((row) => row.hasRecipe);

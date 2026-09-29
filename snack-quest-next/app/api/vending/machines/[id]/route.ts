@@ -95,6 +95,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (status !== undefined && !hasPermission(session, 'machines.status.manage')) {
     return forbiddenForPermission('machines.status.manage');
   }
+  // Retiring can't be undone, so it is its own permission.
+  if (status === 'decommissioned' && !hasPermission(session, 'machines.decommission')) {
+    return forbiddenForPermission('machines.decommission');
+  }
   if (locationId !== undefined && !hasPermission(session, 'machines.relocate')) {
     return forbiddenForPermission('machines.relocate');
   }

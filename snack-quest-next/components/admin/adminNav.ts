@@ -208,6 +208,7 @@ export const NAV_PERMISSION: Record<string, PermissionKey> = {
   '/admin/creators': 'creators.manage',
   '/admin/campaigns': 'marketing.campaigns.manage',
   '/admin/referrals': 'marketing.campaigns.manage',
+  '/admin/analytics': 'finance.view',
   '/admin/withdrawals': 'finance.view',
   '/admin/reconciliation': 'finance.view',
   '/admin/discount-codes': 'marketing.discounts.manage',

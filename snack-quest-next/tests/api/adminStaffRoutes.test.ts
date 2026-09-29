@@ -52,6 +52,7 @@ const ADMIN_SESSION = { ...SUPER_ADMIN_SESSION, roles: ['admin'] };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  changeRoleMock.mockResolvedValue({ before: 'agent' });
 });
 
 function jsonRequest(url: string, body: unknown, method = 'POST'): Request {
@@ -120,7 +121,7 @@ describe('POST /api/admin/staff', () => {
     expect(inviteStaffMock).toHaveBeenCalledWith(
       'biz-1',
       expect.objectContaining({ permissions: ['orders'] }),
-      'staff-1',
+      expect.objectContaining({ uid: 'staff-1', roles: expect.any(Array), permissions: expect.any(Array) }),
     );
   });
 
@@ -173,7 +174,7 @@ describe('PATCH /api/admin/staff/[uid]', () => {
       params: Promise.resolve({ uid: 'u1' }),
     });
     expect(response.status).toBe(200);
-    expect(setDisabledMock).toHaveBeenCalledWith('biz-1', 'u1', true, 'staff-1');
+    expect(setDisabledMock).toHaveBeenCalledWith('biz-1', 'u1', true, expect.objectContaining({ uid: 'staff-1', roles: expect.any(Array), permissions: expect.any(Array) }));
   });
 
   it('200s and calls changePermissions for a permissions patch (§ Staff access control)', async () => {
@@ -183,7 +184,7 @@ describe('PATCH /api/admin/staff/[uid]', () => {
       { params: Promise.resolve({ uid: 'u1' }) },
     );
     expect(response.status).toBe(200);
-    expect(changePermissionsMock).toHaveBeenCalledWith('biz-1', 'u1', ['orders', 'finance'], 'staff-1');
+    expect(changePermissionsMock).toHaveBeenCalledWith('biz-1', 'u1', ['orders', 'finance'], expect.objectContaining({ uid: 'staff-1', roles: expect.any(Array), permissions: expect.any(Array) }));
   });
 
   it('400s when permissions is not an array of strings', async () => {
@@ -204,7 +205,7 @@ describe('DELETE /api/admin/staff/[uid]', () => {
       params: Promise.resolve({ uid: 'u1' }),
     });
     expect(response.status).toBe(200);
-    expect(removeStaffMock).toHaveBeenCalledWith('biz-1', 'u1', 'staff-1');
+    expect(removeStaffMock).toHaveBeenCalledWith('biz-1', 'u1', expect.objectContaining({ uid: 'staff-1', roles: expect.any(Array), permissions: expect.any(Array) }));
   });
 });
 

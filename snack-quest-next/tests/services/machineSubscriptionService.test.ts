@@ -134,6 +134,27 @@ describe('MachineSubscriptionService.reconcileArrears', () => {
     expect(subscription?.arrearsKes).toBe(0);
   });
 
+  it('the daily reconcile-subscription-arrears job runs this sweep, under a lease, and records the run', async () => {
+    const { scheduledJobService } = await import('@/services/scheduledJobService');
+    const { loadJobBody } = await import('@/services/jobs/registry');
+    const machineId = await provisionMachine('SQ-SUB-JOB');
+    const partnerId = await createPartner('Owner Job');
+    const subscriptionId = await subscribeAsOwner({
+      businessId: BUSINESS_ID,
+      machineId,
+      partnerId,
+      planName: 'Standard',
+      amountKes: 5_000,
+      frequency: 'weekly',
+      startDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+    });
+    const body = await loadJobBody('reconcile-subscription-arrears');
+    const outcome = await scheduledJobService.run(BUSINESS_ID, 'reconcile-subscription-arrears', (job) => body(BUSINESS_ID, job, 'system:test'));
+    expect(outcome.runId).toBeTruthy();
+    expect(outcome.summary).toMatchObject({ enteredGrace: 1, movedToArrears: 0 });
+    expect((await machineSubscriptionRepository.findById(BUSINESS_ID, subscriptionId))?.graceUntil).not.toBeNull();
+  });
+
   it('moves to in_arrears and accrues the missed amount once grace has passed', async () => {
     const machineId = await provisionMachine('SQ-SUB-5');
     const partnerId = await createPartner('Owner Five');

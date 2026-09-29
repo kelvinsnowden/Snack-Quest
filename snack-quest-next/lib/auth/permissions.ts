@@ -104,6 +104,7 @@ export const PERMISSIONS = [
   { key: 'machines.create', label: 'Register new machines', group: 'Machines' },
   { key: 'machines.credentials.manage', label: 'Rotate or revoke a machine’s screen key', group: 'Machines' },
   { key: 'machines.status.manage', label: 'Change a machine’s status', group: 'Machines' },
+  { key: 'machines.decommission', label: 'Retire a machine for good', group: 'Machines' },
   { key: 'machines.relocate', label: 'Move a machine to another location', group: 'Machines' },
   { key: 'machines.commands.issue', label: 'Send commands to a machine (restart, sync)', group: 'Machines' },
   { key: 'machines.test_vend', label: 'Run a test vend', group: 'Machines' },
@@ -270,6 +271,8 @@ const WAREHOUSE_PERMISSIONS: PermissionKey[] = [
 ];
 
 const FINANCE_PERMISSIONS: PermissionKey[] = [
+  // The Finance workspace (revenue, withdrawals, refunds, reconciliation) is gated by this; finance staff always saw it.
+  'finance.view',
   'machines.view',
   'locations.view',
   'alerts.view',

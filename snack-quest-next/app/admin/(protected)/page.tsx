@@ -10,6 +10,7 @@ import {
   Truck,
   Users,
 } from 'lucide-react';
+import { hasPermission } from '@/lib/auth/permissions';
 import { requireStaffSession } from '@/lib/auth/session';
 import { getLocale } from '@/lib/i18n/getLocale';
 import { getDictionary, interpolate } from '@/lib/i18n/dictionary';
@@ -82,6 +83,9 @@ export default async function AdminDashboardPage({
   const visibleSections = visibleAdminSections(session);
   const quickLinks = visibleSections === null ? QUICK_LINKS : QUICK_LINKS.filter((link) => visibleSections.includes(link.section));
 
+  // Revenue needs finance.view and the staff list needs users.manage; neither is read for anyone else.
+  const canSeeRevenue = hasPermission(session, 'finance.view');
+  const canSeeStaff = hasPermission(session, 'users.manage');
   const [business, totalOrders, agentQueueCount, staff, revenue, recentOrders, delivery, traffic] =
     await Promise.all([
       businessRepository.findById(session.businessId),
@@ -90,19 +94,19 @@ export default async function AdminDashboardPage({
         session.businessId,
         'agent_assigned',
       ),
-      staffRepository.listByBusiness(session.businessId),
-      businessAnalyticsService.getRevenueOverview(session.businessId, 30),
+      canSeeStaff ? staffRepository.listByBusiness(session.businessId) : Promise.resolve(null),
+      canSeeRevenue ? businessAnalyticsService.getRevenueOverview(session.businessId, 30) : Promise.resolve(null),
       orderRepository.listByBusiness(session.businessId, { limit: 5 }),
       businessAnalyticsService.getDeliveryPerformance(session.businessId),
       businessAnalyticsService.getTraffic(session.businessId, 30),
     ]);
 
-  const revenueTrend = computePeriodTrend(
+  const revenueTrend = revenue ? computePeriodTrend(
     revenue.totalRevenueKes,
     revenue.previousPeriod.totalRevenueKes,
     'vs previous 30 days',
-  );
-  const revenueDeltaKes = revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes;
+  ) : undefined;
+  const revenueDeltaKes = revenue ? revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes : 0;
 
   const STATUS_COLOR: Record<string, string> = {
     delivered: 'var(--color-success)',
@@ -153,13 +157,15 @@ export default async function AdminDashboardPage({
 
       {/* Two-up on a phone: four KPIs in two rows instead of four. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <TrendStatCard
-          label={dict.dashboard.revenue30}
-          value={formatKes(revenue.totalRevenueKes)}
-          icon={<Banknote className="size-5" />}
-          trend={revenueTrend}
-          sparkline={revenue.days.map((d) => d.revenueKes)}
-        />
+        {revenue ? (
+          <TrendStatCard
+            label={dict.dashboard.revenue30}
+            value={formatKes(revenue.totalRevenueKes)}
+            icon={<Banknote className="size-5" />}
+            trend={revenueTrend}
+            sparkline={revenue.days.map((d) => d.revenueKes)}
+          />
+        ) : null}
         <TrendStatCard
           label={dict.dashboard.totalOrders}
           value={totalOrders.toLocaleString()}
@@ -172,12 +178,14 @@ export default async function AdminDashboardPage({
           icon={<MessageCircleWarning className="size-5" />}
           tone={agentQueueCount > 0 ? 'warning' : 'secondary'}
         />
-        <TrendStatCard
-          label={dict.dashboard.staffMembers}
-          value={staff.length.toLocaleString()}
-          icon={<Users className="size-5" />}
-          tone="secondary"
-        />
+        {staff ? (
+          <TrendStatCard
+            label={dict.dashboard.staffMembers}
+            value={staff.length.toLocaleString()}
+            icon={<Users className="size-5" />}
+            tone="secondary"
+          />
+        ) : null}
       </div>
 
       {revenueTrend ? (
@@ -209,14 +217,16 @@ export default async function AdminDashboardPage({
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>{dict.dashboard.revenueChart}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RevenueChart days={revenue.days} />
-          </CardContent>
-        </Card>
+        {revenue ? (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>{dict.dashboard.revenueChart}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RevenueChart days={revenue.days} />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

@@ -13,6 +13,7 @@ export const AUDIT_AREAS: Record<string, string> = {
   withdrawal: 'Withdrawals',
   creatorProfile: 'Creators',
   campaign: 'Campaigns',
+  discountCode: 'Discount codes',
   marketingEmailCampaign: 'Email campaigns',
   marketingSmsCampaign: 'SMS campaigns',
   marketingSpendEntry: 'Marketing spend',

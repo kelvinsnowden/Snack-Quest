@@ -83,6 +83,35 @@ export class PermissionEscalationError extends Error {
   }
 }
 
+/**
+ * Who is making a staff change: their uid, roles and effective
+ * permissions, from their session. Every change is checked against it,
+ * so nobody can produce access they don't hold themselves.
+ */
+export interface StaffActor {
+  uid: string;
+  roles: readonly string[];
+  permissions: readonly string[];
+}
+
+export class SuperAdminOnlyError extends Error {
+  constructor(action: string) {
+    super(`Only a super admin can ${action}.`);
+    this.name = 'SuperAdminOnlyError';
+  }
+}
+
+const isSuperAdminActor = (actor: StaffActor) => actor.roles.includes('super_admin');
+
+/** Refuses a change that would leave someone holding a permission the actor doesn't hold (and didn't already have). */
+function assertWithinActor(actor: StaffActor, before: readonly string[], after: readonly string[]): void {
+  if (isSuperAdminActor(actor)) return;
+  const beyond = after.filter((key) => !before.includes(key) && !actor.permissions.includes(key));
+  if (beyond.length > 0) {
+    throw new PermissionEscalationError(beyond);
+  }
+}
+
 function validatePermissions(permissions: string[]): void {
   const invalid = permissions.filter((p) => !isAdminSection(p));
   if (invalid.length > 0) {
@@ -231,8 +260,8 @@ class StaffManagementService {
    */
   async inviteStaff(
     businessId: string,
-    input: { email: string; displayName: string; role: StaffRole; department: string; permissions?: string[] },
-    actor: string,
+    input: { email: string; displayName: string; role: StaffRole; department: string; permissions?: string[]; template?: string | null },
+    actor: StaffActor,
   ): Promise<{ uid: string; resetLink: string; emailAttempted: boolean }> {
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
@@ -250,6 +279,15 @@ class StaffManagementService {
     }
     const permissions = input.permissions ?? [];
     validatePermissions(permissions);
+    const template = input.template ?? null;
+    if (template !== null && !findTemplate(template)) {
+      throw new StaffValidationError(`Unknown role template "${template}".`);
+    }
+    if (input.role === 'super_admin' && !isSuperAdminActor(actor)) {
+      throw new SuperAdminOnlyError('invite a super admin');
+    }
+    // Starting access: the chosen template, or everything the role allows (narrowed by legacy sections).
+    assertWithinActor(actor, [], effectivePermissions({ roles: [input.role], template, legacySections: permissions }));
 
     let uid: string;
     let isNewUser: boolean;
@@ -282,7 +320,7 @@ class StaffManagementService {
     await adminAuth.setCustomUserClaims(uid, { roles, businessId });
 
     if (isNewUser) {
-      await userRepository.create(uid, { email, roles, displayName, photoURL: null }, actor);
+      await userRepository.create(uid, { email, roles, displayName, photoURL: null }, actor.uid);
     } else {
       // Upgrading an existing (e.g. customer/creator, or a previously
       // *removed* staffer being re-invited) account — never overwrite
@@ -292,10 +330,13 @@ class StaffManagementService {
       // both, a re-invited former staffer gets either a permanent
       // "not provisioned as staff" error or an `auth/user-disabled`
       // failure before they even reach that check.
-      await userRepository.updateRoles(uid, roles, actor);
+      await userRepository.updateRoles(uid, roles, actor.uid);
       await adminAuth.updateUser(uid, { disabled: false });
     }
-    await staffRepository.create(uid, { businessId, role: input.role, permissions, department: input.department.trim() }, actor);
+    await staffRepository.create(uid, { businessId, role: input.role, permissions, department: input.department.trim() }, actor.uid);
+    if (template !== null) {
+      await staffRepository.update(uid, { template, grantedPermissions: [], revokedPermissions: [] }, actor.uid);
+    }
 
     const resetLink = await generateStaffPasswordLink(email);
 
@@ -320,26 +361,33 @@ class StaffManagementService {
     return { uid, resetLink, emailAttempted };
   }
 
-  async changeRole(businessId: string, uid: string, role: StaffRole, actor: string): Promise<void> {
+  /** Returns the role it replaced, for the audit entry. */
+  async changeRole(businessId: string, uid: string, role: StaffRole, actor: StaffActor): Promise<{ before: StaffRole }> {
     if (!STAFF_ROLES.includes(role)) {
       throw new StaffValidationError(`"role" must be one of: ${STAFF_ROLES.join(', ')}.`);
     }
     const profile = await this.requireProfile(businessId, uid);
-    if (uid === actor) {
+    if (uid === actor.uid) {
       throw new CannotModifySelfError('change your own role');
+    }
+    if ((role === 'super_admin' || profile.role === 'super_admin') && !isSuperAdminActor(actor)) {
+      throw new SuperAdminOnlyError(role === 'super_admin' ? 'make someone a super admin' : "change a super admin's role");
     }
     if (profile.role === 'super_admin' && role !== 'super_admin') {
       await this.assertNotLastSuperAdmin(businessId, uid);
     }
-
-    await staffRepository.update(uid, { role }, actor);
     const user = await userRepository.findById(uid);
+    const isStaffRole = (r: Role): r is StaffRole => (STAFF_ROLES as Role[]).includes(r);
+    const currentRoles: Role[] = user?.roles ?? [profile.role];
+    const nextRoles: Role[] = Array.from(new Set([...currentRoles.filter((r) => !isStaffRole(r)), role]));
+    assertWithinActor(actor, accessOf(currentRoles, profile).effectivePermissions, accessOf(nextRoles, profile).effectivePermissions);
+
+    await staffRepository.update(uid, { role }, actor.uid);
     if (user) {
-      const isStaffRole = (r: Role): r is StaffRole => (STAFF_ROLES as Role[]).includes(r);
-      const roles: Role[] = Array.from(new Set([...user.roles.filter((r) => !isStaffRole(r)), role]));
-      await userRepository.updateRoles(uid, roles, actor);
-      await adminAuth.setCustomUserClaims(uid, { roles, businessId });
+      await userRepository.updateRoles(uid, nextRoles, actor.uid);
+      await adminAuth.setCustomUserClaims(uid, { roles: nextRoles, businessId });
     }
+    return { before: profile.role };
   }
 
   /**
@@ -351,45 +399,64 @@ class StaffManagementService {
    * `canAccessAdminSection`) and for `agent`/`warehouse`/`finance`
    * (they never reach the Admin Portal these sections gate at all).
    */
-  async changePermissions(businessId: string, uid: string, permissions: string[], actor: string): Promise<void> {
+  async changePermissions(businessId: string, uid: string, permissions: string[], actor: StaffActor): Promise<void> {
     validatePermissions(permissions);
-    await this.requireProfile(businessId, uid);
-    await staffRepository.update(uid, { permissions }, actor);
+    const profile = await this.requireProfile(businessId, uid);
+    if (uid === actor.uid) {
+      throw new CannotModifySelfError('change your own access');
+    }
+    const roles = (await userRepository.findById(uid))?.roles ?? [profile.role];
+    // An empty list means "every section": clearing someone's limits is a grant like any other.
+    assertWithinActor(actor, accessOf(roles, profile).effectivePermissions, accessOf(roles, { ...profile, permissions }).effectivePermissions);
+    await staffRepository.update(uid, { permissions }, actor.uid);
   }
 
-  async setDisabled(businessId: string, uid: string, disabled: boolean, actor: string): Promise<void> {
-    await this.requireProfile(businessId, uid);
-    if (uid === actor) {
+  async setDisabled(businessId: string, uid: string, disabled: boolean, actor: StaffActor): Promise<void> {
+    const profile = await this.requireProfile(businessId, uid);
+    if (uid === actor.uid) {
       throw new CannotModifySelfError(disabled ? 'disable' : 'reactivate');
     }
-    if (disabled) {
-      const profile = await this.requireProfile(businessId, uid);
-      if (profile.role === 'super_admin') {
-        await this.assertNotLastSuperAdmin(businessId, uid);
-      }
+    if (profile.role === 'super_admin' && !isSuperAdminActor(actor)) {
+      throw new SuperAdminOnlyError(disabled ? 'disable a super admin' : 'reactivate a super admin');
+    }
+    if (disabled && profile.role === 'super_admin') {
+      await this.assertNotLastSuperAdmin(businessId, uid);
     }
     await adminAuth.updateUser(uid, { disabled });
   }
 
-  async removeStaff(businessId: string, uid: string, actor: string): Promise<void> {
+  async removeStaff(businessId: string, uid: string, actor: StaffActor): Promise<void> {
     const profile = await this.requireProfile(businessId, uid);
-    if (uid === actor) {
+    if (uid === actor.uid) {
       throw new CannotModifySelfError('remove');
     }
     if (profile.role === 'super_admin') {
+      if (!isSuperAdminActor(actor)) {
+        throw new SuperAdminOnlyError('remove a super admin');
+      }
       await this.assertNotLastSuperAdmin(businessId, uid);
     }
-    await staffRepository.softDelete(uid, actor);
-    await userRepository.softDelete(uid, actor);
+    await staffRepository.softDelete(uid, actor.uid);
+    await userRepository.softDelete(uid, actor.uid);
     await adminAuth.updateUser(uid, { disabled: true });
   }
 
-  async resetPassword(businessId: string, uid: string): Promise<{ resetLink: string }> {
+  /**
+   * A reset link is a way into the account, so it is only handed to
+   * someone who already holds everything that account can do: a super
+   * admin's only by another super admin, anyone else's only by someone
+   * whose access covers theirs.
+   */
+  async resetPassword(businessId: string, uid: string, actor: StaffActor): Promise<{ resetLink: string }> {
     const user = await userRepository.findById(uid);
-    await this.requireProfile(businessId, uid);
+    const profile = await this.requireProfile(businessId, uid);
     if (!user) {
       throw new StaffNotFoundError(uid);
     }
+    if ((profile.role === 'super_admin' || user.roles.includes('super_admin')) && !isSuperAdminActor(actor)) {
+      throw new SuperAdminOnlyError("reset a super admin's password");
+    }
+    assertWithinActor(actor, [], accessOf(user.roles, profile).effectivePermissions);
     const resetLink = await generateStaffPasswordLink(user.email);
     return { resetLink };
   }

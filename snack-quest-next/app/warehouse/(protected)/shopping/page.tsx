@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChevronRight, ShoppingBasket } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { shoppingRunService } from '@/services/shoppingRunService';
 import { orderRepository } from '@/repositories/orderRepository';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,7 @@ export const metadata: Metadata = { title: 'Shopping' };
  * runner about to leave should not have to navigate to start.
  */
 export default async function WarehouseShoppingPage() {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('warehouse_fulfilment.manage');
 
   const [{ runs }, { orders }] = await Promise.all([
     shoppingRunService.listRuns(session.businessId, { limit: 20 }),

@@ -1,5 +1,6 @@
 'use client';
 
+import { ROLE_TEMPLATES } from '@/lib/auth/permissions';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Copy, Check, Mail, MailWarning } from 'lucide-react';
@@ -25,7 +26,7 @@ const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'finance', label: 'Finance' },
 ];
 
-const DEFAULTS = { email: '', displayName: '', role: 'admin' as StaffRole, department: '' };
+const DEFAULTS = { email: '', displayName: '', role: 'admin' as StaffRole, department: '', template: '' };
 
 export function InviteStaffDialog() {
   const router = useRouter();
@@ -59,6 +60,7 @@ export function InviteStaffDialog() {
           displayName: values.displayName.trim(),
           role: values.role,
           department: values.department.trim(),
+          template: values.template || null,
           // Only meaningful for role 'admin' — the server ignores it
           // for every other role anyway, but sending it only when it
           // could matter keeps the request honest about intent.
@@ -191,9 +193,27 @@ export function InviteStaffDialog() {
                   />
                 </div>
               </div>
-              <p className="text-caption text-muted-foreground">
-                They start with everything their role allows. To narrow or widen that, open their access from the Users page after inviting them.
-              </p>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="invite-template">Starting access</Label>
+                <select
+                  id="invite-template"
+                  className="h-10 rounded-md border border-border bg-surface px-3 text-sm text-foreground"
+                  value={values.template}
+                  onChange={(event) => setValues((v) => ({ ...v, template: event.target.value }))}
+                >
+                  <option value="">Everything their role allows</option>
+                  {ROLE_TEMPLATES.filter((template) => template.key !== 'super_admin').map((template) => (
+                    <option key={template.key} value={template.key}>
+                      {template.label} — {template.permissions.length} permissions
+                    </option>
+                  ))}
+                </select>
+                <p className="text-caption text-muted-foreground">
+                  {values.template
+                    ? ROLE_TEMPLATES.find((template) => template.key === values.template)?.description
+                    : 'Pick the narrowest template that fits their job. You can add or remove single permissions from the Users page afterwards. You can only give access you have yourself.'}
+                </p>
+              </div>
               {error ? <p className="text-sm text-danger">{error}</p> : null}
             </div>
             <DialogFooter>
