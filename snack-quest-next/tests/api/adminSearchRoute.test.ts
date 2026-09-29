@@ -35,7 +35,7 @@ describe('GET /api/admin/search', () => {
 
     const response = await searchRoute(new Request('http://localhost/api/admin/search?q=starter'));
     expect(response.status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith('biz-1', 'starter');
+    expect(searchMock).toHaveBeenCalledWith('biz-1', 'starter', expect.any(Function));
     const body = await response.json();
     expect(body.results).toHaveLength(1);
   });
@@ -44,6 +44,16 @@ describe('GET /api/admin/search', () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(SESSION);
     searchMock.mockResolvedValue({ enabled: true, results: [] });
     await searchRoute(new Request('http://localhost/api/admin/search'));
-    expect(searchMock).toHaveBeenCalledWith('biz-1', '');
+    expect(searchMock).toHaveBeenCalledWith('biz-1', '', expect.any(Function));
+  });
+
+  it("checks each kind of result against the caller's own permissions", async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...SESSION, roles: ['admin'], effectivePermissions: ['search.use', 'machines.view'] });
+    searchMock.mockResolvedValue({ enabled: true, results: [] });
+    await searchRoute(new Request('http://localhost/api/admin/search?q=sq'));
+    const can = searchMock.mock.calls[0][2] as (permission: string) => boolean;
+    expect(can('machines.view')).toBe(true);
+    expect(can('orders.view')).toBe(false);
+    expect(can('customers.view')).toBe(false);
   });
 });

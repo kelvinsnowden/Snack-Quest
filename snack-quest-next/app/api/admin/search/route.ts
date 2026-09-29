@@ -2,7 +2,7 @@ import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { globalSearchService } from '@/services/globalSearchService';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
-/** Global search across Orders, Customers, Products, Inventory, Suppliers, Purchase orders, Conversations, and Creators (§ Phase 7). */
+/** Global search (§ Phase 7): each kind of result only for people who can open its page. */
 export async function GET(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
@@ -15,6 +15,6 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const query = url.searchParams.get('q') ?? '';
 
-  const response = await globalSearchService.search(session.businessId, query);
+  const response = await globalSearchService.search(session.businessId, query, (permission) => hasPermission(session, permission));
   return Response.json(response);
 }

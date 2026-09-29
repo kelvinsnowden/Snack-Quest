@@ -6,7 +6,12 @@ export type SearchResultType =
   | 'supplier'
   | 'purchaseOrder'
   | 'conversation'
-  | 'creator';
+  | 'creator'
+  | 'machine'
+  | 'machineSale'
+  | 'machineOwner'
+  | 'location'
+  | 'manufacturer';
 
 export interface SearchResult {
   type: SearchResultType;
@@ -25,6 +30,11 @@ export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   purchaseOrder: 'Purchase orders',
   conversation: 'Conversations',
   creator: 'Creators',
+  machine: 'Machines',
+  machineSale: 'Machine sales',
+  machineOwner: 'Machine owners',
+  location: 'Locations',
+  manufacturer: 'Manufacturers',
 };
 
 /** Case-insensitive substring match — the same simple, honest standard `pickupStations/search.ts` uses before falling back to fuzzy scoring; Global Search stays substring-only (no fuzzy layer) since every field here is short and exact-ish (names, phone numbers, ids), unlike a free-text station name a customer might misspell. */
