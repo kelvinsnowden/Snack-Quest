@@ -1,5 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { ownerIntelligenceService, PartnerDoesNotOwnMachineError } from '@/services/ownerIntelligenceService';
+import {
+  ownerIntelligenceService,
+  PartnerDoesNotOwnMachineError,
+} from '@/services/ownerIntelligenceService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { parseWindowDays } from '@/lib/vending/intelligenceQueryParams';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
@@ -12,7 +15,10 @@ import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
  * network-wide category/opportunity data is ever computed for this
  * path (§19).
  */
-export async function GET(request: Request, { params }: { params: Promise<{ partnerId: string; machineId: string }> }): Promise<Response> {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ partnerId: string; machineId: string }> },
+): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -28,7 +34,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
   }
 
   try {
-    const summary = await ownerIntelligenceService.getMachineOwnerSummary(session.businessId, partnerId, machineId, windowDays);
+    const summary = await ownerIntelligenceService.getMachineOwnerSummary(
+      session.businessId,
+      partnerId,
+      machineId,
+      windowDays,
+    );
     return Response.json({ summary });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {

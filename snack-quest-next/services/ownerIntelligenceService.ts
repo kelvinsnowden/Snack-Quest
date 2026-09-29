@@ -1,16 +1,27 @@
 import 'server-only';
 
+import { ownerSince, clipStartDate } from '@/lib/vending/ownerTenure';
 import { machineService } from '@/services/machineService';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
 import { recommendationEngineService } from '@/services/recommendationEngineService';
-import { trailingWindow, classifyDataQuality, type DataQuality } from '@/services/machineAssortmentIntelligenceService';
+import {
+  trailingWindow,
+  classifyDataQuality,
+  type DataQuality,
+} from '@/services/machineAssortmentIntelligenceService';
 import type { IntelligenceRecommendation, RecommendationType } from '@/types';
 
 export { PartnerDoesNotOwnMachineError } from '@/services/machineService';
 
 /** Never `PRODUCT_OPPORTUNITY` — that reasoning can cite network-wide category/peer data (§ SUPPLIER STRATEGY), which is exactly the confidential network-wide intelligence §19 says an owner must never see. */
-const OWNER_VISIBLE_RECOMMENDATION_TYPES: RecommendationType[] = ['RESTOCK', 'ASSORTMENT_CHANGE', 'REMOVE_PRODUCT', 'MOVE_PRODUCT', 'PRICE_REVIEW'];
+const OWNER_VISIBLE_RECOMMENDATION_TYPES: RecommendationType[] = [
+  'RESTOCK',
+  'ASSORTMENT_CHANGE',
+  'REMOVE_PRODUCT',
+  'MOVE_PRODUCT',
+  'PRICE_REVIEW',
+];
 
 export interface OwnerMachineSummary {
   machineId: string;
@@ -22,7 +33,11 @@ export interface OwnerMachineSummary {
   topCategory: string | null;
   topProductId: string | null;
   /** From `machineAssortmentIntelligenceService.classifyMachineCatalogLayers` — never the global catalogue count, which would tell an owner things about the network's own product range. */
-  stockHealth: { assortmentCount: number; stockedCount: number; sellableCount: number };
+  stockHealth: {
+    assortmentCount: number;
+    stockedCount: number;
+    sellableCount: number;
+  };
   heartbeatCount: number;
   faultCount: number;
   recommendations: IntelligenceRecommendation[];
@@ -46,11 +61,26 @@ export interface OwnerMachineSummary {
  * place.
  */
 class OwnerIntelligenceService {
-  async getMachineOwnerSummary(businessId: string, partnerId: string, machineId: string, windowDays = 30): Promise<OwnerMachineSummary> {
-    await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
+  async getMachineOwnerSummary(
+    businessId: string,
+    partnerId: string,
+    machineId: string,
+    windowDays = 30,
+  ): Promise<OwnerMachineSummary> {
+    const machine = await machineService.assertPartnerOwnsMachine(
+      businessId,
+      partnerId,
+      machineId,
+    );
 
     const { startDate, endDate } = trailingWindow(windowDays);
-    const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, startDate, endDate);
+    // Only this owner's whole days with the machine — never a previous owner's sales.
+    const rollups = await machineDailySummaryRepository.listRange(
+      businessId,
+      machineId,
+      clipStartDate(startDate, ownerSince(machine)),
+      endDate,
+    );
 
     let revenueKes = 0;
     let unitsSold = 0;
@@ -67,22 +97,41 @@ class OwnerIntelligenceService {
       heartbeatCount += rollup.heartbeatCount;
       faultCount += rollup.faultCount;
       for (const [productId, product] of Object.entries(rollup.byProduct)) {
-        productTotals.set(productId, (productTotals.get(productId) ?? 0) + product.grossSalesKes);
+        productTotals.set(
+          productId,
+          (productTotals.get(productId) ?? 0) + product.grossSalesKes,
+        );
         if (product.category) {
-          categoryTotals.set(product.category, (categoryTotals.get(product.category) ?? 0) + product.grossSalesKes);
+          categoryTotals.set(
+            product.category,
+            (categoryTotals.get(product.category) ?? 0) + product.grossSalesKes,
+          );
         }
       }
     }
 
-    const topCategory = Array.from(categoryTotals.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    const topProductId = Array.from(productTotals.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const topCategory =
+      Array.from(categoryTotals.entries()).sort(
+        (a, b) => b[1] - a[1],
+      )[0]?.[0] ?? null;
+    const topProductId =
+      Array.from(productTotals.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+      null;
 
-    const layers = await machineAssortmentIntelligenceService.classifyMachineCatalogLayers(businessId, machineId);
-    const { recommendations: allRecommendations } = await recommendationEngineService
-      .listByBusiness(businessId, { status: 'pending', limit: 200 })
-      .then((rows) => ({ recommendations: rows.map((r) => r.data) }));
+    const layers =
+      await machineAssortmentIntelligenceService.classifyMachineCatalogLayers(
+        businessId,
+        machineId,
+      );
+    const { recommendations: allRecommendations } =
+      await recommendationEngineService
+        .listByBusiness(businessId, { status: 'pending', limit: 200 })
+        .then((rows) => ({ recommendations: rows.map((r) => r.data) }));
     const recommendations = allRecommendations.filter(
-      (r) => r.target.kind === 'machine' && r.target.id === machineId && OWNER_VISIBLE_RECOMMENDATION_TYPES.includes(r.type),
+      (r) =>
+        r.target.kind === 'machine' &&
+        r.target.id === machineId &&
+        OWNER_VISIBLE_RECOMMENDATION_TYPES.includes(r.type),
     );
 
     return {
@@ -93,7 +142,11 @@ class OwnerIntelligenceService {
       transactionCount,
       topCategory,
       topProductId,
-      stockHealth: { assortmentCount: layers.assortmentCount, stockedCount: layers.stockedCount, sellableCount: layers.sellableCount },
+      stockHealth: {
+        assortmentCount: layers.assortmentCount,
+        stockedCount: layers.stockedCount,
+        sellableCount: layers.sellableCount,
+      },
       heartbeatCount,
       faultCount,
       recommendations,

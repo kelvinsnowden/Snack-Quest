@@ -1,5 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { machineSettlementService, OverlappingSettlementPeriodError } from '@/services/machineSettlementService';
+import { machineSettlementService, OverlappingSettlementPeriodError, OwnershipChangedDuringPeriodError } from '@/services/machineSettlementService';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSettlement } from '@/lib/vending/serialize';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
@@ -73,7 +73,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
     return Response.json({ settlementId }, { status: 201 });
   } catch (error) {
-    if (error instanceof OverlappingSettlementPeriodError) {
+    if (error instanceof OverlappingSettlementPeriodError || error instanceof OwnershipChangedDuringPeriodError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
     throw error;

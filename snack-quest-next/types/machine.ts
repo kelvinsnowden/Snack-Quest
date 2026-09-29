@@ -79,6 +79,12 @@ export interface Machine extends AuditFields {
   status: MachineStatus;
   /** Null until the machine is assigned to a partner-owned deployment (§ CORE ENTITIES 8) — Snack Quest's own machines have no partner. */
   ownerPartnerId: string | null;
+  /**
+   * When the current owner took the machine over — absent or null means
+   * since registration. The owner portal shows nothing from before this,
+   * so a new owner never sees the previous owner's sales.
+   */
+  ownerSince?: Timestamp | null;
   /** The current location — see `machineLocationHistory` for the record of every location this machine has held and when. */
   locationId: string | null;
   latitude: number | null;

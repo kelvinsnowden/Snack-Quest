@@ -1,12 +1,21 @@
 import 'server-only';
 
 import { adminFirestore } from '@/lib/firebase/admin';
-import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
+import {
+  machineRepository,
+  MachineNotFoundError,
+} from '@/repositories/machineRepository';
 import { machineLocationHistoryRepository } from '@/repositories/machineLocationHistoryRepository';
 import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
+import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
+import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
+import { FieldValue } from 'firebase-admin/firestore';
 import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
-import { isRegisteredAdapterKey, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
+import {
+  isRegisteredAdapterKey,
+  UnsupportedManufacturerError,
+} from '@/lib/vending/adapterRegistry';
 import {
   MACHINE_STATUS_TRANSITIONS,
   type Machine,
@@ -28,13 +37,24 @@ export class PartnerDoesNotOwnMachineError extends Error {
   }
 }
 
+export class OwnerReassignmentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OwnerReassignmentError';
+  }
+}
+
 /** `SQ-MCH-000001` — Snack Quest's own machine identity, zero-padded so codes sort in registration order. */
 export function formatMachineCode(sequence: number): string {
   return `SQ-MCH-${String(sequence).padStart(6, '0')}`;
 }
 
 function machineCodeCounterRef(businessId: string) {
-  return adminFirestore.collection('businesses').doc(businessId).collection('counters').doc('machines');
+  return adminFirestore
+    .collection('businesses')
+    .doc(businessId)
+    .collection('counters')
+    .doc('machines');
 }
 
 export interface ProvisionMachineInput {
@@ -75,17 +95,32 @@ class MachineService {
    * secret exactly once; there is no way to retrieve it again, only
    * to rotate it via `rotateDeviceCredential`.
    */
-  async provisionDevice(input: ProvisionMachineInput): Promise<{ machineId: string; machineCode: string; credential: IssuedDeviceCredential }> {
+  async provisionDevice(
+    input: ProvisionMachineInput,
+  ): Promise<{
+    machineId: string;
+    machineCode: string;
+    credential: IssuedDeviceCredential;
+  }> {
     if (!isRegisteredAdapterKey(input.manufacturer)) {
       throw new UnsupportedManufacturerError(input.manufacturer);
     }
-    const machineCode = input.machineCode ?? (await this.allocateMachineCode(input.businessId));
-    const existing = await machineRepository.findByMachineCode(input.businessId, machineCode);
+    const machineCode =
+      input.machineCode ?? (await this.allocateMachineCode(input.businessId));
+    const existing = await machineRepository.findByMachineCode(
+      input.businessId,
+      machineCode,
+    );
     if (existing) {
-      throw new Error(`machineCode "${machineCode}" is already in use by machine ${existing.id}`);
+      throw new Error(
+        `machineCode "${machineCode}" is already in use by machine ${existing.id}`,
+      );
     }
     if (input.ownerPartnerId) {
-      const partner = await partnerRepository.findById(input.businessId, input.ownerPartnerId);
+      const partner = await partnerRepository.findById(
+        input.businessId,
+        input.ownerPartnerId,
+      );
       if (!partner) {
         throw new Error(`Partner ${input.ownerPartnerId} not found`);
       }
@@ -142,20 +177,43 @@ class MachineService {
     return formatMachineCode(sequence);
   }
 
-  async rotateDeviceCredential(businessId: string, machineId: string, actor: string): Promise<IssuedDeviceCredential> {
+  async rotateDeviceCredential(
+    businessId: string,
+    machineId: string,
+    actor: string,
+  ): Promise<IssuedDeviceCredential> {
     const machine = await machineRepository.findById(businessId, machineId);
     if (!machine) {
       throw new MachineNotFoundError(machineId);
     }
-    return deviceCredentialRepository.issue({ businessId, machineId, issuedBy: actor });
+    return deviceCredentialRepository.issue({
+      businessId,
+      machineId,
+      issuedBy: actor,
+    });
   }
 
   /** Immediate revocation, per `DeviceCredential`'s own doc comment — the next request with this secret is rejected, no grace window. */
-  async revokeDeviceCredential(businessId: string, credentialId: string, actor: string, reason: string): Promise<void> {
-    await deviceCredentialRepository.revoke(businessId, credentialId, actor, reason);
+  async revokeDeviceCredential(
+    businessId: string,
+    credentialId: string,
+    actor: string,
+    reason: string,
+  ): Promise<void> {
+    await deviceCredentialRepository.revoke(
+      businessId,
+      credentialId,
+      actor,
+      reason,
+    );
   }
 
-  async updateStatus(businessId: string, machineId: string, to: MachineStatus, actor: string): Promise<void> {
+  async updateStatus(
+    businessId: string,
+    machineId: string,
+    to: MachineStatus,
+    actor: string,
+  ): Promise<void> {
     const machine = await machineRepository.findById(businessId, machineId);
     if (!machine) {
       throw new MachineNotFoundError(machineId);
@@ -177,7 +235,13 @@ class MachineService {
   async relocate(
     businessId: string,
     machineId: string,
-    location: { locationId: string | null; latitude: number | null; longitude: number | null; address: string | null; venueName: string | null },
+    location: {
+      locationId: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      address: string | null;
+      venueName: string | null;
+    },
     actor: string,
     reason: string | null = null,
   ): Promise<void> {
@@ -186,7 +250,11 @@ class MachineService {
       throw new MachineNotFoundError(machineId);
     }
     await adminFirestore.runTransaction(async (tx) => {
-      await machineLocationHistoryRepository.closeCurrentInTransaction(tx, businessId, machineId);
+      await machineLocationHistoryRepository.closeCurrentInTransaction(
+        tx,
+        businessId,
+        machineId,
+      );
       machineLocationHistoryRepository.openInTransaction(tx, {
         businessId,
         machineId,
@@ -194,20 +262,138 @@ class MachineService {
         movedBy: actor,
         reason,
       });
-      machineRepository.updateLocationInTransaction(tx, machineId, location, actor);
+      machineRepository.updateLocationInTransaction(
+        tx,
+        machineId,
+        location,
+        actor,
+      );
     });
   }
 
-  async findById(businessId: string, machineId: string): Promise<Machine | null> {
+  /**
+   * Hands a machine to another owner (or back to Snack Quest with
+   * `partnerId: null`). Refused while the current owner still has an
+   * active agreement on it — terminate that first, so the agreement's
+   * end date and the ownership change line up and no settlement is
+   * computed on the wrong terms. The history close/open and the
+   * machine's own `ownerPartnerId`/`ownerSince` are one transaction.
+   *
+   * On a machine's first reassignment the owner it had since
+   * registration is written into the history too, so settlements can
+   * check who owned it for any period after registration.
+   */
+  async reassignOwner(
+    businessId: string,
+    machineId: string,
+    partnerId: string | null,
+    actor: string,
+    reason: string | null = null,
+  ): Promise<void> {
+    const machine = await machineRepository.findById(businessId, machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(machineId);
+    }
+    if ((machine.ownerPartnerId ?? null) === partnerId) {
+      throw new OwnerReassignmentError(
+        'The machine already belongs to that owner.',
+      );
+    }
+    if (machine.status === 'decommissioned') {
+      throw new OwnerReassignmentError('A retired machine can’t change owner.');
+    }
+    if (partnerId !== null) {
+      const partner = await partnerRepository.findById(businessId, partnerId);
+      if (!partner || partner.deletedAt) {
+        throw new OwnerReassignmentError(`Owner ${partnerId} not found.`);
+      }
+      if (partner.status !== 'active') {
+        throw new OwnerReassignmentError(
+          'That owner is suspended. Reactivate them before giving them a machine.',
+        );
+      }
+    }
+    const agreement =
+      await partnerMachineAgreementRepository.findActiveForMachine(
+        businessId,
+        machineId,
+      );
+    if (agreement) {
+      throw new OwnerReassignmentError(
+        'This machine still has an active agreement with its current owner. End that agreement first.',
+      );
+    }
+
+    await adminFirestore.runTransaction(async (tx) => {
+      const ref = machineRepository.getRef(machineId);
+      const snapshot = await tx.get(ref);
+      const current = snapshot.data() as Machine | undefined;
+      if (!current || current.businessId !== businessId) {
+        throw new MachineNotFoundError(machineId);
+      }
+      if (
+        (current.ownerPartnerId ?? null) !== (machine.ownerPartnerId ?? null)
+      ) {
+        throw new OwnerReassignmentError(
+          'Someone else changed this machine’s owner just now. Reload and try again.',
+        );
+      }
+      const open =
+        await machineOwnershipHistoryRepository.findOpenInTransaction(
+          tx,
+          businessId,
+          machineId,
+        );
+      if (open.length === 0) {
+        machineOwnershipHistoryRepository.recordOriginalInTransaction(tx, {
+          businessId,
+          machineId,
+          partnerId: current.ownerPartnerId ?? null,
+          since: current.createdAt
+            ? (current.createdAt as unknown as { toDate(): Date }).toDate()
+            : new Date(0),
+          changedBy: actor,
+        });
+      }
+      for (const doc of open) {
+        machineOwnershipHistoryRepository.closeInTransaction(tx, doc.ref);
+      }
+      machineOwnershipHistoryRepository.openInTransaction(tx, {
+        businessId,
+        machineId,
+        partnerId,
+        changedBy: actor,
+        reason,
+      });
+      tx.update(ref, {
+        ownerPartnerId: partnerId,
+        ownerSince: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor,
+      });
+    });
+  }
+
+  async findById(
+    businessId: string,
+    machineId: string,
+  ): Promise<Machine | null> {
     return machineRepository.findById(businessId, machineId);
   }
 
-  async listByBusiness(businessId: string, options: { status?: MachineStatus; limit?: number; cursor?: string } = {}) {
+  async listByBusiness(
+    businessId: string,
+    options: { status?: MachineStatus; limit?: number; cursor?: string } = {},
+  ) {
     return machineRepository.listByBusiness(businessId, options);
   }
 
   /** The enforcement primitive behind partner RBAC — every partner-scoped read of one machine goes through this rather than `findById` alone. */
-  async assertPartnerOwnsMachine(businessId: string, partnerId: string, machineId: string): Promise<Machine> {
+  async assertPartnerOwnsMachine(
+    businessId: string,
+    partnerId: string,
+    machineId: string,
+  ): Promise<Machine> {
     const machine = await machineRepository.findById(businessId, machineId);
     if (!machine) {
       throw new MachineNotFoundError(machineId);
@@ -222,7 +408,9 @@ class MachineService {
     return machineRepository.listByPartner(businessId, partnerId);
   }
 
-  async fleetStatusSummary(businessId: string): Promise<Record<MachineStatus, number> & { total: number }> {
+  async fleetStatusSummary(
+    businessId: string,
+  ): Promise<Record<MachineStatus, number> & { total: number }> {
     const all = await machineRepository.listAllStatuses(businessId);
     const summary: Record<MachineStatus, number> = {
       provisioning: 0,
