@@ -111,6 +111,20 @@ export function outstandingCertificationChecks(checklist: MachineModel['certific
  * change to what the model claims (capabilities, adapter) after that
  * revokes it — the certification described a different contract.
  */
+/** Shown to staff as a link, so only a real web address — never `javascript:` or anything else a click could run. */
+function assertDocumentationUrl(value: string | null | undefined): void {
+  if (!value) return;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new RegistryValidationError('documentationUrl must be a web address starting with https:// or http://');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new RegistryValidationError('documentationUrl must be a web address starting with https:// or http://');
+  }
+}
+
 class ManufacturerRegistryService {
   async createManufacturer(
     businessId: string,
@@ -131,6 +145,7 @@ class ManufacturerRegistryService {
     }
     assertSlug(input.slug);
     assertAdapterSupports(input.defaultAdapterKey, input.integrationType);
+    assertDocumentationUrl(input.documentationUrl);
     if (await manufacturerRepository.findBySlug(businessId, input.slug)) {
       throw new RegistryValidationError(`A manufacturer with slug "${input.slug}" already exists`);
     }
@@ -155,6 +170,10 @@ class ManufacturerRegistryService {
     actor: string,
   ): Promise<void> {
     const manufacturer = await this.requireManufacturer(businessId, manufacturerId);
+    if (update.name !== undefined && !update.name.trim()) {
+      throw new RegistryValidationError('name is required');
+    }
+    assertDocumentationUrl(update.documentationUrl);
     if (update.integrationType || update.defaultAdapterKey) {
       assertAdapterSupports(update.defaultAdapterKey ?? manufacturer.defaultAdapterKey, update.integrationType ?? manufacturer.integrationType);
     }

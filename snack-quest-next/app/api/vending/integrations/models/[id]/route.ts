@@ -18,8 +18,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       slotIdFormat: optionalString(body, 'slotIdFormat'),
       notes: optionalString(body, 'notes'),
     };
+    const before = await manufacturerRegistryService.requireModel(session.businessId, id);
     const result = await manufacturerRegistryService.updateModel(session.businessId, id, update, session.uid);
-    await recordAuditLog(request, { businessId: session.businessId, actorId: session.uid, action: 'update_machine_model', entityType: 'machineModel', entityId: id, after: { ...update, certificationRevoked: result.certificationRevoked } });
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'update_machine_model',
+      entityType: 'machineModel',
+      entityId: id,
+      before: { name: before.name, adapterKey: before.adapterKey, declaredCapabilities: before.declaredCapabilities, slotCount: before.slotCount, slotIdFormat: before.slotIdFormat, notes: before.notes, certificationStatus: before.certificationStatus },
+      after: { ...update, certificationRevoked: result.certificationRevoked },
+    });
     return Response.json(result);
   });
 }

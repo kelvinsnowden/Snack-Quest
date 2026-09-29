@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireStaffSession } from '@/lib/auth/session';
+import { hasPermission } from '@/lib/auth/permissions';
 import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
 import { machineIntegrationService } from '@/services/machineIntegrationService';
 import { machineReliabilityService } from '@/services/machineReliabilityService';
@@ -100,6 +101,11 @@ export default async function MachineIntegrationsPage() {
         <p className="max-w-3xl text-sm text-muted-foreground">
           Every manufacturer, model and machine connection behind the fleet. Owners never see any of this — to them every machine is simply a Snack Quest machine.
         </p>
+        {hasPermission(session, 'integrations.credentials.manage') ? (
+          <Link href="/admin/vending/integrations/credentials" className="mt-1 inline-block text-sm font-medium text-primary hover:underline">
+            All integration keys, with expiry and last use →
+          </Link>
+        ) : null}
       </div>
 
       <Card>

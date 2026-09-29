@@ -20,6 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ManufacturerStageControls } from '@/components/admin/integrations/ManufacturerStageControls';
 import { CreateModelForm } from '@/components/admin/integrations/CreateModelForm';
+import { EditManufacturerForm } from '@/components/admin/integrations/EditManufacturerForm';
+import { EditModelForm } from '@/components/admin/integrations/EditModelForm';
+import { listAdapterRegistrations } from '@/lib/vending/adapterRegistry';
+import { INTEGRATION_TYPES } from '@/types';
 import { CertificationPanel, type ChecklistEntry } from '@/components/admin/integrations/CertificationPanel';
 import { CredentialsPanel, type CredentialRow } from '@/components/admin/integrations/CredentialsPanel';
 import { ManufacturerApiCredentialsPanel, type ApiCredentialRow } from '@/components/admin/integrations/ManufacturerApiCredentialsPanel';
@@ -61,6 +65,9 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
   const machines = integrations.filter(({ integration }) => integration.manufacturerId === manufacturerId);
   const modelName = new Map(models.map(({ id, data }) => [id, data.name]));
   const webhookUrl = `/api/v1/webhooks/manufacturers/${manufacturer.slug}`;
+  const adapterOptions = listAdapterRegistrations().map(({ key, label, integrationTypes, maturity }) => ({ key, label, integrationTypes, maturity }));
+  const canEditManufacturer = hasPermission(session, 'integrations.manufacturers.manage');
+  const canEditModels = hasPermission(session, 'integrations.models.manage');
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -83,6 +90,28 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
           <div><dt className="inline">Webhook URL: </dt><dd className="inline"><code className="font-mono text-xs text-foreground">{webhookUrl}</code></dd></div>
         </dl>
       </div>
+
+      {canEditManufacturer ? (
+        <details className="rounded-lg border border-border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">Edit manufacturer details</summary>
+          <div className="mt-4">
+            <EditManufacturerForm
+              manufacturerId={manufacturerId}
+              adapters={adapterOptions}
+              integrationTypes={INTEGRATION_TYPES}
+              initial={{
+                name: manufacturer.name,
+                integrationType: manufacturer.integrationType,
+                defaultAdapterKey: manufacturer.defaultAdapterKey,
+                apiVersion: manufacturer.apiVersion ?? '',
+                documentationUrl: manufacturer.documentationUrl ?? '',
+                supportContact: manufacturer.supportContact ?? '',
+                notes: manufacturer.notes ?? '',
+              }}
+            />
+          </div>
+        </details>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -121,6 +150,20 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
                   <Badge key={capability} variant="outline">{HARDWARE_CAPABILITY_LABELS[capability as HardwareCapability] ?? capability}</Badge>
                 ))}
               </div>
+              {canEditModels ? (
+                <details className="rounded-md border border-border p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-foreground">Edit model</summary>
+                  <div className="mt-4">
+                    <EditModelForm
+                      modelId={id}
+                      certified={data.certificationStatus === 'certified'}
+                      adapters={adapterOptions.filter((option) => option.integrationTypes.includes(manufacturer.integrationType))}
+                      manufacturerAdapterLabel={adapter?.label ?? manufacturer.defaultAdapterKey}
+                      initial={{ name: data.name, adapterKey: data.adapterKey ?? '', capabilities: [...data.declaredCapabilities], slotCount: data.slotCount ? String(data.slotCount) : '', slotIdFormat: data.slotIdFormat ?? '', notes: data.notes ?? '' }}
+                    />
+                  </div>
+                </details>
+              ) : null}
               <CertificationPanel
                 modelId={id}
                 status={data.certificationStatus}

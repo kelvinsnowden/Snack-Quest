@@ -48,6 +48,22 @@ describe('manufacturers', () => {
       manufacturerRegistryService.createManufacturer(BUSINESS_ID, { name: 'B', slug: 'b', integrationType: 'snack_quest_api', defaultAdapterKey: 'mock' }, 'staff-1'),
     ).rejects.toThrow(RegistryValidationError);
   });
+
+  it('edits details, and only accepts a web address as documentation', async () => {
+    const id = await manufacturerRegistryService.createManufacturer(BUSINESS_ID, { name: 'Acme', slug: 'acme-docs', integrationType: 'manufacturer_api', defaultAdapterKey: 'mock', documentationUrl: 'https://docs.acme.example' }, 'staff-1');
+    await manufacturerRegistryService.updateManufacturer(BUSINESS_ID, id, { supportContact: 'ops@acme.example', documentationUrl: 'https://acme.example/api' }, 'staff-2');
+    expect(await manufacturerRegistryService.requireManufacturer(BUSINESS_ID, id)).toMatchObject({ supportContact: 'ops@acme.example', documentationUrl: 'https://acme.example/api' });
+    for (const documentationUrl of ['javascript:alert(1)', 'data:text/html,hi', 'not a url']) {
+      await expect(manufacturerRegistryService.updateManufacturer(BUSINESS_ID, id, { documentationUrl }, 'staff-2')).rejects.toThrow(RegistryValidationError);
+    }
+    await expect(
+      manufacturerRegistryService.createManufacturer(BUSINESS_ID, { name: 'X', slug: 'x-docs', integrationType: 'manufacturer_api', defaultAdapterKey: 'mock', documentationUrl: 'javascript:alert(1)' }, 'staff-1'),
+    ).rejects.toThrow(RegistryValidationError);
+    await expect(manufacturerRegistryService.updateManufacturer(BUSINESS_ID, id, { name: '  ' }, 'staff-2')).rejects.toThrow(RegistryValidationError);
+    // Clearing it is fine.
+    await manufacturerRegistryService.updateManufacturer(BUSINESS_ID, id, { documentationUrl: null }, 'staff-2');
+    expect((await manufacturerRegistryService.requireManufacturer(BUSINESS_ID, id)).documentationUrl).toBeNull();
+  });
 });
 
 describe('onboarding stages', () => {
