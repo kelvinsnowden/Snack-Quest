@@ -1,7 +1,7 @@
 import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobService } from '@/services/scheduledJobService';
-import { recommendationEngineService } from '@/services/recommendationEngineService';
+import { generateRecommendations } from '@/services/jobs/generateRecommendations';
 
 /**
  * Nightly recommendations: restock and dead-stock for every selling
@@ -15,8 +15,6 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const businessId = getCurrentBusinessId();
-  const outcome = await scheduledJobService.run(businessId, 'generate-recommendations', (job) =>
-    recommendationEngineService.generateForFleet(businessId, 'system:generate-recommendations', (machineId, error) => job.itemError(`machine ${machineId}`, error)),
-  );
+  const outcome = await scheduledJobService.run(businessId, 'generate-recommendations', (job) => generateRecommendations(businessId, job));
   return scheduledJobService.toResponse(outcome);
 }

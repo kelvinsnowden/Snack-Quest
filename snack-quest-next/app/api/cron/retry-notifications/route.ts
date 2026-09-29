@@ -1,7 +1,7 @@
-import { notificationService } from '@/services/notificationService';
 import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobService } from '@/services/scheduledJobService';
+import { retryNotifications } from '@/services/jobs/retryNotifications';
 
 /**
  * The retry sweep's real trigger (§ Notification breadth,
@@ -26,9 +26,6 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const businessId = getCurrentBusinessId();
-  const outcome = await scheduledJobService.run(businessId, 'retry-notifications', async (job) => {
-    const result = await job.step('retry sweep', () => notificationService.retrySweep(businessId));
-    return { ...(result ?? {}) };
-  });
+  const outcome = await scheduledJobService.run(businessId, 'retry-notifications', (job) => retryNotifications(businessId, job));
   return scheduledJobService.toResponse(outcome);
 }

@@ -1,9 +1,7 @@
-import { machineTransactionService } from '@/services/machineTransactionService';
-import { dispenseRecoveryService } from '@/services/dispenseRecoveryService';
-import { deepReconciliationService } from '@/services/deepReconciliationService';
 import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobService } from '@/services/scheduledJobService';
+import { reconcileVendingTransactions } from '@/services/jobs/reconcileVendingTransactions';
 
 /**
  * The vending transaction-timeout sweep's real trigger
@@ -38,25 +36,6 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const businessId = getCurrentBusinessId();
-  const outcome = await scheduledJobService.run(businessId, 'reconcile-vending-transactions', async (job) => {
-    // Provable recovery first (refund what was never sent or collected),
-    // so the blunt stuck-sale sweep below only sees what truly needs a human.
-    const recovery = await job.step('recovery sweep', () => dispenseRecoveryService.sweep(businessId));
-    const stuck = await job.step('stuck transactions', () => machineTransactionService.reconcileStuckTransactions(businessId));
-    const pending = await job.step('stuck pending payments', () => machineTransactionService.reconcileStuckPendingTransactions(businessId));
-    const unknown = await job.step('pull reconciliation', () => machineTransactionService.reconcileUnknownDispenses(businessId));
-    // Deep tier: money, dispense and stock ledgers checked against each other; discrepancies become alerts.
-    const ledger = await job.step('ledger reconciliation', () => deepReconciliationService.run(businessId));
-    (recovery?.itemErrors ?? []).forEach((error) => job.itemError('recovery sweep', error));
-    (unknown?.itemErrors ?? []).forEach((error) => job.itemError('pull reconciliation', error));
-    return {
-      ...(stuck ?? {}),
-      ...(pending ?? {}),
-      dispensesResolved: unknown?.resolved ?? null,
-      dispensesStillUnknown: unknown?.stillUnknown ?? null,
-      recoveryExamined: recovery?.examined ?? null,
-      ledgerDiscrepancies: ledger?.discrepancies.length ?? null,
-    };
-  });
+  const outcome = await scheduledJobService.run(businessId, 'reconcile-vending-transactions', (job) => reconcileVendingTransactions(businessId, job));
   return scheduledJobService.toResponse(outcome);
 }

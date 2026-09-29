@@ -1,10 +1,7 @@
-import { analyticsRollupService } from '@/services/analyticsRollupService';
 import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobService } from '@/services/scheduledJobService';
-import { dateKey } from '@/lib/analytics/dateKey';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { rebuildAnalyticsRollups } from '@/services/jobs/rebuildAnalyticsRollups';
 
 /**
  * Keeps `trafficDaily` and `customerLifetime` current without the
@@ -40,12 +37,6 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const businessId = getCurrentBusinessId();
-  const outcome = await scheduledJobService.run(businessId, 'rebuild-analytics-rollups', async (job) => {
-    const startDate = dateKey(new Date(Date.now() - 3 * DAY_MS));
-    const endDate = dateKey(new Date());
-    const traffic = await job.step('traffic rollups', () => analyticsRollupService.rebuildTrafficRange(businessId, startDate, endDate));
-    const lifetime = await job.step('customer lifetime', () => analyticsRollupService.rebuildCustomerLifetime(businessId));
-    return { traffic, lifetime };
-  });
+  const outcome = await scheduledJobService.run(businessId, 'rebuild-analytics-rollups', (job) => rebuildAnalyticsRollups(businessId, job));
   return scheduledJobService.toResponse(outcome);
 }

@@ -1,8 +1,7 @@
-import { withdrawalService } from '@/services/withdrawalService';
 import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
-import { notificationService } from '@/services/notificationService';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { scheduledJobService } from '@/services/scheduledJobService';
+import { reconcileStuckWithdrawals } from '@/services/jobs/reconcileStuckWithdrawals';
 
 /**
  * The B2C stuck-withdrawal reconciliation sweep's real trigger (§
@@ -24,24 +23,6 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const businessId = getCurrentBusinessId();
-  const outcome = await scheduledJobService.run(businessId, 'reconcile-stuck-withdrawals', async (job) => {
-    const outcomes = (await job.step('reconcile stuck withdrawals', () => withdrawalService.reconcileStuckWithdrawals(businessId))) ?? [];
-    for (const item of outcomes) {
-      if (item.outcome === 'needsManualReview' && item.reviewReason) {
-        try {
-          await notificationService.notifyAdmin(businessId, `URGENT: ${item.reviewReason}`);
-        } catch (error) {
-          job.itemError('notify admin', error);
-        }
-      }
-    }
-    return {
-      checked: outcomes.length,
-      queried: outcomes.filter((o) => o.outcome === 'queried').length,
-      needsManualReview: outcomes.filter((o) => o.outcome === 'needsManualReview').length,
-      stillPending: outcomes.filter((o) => o.outcome === 'stillPending').length,
-      skipped: outcomes.filter((o) => o.outcome === 'skipped').length,
-    };
-  });
+  const outcome = await scheduledJobService.run(businessId, 'reconcile-stuck-withdrawals', (job) => reconcileStuckWithdrawals(businessId, job));
   return scheduledJobService.toResponse(outcome);
 }
