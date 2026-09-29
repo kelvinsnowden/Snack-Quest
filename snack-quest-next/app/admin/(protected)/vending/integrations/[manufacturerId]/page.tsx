@@ -26,6 +26,8 @@ import { ManufacturerApiCredentialsPanel, type ApiCredentialRow } from '@/compon
 import { CredentialHistory, type CredentialHistoryEntry } from '@/components/admin/integrations/CredentialHistory';
 import { CertificationBadge, IntegrationHealthBadge, IntegrationStateBadge } from '@/components/admin/integrations/IntegrationBadges';
 import type { CertificationCheckKey } from '@/types';
+import { actorNamesFor } from '@/lib/audit/actorNames';
+import { EntityHistory } from '@/components/admin/EntityHistory';
 
 export const metadata: Metadata = { title: 'Manufacturer' };
 
@@ -48,6 +50,8 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
     manufacturerOnboardingService.checklist(session.businessId, manufacturerId),
     manufacturerOnboardingService.certificationRuns(session.businessId, manufacturerId),
   ]);
+  const history = hasPermission(session, 'audit.view') ? await auditLogRepository.listForEntities(session.businessId, [manufacturerId, ...models.map(({ id }) => id)], 15) : null;
+  const historyNames = history ? await actorNamesFor(history) : new Map<string, string>();
   const credentialHistory = await auditLogRepository.listForEntities(
     session.businessId,
     [...credentials.map((credential) => credential.keyId), `${manufacturerId}__sandbox`, `${manufacturerId}__production`],
@@ -222,6 +226,17 @@ export default async function ManufacturerPage({ params }: { params: Promise<{ m
           )}
         </CardContent>
       </Card>
+
+      {history ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EntityHistory logs={history} actorNames={historyNames} moreHref={undefined} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

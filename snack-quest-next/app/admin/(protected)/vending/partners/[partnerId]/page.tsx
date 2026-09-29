@@ -14,6 +14,9 @@ import { WithdrawalStatusBadge } from '@/components/admin/WithdrawalStatusBadge'
 import { RequestPartnerWithdrawalAction } from '@/components/admin/RequestPartnerWithdrawalAction';
 import { formatDateTime } from '@/lib/orders/format';
 import { hasPermission } from '@/lib/auth/permissions';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { actorNamesFor } from '@/lib/audit/actorNames';
+import { EntityHistory } from '@/components/admin/EntityHistory';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { BUSINESS_TIME_ZONE } from '@/lib/vending/businessClock';
 import { OwnerForm, OwnerStatusControl, PortalInvite, NewAgreementForm, AgreementActions } from '@/components/admin/vending/OwnerControls';
@@ -51,6 +54,8 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
   // An agreement on a machine that has since changed hands is shown by id; it can only be ended, never restarted.
   const activeByMachine = new Set((await Promise.all(machines.map(({ id }) => partnerMachineAgreementRepository.findActiveForMachine(session.businessId, id)))).filter(Boolean).map((row) => row!.data.machineId));
   const sortedAgreements = [...agreements].sort((a, b) => ['active', 'draft', 'terminated'].indexOf(a.data.status) - ['active', 'draft', 'terminated'].indexOf(b.data.status));
+  const history = hasPermission(session, 'audit.view') ? await auditLogRepository.listForEntities(session.businessId, [partnerId, ...agreements.map(({ id }) => id)], 15) : null;
+  const historyNames = history ? await actorNamesFor(history) : new Map<string, string>();
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -182,6 +187,11 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
 
       {canSeeMoney ? (
         <>
+      <div>
+        <Link href={`/admin/vending/partners/${partnerId}/settlements`} className="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-border/30">
+          Settlements: prepare, check and finalize
+        </Link>
+      </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
         <DetailStat label="Available balance" value={`KES ${partner.availableCashKes.toLocaleString('en-KE')}`} />
         <DetailStat label="Lifetime earned" value={`KES ${partner.lifetimeEarnedKes.toLocaleString('en-KE')}`} />
@@ -337,6 +347,17 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
         </CardContent>
       </Card>
         </>
+      ) : null}
+
+      {history ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EntityHistory logs={history} actorNames={historyNames} moreHref={undefined} />
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );

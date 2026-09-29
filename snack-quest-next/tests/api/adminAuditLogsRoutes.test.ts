@@ -5,8 +5,9 @@ const { listByBusinessMock, verifyStaffSessionFromRequestMock } = vi.hoisted(() 
   verifyStaffSessionFromRequestMock: vi.fn(),
 }));
 
+// The route searches with the page's filters; `listByBusinessMock` stands in for that search.
 vi.mock('@/repositories/auditLogRepository', () => ({
-  auditLogRepository: { listByBusiness: listByBusinessMock },
+  auditLogRepository: { search: listByBusinessMock },
 }));
 
 vi.mock('@/lib/auth/session', () => ({
@@ -70,15 +71,24 @@ describe('GET /api/admin/audit-logs', () => {
       },
     ]);
     expect(body.nextCursor).toBeNull();
-    expect(listByBusinessMock).toHaveBeenCalledWith('biz-1', { entityType: undefined, cursor: undefined });
+    expect(listByBusinessMock).toHaveBeenCalledWith('biz-1', expect.objectContaining({ entityType: undefined, actorId: undefined, machineId: undefined, cursor: undefined }));
   });
 
-  it('passes entityType and cursor query params through', async () => {
+  it('passes the area (or the older entityType), person, dates and cursor through', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
     listByBusinessMock.mockResolvedValue({ logs: [], nextCursor: null });
 
     await auditLogsRoute(getRequest('?entityType=withdrawal&cursor=log-5'));
+    expect(listByBusinessMock).toHaveBeenLastCalledWith('biz-1', expect.objectContaining({ entityType: 'withdrawal', cursor: 'log-5' }));
 
-    expect(listByBusinessMock).toHaveBeenCalledWith('biz-1', { entityType: 'withdrawal', cursor: 'log-5' });
+    await auditLogsRoute(getRequest('?area=machineSlot&actor=staff-9&from=2026-09-01&to=2026-09-30'));
+    expect(listByBusinessMock).toHaveBeenLastCalledWith(
+      'biz-1',
+      expect.objectContaining({ entityType: 'machineSlot', actorId: 'staff-9', since: new Date('2026-08-31T21:00:00.000Z'), until: new Date('2026-09-30T21:00:00.000Z') }),
+    );
+
+    // An unknown area is ignored rather than trusted into the query.
+    await auditLogsRoute(getRequest('?area=__proto__'));
+    expect(listByBusinessMock).toHaveBeenLastCalledWith('biz-1', expect.objectContaining({ entityType: undefined }));
   });
 });

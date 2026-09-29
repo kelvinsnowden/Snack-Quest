@@ -9,10 +9,15 @@ import { locationService } from '@/services/locationService';
 import { machineLocationHistoryRepository } from '@/repositories/machineLocationHistoryRepository';
 import { BUSINESS_TIME_ZONE } from '@/lib/vending/businessClock';
 import { MACHINE_STATUS_TRANSITIONS } from '@/types';
+import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { actorNamesFor } from '@/lib/audit/actorNames';
+import { EntityHistory } from '@/components/admin/EntityHistory';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MachineStatusControl, MachineMoveControl } from '@/components/admin/vending/MachineStatusControls';
 import { MachineOwnerControl } from '@/components/admin/vending/OwnerControls';
 import { DeviceKeysCard } from '@/components/admin/vending/DeviceKeysCard';
+import { SubscriptionCard } from '@/components/admin/vending/SubscriptionCard';
+import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { partnerService } from '@/services/partnerService';
 import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
@@ -34,16 +39,21 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
   if (!machine) notFound();
   const canSeeOwners = hasPermission(session, 'owners.view');
   const canManageKeys = hasPermission(session, 'machines.credentials.manage');
-  const [locations, history, owners, ownerHistory, activeAgreement, keys] = await Promise.all([
+  const canSeeMoney = hasPermission(session, 'owner_finance.view');
+  const [locations, history, owners, ownerHistory, activeAgreement, keys, subscription] = await Promise.all([
     locationService.listByBusiness(session.businessId),
     machineLocationHistoryRepository.listByMachine(session.businessId, machineId),
     canSeeOwners ? partnerService.listByBusiness(session.businessId) : Promise.resolve([]),
     canSeeOwners ? machineOwnershipHistoryRepository.listByMachine(session.businessId, machineId) : Promise.resolve([]),
     canSeeOwners ? partnerMachineAgreementRepository.findActiveForMachine(session.businessId, machineId) : Promise.resolve(null),
     canManageKeys ? deviceCredentialRepository.listByMachine(session.businessId, machineId) : Promise.resolve([]),
+    canSeeMoney ? machineSubscriptionService.findActiveForMachine(session.businessId, machineId) : Promise.resolve(null),
   ]);
+  const iso = (value: { toDate(): Date } | null | undefined) => (value ? value.toDate().toISOString() : null);
   const names = new Map(locations.map(({ id, data }) => [id, data.name]));
   const ownerNames = new Map(owners.map(({ id, data }) => [id, data.name]));
+  const auditHistory = hasPermission(session, 'audit.view') ? (await auditLogRepository.search(session.businessId, { machineId, limit: 15 })).logs : null;
+  const historyNames = auditHistory ? await actorNamesFor(auditHistory) : new Map<string, string>();
   const ownerName = (partnerId: string | null) => (partnerId ? (ownerNames.get(partnerId) ?? partnerId) : 'Snack Quest');
 
   return (
@@ -117,6 +127,39 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
           </Card>
         ) : null}
 
+        {canSeeMoney ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Owner subscription</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SubscriptionCard
+                machineId={machineId}
+                ownerId={machine.ownerPartnerId ?? null}
+                ownerName={machine.ownerPartnerId ? ownerName(machine.ownerPartnerId) : null}
+                subscription={
+                  subscription
+                    ? {
+                        id: subscription.id,
+                        planName: subscription.data.planName,
+                        amountKes: subscription.data.amountKes,
+                        frequency: subscription.data.frequency,
+                        status: subscription.data.status,
+                        currentPeriodStart: iso(subscription.data.currentPeriodStart)!,
+                        currentPeriodEnd: iso(subscription.data.currentPeriodEnd)!,
+                        lastPaymentStatus: subscription.data.lastPaymentStatus,
+                        lastPaidAt: iso(subscription.data.lastPaidAt),
+                        arrearsKes: subscription.data.arrearsKes,
+                        graceUntil: iso(subscription.data.graceUntil),
+                      }
+                    : null
+                }
+                canManage={hasPermission(session, 'owner_finance.subscriptions.manage')}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
         {canSeeOwners ? (
           <Card>
             <CardHeader>
@@ -161,6 +204,17 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
           </Card>
         ) : null}
       </div>
+
+      {auditHistory ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EntityHistory logs={auditHistory} actorNames={historyNames} moreHref={`/admin/audit-logs?machine=${encodeURIComponent(machine.machineCode)}`} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

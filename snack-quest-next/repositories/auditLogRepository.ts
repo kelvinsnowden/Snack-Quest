@@ -62,6 +62,64 @@ class AuditLogRepository {
   }
 
   /**
+   * The audit log with the filters people actually ask for: which area,
+   * who, which machine, and a date range. Firestore takes one equality
+   * filter at a time here (machine, else person, else area — the most
+   * selective first) plus the date range; any other filter chosen is
+   * applied to what that returns, reading at most `scanLimit` entries
+   * per page so a narrow combination can't turn into an unbounded read.
+   */
+  async search(
+    businessId: string,
+    filters: { entityType?: string; actorId?: string; machineId?: string; since?: Date; until?: Date; limit?: number; cursor?: string; scanLimit?: number },
+  ): Promise<{ logs: { id: string; data: AuditLog }[]; nextCursor: string | null; scanCapped: boolean }> {
+    const pageSize = filters.limit ?? 50;
+    const scanLimit = filters.scanLimit ?? 1000;
+    let query = adminFirestore.collection(COLLECTION).where('businessId', '==', businessId) as FirebaseFirestore.Query;
+    const primary = filters.machineId ? 'machineId' : filters.actorId ? 'actorId' : filters.entityType ? 'entityType' : null;
+    if (primary === 'machineId') query = query.where('machineId', '==', filters.machineId);
+    if (primary === 'actorId') query = query.where('actorId', '==', filters.actorId);
+    if (primary === 'entityType') query = query.where('entityType', '==', filters.entityType);
+    if (filters.since) query = query.where('createdAt', '>=', filters.since);
+    if (filters.until) query = query.where('createdAt', '<', filters.until);
+    query = query.orderBy('createdAt', 'desc');
+    const matches = (log: AuditLog) =>
+      (!filters.entityType || primary === 'entityType' || log.entityType === filters.entityType) && (!filters.actorId || primary === 'actorId' || log.actorId === filters.actorId);
+
+    let cursorDoc: FirebaseFirestore.DocumentSnapshot | null = filters.cursor ? await adminFirestore.collection(COLLECTION).doc(filters.cursor).get() : null;
+    const logs: { id: string; data: AuditLog }[] = [];
+    let scanned = 0;
+    let exhausted = false;
+    let lastScanned: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    while (logs.length <= pageSize && scanned < scanLimit) {
+      let batch = query.limit(Math.min(200, scanLimit - scanned));
+      if (cursorDoc?.exists) batch = batch.startAfter(cursorDoc);
+      const snapshot = await batch.get();
+      if (snapshot.empty) {
+        exhausted = true;
+        break;
+      }
+      for (const doc of snapshot.docs) {
+        scanned += 1;
+        lastScanned = doc;
+        const data = doc.data() as AuditLog;
+        if (matches(data)) logs.push({ id: doc.id, data });
+        if (logs.length > pageSize) break;
+      }
+      cursorDoc = lastScanned;
+      if (snapshot.docs.length < 200 && logs.length <= pageSize && scanned < scanLimit) {
+        exhausted = true;
+        break;
+      }
+    }
+    const page = logs.slice(0, pageSize);
+    const hasMore = logs.length > pageSize || (!exhausted && scanned >= scanLimit);
+    // Continue from the last entry shown, or — when nothing matched in this scan — from the last one read.
+    const nextFrom = logs.length > pageSize ? page[page.length - 1].id : lastScanned?.id ?? null;
+    return { logs: page, nextCursor: hasMore ? nextFrom : null, scanCapped: !exhausted && scanned >= scanLimit && logs.length <= pageSize };
+  }
+
+  /**
    * The newest entries about any of these entities (e.g. every credential
    * of one manufacturer), merged across Firestore's 30-value `in` limit.
    */
