@@ -53,7 +53,10 @@ export default async function StaffAccessPage({ params }: { params: Promise<{ ui
           {member.disabled ? <Badge variant="danger">Disabled</Badge> : null}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {member.email} · {findTemplate(member.template)?.label ?? 'Role default'} · {member.effectivePermissions.length} permissions
+          {member.email} · {findTemplate(member.template)?.label ?? 'Role default'} · {member.effectivePermissions.length} permissions ·{' '}
+          <Link href={`/admin/staff/${encodeURIComponent(uid)}/access`} className="text-primary hover:underline">
+            What can they do?
+          </Link>
         </p>
       </div>
 

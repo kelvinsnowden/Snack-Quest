@@ -406,6 +406,21 @@ export interface PermissionSource {
   legacySections?: readonly string[] | null;
 }
 
+/** The starting set before individual grants and removals: the chosen template, or the roles' defaults narrowed to legacy sections. */
+function startingPermissions(source: PermissionSource): { base: Set<PermissionKey>; origin: 'template' | 'role_default' } {
+  const chosen = findTemplate(source.template);
+  if (chosen) return { base: new Set(chosen.permissions), origin: 'template' };
+  const base = new Set(source.roles.flatMap((role) => defaultTemplateForRole(role)?.permissions ?? []));
+  const sections = (source.legacySections ?? []).filter(Boolean);
+  if (sections.length > 0 && source.roles.includes('admin')) {
+    for (const key of [...base]) {
+      const section = sectionOfPermission(key);
+      if (section !== null && !sections.includes(section)) base.delete(key);
+    }
+  }
+  return { base, origin: 'role_default' };
+}
+
 /**
  * What a person may do: their template's permissions (or their roles'
  * defaults), narrowed to their legacy sections if they have any, plus
@@ -416,23 +431,54 @@ export function effectivePermissions(source: PermissionSource): PermissionKey[] 
   if (source.roles.includes('super_admin')) {
     return [...ALL_PERMISSIONS];
   }
-  const chosen = findTemplate(source.template);
-  let base: Set<PermissionKey>;
-  if (chosen) {
-    base = new Set(chosen.permissions);
-  } else {
-    base = new Set(source.roles.flatMap((role) => defaultTemplateForRole(role)?.permissions ?? []));
-    const sections = (source.legacySections ?? []).filter(Boolean);
-    if (sections.length > 0 && source.roles.includes('admin')) {
-      for (const key of [...base]) {
-        const section = sectionOfPermission(key);
-        if (section !== null && !sections.includes(section)) base.delete(key);
-      }
-    }
-  }
+  const { base } = startingPermissions(source);
   for (const key of source.granted ?? []) if (isPermissionKey(key)) base.add(key);
   for (const key of source.revoked ?? []) if (isPermissionKey(key)) base.delete(key);
   return ALL_PERMISSIONS.filter((key) => base.has(key));
+}
+
+/** Why one person has, or hasn't, one permission (§ RBAC UI — access explainer). */
+export interface PermissionExplanation {
+  key: PermissionKey;
+  label: string;
+  group: PermissionGroup;
+  /** In their template (or their role's default set). */
+  fromTemplate: boolean;
+  /** Given to them individually, on top of the template. */
+  grantedDirectly: boolean;
+  /** Taken away from them individually, although the template has it. */
+  removed: boolean;
+  /** Held because they are a super admin, whatever else is set. */
+  superAdmin: boolean;
+  /** What the server checks. Always equal to `effectivePermissions(source).includes(key)`. */
+  effective: boolean;
+}
+
+/**
+ * The access explainer: for every permission, where it comes from and
+ * whether it's held. Built from the same starting set `effectivePermissions`
+ * uses — the explanation can't drift from what the server enforces.
+ */
+export function explainPermissions(source: PermissionSource): { origin: 'super_admin' | 'template' | 'role_default'; templateKey: string | null; rows: PermissionExplanation[] } {
+  const effective = new Set(effectivePermissions(source));
+  const superAdmin = source.roles.includes('super_admin');
+  const { base, origin } = startingPermissions(source);
+  const granted = new Set((source.granted ?? []).filter(isPermissionKey));
+  const revoked = new Set((source.revoked ?? []).filter(isPermissionKey));
+  const rows = PERMISSIONS.map((meta) => {
+    const key = meta.key as PermissionKey;
+    return {
+      key,
+      label: meta.label,
+      group: meta.group,
+      fromTemplate: base.has(key),
+      grantedDirectly: !base.has(key) && granted.has(key),
+      removed: base.has(key) && revoked.has(key),
+      superAdmin,
+      effective: effective.has(key),
+    };
+  });
+  return { origin: superAdmin ? 'super_admin' : origin, templateKey: findTemplate(source.template)?.key ?? null, rows };
 }
 
 export interface PermissionHolder {
