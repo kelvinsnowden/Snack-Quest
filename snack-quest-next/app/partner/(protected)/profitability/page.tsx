@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import { Banknote, Coins, Percent, ShoppingCart } from 'lucide-react';
 import { requirePartnerSession } from '@/lib/auth/partnerSession';
 import { ownerProfitabilityService } from '@/services/ownerProfitabilityService';
+import { advertisingService } from '@/services/advertisingService';
+import { nairobiClock } from '@/lib/ads/playlist';
 import { PERIOD_PRESETS, PERIOD_PRESET_LABEL, resolvePeriod } from '@/lib/finance/periods';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +31,8 @@ export default async function PartnerProfitabilityPage({ searchParams }: { searc
   const search = await searchParams;
   const period = resolvePeriod({ preset: search.preset, from: search.from, to: search.to });
   const report = await ownerProfitabilityService.report(session.businessId, session.partnerId, period, { machineId: search.machineId ?? null, category: search.category ?? null });
+  const adsMonth = nairobiClock(new Date()).date.slice(0, 7);
+  const ads = await advertisingService.ownerSummary(session.businessId, session.partnerId, adsMonth);
   const { totals, previous } = report;
   const query = (patch: Partial<Search>) => {
     const next = new URLSearchParams();
@@ -247,6 +251,26 @@ export default async function PartnerProfitabilityPage({ searchParams }: { searc
             </tbody>
           </table>
           {report.sales.some((sale) => sale.costEstimated) ? <p className="px-4 py-2 text-caption text-muted-foreground">* costed at today’s price (sold before costs were recorded per sale).</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Ads on your machines — this month</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm">
+          <p className="tabular-nums">
+            {ads.completedPlays.toLocaleString('en-KE')} ad{ads.completedPlays === 1 ? '' : 's'} played to the end
+            {ads.interactions > 0 ? `, ${ads.interactions.toLocaleString('en-KE')} tap${ads.interactions === 1 ? '' : 's'} on the screen straight after` : ''}.
+          </p>
+          {ads.sharePcts.some((share) => share > 0) ? (
+            <p className="tabular-nums">
+              Your share: <span className="font-semibold">{ads.computed ? kes(ads.shareKes) : 'worked out at month end'}</span>
+            </p>
+          ) : (
+            <p className="text-muted-foreground">Your agreement doesn’t include a share of advertising.</p>
+          )}
+          <p className="text-caption text-muted-foreground">Ads show only when nobody is using the machine.</p>
         </CardContent>
       </Card>
     </div>

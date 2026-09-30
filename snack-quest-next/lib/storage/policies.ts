@@ -18,6 +18,7 @@ export const STORAGE_DIRECTORIES = [
   'documents',
   'reviews',
   'kiosk',
+  'ads',
 ] as const;
 
 export type StorageDirectory = (typeof STORAGE_DIRECTORIES)[number];
@@ -73,6 +74,11 @@ export const STORAGE_DIRECTORY_POLICIES: Record<StorageDirectory, StorageDirecto
   // upload under Vercel's 4.5MB request-body cap, which is the real
   // limit for anything sent through `POST /api/storage/upload`.
   kiosk: { allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'], maxSizeBytes: 4 * MB },
+  // Idle-screen ad creatives (§ ADVERTISING). Written only by the creative
+  // upload route, which also checks the bytes and computes the checksum a
+  // machine verifies. 4MB for the same request-body reason as `kiosk`: a
+  // longer video needs a direct-to-storage upload that isn't built yet.
+  ads: { allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'], maxSizeBytes: 4 * MB },
 };
 
 /**

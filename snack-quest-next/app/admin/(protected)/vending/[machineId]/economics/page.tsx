@@ -156,6 +156,7 @@ export default async function MachineEconomicsPage({ params, searchParams }: { p
               {pnl.contribution.missing.length > 0 ? <li>Not recorded yet: {pnl.contribution.missing.map((key) => pnl.contribution.lines.find((line) => line.key === key)?.label.toLowerCase()).join(', ')}.</li> : null}
               {pnl.product.unpricedUnits > 0 ? <li>{pnl.product.unpricedUnits} unit(s) have no recorded cost and are left out of profit.</li> : null}
               {pnl.estimatedCostUnits > 0 ? <li>{pnl.estimatedCostUnits} older sale(s) are costed at today’s cost.</li> : null}
+              {pnl.advertising.uncomputedMonths.length > 0 ? <li>Ads played here in {pnl.advertising.uncomputedMonths.join(', ')}, but that month’s advertising revenue hasn’t been worked out yet, so it isn’t included.</li> : null}
             </ul>
           </CardContent>
         </Card>

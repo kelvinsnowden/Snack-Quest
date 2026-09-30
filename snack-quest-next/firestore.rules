@@ -586,6 +586,38 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
+    // § KIOSK EXPERIENCE BUILDER / § ADVERTISING — designs, campaigns,
+    // creatives, playback and ad revenue are read and written only through
+    // permission-checked routes (kiosk.*, advertising.*, finance.*) and the
+    // device content package; machines never touch Firestore directly.
+    // Advertiser prices and revenue are money, so no client SDK reads them.
+    match /kioskLayers/{layerId} {
+      allow read, write: if false;
+    }
+    match /kioskLayerVersions/{versionId} {
+      allow read, write: if false;
+    }
+    match /kioskPublishedIndex/{businessId} {
+      allow read, write: if false;
+    }
+    match /advertisers/{advertiserId} {
+      allow read, write: if false;
+    }
+    match /adCreatives/{creativeId} {
+      allow read, write: if false;
+    }
+    match /adCampaigns/{campaignId} {
+      allow read, write: if false;
+    }
+    match /adPlaybackEvents/{eventId} {
+      allow read, write: if false;
+    }
+    match /adDailyStats/{statId} {
+      allow read, write: if false;
+    }
+    match /adRevenueEntries/{entryId} {
+      allow read, write: if false;
+    }
     match /cameras/{cameraId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

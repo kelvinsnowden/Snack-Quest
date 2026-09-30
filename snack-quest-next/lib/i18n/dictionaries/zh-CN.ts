@@ -52,6 +52,7 @@ export const zhCN: Dictionary = {
       '/admin/vending/alerts': '告警中心',
       '/admin/vending/kiosk-screen': '机器屏幕',
       '/admin/vending/kiosk-design': '屏幕设计',
+      '/admin/vending/advertising': '广告',
       '/admin/vending/restock': '补货指挥中心',
       '/admin/vending/partners': '机器所有者',
       '/admin/vending/intelligence': '网络智能',

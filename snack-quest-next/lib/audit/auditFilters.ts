@@ -41,6 +41,10 @@ export const AUDIT_AREAS: Record<string, string> = {
   manufacturerApiCredential: 'Manufacturer API keys',
   kioskScreenImage: 'Screen artwork',
   kioskLayer: 'Screen designs',
+  advertiser: 'Advertisers',
+  adCreative: 'Ad creatives',
+  adCampaign: 'Ad campaigns',
+  adRevenue: 'Ad revenue',
   intelligenceRecommendation: 'Recommendations',
   scheduledJob: 'Scheduled jobs',
 };

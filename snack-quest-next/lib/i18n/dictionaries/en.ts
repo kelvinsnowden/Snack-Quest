@@ -55,6 +55,7 @@ export const en = {
       '/admin/vending/alerts': 'Alert Center',
       '/admin/vending/kiosk-screen': 'Machine Screen',
       '/admin/vending/kiosk-design': 'Screen Design',
+      '/admin/vending/advertising': 'Advertising',
       '/admin/vending/restock': 'Restock Command Center',
       '/admin/vending/partners': 'Machine Owners',
       '/admin/vending/intelligence': 'Network Intelligence',

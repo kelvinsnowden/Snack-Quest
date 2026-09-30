@@ -4,6 +4,7 @@ import { machineTransactionRepository } from '@/repositories/machineTransactionR
 import { machineSettlementRepository } from '@/repositories/machineSettlementRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { machineEconomicProfileService } from '@/services/machineEconomicProfileService';
+import { advertisingService } from '@/services/advertisingService';
 import { contribution, productEconomics, shareOf, unitCostFor, wholesaleMargin, type Contribution, type EconomicPerspective, type ProductEconomics, type SaleLine } from '@/lib/finance/economics';
 import { isCustomerSale, type MachineEconomicProfile, type MachineTransaction } from '@/types';
 
@@ -39,6 +40,8 @@ export interface MachinePnl {
    * advertising. Null for Snack Quest's own machines and for the owner's view.
    */
   snackQuestIncome: { wholesaleMarginKes: number; wholesaleUnpricedUnits: number; subscriptionKes: number; adShareKes: number; totalKes: number } | null;
+  /** Advertising attributed to this machine in the period, before any owner share; months with plays whose revenue hasn't been computed are named. */
+  advertising: { grossKes: number; uncomputedMonths: string[] };
   sales: PnlSale[];
 }
 
@@ -116,7 +119,8 @@ class MachinePnlService {
     const product = productEconomics(lines);
     const subscriptionKes = profile.settlesWithOwner ? await this.subscriptionSettledInPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd) : 0;
     const locationCommissionKes = profile.locationCommissionPct === null ? null : shareOf(product.netRevenueKes, profile.locationCommissionPct);
-    const adRevenueKes = input.costs?.adRevenueKes ?? 0;
+    const advertising = input.costs?.adRevenueKes !== undefined ? { grossKes: input.costs.adRevenueKes, uncomputedMonths: [] } : await advertisingService.machineAdRevenue(input.businessId, input.machineId, input.periodStart, input.periodEnd);
+    const adRevenueKes = advertising.grossKes;
     const ownerAdShareKes = profile.settlesWithOwner ? shareOf(adRevenueKes, profile.terms.adRevenueSharePartnerPct) : 0;
 
     const ownersView = input.perspective === 'owner' || profile.settlesWithOwner;
@@ -152,6 +156,7 @@ class MachinePnlService {
       contribution: result,
       estimatedCostUnits,
       snackQuestIncome,
+      advertising: ownersView ? { grossKes: ownerAdShareKes, uncomputedMonths: advertising.uncomputedMonths } : advertising,
       sales: pnlSales,
     };
   }

@@ -85,3 +85,4 @@ export * from './machineEvent';
 export * from './integrationCredential';
 export * from './manufacturerApiCredential';
 export * from './kioskExperience';
+export * from './advertising';

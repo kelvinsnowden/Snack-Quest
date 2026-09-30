@@ -50,6 +50,10 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
+  if (directory === 'ads') {
+    // Ad creatives are uploaded only through the advertising route, which checks the bytes and records the checksum machines verify.
+    return Response.json({ error: 'Upload ad creatives from Advertising → Creatives.' }, { status: 400 });
+  }
   if (creatorSession && !CREATOR_ALLOWED_DIRECTORIES.includes(directory as (typeof CREATOR_ALLOWED_DIRECTORIES)[number])) {
     return Response.json(
       { error: `Creators can only upload to: ${CREATOR_ALLOWED_DIRECTORIES.join(', ')}.` },
