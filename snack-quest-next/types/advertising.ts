@@ -126,26 +126,36 @@ export interface AdCampaign {
 export const AD_PLAYBACK_EVENT_TYPES = ['scheduled', 'downloaded', 'started', 'completed', 'failed', 'interacted'] as const;
 export type AdPlaybackEventType = (typeof AD_PLAYBACK_EVENT_TYPES)[number];
 
-/**
- * `adPlaybackEvents/{hash(machineId, clientEventId)}`. The id makes a
- * re-sent event a duplicate by construction: a machine that retries a
- * batch after a dropped response is never double counted.
- */
+/** One thing that happened to one ad on one machine. */
 export interface AdPlaybackEvent {
-  businessId: string;
-  machineId: string;
   campaignId: string;
   creativeId: string;
   eventType: AdPlaybackEventType;
+  /** Unique within its batch. */
   clientEventId: string;
   /** The machine's clock — kept for ordering on the device, never trusted for money. */
   occurredAt: Timestamp;
-  receivedAt: Timestamp;
-  /** Nairobi date the server received it — what daily stats and billing count by. */
-  date: string;
   playedMs: number | null;
   failureReason: string | null;
+}
+
+/**
+ * `adPlaybackBatches/{hash(machineId, batchId)}` — one machine's report of
+ * a few minutes of playback, kept as the evidence behind the counts. The
+ * id makes a resent batch a duplicate by construction: a machine that
+ * retries after a dropped response is never double counted. One document
+ * per flush, not per play, so a fleet of idle screens cycling short ads
+ * stays affordable.
+ */
+export interface AdPlaybackBatch {
+  businessId: string;
+  machineId: string;
+  batchId: string;
+  /** Nairobi date the server received it — what daily stats and billing count by. */
+  date: string;
   packageVersion: string | null;
+  events: AdPlaybackEvent[];
+  receivedAt: Timestamp;
 }
 
 /** `adDailyStats/{businessId}_{date}_{campaignId}_{machineId}` — counted once per unique event. */

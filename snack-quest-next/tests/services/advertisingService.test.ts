@@ -21,7 +21,7 @@ import { kioskExperienceService, resetKioskExperienceCache } from '@/services/ki
 
 const BUSINESS_ID = 'biz-advertising';
 const OTHER = 'biz-advertising-other';
-const COLLECTIONS = ['machines', 'partners', 'partnerMachineAgreements', 'machineOwnershipHistory', 'deviceCredentials', 'advertisers', 'adCreatives', 'adCampaigns', 'adPlaybackEvents', 'adDailyStats', 'adRevenueEntries', 'kioskLayers', 'kioskLayerVersions', 'kioskScreenImages'];
+const COLLECTIONS = ['machines', 'partners', 'partnerMachineAgreements', 'machineOwnershipHistory', 'deviceCredentials', 'advertisers', 'adCreatives', 'adCampaigns', 'adPlaybackBatches', 'adDailyStats', 'adRevenueEntries', 'kioskLayers', 'kioskLayerVersions', 'kioskScreenImages'];
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42'), Buffer.alloc(64, 1)]);
@@ -150,19 +150,26 @@ describe('playback', () => {
   it('a resent batch counts once', async () => {
     const machineId = await machine();
     const { campaignId, creativeId } = await liveCampaign();
-    const batch = { packageVersion: 'p1', events: events(campaignId, creativeId, 3) };
-    expect(await advertisingService.recordPlayback(BUSINESS_ID, machineId, batch)).toEqual({ accepted: 3, duplicates: 0, rejected: [] });
-    expect(await advertisingService.recordPlayback(BUSINESS_ID, machineId, batch)).toEqual({ accepted: 0, duplicates: 3, rejected: [] });
+    const batch = { batchId: 'batch-0000001', packageVersion: 'p1', events: events(campaignId, creativeId, 3) };
+    expect(await advertisingService.recordPlayback(BUSINESS_ID, machineId, batch)).toEqual({ accepted: 3, duplicates: 0, duplicateBatch: false, rejected: [] });
+    expect(await advertisingService.recordPlayback(BUSINESS_ID, machineId, batch)).toEqual({ accepted: 0, duplicates: 3, duplicateBatch: true, rejected: [] });
     const [stats] = await advertisingService.campaignStats(BUSINESS_ID, '2000-01-01', '2100-01-01');
     expect(stats).toMatchObject({ campaignId, completed: 3 });
   });
 
-  it('two machines may use the same client event id without colliding', async () => {
+  it('two machines may use the same batch id without colliding; a repeated event inside a batch counts once', async () => {
     const a = await machine();
     const b = await machine();
     const { campaignId, creativeId } = await liveCampaign();
-    await advertisingService.recordPlayback(BUSINESS_ID, a, { events: events(campaignId, creativeId, 1) });
-    expect((await advertisingService.recordPlayback(BUSINESS_ID, b, { events: events(campaignId, creativeId, 1) })).accepted).toBe(1);
+    await advertisingService.recordPlayback(BUSINESS_ID, a, { batchId: 'same-batch-id', events: events(campaignId, creativeId, 1) });
+    expect((await advertisingService.recordPlayback(BUSINESS_ID, b, { batchId: 'same-batch-id', events: events(campaignId, creativeId, 1) })).accepted).toBe(1);
+    const doubled = [...events(campaignId, creativeId, 2, 'completed', 'dup'), ...events(campaignId, creativeId, 2, 'completed', 'dup')];
+    expect(await advertisingService.recordPlayback(BUSINESS_ID, a, { batchId: 'batch-with-dups', events: doubled })).toMatchObject({ accepted: 2, duplicates: 2 });
+  });
+
+  it('a batch must carry an id', async () => {
+    const machineId = await machine();
+    await expect(advertisingService.recordPlayback(BUSINESS_ID, machineId, { events: [] })).rejects.toBeInstanceOf(AdValidationError);
   });
 
   it('bad events are reported and never stop the good ones; another business’s campaign is unknown', async () => {
@@ -170,6 +177,7 @@ describe('playback', () => {
     const { campaignId, creativeId } = await liveCampaign();
     const foreign = await liveCampaign({ businessId: OTHER });
     const result = await advertisingService.recordPlayback(BUSINESS_ID, machineId, {
+      batchId: 'mixed-batch-01',
       events: [
         ...events(campaignId, creativeId, 1),
         { clientEventId: 'short', campaignId, creativeId, eventType: 'completed', occurredAt: '2026-09-30T09:00:00Z' },
@@ -184,7 +192,7 @@ describe('playback', () => {
 
   it('refuses an oversized batch', async () => {
     const machineId = await machine();
-    await expect(advertisingService.recordPlayback(BUSINESS_ID, machineId, { events: Array.from({ length: 101 }, () => ({})) })).rejects.toBeInstanceOf(AdValidationError);
+    await expect(advertisingService.recordPlayback(BUSINESS_ID, machineId, { batchId: 'too-big-batch', events: Array.from({ length: 501 }, () => ({})) })).rejects.toBeInstanceOf(AdValidationError);
   });
 });
 
@@ -196,8 +204,8 @@ describe('revenue and owner share', () => {
     const ourMachine = await machine();
     const { campaignId, creativeId } = await liveCampaign({ billingModel: 'per_completed_play', priceKes: 10 });
     const month = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 7);
-    await advertisingService.recordPlayback(BUSINESS_ID, ownerMachine, { events: events(campaignId, creativeId, 30, 'completed', 'own') });
-    await advertisingService.recordPlayback(BUSINESS_ID, ourMachine, { events: events(campaignId, creativeId, 10, 'completed', 'sq') });
+    await advertisingService.recordPlayback(BUSINESS_ID, ownerMachine, { batchId: 'rev-batch-0002', events: events(campaignId, creativeId, 30, 'completed', 'own') });
+    await advertisingService.recordPlayback(BUSINESS_ID, ourMachine, { batchId: 'rev-batch-0003', events: events(campaignId, creativeId, 10, 'completed', 'sq') });
 
     const [entry] = await advertisingService.computeRevenueForMonth(BUSINESS_ID, month, 'finance');
     expect(entry).toMatchObject({ campaignId, billableUnits: 40, grossKes: 400, completedPlays: 40 });
@@ -215,7 +223,7 @@ describe('revenue and owner share', () => {
     const ownerMachine = await machine(partnerId);
     const { campaignId, creativeId } = await liveCampaign({ billingModel: 'per_machine_day', priceKes: 50 });
     const month = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 7);
-    await advertisingService.recordPlayback(BUSINESS_ID, ownerMachine, { events: events(campaignId, creativeId, 5) });
+    await advertisingService.recordPlayback(BUSINESS_ID, ownerMachine, { batchId: 'rev-batch-0004', events: events(campaignId, creativeId, 5) });
     const [entry] = await advertisingService.computeRevenueForMonth(BUSINESS_ID, month, 'finance');
     expect(entry).toMatchObject({ billableUnits: 1, grossKes: 50, ownerTotalKes: 0, snackQuestKes: 50 });
   });
@@ -225,7 +233,7 @@ describe('revenue and owner share', () => {
     const internal = await liveCampaign({ kind: 'internal' });
     const flat = await liveCampaign({ billingModel: 'flat_monthly', priceKes: 15000 });
     const month = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 7);
-    await advertisingService.recordPlayback(BUSINESS_ID, machineId, { events: [...events(internal.campaignId, internal.creativeId, 4, 'completed', 'int'), ...events(flat.campaignId, flat.creativeId, 4, 'completed', 'flat')] });
+    await advertisingService.recordPlayback(BUSINESS_ID, machineId, { batchId: 'rev-batch-0005', events: [...events(internal.campaignId, internal.creativeId, 4, 'completed', 'int'), ...events(flat.campaignId, flat.creativeId, 4, 'completed', 'flat')] });
     const entries = await advertisingService.computeRevenueForMonth(BUSINESS_ID, month, 'finance');
     expect(entries.find((e) => e.campaignId === internal.campaignId)?.grossKes).toBe(0);
     expect(entries.find((e) => e.campaignId === flat.campaignId)).toMatchObject({ billableUnits: 1, grossKes: 15000 });

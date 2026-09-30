@@ -86,3 +86,4 @@ export * from './integrationCredential';
 export * from './manufacturerApiCredential';
 export * from './kioskExperience';
 export * from './advertising';
+export * from './kioskRuntime';

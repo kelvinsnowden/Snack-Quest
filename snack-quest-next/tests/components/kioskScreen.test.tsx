@@ -469,3 +469,111 @@ describe('KioskScreen — preview', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('KioskScreen — idle-screen ads (§ ATTRACT MODE)', () => {
+  const adBytes = new TextEncoder().encode('an ad image');
+  async function sha(bytes: Uint8Array) {
+    const digest = await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer);
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  function playlist(sha256: string) {
+    return { version: 'a1', campaigns: [{ campaignId: 'camp-1', weight: 1, frequencyCapPerHour: null, schedule: { startDate: '2000-01-01', endDate: null, daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startMinute: 0, endMinute: 1440 }, creatives: [{ creativeId: 'cr-1', mediaKind: 'image', mimeType: 'image/png', mediaUrl: 'https://blob.example/ad.png', sha256, bytes: adBytes.byteLength, durationSeconds: 8 }] }] };
+  }
+  function serveWithAds(sha256: string) {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] }, experience: { config: {}, version: 'x1' }, ads: playlist(sha256) }) };
+      if (url === 'https://blob.example/ad.png') return new Response(adBytes, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:verified-ad'), revokeObjectURL: vi.fn() }));
+  });
+
+  it('plays a verified ad when idle, labels it, reports it, and a tap still opens the menu', async () => {
+    serveWithAds(await sha(adBytes));
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={200} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Ad')).toBeTruthy(), { timeout: 3000 });
+    expect(document.querySelector('img[src="blob:verified-ad"]')).toBeTruthy();
+    const queued = JSON.parse(window.localStorage.getItem(`sq_kiosk_ad_events_${MACHINE_ID}`) ?? '{}');
+    expect(queued.pending.map((event: { eventType: string }) => event.eventType)).toContain('started');
+    fireEvent.click(screen.getByRole('button', { name: 'Tap to start your order' }));
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    const after = JSON.parse(window.localStorage.getItem(`sq_kiosk_ad_events_${MACHINE_ID}`) ?? '{}');
+    expect(after.pending.map((event: { eventType: string }) => event.eventType)).toContain('interacted');
+  });
+
+  it('never plays a file whose checksum doesn’t match', async () => {
+    serveWithAds('0'.repeat(64));
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={200} />);
+    await screen.findByRole('button', { name: 'Tap to start your order' }, { timeout: 3000 });
+    expect(screen.queryByText('Ad')).toBeNull();
+    const metrics = JSON.parse(window.localStorage.getItem(`sq_kiosk_metrics_${MACHINE_ID}`) ?? '{}');
+    expect(metrics.pending).toContain('ad_media_rejected');
+  });
+});
+
+describe('KioskScreen — activity counts (§ KIOSK ANALYTICS)', () => {
+  it('counts what customers do, and nothing about who they are', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] } }) };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Add Korean Spicy Snack to cart/ }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Your order' })).getByRole('button', { name: /^Pay/ }));
+    const metrics = JSON.parse(window.localStorage.getItem(`sq_kiosk_metrics_${MACHINE_ID}`) ?? '{}');
+    expect(metrics.pending).toEqual(expect.arrayContaining(['added_to_cart', 'checkout_started', 'content_activated']));
+    expect(JSON.stringify(metrics)).not.toMatch(/07\d{8}|Korean/);
+  });
+});
+
+describe('KioskScreen — service mode (§ KIOSK SERVICE MODE)', () => {
+  function servePaired(sessionResponse: { ok: boolean; status: number; body: unknown }) {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] } }) };
+      if (url.endsWith('/service-session')) return { ok: sessionResponse.ok, status: sessionResponse.status, json: async () => sessionResponse.body };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+  async function holdLogoAndType(code: string) {
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    const logo = document.querySelector('header img') as HTMLElement;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.pointerDown(logo);
+    vi.advanceTimersByTime(3_100);
+    vi.useRealTimers();
+    await screen.findByText('Staff only');
+    for (const digit of code) fireEvent.click(screen.getByRole('button', { name: digit }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+  }
+
+  it('the right code opens the service screen, sent with the device credential', async () => {
+    servePaired({ ok: true, status: 200, body: { sessionExpiresAt: new Date(Date.now() + 15 * 60_000).toISOString() } });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await holdLogoAndType('12345678');
+    await screen.findByText('Service mode');
+    const call = fetchMock.mock.calls.find((c: unknown[]) => String(c[0]).endsWith('/service-session')) as [string, RequestInit];
+    expect(JSON.parse(String(call[1].body))).toEqual({ code: '12345678' });
+    expect((call[1].headers as Record<string, string>).Authorization).toBe(`Bearer ${MACHINE_ID}:secret`);
+    fireEvent.click(screen.getByRole('button', { name: 'Close service mode' }));
+    await screen.findByRole('button', { name: 'Tap to start your order' });
+  });
+
+  it('a wrong code says so and stays out of service mode', async () => {
+    servePaired({ ok: false, status: 403, body: { error: 'That code isn’t right, has been used, or has expired.' } });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await holdLogoAndType('00000000');
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('Service mode')).toBeNull();
+  });
+});

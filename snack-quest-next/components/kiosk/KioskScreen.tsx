@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CircleSlash, Loader2, MapPin, Minus, Plus, RotateCcw, Search, Smartphone, WifiOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,8 +8,16 @@ import type { KioskExperienceConfig, KioskScreenContent, KioskScreenContentImage
 import { DEFAULT_KIOSK_EXPERIENCE, checkKioskExperience, kioskThemeStyle, mergeKioskExperience, parseKioskPatch } from '@/lib/kiosk/experienceConfig';
 import { ProductCard, ProductImage, STATE_LABEL, type ProductCardOptions } from './ProductCard';
 import { AttractScreen, MenuBanner } from './ScreenArtwork';
+import { AdPlayer, type AdEvent } from './AdPlayer';
+import { ServiceCodePrompt, ServiceScreen } from './ServiceMode';
+import { PersistedBatchQueue, clearMediaCache, loadVerifiedMedia } from '@/lib/kiosk/deviceQueue';
+import { parsePlaylist } from '@/lib/kiosk/contentPackage';
+import { kioskTransition } from '@/lib/kiosk/runtimeMachine';
+import type { MachinePlaylist } from '@/lib/ads/playlist';
+import type { KioskMetric } from '@/types/kioskRuntime';
 import { PhoneKeypad } from './PhoneKeypad';
 import { readPairingFragment } from '@/lib/vending/kioskPairing';
+import { MONEY_IN_FLIGHT, RESULT_STATES, idleTimerRuns, kioskReducer, outcomeOf, type KioskState } from '@/lib/kiosk/runtimeMachine';
 import { cartKey, formatKes, formatPhoneNumber, isCompletePhoneNumber, PHONE_MAX_DIGITS } from './format';
 
 /**
@@ -70,6 +78,19 @@ const PAYMENT_POLL_TIMEOUT_MS = 90_000;
 const RESULT_DISPLAY_SUCCESS_MS = 6_000;
 const RESULT_DISPLAY_ISSUE_MS = 15_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
+/** How often queued ad plays and activity counts are sent (§ PLAYBACK EVENTS, § KIOSK OBSERVABILITY). */
+const AD_FLUSH_MS = 60_000;
+const REPORT_FLUSH_MS = 5 * 60_000;
+/** Holding the logo this long opens the service-code prompt. */
+const SERVICE_HOLD_MS = 3_000;
+const EMPTY_PLAYLIST: MachinePlaylist = { version: 'none', campaigns: [] };
+
+type QueuedAdEvent = { clientEventId: string; campaignId: string; creativeId: string; eventType: AdEvent['eventType']; occurredAt: string; playedMs?: number; failureReason?: string };
+
+function eventId(): string {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  return random.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 48);
+}
 
 type TransactionStatus =
   | 'pending'
@@ -127,6 +148,10 @@ function cachedExperienceKey(machineId: string): string {
   return `sq_kiosk_experience_cache_${machineId}`;
 }
 
+function cachedPlaylistKey(machineId: string): string {
+  return `sq_kiosk_playlist_cache_${machineId}`;
+}
+
 /** A design from the server or the cache, re-checked here: anything malformed or unreadable means the built-in design. */
 export function parseExperience(value: unknown): KioskExperienceConfig {
   try {
@@ -170,11 +195,18 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
 
   const [catalog, setCatalog] = useState<CatalogResponse | null>(preview?.catalog ?? null);
   const [screen, setScreen] = useState<KioskScreenContent>(preview?.screen ?? EMPTY_SCREEN);
+  const [ads, setAds] = useState<MachinePlaylist>(EMPTY_PLAYLIST);
+  const [adMedia, setAdMedia] = useState<Record<string, string>>({});
+  const [lastContentAt, setLastContentAt] = useState<string | null>(null);
+  const [servicePrompt, setServicePrompt] = useState(false);
+  const [serviceExpiresAt, setServiceExpiresAt] = useState<number | null>(null);
   const [offline, setOffline] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
-  const [view, setView] = useState<View>('browse');
-  const [attract, setAttract] = useState(Boolean(preview?.startIdle));
+  // § KIOSK RUNTIME STATE MACHINE: every screen change is an event; the reducer refuses any the current state doesn't allow.
+  const [runtime, dispatch] = useReducer(kioskReducer, (preview ? (preview.startIdle ? 'IDLE' : 'SHOPPING') : 'BOOTING') as KioskState);
+  const attract = runtime === 'IDLE';
+  const view: View = runtime === 'CHECKOUT' ? 'checkout' : MONEY_IN_FLIGHT.includes(runtime) ? 'paying' : RESULT_STATES.includes(runtime) ? 'result' : 'browse';
   const [category, setCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [detailItem, setDetailItem] = useState<SellableCatalogItem | null>(null);
@@ -189,6 +221,44 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
 
   const authRef = useRef<string | null>(null);
   const packageVersionRef = useRef<string | null>(null);
+  const catalogVersionRef = useRef<string | null>(null);
+  const mediaRef = useRef<Map<string, { sha256: string; url: string }>>(new Map());
+  const adQueueRef = useRef<PersistedBatchQueue<QueuedAdEvent> | null>(null);
+  const metricQueueRef = useRef<PersistedBatchQueue<KioskMetric> | null>(null);
+  const cartCountRef = useRef(0);
+
+  /** Counts what customers do (§ KIOSK ANALYTICS). Counts only; never in preview. */
+  const count = useCallback(
+    (metric: KioskMetric) => {
+      if (!preview) metricQueueRef.current?.add(metric);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
+    [],
+  );
+
+  /** Verifies every creative's file against its checksum (from the device cache or the network); only verified files can play. */
+  const stageMedia = useCallback(
+    async (playlist: MachinePlaylist): Promise<Record<string, string>> => {
+      const ready: Record<string, string> = {};
+      for (const campaign of playlist.campaigns) {
+        for (const creative of campaign.creatives) {
+          const known = mediaRef.current.get(creative.creativeId);
+          if (known && known.sha256 === creative.sha256) {
+            ready[creative.creativeId] = known.url;
+            continue;
+          }
+          const loaded = await loadVerifiedMedia(creative).catch(() => ({ url: null, fromCache: false, rejected: false }));
+          if (loaded.rejected) count('ad_media_rejected');
+          if (loaded.url) {
+            mediaRef.current.set(creative.creativeId, { sha256: creative.sha256, url: loaded.url });
+            ready[creative.creativeId] = loaded.url;
+          }
+        }
+      }
+      return ready;
+    },
+    [count],
+  );
   const lastTouchRef = useRef(0);
 
   useEffect(() => {
@@ -221,6 +291,21 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
         // corrupt cache — the built-in design shows until the next fetch
       }
     }
+    adQueueRef.current = new PersistedBatchQueue<QueuedAdEvent>(window.localStorage, `sq_kiosk_ad_events_${machineId}`, { batchSize: 500, maxPending: 5_000 });
+    metricQueueRef.current = new PersistedBatchQueue<KioskMetric>(window.localStorage, `sq_kiosk_metrics_${machineId}`, { batchSize: 5_000, maxPending: 20_000 });
+    const cachedPlaylist = window.localStorage.getItem(cachedPlaylistKey(machineId));
+    if (cachedPlaylist) {
+      try {
+        const playlist = parsePlaylist(JSON.parse(cachedPlaylist));
+        // Offline start: the cached playlist plays from verified cached files only.
+        void stageMedia(playlist).then((ready) => {
+          setAds(playlist);
+          setAdMedia(ready);
+        });
+      } catch {
+        // corrupt cache — no ads until the next sync
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
   }, [machineId]);
 
@@ -244,19 +329,24 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
       }
       const body = (await res.json()) as CatalogResponse;
       setCatalog(body);
+      catalogVersionRef.current = body.catalogVersion ?? null;
+      dispatch({ type: 'MENU_READY' });
       setOffline(false);
       setCatalogError(null);
       window.localStorage.setItem(cachedCatalogKey(machineId), JSON.stringify(body));
     } catch {
       // § OFFLINE BEHAVIOUR: fall back to the cached catalog rather than blanking the screen — purchase still requires connectivity (never queued client-side, which would risk double-charging).
       const cached = window.localStorage.getItem(cachedCatalogKey(machineId));
+      let fromCache = false;
       if (cached) {
         try {
           setCatalog(JSON.parse(cached) as CatalogResponse);
+          fromCache = true;
         } catch {
           // corrupt cache — fall through to the error state below
         }
       }
+      dispatch({ type: fromCache ? 'MENU_READY' : 'MENU_UNAVAILABLE' });
       setOffline(true);
       setCatalogError('Could not reach Snack Quest — showing the last known menu.');
     }
@@ -271,24 +361,109 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
       const have = packageVersionRef.current;
       const res = await fetch(`/api/vending/machines/${machineId}/content${have ? `?have=${encodeURIComponent(have)}` : ''}`, { headers: { Authorization: auth }, cache: 'no-store' });
       if (!res.ok) return;
-      const body = (await res.json()) as { unchanged?: boolean; packageVersion?: unknown; screen?: unknown; experience?: { config?: unknown } };
+      const body = (await res.json()) as { unchanged?: boolean; packageVersion?: unknown; screen?: unknown; experience?: { config?: unknown }; ads?: unknown };
       if (!body || typeof body !== 'object' || body.unchanged) return;
-      packageVersionRef.current = typeof body.packageVersion === 'string' ? body.packageVersion : null;
-      if (typeof body.screen === 'object') {
-        const next = parseScreen(body.screen);
-        setScreen(next);
-        window.localStorage.setItem(cachedScreenKey(machineId), JSON.stringify(next));
-      }
-      if (body.experience && typeof body.experience.config === 'object') {
-        const next = parseExperience(body.experience.config);
-        setExperience(next);
-        window.localStorage.setItem(cachedExperienceKey(machineId), JSON.stringify(next));
-      }
+      // § CONTENT SYNC: validate and stage everything first (ad files verified against their checksums), then switch to it all at once.
+      const nextScreen = typeof body.screen === 'object' ? parseScreen(body.screen) : null;
+      const nextExperience = body.experience && typeof body.experience.config === 'object' ? parseExperience(body.experience.config) : null;
+      const nextAds = parsePlaylist(body.ads);
+      const nextMedia = await stageMedia(nextAds);
+      const nextVersion = typeof body.packageVersion === 'string' ? body.packageVersion : null;
+      if (nextScreen) setScreen(nextScreen);
+      if (nextExperience) setExperience(nextExperience);
+      setAds(nextAds);
+      setAdMedia(nextMedia);
+      setLastContentAt(new Date().toISOString());
+      if (nextVersion !== packageVersionRef.current) count('content_activated');
+      packageVersionRef.current = nextVersion;
+      if (nextScreen) window.localStorage.setItem(cachedScreenKey(machineId), JSON.stringify(nextScreen));
+      if (nextExperience) window.localStorage.setItem(cachedExperienceKey(machineId), JSON.stringify(nextExperience));
+      window.localStorage.setItem(cachedPlaylistKey(machineId), JSON.stringify(nextAds));
     } catch {
       // offline or unexpected — keep the current design and artwork
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
+  }, [machineId, stageMedia, count]);
+
+  /** Sends the oldest unacknowledged batch of ad plays; the same batch id is resent until the server has it. */
+  const flushAds = useCallback(async () => {
+    const auth = authRef.current;
+    const queue = adQueueRef.current;
+    if (!auth || !queue || preview) return;
+    const batch = queue.nextBatch();
+    if (!batch) return;
+    try {
+      const res = await fetch(`/api/vending/machines/${machineId}/ad-events`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId: batch.batchId, packageVersion: packageVersionRef.current, events: batch.items }),
+      });
+      // 400 means the batch itself can never be accepted; keeping it would block every later report.
+      if (res.ok || res.status === 400) queue.acknowledge(batch.batchId);
+    } catch {
+      // offline — the same batch goes next time
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
   }, [machineId]);
+
+  const runtimeRef = useRef(runtime);
+  useEffect(() => {
+    runtimeRef.current = runtime;
+  }, [runtime]);
+  const cachedCreativesRef = useRef(0);
+  useEffect(() => {
+    cachedCreativesRef.current = Object.keys(adMedia).length;
+  }, [adMedia]);
+
+  /** Tells the server what this screen is showing and what customers did since the last report (§ KIOSK OBSERVABILITY). */
+  const flushReport = useCallback(async () => {
+    const auth = authRef.current;
+    const queue = metricQueueRef.current;
+    if (!auth || !queue || preview) return;
+    const batch = queue.nextBatch() ?? { batchId: eventId(), items: [] as KioskMetric[] };
+    const counts: Partial<Record<KioskMetric, number>> = {};
+    for (const metric of batch.items) counts[metric] = (counts[metric] ?? 0) + 1;
+    try {
+      const res = await fetch(`/api/vending/machines/${machineId}/kiosk-report`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId: batch.batchId,
+          packageVersion: packageVersionRef.current,
+          catalogVersion: catalogVersionRef.current,
+          runtimeState: runtimeRef.current,
+          pendingAdEvents: adQueueRef.current?.size() ?? 0,
+          cachedCreatives: cachedCreativesRef.current,
+          counts,
+        }),
+      });
+      if (res.ok || res.status === 400) queue.acknowledge(batch.batchId);
+    } catch {
+      // offline — the same batch goes next time
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
+  }, [machineId]);
+
+  useEffect(() => {
+    if (!secret || preview) return;
+    const ads = setInterval(() => void flushAds(), AD_FLUSH_MS);
+    const reports = setInterval(() => void flushReport(), REPORT_FLUSH_MS);
+    return () => {
+      clearInterval(ads);
+      clearInterval(reports);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
+  }, [secret, flushAds, flushReport]);
+
+  const startFromIdle = useCallback(() => {
+    lastTouchRef.current = Date.now();
+    count('session_started');
+    dispatch({ type: 'TOUCH' });
+  }, [count]);
+
+  const recordAdEvent = useCallback((event: AdEvent) => {
+    adQueueRef.current?.add({ clientEventId: eventId(), occurredAt: new Date().toISOString(), ...event });
+  }, []);
 
   useEffect(() => {
     if (!secret) return;
@@ -345,6 +520,12 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
 
   const cartLines = useMemo(() => Array.from(cart.values()), [cart]);
   const cartCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
+  useEffect(() => {
+    cartCountRef.current = cartCount;
+  }, [cartCount]);
+  useEffect(() => {
+    if (detailItem) count('product_viewed');
+  }, [detailItem, count]);
   const cartTotalKes = cartLines.reduce((sum, line) => sum + line.item.priceKes * line.quantity, 0);
 
   /** Every unit paid for in this checkout, grouped back by order line — a quantity-2 line's two units can finish independently (one dispensed, one jammed), so progress is reported per line, not assumed uniform. */
@@ -360,6 +541,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
   const cartTransactionsDone = cartTransactions.filter((t) => statuses[t.id] && SUCCESS_STATUSES.includes(statuses[t.id])).length;
 
   function addToCart(item: SellableCatalogItem, delta = 1) {
+    if (delta > 0) count('added_to_cart');
     setCart((prev) => {
       const next = new Map(prev);
       const key = cartKey(item);
@@ -382,8 +564,8 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     });
   }
 
+  /** Clears the order and everything typed; the caller dispatches where the screen goes next. */
   function resetToBrowse() {
-    setView('browse');
     setDetailItem(null);
     setCart(new Map());
     setCategory(null);
@@ -400,7 +582,8 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     if (cartLines.length === 0) return;
     setDetailItem(null);
     setCheckoutError(null);
-    setView('checkout');
+    count('checkout_started');
+    dispatch({ type: 'CHECKOUT' });
   }
 
   // § IDLE — any touch or key counts as someone being here.
@@ -418,17 +601,18 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
   }, []);
 
   useEffect(() => {
-    if (!secret || attract || submitting || view === 'paying' || view === 'result') return;
+    if (!secret || submitting || !idleTimerRuns(runtime)) return;
     lastTouchRef.current = Date.now();
     const timer = setInterval(() => {
       if (Date.now() - lastTouchRef.current >= idleTimeoutMs) {
+        if (cartCountRef.current > 0) count('cart_abandoned');
         resetToBrowse();
-        setAttract(true);
+        dispatch({ type: 'IDLE_TIMEOUT' });
       }
     }, Math.min(1_000, idleTimeoutMs));
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resetToBrowse is stable for this kiosk loop; re-running on its identity would restart the idle timer on every render.
-  }, [secret, attract, submitting, view, idleTimeoutMs]);
+  }, [secret, runtime, submitting, idleTimeoutMs]);
 
   /** One STK push for the whole order — never one per item. Flattens quantities into one `slotId` per physical unit first: a quantity-2 line is two separate vends (one physical motor, one slot, one unit each), even though the customer approved only one M-Pesa prompt for both. */
   async function submitPhoneAndPay() {
@@ -465,7 +649,8 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
       for (const t of zipped) initialStatuses[t.id] = 'pending';
       setStatuses(initialStatuses);
       setFailureReasons({});
-      setView('paying');
+      count('payment_requested');
+      dispatch({ type: 'PAYMENT_REQUESTED' });
     } catch {
       setCheckoutError('Could not reach Snack Quest. Check the connection and try again — nothing has been charged.');
     } finally {
@@ -528,18 +713,54 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
 
   const result = useMemo(() => (cartTransactions.length > 0 ? describeResult(cartTransactions, statuses, failureReasons) : null), [cartTransactions, statuses, failureReasons]);
 
+  // The payment cleared once any unit has moved past waiting for it.
+  const paymentCleared = cartTransactions.some((t) => statuses[t.id] && !['pending', 'paid', 'payment_failed'].includes(statuses[t.id]));
+  useEffect(() => {
+    if (paymentCleared) dispatch({ type: 'PAYMENT_RECEIVED' });
+  }, [paymentCleared]);
+
   useEffect(() => {
     if (cartTransactions.length === 0) return;
     const allTerminal = cartTransactions.every((t) => statuses[t.id] && TERMINAL_STATUSES.includes(statuses[t.id]));
     if (allTerminal) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- switching to the result view is the intentional reaction to every item's own terminal state landing, not a render-triggered update loop.
-      setView('result');
+      // Switching to the result screen is the reaction to every unit's own final status landing.
+      const outcome = outcomeOf(cartTransactions.map((t) => statuses[t.id]));
+      count(outcome === 'success' ? 'order_succeeded' : 'order_failed');
+      dispatch({ type: 'FINISHED', outcome });
       const everythingDispensed = cartTransactions.every((t) => statuses[t.id] === 'dispensed');
-      const timeout = setTimeout(resetToBrowse, everythingDispensed ? RESULT_DISPLAY_SUCCESS_MS : RESULT_DISPLAY_ISSUE_MS);
+      const timeout = setTimeout(
+        () => {
+          resetToBrowse();
+          dispatch({ type: 'DONE' });
+        },
+        everythingDispensed ? RESULT_DISPLAY_SUCCESS_MS : RESULT_DISPLAY_ISSUE_MS,
+      );
       return () => clearTimeout(timeout);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resetToBrowse is stable for this kiosk loop; re-running on its identity would restart the reset timer needlessly.
   }, [statuses, cartTransactions]);
+
+  /** § KIOSK SERVICE MODE: the server checks the code; the screen only opens when nobody is mid-purchase. */
+  async function openServiceMode(code: string): Promise<string | null> {
+    const auth = authRef.current;
+    if (!auth) return 'This screen isn’t paired.';
+    if (!kioskTransition(runtime, { type: 'SERVICE_START' }).accepted) return 'Finish or cancel the current order first.';
+    try {
+      const res = await fetch(`/api/vending/machines/${machineId}/service-session`, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+      const body = (await res.json().catch(() => ({}))) as { sessionExpiresAt?: string; error?: string };
+      if (!res.ok || !body.sessionExpiresAt) return body.error ?? 'That code didn’t work.';
+      resetToBrowse();
+      setServicePrompt(false);
+      setServiceExpiresAt(new Date(body.sessionExpiresAt).getTime());
+      count('service_opened');
+      dispatch({ type: 'SERVICE_START' });
+      return null;
+    } catch {
+      return 'Can’t reach Snack Quest to check the code.';
+    }
+  }
+  const serviceGesture = preview ? undefined : () => setServicePrompt(true);
+  const servicePromptNode = servicePrompt ? <ServiceCodePrompt onSubmit={openServiceMode} onCancel={() => setServicePrompt(false)} /> : null;
 
   if (!secret) {
     return themed(
@@ -580,19 +801,51 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     );
   }
 
-  if (attract) {
+  if (runtime === 'MAINTENANCE' && serviceExpiresAt) {
     return themed(
-      <AttractScreen
-        headline={experience.copy.attractHeadline}
-        callToAction={experience.copy.attractCallToAction}
-        images={screen.attract}
-        items={catalog?.items ?? []}
-        onStart={() => {
-          lastTouchRef.current = Date.now();
-          setAttract(false);
+      <ServiceScreen
+        getInfo={() => ({
+          machineCode,
+          online: !offline,
+          packageVersion: packageVersionRef.current,
+          catalogVersion: catalogVersionRef.current,
+          lastContentAt,
+          campaigns: ads.campaigns.length,
+          cachedCreatives: Object.keys(adMedia).length,
+          pendingAdEvents: adQueueRef.current?.size() ?? 0,
+          pendingReports: metricQueueRef.current?.size() ?? 0,
+          droppedEvents: (adQueueRef.current?.dropped() ?? 0) + (metricQueueRef.current?.dropped() ?? 0),
+        })}
+        expiresAt={serviceExpiresAt}
+        onSync={async () => {
+          packageVersionRef.current = null;
+          await Promise.all([fetchCatalog(), fetchContent()]);
         }}
-      />
+        onFlush={async () => {
+          await flushAds();
+          await flushReport();
+        }}
+        onClearCache={async () => {
+          await clearMediaCache();
+          for (const { url } of mediaRef.current.values()) URL.revokeObjectURL?.(url);
+          mediaRef.current.clear();
+          setAdMedia({});
+        }}
+        onExit={() => {
+          setServiceExpiresAt(null);
+          dispatch({ type: 'SERVICE_END' });
+        }}
+      />,
     );
+  }
+
+  if (attract) {
+    const idleScreen = <AttractScreen headline={experience.copy.attractHeadline} callToAction={experience.copy.attractCallToAction} images={screen.attract} items={catalog?.items ?? []} onStart={startFromIdle} />;
+    // § ATTRACT MODE: ads only where the design allows them and only verified files; otherwise the normal idle screen.
+    if (experience.idle.adsEnabled && !preview && ads.campaigns.length > 0 && Object.keys(adMedia).length > 0) {
+      return themed(<AdPlayer playlist={ads} media={adMedia} rotationKey={`sq_kiosk_ad_rotation_${machineId}`} onEvent={recordAdEvent} onTap={startFromIdle} fallback={idleScreen} />);
+    }
+    return themed(idleScreen);
   }
 
   if (view === 'result' && result) {
@@ -607,7 +860,15 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
           <h1 className="font-display text-section-title leading-tight text-foreground text-balance lg:text-page-title">{result.title}</h1>
           <p className="text-subtitle text-muted-foreground">{result.body}</p>
         </div>
-        <Button variant="outline" size="lg" onClick={resetToBrowse} className="h-14 px-10">
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={() => {
+            resetToBrowse();
+            dispatch({ type: 'DONE' });
+          }}
+          className="h-14 px-10"
+        >
           Back to menu
         </Button>
       </main>
@@ -702,8 +963,8 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     const phoneReady = isCompletePhoneNumber(phoneDigits);
     return themed(
       <div className="flex h-dvh flex-col bg-background">
-        <KioskTopBar machineCode={machineCode} offline={offline}>
-          <Button variant="outline" size="lg" onClick={() => setView('browse')} className="h-12 rounded-full" disabled={submitting}>
+        <KioskTopBar machineCode={machineCode} offline={offline} onServiceGesture={serviceGesture}>
+          <Button variant="outline" size="lg" onClick={() => dispatch({ type: 'BACK' })} className="h-12 rounded-full" disabled={submitting}>
             <ArrowLeft aria-hidden="true" />
             Back to menu
           </Button>
@@ -769,6 +1030,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
             </section>
           </div>
         </main>
+        {servicePromptNode}
       </div>
     );
   }
@@ -777,7 +1039,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
 
   return themed(
     <div className="flex h-dvh flex-col bg-background">
-      <KioskTopBar machineCode={machineCode} offline={offline}>
+      <KioskTopBar machineCode={machineCode} offline={offline} onServiceGesture={serviceGesture}>
         <div className="relative min-w-0 flex-1 sm:w-72 sm:flex-none">
           <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input aria-label="Search snacks" placeholder="Search snacks" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="h-12 rounded-full bg-surface pl-11 text-body" />
@@ -926,15 +1188,35 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
           onOpenSuggestion={setDetailItem}
         />
       ) : null}
+      {servicePromptNode}
     </div>
   );
 }
 
-function KioskTopBar({ machineCode, offline, children }: { machineCode: string; offline: boolean; children?: React.ReactNode }) {
+function KioskTopBar({ machineCode, offline, onServiceGesture, children }: { machineCode: string; offline: boolean; onServiceGesture?: () => void; children?: React.ReactNode }) {
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelHold = () => {
+    if (holdRef.current) clearTimeout(holdRef.current);
+    holdRef.current = null;
+  };
   return (
     <header className="flex items-center gap-4 px-4 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+      {/* Press and hold the logo for service mode (staff, with a one-time code). */}
       {/* eslint-disable-next-line @next/next/no-img-element -- the brand mark, a fixed public asset. */}
-      <img src="/logo.png" alt="" className="size-12 shrink-0 rounded-md lg:size-14" />
+      <img
+        src="/logo.png"
+        alt=""
+        className="size-12 shrink-0 select-none rounded-md lg:size-14"
+        draggable={false}
+        onPointerDown={() => {
+          if (!onServiceGesture) return;
+          cancelHold();
+          holdRef.current = setTimeout(onServiceGesture, SERVICE_HOLD_MS);
+        }}
+        onPointerUp={cancelHold}
+        onPointerLeave={cancelHold}
+        onContextMenu={(event) => event.preventDefault()}
+      />
       <div className="hidden flex-col sm:flex">
         <span className="text-body font-bold text-foreground lg:text-subtitle">Snack Quest</span>
         <span className="text-caption text-muted-foreground">Machine {machineCode}</span>

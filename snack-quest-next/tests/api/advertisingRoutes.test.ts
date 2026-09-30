@@ -51,7 +51,7 @@ const json = (url: string, method: string, body?: unknown) => new Request(url, {
 beforeEach(async () => {
   vi.clearAllMocks();
   resetAdvertisingCache();
-  for (const collection of ['machines', 'advertisers', 'adCreatives', 'adCampaigns', 'adPlaybackEvents', 'adDailyStats', 'adRevenueEntries', 'deviceCredentials']) {
+  for (const collection of ['machines', 'advertisers', 'adCreatives', 'adCampaigns', 'adPlaybackBatches', 'adDailyStats', 'adRevenueEntries', 'deviceCredentials']) {
     const snapshot = await adminFirestore.collection(collection).where('businessId', '==', BUSINESS_ID).get();
     await Promise.all(snapshot.docs.map((doc) => doc.ref.delete()));
   }
@@ -130,10 +130,10 @@ describe('machines and owners', () => {
     await advertisingService.publishCampaign(BUSINESS_ID, campaignId, 'x');
 
     authenticateDeviceMock.mockResolvedValue({ ok: true, businessId: BUSINESS_ID, machineId });
-    const body = { events: [{ clientEventId: 'play-00000001', campaignId, creativeId, eventType: 'completed', occurredAt: '2026-09-30T09:00:00Z', playedMs: 8000 }] };
+    const body = { batchId: 'route-batch-01', events: [{ clientEventId: 'play-00000001', campaignId, creativeId, eventType: 'completed', occurredAt: '2026-09-30T09:00:00Z', playedMs: 8000 }] };
     const first = await adEvents(json('http://x', 'POST', body), { params: Promise.resolve({ id: machineId }) });
     expect(await first.json()).toMatchObject({ accepted: 1, duplicates: 0 });
-    expect(await (await adEvents(json('http://x', 'POST', body), { params: Promise.resolve({ id: machineId }) })).json()).toMatchObject({ accepted: 0, duplicates: 1 });
+    expect(await (await adEvents(json('http://x', 'POST', body), { params: Promise.resolve({ id: machineId }) })).json()).toMatchObject({ accepted: 0, duplicates: 1, duplicateBatch: true });
     expect((await adEvents(json('http://x', 'POST', body), { params: Promise.resolve({ id: 'someone-else' }) })).status).toBe(404);
     authenticateDeviceMock.mockResolvedValue({ ok: false, reason: 'missing_credentials' });
     expect((await adEvents(json('http://x', 'POST', body), { params: Promise.resolve({ id: machineId }) })).status).toBe(401);

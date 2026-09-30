@@ -1,13 +1,13 @@
 import { authenticateDevice } from '@/lib/vending/deviceAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { advertisingService, AdValidationError } from '@/services/advertisingService';
+import { KioskReportValidationError, kioskRuntimeService } from '@/services/kioskRuntimeService';
 
 /**
- * A machine reports ad playback (§ PLAYBACK EVENTS): `{ batchId,
- * packageVersion, events: [{ clientEventId, campaignId, creativeId,
- * eventType, occurredAt, playedMs?, failureReason? }] }`, at most 500 per
- * call. Device-authenticated; a machine reports only for itself. Resending
- * a batch with the same `batchId` is safe: it counts once.
+ * The machine screen's periodic report (§ KIOSK OBSERVABILITY, § KIOSK
+ * ANALYTICS): `{ batchId, packageVersion, catalogVersion, runtimeState,
+ * pendingAdEvents, cachedCreatives, counts: { session_started, … } }`.
+ * Device-authenticated; a machine reports only for itself; a resent batch
+ * counts once. Counts only — nothing identifies a customer.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const businessId = getCurrentBusinessId();
@@ -22,9 +22,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
   try {
-    return Response.json(await advertisingService.recordPlayback(auth.businessId, auth.machineId, body));
+    return Response.json(await kioskRuntimeService.recordReport(auth.businessId, auth.machineId, body));
   } catch (error) {
-    if (error instanceof AdValidationError) return Response.json({ error: error.message }, { status: 400 });
+    if (error instanceof KioskReportValidationError) return Response.json({ error: error.message }, { status: 400 });
     throw error;
   }
 }

@@ -609,13 +609,30 @@ service cloud.firestore {
     match /adCampaigns/{campaignId} {
       allow read, write: if false;
     }
-    match /adPlaybackEvents/{eventId} {
+    match /adPlaybackBatches/{batchId} {
       allow read, write: if false;
     }
     match /adDailyStats/{statId} {
       allow read, write: if false;
     }
     match /adRevenueEntries/{entryId} {
+      allow read, write: if false;
+    }
+    // § KIOSK SERVICE MODE / § KIOSK OBSERVABILITY — service codes (hashed),
+    // lockout counters and screen reports are server-side only.
+    match /machineServiceCodes/{codeId} {
+      allow read, write: if false;
+    }
+    match /machineServiceAttempts/{machineId} {
+      allow read, write: if false;
+    }
+    match /kioskReportBatches/{batchId} {
+      allow read, write: if false;
+    }
+    match /kioskDailyStats/{statId} {
+      allow read, write: if false;
+    }
+    match /kioskDeviceStates/{machineId} {
       allow read, write: if false;
     }
     match /cameras/{cameraId} {

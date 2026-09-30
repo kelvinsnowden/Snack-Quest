@@ -48,7 +48,7 @@ export const AD_LIMITS = {
   videoSecondsMin: 1,
   videoSecondsMax: 60,
   nameMax: 80,
-  eventsPerBatch: 100,
+  eventsPerBatch: 500,
   weightMax: 10,
   capMax: 60,
   priceMaxKes: 10_000_000,
@@ -357,12 +357,14 @@ class AdvertisingService {
   /**
    * A machine's batch of playback events (§ PLAYBACK EVENTS). Each event
    * is checked on its own; a bad one is reported back and never stops the
-   * rest. Duplicates (a resend of the same client event id) are counted
-   * once, ever.
+   * rest. A resent batch (same machine, same `batchId`) counts once, ever;
+   * the machine keeps an unacknowledged batch with its id until the server
+   * confirms it, and never puts an event in two batches.
    */
   async recordPlayback(businessId: string, machineId: string, input: unknown, now = new Date()) {
     const body = (input ?? {}) as Record<string, unknown>;
-    if (!Array.isArray(body.events)) throw new AdValidationError('Send { events: [...] }.');
+    if (typeof body.batchId !== 'string' || !CLIENT_EVENT_ID.test(body.batchId)) throw new AdValidationError('Send a batchId (8–64 letters, digits, - or _) and resend the same one on retry.');
+    if (!Array.isArray(body.events)) throw new AdValidationError('Send { batchId, events: [...] }.');
     if (body.events.length > AD_LIMITS.eventsPerBatch) throw new AdValidationError(`Send at most ${AD_LIMITS.eventsPerBatch} events at a time.`);
     const packageVersion = typeof body.packageVersion === 'string' ? body.packageVersion.slice(0, 64) : null;
     const campaignIds = [...new Set(body.events.map((event) => (event as Record<string, unknown>)?.campaignId).filter((id): id is string => typeof id === 'string'))];
@@ -394,8 +396,8 @@ class AdvertisingService {
         failureReason: typeof event.failureReason === 'string' ? event.failureReason.slice(0, 200) : null,
       });
     });
-    const { accepted, duplicates } = await advertisingRepository.recordEvents(businessId, machineId, nairobiClock(now).date, packageVersion, valid);
-    return { accepted, duplicates, rejected };
+    const { accepted, duplicates, duplicateBatch } = await advertisingRepository.recordBatch(businessId, machineId, body.batchId, nairobiClock(now).date, packageVersion, valid);
+    return { accepted, duplicates, duplicateBatch, rejected };
   }
 
   // ── Statistics ────────────────────────────────────────────────────────

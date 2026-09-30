@@ -8,7 +8,7 @@ import type { AdCampaign, AdCreative, AdDailyStat, AdPlaybackEventType, AdRevenu
 const ADVERTISERS = 'advertisers';
 const CREATIVES = 'adCreatives';
 const CAMPAIGNS = 'adCampaigns';
-const EVENTS = 'adPlaybackEvents';
+const BATCHES = 'adPlaybackBatches';
 const STATS = 'adDailyStats';
 const REVENUE = 'adRevenueEntries';
 
@@ -27,8 +27,8 @@ async function ownDoc<T extends { businessId: string }>(collection: string, busi
   return data && data.businessId === businessId ? data : null;
 }
 
-export function playbackEventId(machineId: string, clientEventId: string): string {
-  return createHash('sha256').update(`${machineId}\u0000${clientEventId}`).digest('hex').slice(0, 40);
+export function playbackBatchId(machineId: string, batchId: string): string {
+  return createHash('sha256').update(`${machineId}\u0000${batchId}`).digest('hex').slice(0, 40);
 }
 
 export interface NewPlaybackEvent {
@@ -42,7 +42,7 @@ export interface NewPlaybackEvent {
 }
 
 /**
- * `advertisers`, `adCreatives`, `adCampaigns`, `adPlaybackEvents`,
+ * `advertisers`, `adCreatives`, `adCampaigns`, `adPlaybackBatches`,
  * `adDailyStats` and `adRevenueEntries`. Every read checks `businessId`;
  * a document from another tenant reads as not found.
  */
@@ -142,53 +142,45 @@ class AdvertisingRepository {
 
   // Playback
   /**
-   * Stores new events and counts each one once in the daily stats, in one
-   * transaction: an event already stored (same machine, same client event
-   * id) is a duplicate and changes nothing.
+   * Stores a machine's batch and counts its events in the daily stats, in
+   * one transaction. A batch already stored (same machine, same batch id)
+   * is a duplicate and changes nothing; within a batch, a repeated client
+   * event id counts once.
    */
-  async recordEvents(businessId: string, machineId: string, date: string, packageVersion: string | null, events: NewPlaybackEvent[]): Promise<{ accepted: number; duplicates: number }> {
-    if (events.length === 0) return { accepted: 0, duplicates: 0 };
-    const refs = events.map((event) => adminFirestore.collection(EVENTS).doc(playbackEventId(machineId, event.clientEventId)));
+  async recordBatch(businessId: string, machineId: string, batchId: string, date: string, packageVersion: string | null, events: NewPlaybackEvent[]): Promise<{ accepted: number; duplicates: number; duplicateBatch: boolean }> {
+    const ref = adminFirestore.collection(BATCHES).doc(playbackBatchId(machineId, batchId));
+    const unique: NewPlaybackEvent[] = [];
+    const seen = new Set<string>();
+    for (const event of events) {
+      if (seen.has(event.clientEventId)) continue;
+      seen.add(event.clientEventId);
+      unique.push(event);
+    }
     return adminFirestore.runTransaction(async (tx) => {
-      const existing = await tx.getAll(...refs);
-      const seen = new Set<string>();
+      if ((await tx.get(ref)).exists) return { accepted: 0, duplicates: events.length, duplicateBatch: true };
+      tx.create(ref, {
+        businessId,
+        machineId,
+        batchId,
+        date,
+        packageVersion,
+        events: unique.map((event) => ({ ...event, occurredAt: Timestamp.fromDate(event.occurredAt) })),
+        receivedAt: FieldValue.serverTimestamp(),
+      });
       const increments = new Map<string, { campaignId: string; counts: Record<string, number> }>();
-      let accepted = 0;
-      let duplicates = 0;
-      events.forEach((event, index) => {
-        const ref = refs[index];
-        if (existing[index].exists || seen.has(ref.id)) {
-          duplicates += 1;
-          return;
-        }
-        seen.add(ref.id);
-        accepted += 1;
-        tx.create(ref, {
-          businessId,
-          machineId,
-          campaignId: event.campaignId,
-          creativeId: event.creativeId,
-          eventType: event.eventType,
-          clientEventId: event.clientEventId,
-          occurredAt: Timestamp.fromDate(event.occurredAt),
-          receivedAt: FieldValue.serverTimestamp(),
-          date,
-          playedMs: event.playedMs,
-          failureReason: event.failureReason,
-          packageVersion,
-        });
+      for (const event of unique) {
         const statId = `${businessId}_${date}_${event.campaignId}_${machineId}`;
         const entry = increments.get(statId) ?? { campaignId: event.campaignId, counts: {} };
         entry.counts[event.eventType] = (entry.counts[event.eventType] ?? 0) + 1;
         if (event.eventType === 'completed') entry.counts.playedMs = (entry.counts.playedMs ?? 0) + (event.playedMs ?? 0);
         increments.set(statId, entry);
-      });
+      }
       for (const [statId, { campaignId, counts }] of increments) {
         const fields: Record<string, unknown> = { businessId, date, campaignId, machineId, updatedAt: FieldValue.serverTimestamp() };
         for (const [key, value] of Object.entries(counts)) if (value !== 0) fields[key] = FieldValue.increment(value);
         tx.set(adminFirestore.collection(STATS).doc(statId), fields, { merge: true });
       }
-      return { accepted, duplicates };
+      return { accepted: unique.length, duplicates: events.length - unique.length, duplicateBatch: false };
     });
   }
 
