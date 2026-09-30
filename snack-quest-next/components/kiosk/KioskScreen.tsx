@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CircleSlash, Loader2, MapPin, Minus, Plus, RotateCcw, Search, Smartphone, WifiOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { KioskScreenContent, KioskScreenContentImage, SellableCatalogItem } from '@/types';
-import { ProductCard, ProductImage, STATE_LABEL } from './ProductCard';
+import type { KioskExperienceConfig, KioskScreenContent, KioskScreenContentImage, KioskSection, SellableCatalogItem } from '@/types';
+import { DEFAULT_KIOSK_EXPERIENCE, checkKioskExperience, kioskThemeStyle, mergeKioskExperience, parseKioskPatch } from '@/lib/kiosk/experienceConfig';
+import { ProductCard, ProductImage, STATE_LABEL, type ProductCardOptions } from './ProductCard';
 import { AttractScreen, MenuBanner } from './ScreenArtwork';
 import { PhoneKeypad } from './PhoneKeypad';
 import { readPairingFragment } from '@/lib/vending/kioskPairing';
@@ -38,8 +39,18 @@ import { cartKey, formatKes, formatPhoneNumber, isCompletePhoneNumber, PHONE_MAX
  * none chosen they draw the built-in brand design. Product photos,
  * names and descriptions come with the catalog.
  *
+ * § KIOSK EXPERIENCE: colours, corners, font, the order of the menu's
+ * sections, badge wording, product-card options, the idle timeout and the
+ * screen's wording all come from the published design layers
+ * (`GET .../content`, `kioskExperienceService`). Anything the screen can't
+ * validate falls back to the built-in design; it never renders an
+ * unchecked value.
+ *
+ * § PREVIEW: with `preview`, the same renderer draws a given design and
+ * menu for the builder — no pairing, no network, and payments are off.
+ *
  * § IDLE: a customer who walks away mid-order must not leave their
- * order for the next person. After `idleTimeoutMs` without a touch —
+ * order for the next person. After the idle timeout without a touch —
  * never while a payment is in flight or a result is showing — the
  * order is cleared and the idle screen takes over until someone taps.
  *
@@ -86,6 +97,20 @@ type CartTransaction = { id: string; item: SellableCatalogItem };
 
 const EMPTY_SCREEN: KioskScreenContent = { menu_banner: [], attract: [] };
 
+/** Static class names per grid setting, so Tailwind can see every one of them. */
+const GRID_COLUMNS: Record<string, string> = {
+  auto: 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4',
+  '2': 'grid-cols-2',
+  '3': 'grid-cols-2 sm:grid-cols-3',
+  '4': 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
+};
+
+const TONE_CLASS = {
+  primary: 'bg-primary text-primary-foreground',
+  secondary: 'bg-secondary text-secondary-foreground',
+  highlight: 'bg-kiosk-highlight text-kiosk-highlight-foreground',
+} as const;
+
 function authHeader(machineId: string, secret: string): string {
   return `Bearer ${machineId}:${secret}`;
 }
@@ -96,6 +121,27 @@ function cachedCatalogKey(machineId: string): string {
 
 function cachedScreenKey(machineId: string): string {
   return `sq_kiosk_screen_cache_${machineId}`;
+}
+
+function cachedExperienceKey(machineId: string): string {
+  return `sq_kiosk_experience_cache_${machineId}`;
+}
+
+/** A design from the server or the cache, re-checked here: anything malformed or unreadable means the built-in design. */
+export function parseExperience(value: unknown): KioskExperienceConfig {
+  try {
+    const config = mergeKioskExperience(DEFAULT_KIOSK_EXPERIENCE, parseKioskPatch(value));
+    return checkKioskExperience(config).errors.length === 0 ? config : DEFAULT_KIOSK_EXPERIENCE;
+  } catch {
+    return DEFAULT_KIOSK_EXPERIENCE;
+  }
+}
+
+export interface KioskPreview {
+  experience: KioskExperienceConfig;
+  catalog: { catalogVersion: string; items: SellableCatalogItem[] };
+  screen: KioskScreenContent;
+  startIdle?: boolean;
 }
 
 /** Keeps only well-formed images from a screen response or cache — a bad entry is dropped, never rendered. */
@@ -115,18 +161,20 @@ function parseScreen(value: unknown): KioskScreenContent {
   return { menu_banner: pick(source.menu_banner), attract: pick(source.attract) };
 }
 
-export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS }: { machineId: string; machineCode: string; idleTimeoutMs?: number }) {
-  const [secret, setSecret] = useState<string | null>(null);
+export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeoutOverrideMs, preview }: { machineId: string; machineCode: string; idleTimeoutMs?: number; preview?: KioskPreview }) {
+  const [experience, setExperience] = useState<KioskExperienceConfig>(preview?.experience ?? DEFAULT_KIOSK_EXPERIENCE);
+  const idleTimeoutMs = idleTimeoutOverrideMs ?? (experience.idle.timeoutSeconds * 1000 || DEFAULT_IDLE_TIMEOUT_MS);
+  const [secret, setSecret] = useState<string | null>(preview ? 'preview' : null);
   const [pairingInput, setPairingInput] = useState('');
   const [pairingError, setPairingError] = useState<string | null>(null);
 
-  const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
-  const [screen, setScreen] = useState<KioskScreenContent>(EMPTY_SCREEN);
+  const [catalog, setCatalog] = useState<CatalogResponse | null>(preview?.catalog ?? null);
+  const [screen, setScreen] = useState<KioskScreenContent>(preview?.screen ?? EMPTY_SCREEN);
   const [offline, setOffline] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const [view, setView] = useState<View>('browse');
-  const [attract, setAttract] = useState(false);
+  const [attract, setAttract] = useState(Boolean(preview?.startIdle));
   const [category, setCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [detailItem, setDetailItem] = useState<SellableCatalogItem | null>(null);
@@ -140,9 +188,11 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
   const [submitting, setSubmitting] = useState(false);
 
   const authRef = useRef<string | null>(null);
+  const packageVersionRef = useRef<string | null>(null);
   const lastTouchRef = useRef(0);
 
   useEffect(() => {
+    if (preview) return;
     // QR pairing: the admin's pairing code opens this page with the key after `#pair=`.
     // The fragment never reaches a server; save the key, then wipe it from the address bar and history.
     const paired = readPairingFragment(window.location.hash);
@@ -163,6 +213,15 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
         // corrupt cache — the built-in design shows until the next fetch
       }
     }
+    const cachedExperience = window.localStorage.getItem(cachedExperienceKey(machineId));
+    if (cachedExperience) {
+      try {
+        setExperience(parseExperience(JSON.parse(cachedExperience)));
+      } catch {
+        // corrupt cache — the built-in design shows until the next fetch
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
   }, [machineId]);
 
   useEffect(() => {
@@ -171,7 +230,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
 
   const fetchCatalog = useCallback(async () => {
     const auth = authRef.current;
-    if (!auth) return;
+    if (!auth || preview) return;
     try {
       const res = await fetch(`/api/vending/machines/${machineId}/catalog`, { headers: { Authorization: auth }, cache: 'no-store' });
       if (res.status === 401) {
@@ -201,36 +260,47 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
       setOffline(true);
       setCatalogError('Could not reach Snack Quest — showing the last known menu.');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
   }, [machineId]);
 
-  /** Artwork is decoration: any failure keeps whatever is already showing (cached or built-in). */
-  const fetchScreen = useCallback(async () => {
+  /** The screen's design and artwork are decoration: any failure keeps whatever is already showing (cached or built-in). */
+  const fetchContent = useCallback(async () => {
     const auth = authRef.current;
-    if (!auth) return;
+    if (!auth || preview) return;
     try {
-      const res = await fetch(`/api/vending/machines/${machineId}/screen`, { headers: { Authorization: auth }, cache: 'no-store' });
+      const have = packageVersionRef.current;
+      const res = await fetch(`/api/vending/machines/${machineId}/content${have ? `?have=${encodeURIComponent(have)}` : ''}`, { headers: { Authorization: auth }, cache: 'no-store' });
       if (!res.ok) return;
-      const body = (await res.json()) as { screen?: unknown };
-      if (!body || typeof body.screen !== 'object') return;
-      const next = parseScreen(body.screen);
-      setScreen(next);
-      window.localStorage.setItem(cachedScreenKey(machineId), JSON.stringify(next));
+      const body = (await res.json()) as { unchanged?: boolean; packageVersion?: unknown; screen?: unknown; experience?: { config?: unknown } };
+      if (!body || typeof body !== 'object' || body.unchanged) return;
+      packageVersionRef.current = typeof body.packageVersion === 'string' ? body.packageVersion : null;
+      if (typeof body.screen === 'object') {
+        const next = parseScreen(body.screen);
+        setScreen(next);
+        window.localStorage.setItem(cachedScreenKey(machineId), JSON.stringify(next));
+      }
+      if (body.experience && typeof body.experience.config === 'object') {
+        const next = parseExperience(body.experience.config);
+        setExperience(next);
+        window.localStorage.setItem(cachedExperienceKey(machineId), JSON.stringify(next));
+      }
     } catch {
-      // offline or unexpected — keep the current artwork
+      // offline or unexpected — keep the current design and artwork
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview` is fixed for the life of a preview frame.
   }, [machineId]);
 
   useEffect(() => {
     if (!secret) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial fetch on pairing is the intentional sync-with-the-server step this effect exists for; setInterval below is the ongoing subscription.
     fetchCatalog();
-    fetchScreen();
+    fetchContent();
     const interval = setInterval(() => {
       fetchCatalog();
-      fetchScreen();
+      fetchContent();
     }, CATALOG_POLL_MS);
     return () => clearInterval(interval);
-  }, [secret, fetchCatalog, fetchScreen]);
+  }, [secret, fetchCatalog, fetchContent]);
 
   const categories = useMemo(() => {
     if (!catalog) return [];
@@ -263,6 +333,15 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
       .sort((a, b) => (a.category === detailItem.category ? -1 : 0) - (b.category === detailItem.category ? -1 : 0))
       .slice(0, 4);
   }, [catalog, detailItem]);
+
+  const cardOptions = useMemo<ProductCardOptions>(() => ({ ...experience.productCard, badges: experience.badges }), [experience]);
+  const themeStyle = useMemo(() => kioskThemeStyle(experience), [experience]);
+  /** Every screen state renders inside the design's tokens; `contents` keeps the wrapper out of layout while its custom properties still inherit. */
+  const themed = (node: React.ReactNode) => (
+    <div className={`contents ${experience.theme.motion === 'reduced' ? 'kiosk-reduced-motion' : ''}`} style={{ ...(themeStyle as React.CSSProperties), fontFamily: experience.theme.font === 'system' ? 'system-ui, sans-serif' : undefined }} data-kiosk-design="">
+      {node}
+    </div>
+  );
 
   const cartLines = useMemo(() => Array.from(cart.values()), [cart]);
   const cartCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
@@ -355,6 +434,10 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
   async function submitPhoneAndPay() {
     const auth = authRef.current;
     if (!isCompletePhoneNumber(phoneDigits) || cartLines.length === 0 || !auth) return;
+    if (preview) {
+      setCheckoutError('This is a preview — payments are switched off.');
+      return;
+    }
     setSubmitting(true);
     setCheckoutError(null);
 
@@ -459,7 +542,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
   }, [statuses, cartTransactions]);
 
   if (!secret) {
-    return (
+    return themed(
       <main className="flex min-h-dvh items-center justify-center bg-kiosk-stage p-6">
         <div className="flex w-full max-w-sm flex-col gap-6 rounded-xl bg-surface p-8 shadow-lg">
           {/* eslint-disable-next-line @next/next/no-img-element -- the brand mark, a fixed public asset. */}
@@ -498,8 +581,10 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
   }
 
   if (attract) {
-    return (
+    return themed(
       <AttractScreen
+        headline={experience.copy.attractHeadline}
+        callToAction={experience.copy.attractCallToAction}
         images={screen.attract}
         items={catalog?.items ?? []}
         onStart={() => {
@@ -513,7 +598,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
   if (view === 'result' && result) {
     const ResultIcon = result.tone === 'success' ? Check : result.tone === 'danger' ? X : result.tone === 'warning' ? AlertTriangle : RotateCcw;
     const toneClass = { success: 'bg-success text-success-foreground', warning: 'bg-warning text-warning-foreground', danger: 'bg-danger text-danger-foreground', neutral: 'bg-secondary text-secondary-foreground' }[result.tone];
-    return (
+    return themed(
       <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-background px-6 py-16 text-center">
         <div className={`flex size-36 items-center justify-center rounded-full shadow-md lg:size-44 ${toneClass}`}>
           <ResultIcon className="size-20 lg:size-24" strokeWidth={2.5} aria-hidden="true" />
@@ -537,7 +622,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
       { label: 'Collect your snacks', done: false },
     ];
     const currentStep = anyDispensing ? 2 : 1;
-    return (
+    return themed(
       <main className="flex min-h-dvh flex-col items-center justify-center gap-10 bg-background px-6 py-16">
         <div className="relative flex size-36 items-center justify-center lg:size-44">
           <span className="absolute inset-0 animate-ping rounded-full bg-primary/15 motion-reduce:animate-none" aria-hidden="true" />
@@ -615,7 +700,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
 
   if (view === 'checkout') {
     const phoneReady = isCompletePhoneNumber(phoneDigits);
-    return (
+    return themed(
       <div className="flex h-dvh flex-col bg-background">
         <KioskTopBar machineCode={machineCode} offline={offline}>
           <Button variant="outline" size="lg" onClick={() => setView('browse')} className="h-12 rounded-full" disabled={submitting}>
@@ -690,7 +775,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
 
   const heading = searchTerm.trim() ? `Results for “${searchTerm.trim()}”` : (category ?? 'All snacks');
 
-  return (
+  return themed(
     <div className="flex h-dvh flex-col bg-background">
       <KioskTopBar machineCode={machineCode} offline={offline}>
         <div className="relative min-w-0 flex-1 sm:w-72 sm:flex-none">
@@ -700,85 +785,121 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs = DEFAULT_ID
       </KioskTopBar>
 
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-4 sm:px-6 lg:px-8">
-          <MenuBanner images={screen.menu_banner} origins={origins} />
-        </div>
+        {experience.browseSections
+          .filter((section) => section.visible)
+          .map((section) => {
+            switch (section.type) {
+              case 'menu_banner':
+                return (
+                  <Fragment key={section.id}>
+                    <div className="px-4 pt-4 sm:px-6 lg:px-8">
+                      <MenuBanner images={screen.menu_banner} origins={origins} eyebrow={experience.copy.bannerEyebrow} headline={experience.copy.bannerHeadline} />
+                    </div>
 
-        {catalog && categories.length > 0 ? (
-          <nav aria-label="Categories" className="sticky top-0 z-10 bg-background/95 py-4 backdrop-blur-sm">
-            <ul className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8">
-              <li>
-                <CategoryChip label="All" active={category === null} onClick={() => setCategory(null)} />
-              </li>
-              {categories.map((cat) => (
-                <li key={cat}>
-                  <CategoryChip label={cat} active={category === cat} onClick={() => setCategory(cat)} />
-                </li>
-              ))}
-            </ul>
-          </nav>
-        ) : (
-          <div className="h-6" />
-        )}
+                  </Fragment>
+                );
+              case 'promo_message':
+                return <PromoStrip key={section.id} section={section} />;
+              case 'featured_products':
+                return searchTerm.trim() || category ? null : (
+                  <FeaturedRow
+                    key={section.id}
+                    section={section}
+                    items={(catalog?.items ?? []).filter((item) => item.promotionalState === 'featured' && item.availabilityState === 'available')}
+                    cart={cart}
+                    options={cardOptions}
+                    onOpen={setDetailItem}
+                    onQuickAdd={(item) => addToCart(item, 1)}
+                  />
+                );
+              case 'category_bar':
+                return (
+                  <Fragment key={section.id}>
+                    {catalog && categories.length > 0 ? (
+                      <nav aria-label="Categories" className="sticky top-0 z-10 bg-background/95 py-4 backdrop-blur-sm">
+                        <ul className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8">
+                          <li>
+                            <CategoryChip label="All" active={category === null} onClick={() => setCategory(null)} />
+                          </li>
+                          {categories.map((cat) => (
+                            <li key={cat}>
+                              <CategoryChip label={cat} active={category === cat} onClick={() => setCategory(cat)} />
+                            </li>
+                          ))}
+                        </ul>
+                      </nav>
+                    ) : (
+                      <div className="h-6" />
+                    )}
 
-        <section aria-labelledby="menu-heading" className="px-4 pb-10 sm:px-6 lg:px-8">
-          {catalog ? (
-            <>
-              <div className="mb-4 flex items-baseline justify-between gap-4">
-                <h2 id="menu-heading" className="text-card-title font-semibold text-foreground">
-                  {heading}
-                </h2>
-                <p className="text-small text-muted-foreground">
-                  {visibleItems.length} {visibleItems.length === 1 ? 'snack' : 'snacks'}
-                </p>
-              </div>
-              {visibleItems.length === 0 ? (
-                <div className="flex flex-col items-center gap-4 rounded-xl bg-surface px-6 py-16 text-center">
-                  <p className="text-subtitle font-semibold text-foreground">No snacks match that.</p>
-                  <p className="text-body text-muted-foreground">Try another word, or look through every snack.</p>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setCategory(null);
-                    }}
-                  >
-                    Show all snacks
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-6 xl:grid-cols-4">
-                  {visibleItems.map((item) => (
-                    <ProductCard
-                      key={cartKey(item)}
-                      item={item}
-                      quantityInCart={cart.get(cartKey(item))?.quantity ?? 0}
-                      onOpen={() => setDetailItem(item)}
-                      onQuickAdd={() => addToCart(item, 1)}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : catalogError ? (
-            <div className="flex flex-col items-center gap-3 rounded-xl bg-surface px-6 py-16 text-center">
-              <WifiOff className="size-10 text-muted-foreground" aria-hidden="true" />
-              <p className="text-subtitle font-semibold text-foreground">The menu isn&apos;t available right now.</p>
-              <p className="text-body text-muted-foreground">This machine can&apos;t reach Snack Quest. It will try again on its own.</p>
-            </div>
-          ) : (
-            <div aria-label="Loading the menu" role="status" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-6 xl:grid-cols-4">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="flex flex-col gap-3 rounded-lg bg-surface p-3 shadow-sm lg:p-4">
-                  <div className="aspect-square animate-pulse rounded-md bg-border/50 motion-reduce:animate-none" />
-                  <div className="h-5 w-3/4 animate-pulse rounded-full bg-border/50 motion-reduce:animate-none" />
-                  <div className="h-6 w-1/3 animate-pulse rounded-full bg-border/50 motion-reduce:animate-none" />
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+                  </Fragment>
+                );
+              case 'product_grid':
+                return (
+                  <Fragment key={section.id}>
+                    <section aria-labelledby="menu-heading" className="px-4 pb-10 sm:px-6 lg:px-8">
+                      {catalog ? (
+                        <>
+                          <div className="mb-4 flex items-baseline justify-between gap-4">
+                            <h2 id="menu-heading" className="text-card-title font-semibold text-foreground">
+                              {heading}
+                            </h2>
+                            <p className="text-small text-muted-foreground">
+                              {visibleItems.length} {visibleItems.length === 1 ? 'snack' : 'snacks'}
+                            </p>
+                          </div>
+                          {visibleItems.length === 0 ? (
+                            <div className="flex flex-col items-center gap-4 rounded-xl bg-surface px-6 py-16 text-center">
+                              <p className="text-subtitle font-semibold text-foreground">No snacks match that.</p>
+                              <p className="text-body text-muted-foreground">Try another word, or look through every snack.</p>
+                              <Button
+                                variant="outline"
+                                size="lg"
+                                onClick={() => {
+                                  setSearchTerm('');
+                                  setCategory(null);
+                                }}
+                              >
+                                Show all snacks
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className={`grid gap-4 lg:gap-6 ${GRID_COLUMNS[String(section.props.columns ?? 'auto')] ?? GRID_COLUMNS.auto}`}>
+                              {visibleItems.map((item) => (
+                                <ProductCard
+                                  key={cartKey(item)}
+                                  item={item}
+                                  quantityInCart={cart.get(cartKey(item))?.quantity ?? 0}
+                                  onOpen={() => setDetailItem(item)}
+                                  onQuickAdd={() => addToCart(item, 1)}
+                                  options={cardOptions}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : catalogError ? (
+                        <div className="flex flex-col items-center gap-3 rounded-xl bg-surface px-6 py-16 text-center">
+                          <WifiOff className="size-10 text-muted-foreground" aria-hidden="true" />
+                          <p className="text-subtitle font-semibold text-foreground">The menu isn&apos;t available right now.</p>
+                          <p className="text-body text-muted-foreground">This machine can&apos;t reach Snack Quest. It will try again on its own.</p>
+                        </div>
+                      ) : (
+                        <div aria-label="Loading the menu" role="status" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-6 xl:grid-cols-4">
+                          {Array.from({ length: 6 }).map((_, index) => (
+                            <div key={index} className="flex flex-col gap-3 rounded-lg bg-surface p-3 shadow-sm lg:p-4">
+                              <div className="aspect-square animate-pulse rounded-md bg-border/50 motion-reduce:animate-none" />
+                              <div className="h-5 w-3/4 animate-pulse rounded-full bg-border/50 motion-reduce:animate-none" />
+                              <div className="h-6 w-1/3 animate-pulse rounded-full bg-border/50 motion-reduce:animate-none" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </Fragment>
+                );
+            }
+          })}
       </main>
 
       <OrderBar
@@ -1061,6 +1182,53 @@ function ProductSheet({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** A one-line message across the menu (§ KIOSK EXPERIENCE: "Message strip"). Text only — the builder never allows markup. */
+function PromoStrip({ section }: { section: KioskSection }) {
+  if (!section.props.text) return null;
+  return (
+    <div className="px-4 pt-4 sm:px-6 lg:px-8">
+      <p role="note" className={`rounded-lg px-5 py-3 text-center text-body font-semibold ${TONE_CLASS[section.props.tone ?? 'highlight']}`}>
+        {section.props.text}
+      </p>
+    </div>
+  );
+}
+
+/** Snacks staff marked "featured" on this machine, in a row above the menu. Hidden when there are none, or while the customer is searching or filtering. */
+function FeaturedRow({
+  section,
+  items,
+  cart,
+  options,
+  onOpen,
+  onQuickAdd,
+}: {
+  section: KioskSection;
+  items: SellableCatalogItem[];
+  cart: Map<string, CartLine>;
+  options: ProductCardOptions;
+  onOpen: (item: SellableCatalogItem) => void;
+  onQuickAdd: (item: SellableCatalogItem) => void;
+}) {
+  const shown = items.slice(0, section.props.limit ?? 4);
+  if (shown.length === 0) return null;
+  const headingId = `featured-${section.id}`;
+  return (
+    <section aria-labelledby={headingId} className="px-4 pt-6 sm:px-6 lg:px-8">
+      <h2 id={headingId} className="mb-4 text-card-title font-semibold text-foreground">
+        {section.props.title ?? 'Featured'}
+      </h2>
+      <ul className="flex gap-4 overflow-x-auto pb-2">
+        {shown.map((item) => (
+          <li key={cartKey(item)} className="w-44 shrink-0 lg:w-56">
+            <ProductCard item={item} quantityInCart={cart.get(cartKey(item))?.quantity ?? 0} onOpen={() => onOpen(item)} onQuickAdd={() => onQuickAdd(item)} options={options} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -42,7 +42,7 @@ function Slides({ images, index }: { images: KioskScreenContentImage[]; index: n
  * chosen it draws the built-in Snack Quest banner, naming the countries
  * the snacks on this machine come from.
  */
-export function MenuBanner({ images, origins }: { images: KioskScreenContentImage[]; origins: string[] }) {
+export function MenuBanner({ images, origins, eyebrow = 'Explore. Taste. Enjoy.', headline = 'Taste the world' }: { images: KioskScreenContentImage[]; origins: string[]; eyebrow?: string; headline?: string }) {
   const [index, setIndex] = useRotation(images.length, BANNER_ROTATE_MS);
 
   if (images.length > 0) {
@@ -75,8 +75,8 @@ export function MenuBanner({ images, origins }: { images: KioskScreenContentImag
   return (
     <section aria-label="Welcome" className="relative flex aspect-[27/10] w-full items-center overflow-hidden rounded-xl bg-kiosk-stage px-6 sm:px-10">
       <div className="relative z-10 flex max-w-[62%] flex-col gap-2 sm:gap-3">
-        <p className="text-caption font-semibold uppercase tracking-wider text-kiosk-highlight sm:text-small">Explore. Taste. Enjoy.</p>
-        <h2 className="font-display text-card-title leading-none text-kiosk-stage-foreground text-balance sm:text-section-title lg:text-page-title">Taste the world</h2>
+        <p className="text-caption font-semibold uppercase tracking-wider text-kiosk-highlight sm:text-small">{eyebrow}</p>
+        <h2 className="font-display text-card-title leading-none text-kiosk-stage-foreground text-balance sm:text-section-title lg:text-page-title">{headline}</h2>
         <p className="text-small text-kiosk-stage-foreground/80 sm:text-body">
           {places.length > 0 ? `Snacks from ${places.join(', ')}${origins.length > places.length ? ' and more' : ''}.` : 'Snacks from around the world.'} Pay with M-Pesa.
         </p>
@@ -93,20 +93,32 @@ export function MenuBanner({ images, origins }: { images: KioskScreenContentImag
  * otherwise the brand mark over a slow parade of what this machine
  * sells. A tap anywhere opens the menu.
  */
-export function AttractScreen({ images, items, onStart }: { images: KioskScreenContentImage[]; items: SellableCatalogItem[]; onStart: () => void }) {
+export function AttractScreen({
+  images,
+  items,
+  onStart,
+  headline = 'Snacks from around the world, right here.',
+  callToAction = 'Tap to start',
+}: {
+  images: KioskScreenContentImage[];
+  items: SellableCatalogItem[];
+  onStart: () => void;
+  headline?: string;
+  callToAction?: string;
+}) {
   const [index] = useRotation(images.length, ATTRACT_ROTATE_MS);
   const showcase = items.filter((item) => item.imageUrl && item.availabilityState === 'available').slice(0, 6);
 
   return (
     <main className="relative flex h-dvh w-full flex-col overflow-hidden bg-kiosk-stage text-kiosk-stage-foreground">
-      <button type="button" onClick={onStart} className="absolute inset-0 z-20 outline-none" aria-label="Tap to start your order" />
+      <button type="button" onClick={onStart} className="absolute inset-0 z-20 outline-none" aria-label={callToAction === 'Tap to start' ? 'Tap to start your order' : `${callToAction} — tap to start your order`} />
       {images.length > 0 ? (
         <Slides images={images} index={index} />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-10 px-8 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element -- the brand mark, a fixed public asset. */}
           <img src="/logo.png" alt="Snack Quest" className="w-2/3 max-w-md" />
-          <p className="font-display text-section-title leading-tight text-balance lg:text-page-title">Snacks from around the world, right here.</p>
+          <p className="font-display text-section-title leading-tight text-balance lg:text-page-title">{headline}</p>
           {showcase.length > 0 ? (
             <ul aria-hidden="true" className="grid w-full max-w-2xl grid-cols-3 gap-4">
               {showcase.map((item) => (
@@ -120,7 +132,7 @@ export function AttractScreen({ images, items, onStart }: { images: KioskScreenC
       )}
       <div className="pointer-events-none relative z-10 mt-auto flex justify-center pb-16">
         <span className="animate-pulse rounded-full bg-kiosk-highlight px-10 py-5 text-subtitle font-bold text-kiosk-highlight-foreground shadow-lg motion-reduce:animate-none">
-          Tap to start
+          {callToAction}
         </span>
       </div>
     </main>

@@ -10,6 +10,8 @@ import { serializeKioskScreenImage } from '@/lib/vending/serialize';
 import { KioskScreenImagesManager } from '@/components/admin/KioskScreenImagesManager';
 import { MachineScreenProducts, type ScreenProductRow } from '@/components/admin/MachineScreenProducts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DisplayProfileForm } from '@/components/admin/vending/DisplayProfileForm';
+import { hasPermission } from '@/lib/auth/permissions';
 
 export const metadata: Metadata = { title: 'Customer screen' };
 
@@ -94,6 +96,25 @@ export default async function MachineCustomerScreenPage({ params }: { params: Pr
           <KioskScreenImagesManager machineId={machineId} images={ownImages} inherited={fleetImages} />
         </CardContent>
       </Card>
+
+      {hasPermission(session, 'kiosk.view') ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Screen size and design</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {machine.display ? `${machine.display.widthPx}×${machine.display.heightPx}${machine.display.diagonalInches ? `, ${machine.display.diagonalInches}"` : ''}, ${machine.display.orientation}.` : 'Screen size not recorded — previews assume 1080×1920 portrait.'}{' '}
+              <Link href={`/admin/vending/kiosk-design/machine/${machineId}`} className="text-primary hover:underline">
+                Design this machine’s screen
+              </Link>
+            </p>
+          </CardHeader>
+          {hasPermission(session, 'kiosk.design') ? (
+            <CardContent>
+              <DisplayProfileForm machineId={machineId} current={machine.display ?? null} />
+            </CardContent>
+          ) : null}
+        </Card>
+      ) : null}
     </div>
   );
 }

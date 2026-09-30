@@ -40,6 +40,7 @@ export const AUDIT_AREAS: Record<string, string> = {
   integrationCredential: 'Integration keys',
   manufacturerApiCredential: 'Manufacturer API keys',
   kioskScreenImage: 'Screen artwork',
+  kioskLayer: 'Screen designs',
   intelligenceRecommendation: 'Recommendations',
   scheduledJob: 'Scheduled jobs',
 };

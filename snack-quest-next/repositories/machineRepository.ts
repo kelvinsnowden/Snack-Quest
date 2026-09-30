@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { Machine, MachineStatus } from '@/types';
+import type { Machine, MachineDisplayProfile, MachineStatus } from '@/types';
 
 const COLLECTION = 'machines';
 
@@ -174,6 +174,17 @@ class MachineRepository {
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy,
     });
+  }
+
+  /** The customer screen's size (§ DEVICE PROFILES); null clears it. */
+  async updateDisplay(businessId: string, machineId: string, display: MachineDisplayProfile | null, updatedBy: string): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineId);
+    const snapshot = await ref.get();
+    const data = snapshot.data() as Machine | undefined;
+    if (!data || data.businessId !== businessId) {
+      throw new MachineNotFoundError(machineId);
+    }
+    await ref.update({ display, updatedAt: FieldValue.serverTimestamp(), updatedBy });
   }
 
   getRef(machineId: string): FirebaseFirestore.DocumentReference {

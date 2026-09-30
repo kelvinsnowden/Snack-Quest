@@ -2,6 +2,7 @@ import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
 import type { MachineOwnershipType } from './economics';
+import type { MachineDisplayProfile } from './kioskExperience';
 
 /**
  * `machines/{machineId}` — a physical Discovery Machine
@@ -125,6 +126,8 @@ export interface Machine extends AuditFields {
    * manufacturer's line can ship with different sensors.
    */
   dispenseConfirmationStrategy: DispenseConfirmationStrategy | null;
+  /** The customer screen's size and orientation (§ DEVICE PROFILES). Absent until staff record it; the builder previews at a default size meanwhile. */
+  display?: MachineDisplayProfile | null;
 }
 
 /** Every status transition this machine may make, keyed by its current status — enforced by `machineService.updateStatus`, not left to the caller. */

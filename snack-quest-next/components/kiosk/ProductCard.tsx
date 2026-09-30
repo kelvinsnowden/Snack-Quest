@@ -1,7 +1,7 @@
 'use client';
 
 import { MapPin, Plus } from 'lucide-react';
-import type { ProductAvailabilityState, SellableCatalogItem } from '@/types';
+import type { KioskBadgeState, KioskBadgeStyle, KioskProductCardOptions, ProductAvailabilityState, SellableCatalogItem } from '@/types';
 import { PROMO_LABEL, formatKes } from './format';
 
 export const STATE_LABEL: Record<ProductAvailabilityState, string> = {
@@ -29,11 +29,23 @@ export function ProductImage({ item, className = '' }: { item: SellableCatalogIt
   );
 }
 
-function PromoBadge({ state }: { state: SellableCatalogItem['promotionalState'] }) {
-  const label = PROMO_LABEL[state];
+/** How the published screen design asks product tiles to look (§ KIOSK EXPERIENCE, § PROMOTION BADGES). */
+export type ProductCardOptions = KioskProductCardOptions & { badges?: Record<KioskBadgeState, KioskBadgeStyle> };
+
+const BADGE_TONE = {
+  primary: 'bg-primary text-primary-foreground',
+  secondary: 'bg-secondary text-secondary-foreground',
+  highlight: 'bg-kiosk-highlight text-kiosk-highlight-foreground',
+} as const;
+const DEFAULT_BADGE_TONE: Record<KioskBadgeState, keyof typeof BADGE_TONE> = { featured: 'secondary', new: 'highlight', limited_time: 'primary' };
+
+function PromoBadge({ state, styles }: { state: SellableCatalogItem['promotionalState']; styles?: Record<KioskBadgeState, KioskBadgeStyle> }) {
+  if (state === 'none') return null;
+  const style = styles?.[state];
+  if (style && !style.visible) return null;
+  const label = style?.label ?? PROMO_LABEL[state];
   if (!label) return null;
-  const tone = state === 'new' ? 'bg-kiosk-highlight text-kiosk-highlight-foreground' : state === 'featured' ? 'bg-secondary text-secondary-foreground' : 'bg-primary text-primary-foreground';
-  return <span className={`rounded-full px-3 py-1 text-caption font-semibold ${tone}`}>{label}</span>;
+  return <span className={`rounded-full px-3 py-1 text-caption font-semibold ${BADGE_TONE[style?.tone ?? DEFAULT_BADGE_TONE[state]]}`}>{label}</span>;
 }
 
 /**
@@ -46,13 +58,18 @@ export function ProductCard({
   quantityInCart,
   onOpen,
   onQuickAdd,
+  options,
 }: {
   item: SellableCatalogItem;
   quantityInCart: number;
   onOpen: () => void;
   onQuickAdd: () => void;
+  options?: ProductCardOptions;
 }) {
   const purchasable = item.availabilityState === 'available';
+  const showOrigin = options?.showOrigin ?? true;
+  const showBadges = options?.showBadges ?? true;
+  const quickAdd = options?.quickAdd ?? true;
   return (
     <article className="relative flex flex-col rounded-lg bg-surface p-3 shadow-sm lg:p-4">
       <button type="button" onClick={onOpen} className="flex flex-1 flex-col gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -64,7 +81,7 @@ export function ProductCard({
         </div>
         <div className="flex flex-col gap-1 px-1">
           <h3 className="line-clamp-2 text-body font-semibold text-foreground lg:text-subtitle">{item.name}</h3>
-          {item.origin ? (
+          {showOrigin && item.origin ? (
             <p className="flex items-center gap-1 text-small text-muted-foreground">
               <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
               {item.origin}
@@ -78,8 +95,8 @@ export function ProductCard({
         {purchasable ? (
           <button
             type="button"
-            onClick={onQuickAdd}
-            aria-label={`Add ${item.name} to cart`}
+            onClick={quickAdd ? onQuickAdd : onOpen}
+            aria-label={quickAdd ? `Add ${item.name} to cart` : `Choose how many ${item.name} to add`}
             className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform duration-150 ease-out outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:scale-95 motion-reduce:transition-none lg:size-14"
           >
             <Plus className="size-6" aria-hidden="true" />
@@ -88,7 +105,7 @@ export function ProductCard({
       </div>
 
       <div className="pointer-events-none absolute left-5 top-5 flex gap-2 lg:left-6 lg:top-6">
-        {item.promotionalState !== 'none' ? <PromoBadge state={item.promotionalState} /> : null}
+        {showBadges && item.promotionalState !== 'none' ? <PromoBadge state={item.promotionalState} styles={options?.badges} /> : null}
       </div>
       {quantityInCart > 0 ? (
         <span className="absolute right-5 top-5 flex size-8 items-center justify-center rounded-full bg-foreground text-small font-bold text-background shadow-sm lg:right-6 lg:top-6">

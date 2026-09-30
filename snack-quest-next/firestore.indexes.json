@@ -2359,6 +2359,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "kioskLayerVersions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "layerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "versionNumber",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
