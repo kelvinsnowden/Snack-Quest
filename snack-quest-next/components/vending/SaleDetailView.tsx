@@ -28,6 +28,7 @@ const HISTORY_ACTION: Record<string, string> = {
   sale_review_start_refund: 'Marked refund owed',
   sale_review_reverse_payment: 'Sent M-Pesa reversal',
   sale_review_record_refund: 'Recorded refund',
+  sale_review_acknowledge_conflict: 'Closed machine conflict',
 };
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -113,7 +114,11 @@ export async function SaleDetailView({ session, transactionId, basePath, backHre
             {sale.outcomeConflict ? (
               <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-sm text-foreground">
                 The machine later reported “{sale.outcomeConflict.reportedStatus}” after this sale was “{sale.outcomeConflict.previousStatus}” ({when(sale.outcomeConflict.reportedAt)}).{' '}
-                {sale.outcomeConflict.resolved ? 'A person has since decided this sale.' : 'Nobody has decided which is right yet.'}
+                {sale.outcomeConflict.resolved
+                  ? sale.outcomeConflict.resolutionNote
+                    ? `Closed by a person: “${sale.outcomeConflict.resolutionNote}”.`
+                    : 'A person has since decided this sale.'
+                  : 'Nobody has decided which is right yet. Until someone does, this machine’s settlement for the period can’t be finalised.'}
               </p>
             ) : null}
           </CardContent>

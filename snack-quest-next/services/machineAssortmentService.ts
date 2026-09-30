@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
+import { priceBookService } from '@/services/priceBookService';
+import { effectiveSellingPriceKes } from '@/lib/vending/sellingPrice';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
@@ -87,7 +89,9 @@ class MachineAssortmentService {
       if (!item) {
         throw new ProductNotFoundError('snackItem', productId);
       }
-      return { name: item.name, description: item.description ?? null, imageUrl: item.imageUrl, defaultPriceKes: item.expectedUnitCostKes };
+      // The suggested retail price, never the cost (a cost is not a price).
+      const prices = await priceBookService.currentPrices(businessId, 'snackItem', productId);
+      return { name: item.name, description: item.description ?? null, imageUrl: item.imageUrl, defaultPriceKes: prices.retailListKes ?? 0 };
     }
     const pkg = await packageRepository.findById(businessId, productId);
     if (!pkg) {
@@ -393,10 +397,14 @@ class MachineAssortmentService {
 
     const snackItemIds = assorted.filter((row) => row.productCatalogue === 'snackItem').map((row) => row.productId);
     const packageRows = assorted.filter((row) => row.productCatalogue === 'package');
-    const [snackItemsById, packagesById] = await Promise.all([
+    const [snackItemsById, packagesById, retailPrices] = await Promise.all([
       snackItemRepository.findManyById(snackItemIds),
       Promise.all(packageRows.map((row) => packageRepository.findById(businessId, row.productId))).then(
         (results) => new Map(packageRows.map((row, index) => [row.productId, results[index]])),
+      ),
+      priceBookService.currentPricesMany(
+        businessId,
+        assorted.filter((row) => row.productCatalogue === 'snackItem' && !(row.slotCode && slotByCode.has(row.slotCode))).map((row) => ({ productCatalogue: 'snackItem' as const, productId: row.productId })),
       ),
     ]);
 
@@ -416,7 +424,8 @@ class MachineAssortmentService {
         description = description ?? item?.description ?? null;
         imageUrl = imageUrl ?? item?.imageUrl ?? null;
         origin = item?.origin ?? null;
-        fallbackPriceKes = item?.expectedUnitCostKes ?? 0;
+        // Never the cost: a product not yet in a slot shows its suggested retail price, when one is set.
+        fallbackPriceKes = retailPrices.get(`snackItem__${row.productId}`)?.retailListKes ?? 0;
       } else {
         const pkg = packagesById.get(row.productId) ?? null;
         name = name ?? pkg?.name ?? row.productId;
@@ -425,7 +434,7 @@ class MachineAssortmentService {
         fallbackPriceKes = pkg?.priceKes ?? 0;
       }
 
-      const priceKes = row.priceOverrideKes ?? slot?.priceKes ?? fallbackPriceKes;
+      const priceKes = slot ? effectiveSellingPriceKes({ slotPriceKes: slot.priceKes, assortmentOverrideKes: row.priceOverrideKes }) : (row.priceOverrideKes ?? fallbackPriceKes);
 
       const notYetStarted = Boolean(row.effectiveFrom && row.effectiveFrom.toMillis() > now);
       const windowEnded = Boolean(row.effectiveTo && row.effectiveTo.toMillis() < now);

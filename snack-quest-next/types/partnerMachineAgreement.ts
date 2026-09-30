@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
+import type { CommercialTerms } from './economics';
 
 /**
  * `partnerMachineAgreements/{agreementId}` — the commercial
@@ -34,4 +35,11 @@ export interface PartnerMachineAgreement extends AuditFields {
   /** A link/reference to the actual signed agreement document, once one exists — never the terms themselves inlined here as trusted data. */
   documentRef: string | null;
   note: string | null;
+  /**
+   * The terms that decide the money (§ OWNERSHIP). Missing on agreements
+   * written before they existed; read through
+   * `machineEconomicProfileService`, which fills a missing term with the
+   * behaviour the system already had.
+   */
+  terms?: Partial<CommercialTerms>;
 }

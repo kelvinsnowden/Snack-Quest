@@ -3,6 +3,9 @@ import 'server-only';
 
 import { createHash, randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
+import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
+import { effectiveSellingPriceKes } from '@/lib/vending/sellingPrice';
+import { saleEconomicsService } from '@/services/saleEconomicsService';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineSlotService } from '@/services/machineSlotService';
@@ -179,15 +182,28 @@ class MachineTransactionService {
       throw new SlotUnavailableForSaleError(input.machineId, input.slotId, 'out of stock');
     }
 
+    const productCatalogue = slot.productCatalogue ?? 'package';
+    // The same price the customer screen shows (§ ONE PRICE): a machine's price override wins over the slot price.
+    const assortment = await machineAssortmentRepository.findByProduct(input.businessId, input.machineId, productCatalogue, slot.productId);
+    const amountKes = effectiveSellingPriceKes({ slotPriceKes: slot.priceKes, assortmentOverrideKes: assortment?.assorted ? assortment.priceOverrideKes : null });
+    const economics = await saleEconomicsService.snapshotFor({
+      businessId: input.businessId,
+      machineId: input.machineId,
+      machine,
+      productCatalogue,
+      productId: slot.productId,
+      retailPriceKes: amountKes,
+    });
     return machineTransactionRepository.create({
       businessId: input.businessId,
       machineId: input.machineId,
       slotId: input.slotId,
       productId: slot.productId,
-      productCatalogue: slot.productCatalogue ?? 'package',
-      amountKes: slot.priceKes,
+      productCatalogue,
+      amountKes,
       currency: 'KES',
       paymentMethod: input.paymentMethod,
+      economics,
     });
   }
 

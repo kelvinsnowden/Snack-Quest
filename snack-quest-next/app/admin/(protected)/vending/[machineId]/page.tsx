@@ -221,6 +221,13 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <DetailStat label="Owner partner" value={machine.ownerPartnerId ?? 'Snack Quest'} />
       </div>
 
+      <p className="text-sm">
+        <Link href={`/admin/vending/${machineId}/economics`} className="font-medium text-primary hover:underline">
+          Economics and profit →
+        </Link>
+        <span className="text-muted-foreground"> Ownership, owner terms, P&amp;L and the stock ledger.</span>
+      </p>
+
       <Card>
         <CardHeader>
           <CardTitle>Integration</CardTitle>

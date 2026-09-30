@@ -51,12 +51,14 @@ export default async function AgentLayout({ children }: { children: React.ReactN
             <Image src="/logo.png" alt="Snack Quest" width={32} height={32} className="size-8 rounded-lg object-cover" />
             <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Agent</span>
           </div>
-          {hasPermission(session, 'sales.view') ? (
-            <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1">
+            {hasPermission(session, 'support.conversations.handle') ? (
               <Link href="/agent" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-border/40 hover:text-foreground">Conversations</Link>
+            ) : null}
+            {hasPermission(session, 'sales.view') ? (
               <Link href="/agent/machine-sales" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-border/40 hover:text-foreground">Machine sales</Link>
-            </nav>
-          ) : null}
+            ) : null}
+          </nav>
         </div>
         <AdminUserMenu displayName={session.displayName} email={session.email} role={session.roles[0] ?? 'agent'} roles={session.roles} />
       </header>

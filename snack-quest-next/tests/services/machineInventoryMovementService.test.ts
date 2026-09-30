@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
 import { machineSlotService, MachineSlotService } from '@/services/machineSlotService';
-import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError, DiscrepancyReasonRequiredError, LedgerAlignmentRefusedError } from '@/services/machineInventoryMovementService';
+import { machineInventoryMovementService, InsufficientMachineStockError, SlotNotFoundError, DiscrepancyReasonRequiredError, LedgerAlignmentRefusedError, InvalidStockCountError } from '@/services/machineInventoryMovementService';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 
@@ -155,6 +155,35 @@ describe('recordDiscrepancyAdjustment', () => {
     });
     expect(result.discrepancy).toBe(0);
     expect(result.afterQuantity).toBe(5);
+  });
+
+  it('two people entering the same count at the same time set the slot to that count once — never double-applied (V-12)', async () => {
+    const { machineId } = await setUpSlot();
+    await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'restock', quantityDelta: 8, actor: 'staff-1' });
+    const count = (actor: string) =>
+      machineInventoryMovementService.recordDiscrepancyAdjustment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', physicalCountQuantity: 5, reason: 'shelf count', actor });
+
+    const results = await Promise.all([count('staff-a'), count('staff-b')]);
+
+    const slots = await machineSlotService.listByMachine(BUSINESS_ID, machineId);
+    expect(slots[0].currentQuantity).toBe(5);
+    expect(results.map((result) => result.discrepancy).sort()).toEqual([-3, 0]);
+    expect((await machineInventoryMovementService.reconcile(BUSINESS_ID, machineId, 'A01')).matches).toBe(true);
+  });
+
+  it('a count entered after a sale corrects from the stock at that moment, not from an earlier read (V-12)', async () => {
+    const { machineId } = await setUpSlot();
+    await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'restock', quantityDelta: 8, actor: 'staff-1' });
+    await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'sale', quantityDelta: -1, actor: 'machine' });
+    const result = await machineInventoryMovementService.recordDiscrepancyAdjustment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', physicalCountQuantity: 6, reason: 'count', actor: 'staff-a' });
+    expect(result).toEqual({ expectedQuantity: 7, physicalCountQuantity: 6, discrepancy: -1, afterQuantity: 6 });
+  });
+
+  it('refuses a count that is not a whole number of zero or more', async () => {
+    const { machineId } = await setUpSlot();
+    await expect(
+      machineInventoryMovementService.recordDiscrepancyAdjustment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', physicalCountQuantity: 2.5, reason: 'count', actor: 'staff-1' }),
+    ).rejects.toBeInstanceOf(InvalidStockCountError);
   });
 
   it('refuses a blank reason', async () => {

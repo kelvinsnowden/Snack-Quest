@@ -79,7 +79,7 @@ export async function POST(request: Request): Promise<Response> {
       action: 'staff.invite',
       entityType: 'staffProfile',
       entityId: result.uid,
-      after: { email: body.email, role: body.role, department: body.department, template, permissions: permissions ?? [], emailAttempted: result.emailAttempted },
+      after: { email: body.email, role: body.role, roles: result.roles, department: body.department, template, permissions: permissions ?? [], emailAttempted: result.emailAttempted },
     });
 
     return Response.json({ uid: result.uid, resetLink: result.resetLink, emailAttempted: result.emailAttempted }, { status: 201 });

@@ -33,6 +33,13 @@ import { isCustomerSale, type AuditLog, type CameraSnapshot, type MachineTransac
  *   or when a reversal isn't possible; the person enters the confirmation
  *   code of the money they sent.
  *
+ * - **Close a machine conflict** (any sale whose machine report
+ *   contradicted what had already happened, outside review): a person
+ *   records what they found. The sale itself is unchanged — a finished
+ *   sale stays finished, a refund stays refunded — but the conflict no
+ *   longer blocks the owner's settlement. A conflict on a sale under
+ *   review closes with the review decision instead.
+ *
  * Money only moves once per sale: a refund attempt is refused while
  * another is pending, processing or done (`vendingRefundRepository`).
  */
@@ -40,8 +47,8 @@ import { isCustomerSale, type AuditLog, type CameraSnapshot, type MachineTransac
 export const NEEDS_ATTENTION_STATUSES = ['manual_review', 'paid_vend_failed', 'refund_requested'] as const satisfies readonly MachineTransactionStatus[];
 export type NeedsAttentionStatus = (typeof NEEDS_ATTENTION_STATUSES)[number];
 
-export type SaleReviewAction = 'confirm_delivered' | 'start_refund' | 'reverse_payment' | 'record_refund';
-export const SALE_REVIEW_ACTIONS: SaleReviewAction[] = ['confirm_delivered', 'start_refund', 'reverse_payment', 'record_refund'];
+export type SaleReviewAction = 'confirm_delivered' | 'start_refund' | 'reverse_payment' | 'record_refund' | 'acknowledge_conflict';
+export const SALE_REVIEW_ACTIONS: SaleReviewAction[] = ['confirm_delivered', 'start_refund', 'reverse_payment', 'record_refund', 'acknowledge_conflict'];
 
 /** A reversal written but never confirmed as sent blocks a recorded refund for this long — long enough for Safaricom to answer. */
 export const PENDING_REVERSAL_STALE_MS = 10 * 60 * 1000;
@@ -107,6 +114,7 @@ const ACTION_LABEL: Record<SaleReviewAction, string> = {
   start_refund: 'Refund',
   reverse_payment: 'Reverse M-Pesa payment',
   record_refund: 'Record refund',
+  acknowledge_conflict: 'Close machine conflict',
 };
 
 class VendingSaleReviewService {
@@ -122,6 +130,15 @@ class VendingSaleReviewService {
         .sort((a, b) => a.sale.updatedAt.toMillis() - b.sale.updatedAt.toMillis());
     });
     return result;
+  }
+
+  /** Sales outside review whose machine report contradicted them and that nobody has closed. Each one blocks its machine's settlement for that period. */
+  async listOpenConflicts(businessId: string, limit = 100): Promise<SaleReviewRow[]> {
+    const rows = (await machineTransactionRepository.listUnresolvedConflicts(businessId, limit)).filter(({ data }) => data.status !== 'manual_review');
+    const codes = await this.machineCodes(businessId, [...new Set(rows.map(({ data }) => data.machineId))]);
+    return rows
+      .map(({ id, data }) => ({ id, sale: data, machineCode: codes.get(data.machineId) ?? null }))
+      .sort((a, b) => a.sale.updatedAt.toMillis() - b.sale.updatedAt.toMillis());
   }
 
   async getSale(businessId: string, transactionId: string): Promise<SaleReviewDetail> {
@@ -183,6 +200,13 @@ class VendingSaleReviewService {
           return await this.reversePayment(businessId, transactionId, sale, note, actor);
         case 'record_refund':
           return await this.recordRefund(businessId, transactionId, sale, refunds, note, input.reference ?? null, actor);
+        case 'acknowledge_conflict': {
+          const closed = await machineTransactionRepository.acknowledgeOutcomeConflict(businessId, transactionId, { actor, note });
+          if (!closed) {
+            throw new SaleReviewError('This conflict was already closed. Refresh to see it.', 'conflict');
+          }
+          return { status: sale.status, message: 'Conflict closed. The sale is unchanged, and it no longer holds up the owner’s settlement.' };
+        }
       }
     } catch (error) {
       if (error instanceof VendingRefundInFlightError) {
@@ -322,6 +346,10 @@ class VendingSaleReviewService {
     const customer = isCustomerSale(sale);
 
     switch (action) {
+      case 'acknowledge_conflict':
+        if (!sale.outcomeConflict || sale.outcomeConflict.resolved) return no('There is no open machine conflict on this sale.');
+        if (sale.status === 'manual_review') return no('This sale is under review: confirming delivery or refunding closes the conflict.');
+        return yes;
       case 'confirm_delivered':
         return sale.status === 'manual_review' ? yes : no('Only a sale under review can be confirmed by hand.');
       case 'start_refund':

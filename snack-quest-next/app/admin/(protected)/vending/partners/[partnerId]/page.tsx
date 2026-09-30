@@ -22,6 +22,8 @@ import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { BUSINESS_TIME_ZONE } from '@/lib/vending/businessClock';
 import { OwnerForm, OwnerStatusControl, PortalInvite, NewAgreementForm, AgreementActions } from '@/components/admin/vending/OwnerControls';
+import { AgreementTermsEditor } from '@/components/admin/vending/EconomicsControls';
+import { resolveTerms } from '@/services/machineEconomicProfileService';
 
 export const metadata: Metadata = { title: 'Machine owner detail' };
 
@@ -43,6 +45,7 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
   }
 
   const canManage = hasPermission(session, 'owners.manage');
+  const canSetTerms = hasPermission(session, 'machines.economics.manage');
   const canSeeMoney = hasPermission(session, 'owner_finance.view');
   const [machines, agreements, ledger, subscriptions, settlements, withdrawalPage] = await Promise.all([
     partnerService.listMachines(session.businessId, partnerId),
@@ -153,6 +156,7 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
                     <th className="py-2 pr-4 font-medium">Owner’s share</th>
                     <th className="py-2 pr-4 font-medium">Dates</th>
                     <th className="py-2 pr-4 font-medium">Document</th>
+                    <th className="py-2 pr-4 font-medium">Terms</th>
                     {canManage ? (
                       <th className="py-2 font-medium">
                         <span className="sr-only">Actions</span>
@@ -172,6 +176,20 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
                         {data.effectiveFrom ? agreementDay.format(data.effectiveFrom.toDate()) : '—'} – {data.effectiveTo ? agreementDay.format(data.effectiveTo.toDate()) : data.status === 'active' ? 'now' : '—'}
                       </td>
                       <td className="max-w-48 break-words py-3 pr-4 text-muted-foreground">{data.documentRef ?? '—'}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        {(() => {
+                          const terms = resolveTerms(data.terms);
+                          return (
+                            <div className="flex flex-col gap-2">
+                              <span>
+                                {terms.inventoryOwner === 'machine_owner' ? 'Owner buys stock' : 'Snack Quest stock'} · pays {terms.ownerCostBasis === 'wholesale_price' ? 'wholesale price' : 'Snack Quest’s cost'} · ads {terms.adRevenueSharePartnerPct}%
+                                {!data.terms || Object.keys(data.terms).length === 0 ? ' (not set — original rule)' : ''}
+                              </span>
+                              {canSetTerms && data.status !== 'terminated' ? <AgreementTermsEditor partnerId={partnerId} agreementId={id} terms={terms} /> : null}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       {canManage ? (
                         <td className="py-3">
                           <AgreementActions partnerId={partnerId} agreementId={id} status={data.status} canStart={machineCode.has(data.machineId) && !activeByMachine.has(data.machineId)} />

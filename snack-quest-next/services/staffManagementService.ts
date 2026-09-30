@@ -262,7 +262,7 @@ class StaffManagementService {
     businessId: string,
     input: { email: string; displayName: string; role: StaffRole; department: string; permissions?: string[]; template?: string | null },
     actor: StaffActor,
-  ): Promise<{ uid: string; resetLink: string; emailAttempted: boolean }> {
+  ): Promise<{ uid: string; resetLink: string; emailAttempted: boolean; roles: Role[] }> {
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
     if (!EMAIL_PATTERN.test(email)) {
@@ -301,7 +301,12 @@ class StaffManagementService {
         throw new StaffAlreadyExistsError(email);
       }
       const existingUser = await userRepository.findById(uid);
-      existingRoles = existingUser?.roles ?? [];
+      // Keep only the account's non-staff roles (customer, creator,
+      // partner). A removed staff member keeps their old staff roles on
+      // the soft-deleted user document; carrying them over would give a
+      // re-invited person their former access — up to super admin —
+      // whatever role they are invited with now.
+      existingRoles = (existingUser?.roles ?? []).filter((role) => !(STAFF_ROLES as Role[]).includes(role));
     } catch (error) {
       if (error instanceof StaffAlreadyExistsError) {
         throw error;
@@ -358,7 +363,7 @@ class StaffManagementService {
       // reset link returned below is the guaranteed path regardless.
     }
 
-    return { uid, resetLink, emailAttempted };
+    return { uid, resetLink, emailAttempted, roles };
   }
 
   /** Returns the role it replaced, for the audit entry. */

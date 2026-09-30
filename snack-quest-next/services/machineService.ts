@@ -114,6 +114,7 @@ class MachineService {
       firmwareVersion: input.firmwareVersion ?? null,
       status: 'provisioning',
       ownerPartnerId: input.ownerPartnerId ?? null,
+      ownershipType: input.ownerPartnerId ? 'third_party' : 'snack_quest',
       locationId: null,
       latitude: null,
       longitude: null,
@@ -295,7 +296,9 @@ class MachineService {
         machineOwnershipHistoryRepository.closeInTransaction(tx, doc.ref);
       }
       machineOwnershipHistoryRepository.openInTransaction(tx, { businessId, machineId, partnerId, changedBy: actor, reason });
-      tx.update(ref, { ownerPartnerId: partnerId, ownerSince: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+      // Ownership follows the owner: no owner is a Snack Quest machine; an owner keeps the type already chosen for them (a third party unless set).
+      const ownershipType = partnerId === null ? 'snack_quest' : current.ownershipType && current.ownershipType !== 'snack_quest' ? current.ownershipType : 'third_party';
+      tx.update(ref, { ownerPartnerId: partnerId, ownershipType, ownerSince: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
     });
   }
 

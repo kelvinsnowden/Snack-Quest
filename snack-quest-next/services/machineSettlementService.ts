@@ -12,6 +12,7 @@ import { machineSubscriptionRepository } from '@/repositories/machineSubscriptio
 import { creditEarningsInTransaction } from '@/repositories/partnerRepository';
 import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
 import { isCustomerSale, type MachineSettlement } from '@/types';
+import { unitCostFor } from '@/lib/finance/economics';
 
 export { MachineSettlementNotFoundError, IllegalSettlementTransitionError, OverlappingSettlementPeriodError };
 
@@ -98,43 +99,57 @@ class MachineSettlementService {
   }
 
   /**
-   * Sums the cost of every `sale` movement in the period
-   * (§ MACHINE ECONOMICS, docs/MACHINE_COMMERCE.md §4). Cost is
-   * resolved through the slot a sale happened on, at its *current*
-   * configuration — a known approximation, honestly stated: a slot
-   * that was reconfigured to a different product mid-period would
-   * misattribute cost for sales before the reconfiguration. Building
-   * a fully time-accurate resolution (a slot-configuration history)
-   * is real, future work, not fabricated precision here. Every sale
-   * whose cost can't be resolved (a `package`-catalogue slot, which
-   * carries no cost field today, or a slot that no longer exists) is
-   * counted in `unpricedSaleCount`, never silently zero-cost.
+   * The owner's cost of every `sale` movement in the period (§ MACHINE
+   * ECONOMICS). Each sale is costed from the snapshot frozen when it was
+   * made (`SaleEconomicsSnapshot`), at the owner's cost basis from the
+   * agreement in force then — a later cost change never rewrites an old
+   * settlement. A sale made before snapshots existed is costed at the
+   * product's current landed cost, the rule settlement always used, and
+   * counted in `estimatedCostSaleCount` so the settlement says so. A sale
+   * whose cost can't be found at all is counted in `unpricedSaleCount`,
+   * never costed at zero.
    */
-  async computeCogsForPeriod(businessId: string, machineId: string, periodStart: Date, periodEnd: Date): Promise<{ cogsKes: number; unpricedSaleCount: number }> {
-    const slots = await machineSlotRepository.listByMachine(businessId, machineId);
-    const slotByCode = new Map(slots.map((slot) => [slot.slotCode, slot]));
-    const snackItemProductIds = new Set(
-      slots.filter((slot) => slot.productCatalogue === 'snackItem' && slot.productId).map((slot) => slot.productId!),
-    );
-    const snackItemsById = await snackItemRepository.findManyById(Array.from(snackItemProductIds));
-
-    let cogsKes = 0;
-    let unpricedSaleCount = 0;
+  async computeCogsForPeriod(businessId: string, machineId: string, periodStart: Date, periodEnd: Date): Promise<{ cogsKes: number; unpricedSaleCount: number; estimatedCostSaleCount: number }> {
+    const movements: { quantity: number; slotId: string; transactionId: string | null }[] = [];
     for await (const { data } of machineInventoryMovementRepository.streamMovementsInRange(businessId, {
       reason: 'sale',
       machineId,
       since: periodStart,
       until: periodEnd,
     })) {
-      const slot = slotByCode.get(data.slotId);
+      movements.push({ quantity: Math.abs(data.quantityDelta), slotId: data.slotId, transactionId: data.sourceTransactionId ?? null });
+    }
+    const sales = await machineTransactionRepository.findManyById(businessId, movements.map((movement) => movement.transactionId).filter((id): id is string => id !== null));
+
+    // Only needed for sales without a snapshot: the legacy rule, current landed cost through the slot.
+    const needsLegacy = movements.some((movement) => !(movement.transactionId && sales.get(movement.transactionId)?.economics));
+    const slots = needsLegacy ? await machineSlotRepository.listByMachine(businessId, machineId) : [];
+    const slotByCode = new Map(slots.map((slot) => [slot.slotCode, slot]));
+    const snackItemsById = needsLegacy
+      ? await snackItemRepository.findManyById([...new Set(slots.filter((slot) => slot.productCatalogue === 'snackItem' && slot.productId).map((slot) => slot.productId!))])
+      : new Map();
+
+    let cogsKes = 0;
+    let unpricedSaleCount = 0;
+    let estimatedCostSaleCount = 0;
+    for (const movement of movements) {
+      const snapshot = movement.transactionId ? sales.get(movement.transactionId)?.economics : null;
+      if (snapshot) {
+        const unitCost = unitCostFor(snapshot, 'owner');
+        if (unitCost === null) unpricedSaleCount += 1;
+        else cogsKes += movement.quantity * unitCost;
+        continue;
+      }
+      const slot = slotByCode.get(movement.slotId);
       const item = slot?.productCatalogue === 'snackItem' && slot.productId ? snackItemsById.get(slot.productId) : undefined;
       if (item) {
-        cogsKes += Math.abs(data.quantityDelta) * item.expectedUnitCostKes;
+        cogsKes += movement.quantity * item.expectedUnitCostKes;
+        estimatedCostSaleCount += 1;
       } else {
         unpricedSaleCount += 1;
       }
     }
-    return { cogsKes, unpricedSaleCount };
+    return { cogsKes, unpricedSaleCount, estimatedCostSaleCount };
   }
 
   /** This machine's active subscription charge for the settlement window — one period's `amountKes` if a subscription exists, `0` otherwise (§ SUBSCRIPTION). */
@@ -173,7 +188,7 @@ class MachineSettlementService {
 
   private async computeDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date; actor: string }): Promise<MachineSettlementInput> {
     await this.assertOwnedThroughout(input.businessId, input.machineId, input.partnerId, input.periodStart, input.periodEnd);
-    const [{ grossSalesKes, refundsKes, failedVendRefundsKes, outcomeConflictCount }, { cogsKes, unpricedSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
+    const [{ grossSalesKes, refundsKes, failedVendRefundsKes, outcomeConflictCount }, { cogsKes, unpricedSaleCount, estimatedCostSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
       this.computeGrossForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
       this.computeCogsForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
       this.computeSubscriptionChargeForPeriod(input.businessId, input.machineId),
@@ -209,6 +224,7 @@ class MachineSettlementService {
       businessShareKes,
       cogsKes,
       unpricedSaleCount,
+      estimatedCostSaleCount,
       subscriptionChargedKes,
       distributableOwnerKes,
       failedVendRefundsKes,
@@ -303,7 +319,7 @@ class MachineSettlementService {
       }
       // Who bears a conflicting sale's loss is a business decision; the draft's figures aren't final until it's made.
       if ((found.data.outcomeConflictCount ?? 0) > 0) {
-        throw new SettlementChangeRefusedError(`${found.data.outcomeConflictCount} sale(s) in this period have conflicting outcomes. Resolve them under Sales to review, then discard this draft and prepare it again.`);
+        throw new SettlementChangeRefusedError(`${found.data.outcomeConflictCount} sale(s) in this period have conflicting outcomes. Close them under Sales to review, then discard this draft and prepare it again.`);
       }
       const amountKes = found.data.distributableOwnerKes + found.data.adjustmentKes;
       // The amount the person confirmed must still be the amount credited — a draft changed since it was shown is refused, not paid.

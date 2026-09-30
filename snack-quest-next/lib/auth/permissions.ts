@@ -35,6 +35,7 @@ export type PermissionGroup =
   | 'Machine stock & catalogue'
   | 'Machine sales & owners'
   | 'Manufacturers & integrations'
+  | 'Machine screen & advertising'
   | 'System'
   | 'Staff';
 
@@ -48,6 +49,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   'Machine stock & catalogue',
   'Machine sales & owners',
   'Manufacturers & integrations',
+  'Machine screen & advertising',
   'System',
   'Staff',
 ];
@@ -73,6 +75,10 @@ export const PERMISSIONS = [
   { key: 'products.manage', label: 'Create and edit boxes', group: 'Catalogue & stock' },
   { key: 'products.recipes.manage', label: 'Edit box recipes', group: 'Catalogue & stock' },
   { key: 'products.snacks.manage', label: 'Create and edit snacks', group: 'Catalogue & stock' },
+  { key: 'products.cost.view', label: 'See Snack Quest landed costs', group: 'Catalogue & stock' },
+  { key: 'products.cost.manage', label: 'Change Snack Quest landed costs', group: 'Catalogue & stock' },
+  { key: 'products.wholesale.view', label: 'See owner wholesale and suggested retail prices', group: 'Catalogue & stock' },
+  { key: 'products.wholesale.manage', label: 'Change owner wholesale and suggested retail prices', group: 'Catalogue & stock' },
   { key: 'warehouse_inventory.adjust', label: 'Adjust and write off warehouse stock', group: 'Catalogue & stock' },
   { key: 'procurement.manage', label: 'Manage suppliers and purchase orders', group: 'Catalogue & stock' },
 
@@ -143,6 +149,8 @@ export const PERMISSIONS = [
   { key: 'owner_finance.settlements.manage', label: 'Prepare owner settlements', group: 'Machine sales & owners' },
   { key: 'owner_finance.settlements.finalize', label: 'Finalize settlements (credits the owner)', group: 'Machine sales & owners' },
   { key: 'owner_finance.payouts.request', label: 'Request payouts for owners', group: 'Machine sales & owners' },
+  { key: 'machines.economics.manage', label: 'Set who owns a machine and the owner’s commercial terms', group: 'Machine sales & owners' },
+  { key: 'finance.machine_pnl.view', label: 'See machine profit and loss', group: 'Machine sales & owners' },
 
   // Manufacturers & integrations
   { key: 'integrations.view', label: 'See manufacturers and machine integrations', group: 'Manufacturers & integrations' },
@@ -153,6 +161,16 @@ export const PERMISSIONS = [
   { key: 'integrations.machines.configure', label: 'Connect a machine to its manufacturer', group: 'Manufacturers & integrations' },
   { key: 'integrations.machines.activate', label: 'Activate, suspend and test machine integrations', group: 'Manufacturers & integrations' },
   { key: 'integrations.machines.maintenance', label: 'Put a machine into maintenance', group: 'Manufacturers & integrations' },
+
+  // Machine screen & advertising
+  { key: 'kiosk.view', label: 'See machine screen designs', group: 'Machine screen & advertising' },
+  { key: 'kiosk.design', label: 'Edit machine screen designs (drafts)', group: 'Machine screen & advertising' },
+  { key: 'kiosk.publish', label: 'Publish and roll back machine screen designs', group: 'Machine screen & advertising' },
+  { key: 'advertising.view', label: 'See advertisers, campaigns and playback', group: 'Machine screen & advertising' },
+  { key: 'advertising.manage', label: 'Create and edit advertisers, campaigns and creatives', group: 'Machine screen & advertising' },
+  { key: 'advertising.review', label: 'Approve or reject ad creatives', group: 'Machine screen & advertising' },
+  { key: 'advertising.publish', label: 'Start, pause and end ad campaigns', group: 'Machine screen & advertising' },
+  { key: 'machines.service_codes.issue', label: 'Issue on-site service codes for a machine screen', group: 'Machine screen & advertising' },
 
   // System
   { key: 'search.use', label: 'Search across the admin', group: 'System' },
@@ -195,6 +213,7 @@ const SECTION_OF_GROUP: Record<PermissionGroup, AdminSection | null> = {
   'Machine stock & catalogue': 'vending',
   'Machine sales & owners': 'vending',
   'Manufacturers & integrations': 'vending',
+  'Machine screen & advertising': 'vending',
   System: 'operations',
   Staff: null,
 };
@@ -268,6 +287,8 @@ const WAREHOUSE_PERMISSIONS: PermissionKey[] = [
   'sales.view',
   'integrations.view',
   'integrations.machines.maintenance',
+  // Warehouse staff buy the stock: they have always seen what a snack costs.
+  'products.cost.view',
 ];
 
 const FINANCE_PERMISSIONS: PermissionKey[] = [
@@ -286,6 +307,10 @@ const FINANCE_PERMISSIONS: PermissionKey[] = [
   'sales.refund',
   'owners.view',
   'owner_finance.view',
+  // Profit needs the costs behind it: read-only.
+  'products.cost.view',
+  'products.wholesale.view',
+  'finance.machine_pnl.view',
 ];
 
 // Support can look a machine sale up to answer a customer; deciding it or refunding stays with finance and admins.
@@ -320,6 +345,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'owners.view',
       'integrations.machines.configure',
       'integrations.machines.activate',
+      'kiosk.view',
+      'machines.service_codes.issue',
     ],
   },
   { key: 'warehouse', label: 'Warehouse', description: 'Packing, shopping runs and machine restocking.', permissions: WAREHOUSE_PERMISSIONS },
@@ -328,13 +355,29 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     key: 'marketing',
     label: 'Marketing',
-    description: 'Campaigns, creators, content and the machine screen. No prices, machines or money.',
-    permissions: ['customers.view', 'creators.manage', 'marketing.campaigns.manage', 'marketing.optouts.manage', 'content.manage', 'analytics.spend.manage', 'products.view', 'machine_screen.manage', 'machines.view', 'search.use'],
+    description: 'Campaigns, creators, content, screen designs (drafts) and advertising. No prices, machines or money.',
+    permissions: [
+      'customers.view',
+      'creators.manage',
+      'marketing.campaigns.manage',
+      'marketing.optouts.manage',
+      'content.manage',
+      'analytics.spend.manage',
+      'products.view',
+      'machine_screen.manage',
+      'machines.view',
+      'search.use',
+      'kiosk.view',
+      'kiosk.design',
+      'advertising.view',
+      'advertising.manage',
+      'advertising.publish',
+    ],
   },
   {
     key: 'product_manager',
     label: 'Product manager',
-    description: 'Boxes, snacks and recipes. No machines, prices or money.',
+    description: 'Boxes, snacks, recipes and product media. No machines, costs, prices or money.',
     permissions: ['products.view', 'products.manage', 'products.recipes.manage', 'products.snacks.manage', 'content.manage', 'orders.view', 'search.use'],
   },
 ];

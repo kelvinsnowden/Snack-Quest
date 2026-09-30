@@ -152,6 +152,39 @@ describe('StaffManagementService.inviteStaff', () => {
     expect(session.uid).toBe(uid);
   });
 
+  it('re-inviting a removed super admin gives only the role chosen now — the old staff roles do not come back (V-01)', async () => {
+    const uid = await seedStaff('former-boss@example.com', 'super_admin');
+    await seedStaff('remaining-boss@example.com', 'super_admin');
+    await staffManagementService.removeStaff(BUSINESS_ID, uid, sa('inviter-uid'));
+
+    const result = await staffManagementService.inviteStaff(
+      BUSINESS_ID,
+      { email: 'former-boss@example.com', displayName: 'Former Boss', role: 'agent', department: 'Support' },
+      delegatedManager(),
+    );
+    expect(result.roles).toEqual(['agent']);
+    expect((await userRepository.findById(uid))?.roles).toEqual(['agent']);
+    expect((await adminAuth.getUser(uid)).customClaims?.roles).toEqual(['agent']);
+    const idToken = await getIdTokenForUid(uid);
+    const { session } = await staffAuthService.establishSession(idToken);
+    expect(session.roles).toEqual(['agent']);
+  });
+
+  it('re-inviting a removed admin as warehouse keeps their customer role but not admin (V-01)', async () => {
+    const record = await adminAuth.createUser({ email: 'former-admin@example.com', password: 'test-password-123' });
+    createdUids.push(record.uid);
+    await userRepository.create(record.uid, { email: 'former-admin@example.com', roles: ['customer', 'admin'], displayName: 'Former Admin', photoURL: null }, 'system');
+    await staffRepository.create(record.uid, { businessId: BUSINESS_ID, role: 'admin', permissions: [], department: 'Ops' }, 'system');
+    await staffManagementService.removeStaff(BUSINESS_ID, record.uid, sa('inviter-uid'));
+
+    const result = await staffManagementService.inviteStaff(
+      BUSINESS_ID,
+      { email: 'former-admin@example.com', displayName: 'Former Admin', role: 'warehouse', department: 'Ops' },
+      sa('inviter-uid'),
+    );
+    expect(result.roles.sort()).toEqual(['customer', 'warehouse']);
+  });
+
   it('rejects inviting someone who is already staff', async () => {
     await seedStaff('already-staff@example.com', 'admin');
 

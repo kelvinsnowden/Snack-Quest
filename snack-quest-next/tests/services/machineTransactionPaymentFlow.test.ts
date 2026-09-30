@@ -270,6 +270,23 @@ describe('handleMpesaCallback', () => {
     expect(transaction?.vendRef).toBeTruthy();
   });
 
+  it('a machine paused while the customer was paying sends nothing: the sale goes to the refund path (V-09)', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    const { machineId } = await seedMachineWithSlot(adapter);
+    const { service, id } = await initiatePayment(adapter, gateway, machineId);
+    await machineService.updateStatus(BUSINESS_ID, machineId, 'maintenance', 'staff-1');
+    const authorizeSpy = vi.spyOn(adapter, 'authorizeVend');
+
+    await service.handleMpesaCallback(BUSINESS_ID, { checkoutRequestId: 'ws_CO_1', merchantRequestId: 'mr-1', resultCode: 0, resultDesc: 'Success', amountKes: 350, mpesaReceiptNumber: 'RECEIPT-PAUSED' });
+
+    const transaction = await service.findById(BUSINESS_ID, id);
+    expect(transaction?.status).toBe('paid_vend_failed');
+    expect(transaction?.paymentRef).toBe('RECEIPT-PAUSED');
+    expect(transaction?.failureReason).toMatch(/maintenance/);
+    expect(authorizeSpy).not.toHaveBeenCalled();
+  });
+
   it('a cart item already resolved another way is left alone; the rest of the cart is still settled and dispensed', async () => {
     const adapter = new MockVendingAdapter();
     const gateway = new FakePaymentGateway();

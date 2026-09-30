@@ -31,6 +31,7 @@ export function BoxRecipeBuilder({
   catalogue,
   initialItems,
   initialNotes,
+  showCosts = true,
 }: {
   packageId: string;
   packageName: string;
@@ -38,6 +39,8 @@ export function BoxRecipeBuilder({
   catalogue: SerializedSnackItem[];
   initialItems: RecipeBuilderLine[];
   initialNotes: string;
+  /** Off for someone without `products.cost.view`: the catalogue then carries no costs, and no cost or margin is shown. */
+  showCosts?: boolean;
 }) {
   const router = useRouter();
   const [lines, setLines] = useState<RecipeBuilderLine[]>(initialItems);
@@ -108,15 +111,21 @@ export function BoxRecipeBuilder({
         </Card>
       ) : null}
 
-      <Card className="grid grid-cols-3 gap-4 p-5">
-        <Stat label="Box sells for" value={priceKes} />
-        <Stat label="Costs to fill" value={totalCostKes} />
-        <Stat
-          label="Margin"
-          value={marginKes}
-          tone={marginKes < 0 ? 'danger' : marginKes < priceKes * 0.3 ? 'warning' : 'good'}
-        />
-      </Card>
+      {showCosts ? (
+        <Card className="grid grid-cols-3 gap-4 p-5">
+          <Stat label="Box sells for" value={priceKes} />
+          <Stat label="Costs to fill" value={totalCostKes} />
+          <Stat
+            label="Margin"
+            value={marginKes}
+            tone={marginKes < 0 ? 'danger' : marginKes < priceKes * 0.3 ? 'warning' : 'good'}
+          />
+        </Card>
+      ) : (
+        <Card className="grid grid-cols-1 gap-4 p-5">
+          <Stat label="Box sells for" value={priceKes} />
+        </Card>
+      )}
 
       <Card className="flex flex-col gap-3 p-5">
         <p className="text-card-title font-semibold text-foreground">In {packageName}</p>
@@ -143,9 +152,11 @@ export function BoxRecipeBuilder({
                     <span className="truncate text-sm font-medium text-foreground">
                       {item?.name ?? 'Snack no longer in the catalogue'}
                     </span>
-                    <span className="text-caption text-muted-foreground tabular-nums">
-                      KES {((item?.expectedUnitCostKes ?? 0) * line.quantity).toLocaleString()}
-                    </span>
+                    {showCosts ? (
+                      <span className="text-caption text-muted-foreground tabular-nums">
+                        KES {((item?.expectedUnitCostKes ?? 0) * line.quantity).toLocaleString()}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -193,9 +204,11 @@ export function BoxRecipeBuilder({
                 </div>
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm font-medium text-foreground">{item.name}</span>
-                  <span className="text-caption tabular-nums text-muted-foreground">
-                    KES {item.expectedUnitCostKes.toLocaleString()}
-                  </span>
+                  {showCosts && item.expectedUnitCostKes !== null ? (
+                    <span className="text-caption tabular-nums text-muted-foreground">
+                      KES {item.expectedUnitCostKes.toLocaleString()}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             </li>

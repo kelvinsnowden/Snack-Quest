@@ -2,7 +2,7 @@ import 'server-only';
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import type { PartnerMachineAgreement } from '@/types';
+import type { CommercialTerms, PartnerMachineAgreement } from '@/types';
 
 const COLLECTION = 'partnerMachineAgreements';
 
@@ -93,6 +93,16 @@ class PartnerMachineAgreementRepository {
       }
       tx.update(ref, changes);
       return { ...data, ...changes } as PartnerMachineAgreement;
+    });
+  }
+
+  async updateTerms(businessId: string, agreementId: string, terms: Partial<CommercialTerms>, actor: string): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(agreementId);
+    await adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as PartnerMachineAgreement | undefined;
+      if (!data || data.businessId !== businessId) throw new AgreementNotFoundError(agreementId);
+      tx.update(ref, { terms, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
     });
   }
 

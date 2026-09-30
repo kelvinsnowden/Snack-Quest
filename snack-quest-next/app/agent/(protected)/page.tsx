@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Inbox } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { requireStaffSession } from '@/lib/auth/session';
+import { hasPermission } from '@/lib/auth/permissions';
 import { conversationService } from '@/services/conversationService';
 import { userRepository } from '@/repositories/userRepository';
 import { Card } from '@/components/ui/card';
@@ -79,6 +81,12 @@ export default async function AgentQueuePage({
   searchParams: Promise<{ queueCursor?: string; mineCursor?: string }>;
 }) {
   const session = await requireStaffSession();
+  // Conversations hold customers' names, phone numbers and messages: the
+  // workspace role isn't enough, the permission is. Someone here only to
+  // look up machine sales goes straight there.
+  if (!hasPermission(session, 'support.conversations.handle')) {
+    redirect(hasPermission(session, 'sales.view') ? '/agent/machine-sales' : '/no-access?permission=support.conversations.handle');
+  }
   const { queueCursor, mineCursor } = await searchParams;
 
   const [queue, mine] = await Promise.all([

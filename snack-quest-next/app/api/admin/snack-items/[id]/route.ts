@@ -3,6 +3,7 @@ import { recipeService, RecipeValidationError, SnackItemNotFoundError } from '@/
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { parseSnackItemBody } from '@/lib/recipes/parseSnackItemBody';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
+import { priceBookService } from '@/services/priceBookService';
 
 function errorResponse(error: unknown): Response | null {
   if (error instanceof SnackItemNotFoundError) {
@@ -38,15 +39,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const before = await recipeService.getSnackItem(session.businessId, id);
+    const newCost = parsed.draft.expectedUnitCostKes === undefined ? undefined : Math.round(parsed.draft.expectedUnitCostKes);
+    const costChanges = newCost !== undefined && (before.costPending === true || newCost !== before.expectedUnitCostKes);
+    if (costChanges && !hasPermission(session, 'products.cost.manage')) {
+      return forbiddenForPermission('products.cost.manage');
+    }
     await recipeService.updateSnackItem(session.businessId, id, parsed.draft, session.uid);
+    if (costChanges) {
+      // A cost change goes through the price book, so it is kept in the history and never rewrites past sales.
+      const reason = typeof (body as Record<string, unknown>).costChangeReason === 'string' && ((body as Record<string, unknown>).costChangeReason as string).trim().length >= 3 ? ((body as Record<string, unknown>).costChangeReason as string) : 'Changed on the snack form';
+      await priceBookService.setPrice({ businessId: session.businessId, productCatalogue: 'snackItem', productId: id, priceType: 'landed_cost', amountKes: newCost, reason, actor: session.uid });
+    }
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
       action: 'snack_item.update',
       entityType: 'snackItem',
       entityId: id,
-      before: { name: before.name, expectedUnitCostKes: before.expectedUnitCostKes },
-      after: { name: parsed.draft.name, expectedUnitCostKes: parsed.draft.expectedUnitCostKes },
+      before: { name: before.name, expectedUnitCostKes: before.costPending ? null : before.expectedUnitCostKes },
+      after: { name: parsed.draft.name, expectedUnitCostKes: costChanges ? newCost : before.costPending ? null : before.expectedUnitCostKes },
     });
     return Response.json({ ok: true });
   } catch (error) {

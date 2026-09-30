@@ -49,6 +49,7 @@ export type IntegrationFailureCode =
   | 'business.product_unavailable'
   | 'business.command_expired'
   | 'business.integration_inactive'
+  | 'business.machine_not_active'
   | 'unknown.outcome_undetermined';
 
 export interface RecoveryPolicy {
@@ -121,6 +122,7 @@ export const RECOVERY_POLICY: Record<IntegrationFailureCode, RecoveryPolicy> = {
   'business.product_unavailable': NOT_DELIVERED('protocol', false, false),
   'business.command_expired': NOT_DELIVERED('timeout', false, false),
   'business.integration_inactive': NOT_DELIVERED('protocol', false, false),
+  'business.machine_not_active': NOT_DELIVERED('protocol', false, false),
   'unknown.outcome_undetermined': MAYBE_DELIVERED('protocol'),
 };
 

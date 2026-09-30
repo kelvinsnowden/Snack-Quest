@@ -524,6 +524,24 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
+    // § PRICE BOOK / INVENTORY TRANSFER LEDGER — costs and owner prices are
+    // never readable by a client SDK: staff read them through permission-checked
+    // routes (products.cost.view / products.wholesale.view), owners through the
+    // owner portal's own filtered routes. Written only by the Admin SDK.
+    match /productPrices/{priceId} {
+      allow read, write: if false;
+    }
+    match /productPriceCurrent/{docId} {
+      allow read, write: if false;
+    }
+    match /stockTransfers/{transferId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /ownerWholesaleSales/{saleId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     match /machineSlotPriceHistory/{entryId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
-export type SaleReviewActionKey = 'confirm_delivered' | 'start_refund' | 'reverse_payment' | 'record_refund';
+export type SaleReviewActionKey = 'confirm_delivered' | 'start_refund' | 'reverse_payment' | 'record_refund' | 'acknowledge_conflict';
 
 export interface SaleReviewActionState {
   action: SaleReviewActionKey;
@@ -63,6 +63,15 @@ const COPY: Record<SaleReviewActionKey, ActionCopy> = {
     description: (amount) => `For when you sent ${amount} yourself — from the M-Pesa business app, or in cash at the site. Snack Quest can't check this payment, so your name goes on the record.`,
     notePrompt: 'How and when you sent it',
     confirm: 'Record refund',
+    variant: 'outline',
+  },
+  acknowledge_conflict: {
+    label: 'Close machine conflict',
+    icon: AlertTriangle,
+    title: 'Close the machine conflict',
+    description: () => 'The machine reported something that contradicts this sale. Closing it records what you found; the sale, its money and its stock stay as they are. The owner’s settlement for this period can then be finalised.',
+    notePrompt: 'What did you check, and what happened? (e.g. “Late jam report after a successful vend; slot count matches”)',
+    confirm: 'Close conflict',
     variant: 'outline',
   },
 };

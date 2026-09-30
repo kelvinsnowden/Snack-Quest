@@ -28,10 +28,15 @@ import { hasCapability } from '@/lib/vending/protocol/capabilities';
 import { manufacturerSlotIdFor } from '@/lib/vending/slotMapping';
 import {
   IN_FLIGHT_DISPENSE_COMMAND_STATUSES,
+  isCustomerSale,
   type DispenseCommandStatus,
   type IntegrationErrorKind,
   type MachineDispenseCommand,
+  type MachineStatus,
 } from '@/types';
+
+/** Statuses an active machine can be moved to by staff; none of them may dispense a customer's sale. */
+const STOPPED_MACHINE_STATUSES: readonly MachineStatus[] = ['maintenance', 'offline', 'decommissioned'];
 
 /** How long a queued (inbound) machine has to collect a dispense before it must be refused — the customer is standing there; after this they've gone and are owed a refund, not a late snack. */
 const QUEUED_COMMAND_TTL_MS = 2 * 60 * 1000;
@@ -142,6 +147,16 @@ class DispenseCommandService {
     }
     const command = claim.command;
 
+    // A machine paused, taken offline or retired while the customer's
+    // M-Pesa prompt was open must not dispense: someone may have it open.
+    // Nothing is sent, so the sale goes down the refund path. A staff test
+    // vend is exempt — it is how a machine in maintenance is checked.
+    // (A payment can only start on an active machine, and an active machine
+    // can only move to one of these three, so they are every case.)
+    if (isCustomerSale(transaction) && STOPPED_MACHINE_STATUSES.includes(machine.status)) {
+      const reason = `machine was "${machine.status}" when the payment completed; nothing was sent to it`;
+      return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: reason, failureCode: 'business.machine_not_active' }, reason, 'gate');
+    }
     const gate = await this.integrations.dispenseGate(businessId, transaction.machineId);
     if (!gate.allowed) {
       return this.finish(businessId, transactionId, 'rejected', 'rejected', { failureReason: gate.reason, failureCode: 'business.integration_inactive' }, gate.reason, 'gate');

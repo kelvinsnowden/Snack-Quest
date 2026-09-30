@@ -11,6 +11,7 @@ import { listProductOptions } from '@/lib/vending/productOptions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SlotEditor } from '@/components/admin/vending/SlotEditor';
 import { StockLedgerCheck } from '@/components/admin/vending/StockLedgerCheck';
+import { RemoveStockForm } from '@/components/admin/vending/EconomicsControls';
 
 export const metadata: Metadata = { title: 'Slots' };
 
@@ -73,6 +74,29 @@ export default async function MachineSlotsPage({ params }: { params: Promise<{ m
           />
         </CardContent>
       </Card>
+
+      {hasPermission(session, 'machine_inventory.adjust') && slots.some((slot) => slot.currentQuantity > 0) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Take stock out</CardTitle>
+            <p className="text-sm text-muted-foreground">For expired or damaged items, or stock going back to the warehouse. Each removal is recorded against whoever owns the stock.</p>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col divide-y divide-border">
+              {slots
+                .filter((slot) => slot.currentQuantity > 0)
+                .map((slot) => (
+                  <li key={slot.slotCode} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                    <span className="tabular-nums">
+                      Slot {slot.slotCode} · {slot.currentQuantity} in stock
+                    </span>
+                    <RemoveStockForm machineId={machineId} slotCode={slot.slotCode} quantity={slot.currentQuantity} />
+                  </li>
+                ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

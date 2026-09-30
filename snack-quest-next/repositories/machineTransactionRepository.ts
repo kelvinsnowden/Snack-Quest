@@ -277,6 +277,48 @@ class MachineTransactionRepository {
   }
 
   /** Records a contradicting outcome without changing status — for a conflict that arrives after the money has already moved (e.g. after `refunded`). */
+  /** Many transactions by id in few round trips; ids from another business are left out. */
+  async findManyById(businessId: string, ids: string[]): Promise<Map<string, MachineTransaction>> {
+    const result = new Map<string, MachineTransaction>();
+    const unique = [...new Set(ids)];
+    for (let index = 0; index < unique.length; index += 300) {
+      const refs = unique.slice(index, index + 300).map((id) => adminFirestore.collection(COLLECTION).doc(id));
+      if (refs.length === 0) continue;
+      for (const snapshot of await adminFirestore.getAll(...refs)) {
+        const data = snapshot.data() as MachineTransaction | undefined;
+        if (data && data.businessId === businessId) result.set(snapshot.id, data);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Sales whose machine report contradicted what had already happened
+   * and nobody has closed yet. Equality filters only, so Firestore serves
+   * it without a composite index.
+   */
+  async listUnresolvedConflicts(businessId: string, limit = 100): Promise<{ id: string; data: MachineTransaction }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('outcomeConflict.resolved', '==', false).limit(limit).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
+  }
+
+  /** Closes an unresolved conflict without touching the sale's status. False when there was nothing open to close (already closed, or none). */
+  async acknowledgeOutcomeConflict(businessId: string, transactionId: string, input: { actor: string; note: string }): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineTransaction | undefined;
+      if (!data || data.businessId !== businessId || !data.outcomeConflict || data.outcomeConflict.resolved) {
+        return false;
+      }
+      tx.update(ref, {
+        outcomeConflict: { ...data.outcomeConflict, resolved: true, resolvedBy: input.actor, resolvedAt: FieldValue.serverTimestamp(), resolutionNote: input.note },
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+  }
+
   async recordOutcomeConflict(businessId: string, transactionId: string, conflict: NonNullable<MachineTransaction['outcomeConflict']>): Promise<void> {
     const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
     await adminFirestore.runTransaction(async (tx) => {

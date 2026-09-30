@@ -10,6 +10,7 @@ import { machineSettlementRepository } from '@/repositories/machineSettlementRep
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
+import { vendingSaleReviewService } from '@/services/vendingSaleReviewService';
 
 /**
  * The settlement screen's steps: a preview that saves nothing and
@@ -95,6 +96,21 @@ describe('settlement workflow', () => {
     await expect(machineSettlementService.finalize(BUSINESS_ID, settlementId, 'staff-1', 200)).rejects.toThrow('conflicting outcomes');
     expect((await partnerRepository.findById(BUSINESS_ID, partnerId))?.availableCashKes).toBe(0);
     expect((await machineSettlementService.findById(BUSINESS_ID, settlementId))?.status).toBe('draft');
+  });
+
+  it('a conflict closed under Sales to review lets the period be prepared again and finalised (V-18)', async () => {
+    const { partnerId, machineId, periodStart, periodEnd, transactionId } = await ownedMachineWithOneSale();
+    await adminFirestore.collection('machineTransactions').doc(transactionId).update({ outcomeConflict: { reportedStatus: 'jam', previousStatus: 'dispensed', reportedAt: new Date(), source: 'test', resolved: false } });
+    const blocked = await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart, periodEnd, actor: 'staff-1' });
+    await expect(machineSettlementService.finalize(BUSINESS_ID, blocked, 'staff-1', 200)).rejects.toThrow('conflicting outcomes');
+
+    const result = await vendingSaleReviewService.resolve(BUSINESS_ID, transactionId, { action: 'acknowledge_conflict', note: 'Late jam report; slot count matches the sale' }, 'staff-2');
+    expect(result.status).toBe('dispensed');
+
+    await machineSettlementService.discardDraft(BUSINESS_ID, blocked);
+    const settlementId = await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart, periodEnd, actor: 'staff-1' });
+    await machineSettlementService.finalize(BUSINESS_ID, settlementId, 'staff-1', 200);
+    expect((await machineSettlementService.findById(BUSINESS_ID, settlementId))?.status).toBe('finalized');
   });
 
   it('won’t hand a machine to a new owner while the old owner’s subscription is open', async () => {

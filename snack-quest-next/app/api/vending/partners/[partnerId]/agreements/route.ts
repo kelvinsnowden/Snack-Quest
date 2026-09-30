@@ -6,6 +6,11 @@ import {
 } from '@/services/partnerService';
 import { AgreementConflictError } from '@/repositories/partnerMachineAgreementRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import {
+  parseCommercialTerms,
+  resolveTerms,
+  EconomicProfileValidationError,
+} from '@/services/machineEconomicProfileService';
 
 const text = (value: unknown) => (typeof value === 'string' ? value : null);
 
@@ -43,6 +48,8 @@ export async function GET(
         : null,
       documentRef: data.documentRef,
       note: data.note,
+      terms: resolveTerms(data.terms),
+      termsAreDefault: !data.terms || Object.keys(data.terms).length === 0,
     })),
   });
 }
@@ -91,6 +98,21 @@ export async function POST(
       );
   }
 
+  // Terms that decide the money need their own permission, on top of owners.manage.
+  let terms: ReturnType<typeof parseCommercialTerms> = {};
+  try {
+    terms = parseCommercialTerms(body.terms);
+  } catch (error) {
+    if (error instanceof EconomicProfileValidationError)
+      return Response.json({ error: error.message }, { status: 400 });
+    throw error;
+  }
+  if (
+    Object.keys(terms).length > 0 &&
+    !hasPermission(session, 'machines.economics.manage')
+  )
+    return forbiddenForPermission('machines.economics.manage');
+
   try {
     const agreementId = await partnerService.createAgreement({
       businessId: session.businessId,
@@ -102,6 +124,7 @@ export async function POST(
       effectiveFrom,
       documentRef: text(body.documentRef),
       note: text(body.note),
+      terms,
       actor: session.uid,
     });
     await recordAuditLog(request, {
@@ -115,6 +138,7 @@ export async function POST(
         machineId: body.machineId,
         status,
         revenueSharePartnerPct: pct ?? null,
+        terms,
       },
       machineId: body.machineId,
     });

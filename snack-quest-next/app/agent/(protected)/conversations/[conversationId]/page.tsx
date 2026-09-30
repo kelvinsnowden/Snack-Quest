@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { conversationService, ConversationNotFoundError } from '@/services/conversationService';
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { orderRepository } from '@/repositories/orderRepository';
@@ -25,7 +25,7 @@ export default async function AgentConversationDetailPage({
 }: {
   params: Promise<{ conversationId: string }>;
 }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('support.conversations.handle');
   const { conversationId } = await params;
 
   let conversation;

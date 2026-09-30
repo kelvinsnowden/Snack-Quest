@@ -4,6 +4,7 @@ import { serializeSnackItem } from '@/lib/recipes/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { parseSnackItemBody } from '@/lib/recipes/parseSnackItemBody';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
+import { priceBookService } from '@/services/priceBookService';
 
 /** The snack catalogue (§ Box Recipes). Admin rather than super-admin: keeping it current is routine operational work, and gating it higher is how prices go stale. */
 export async function GET(request: Request): Promise<Response> {
@@ -17,7 +18,9 @@ export async function GET(request: Request): Promise<Response> {
 
   const activeOnly = new URL(request.url).searchParams.get('activeOnly') === 'true';
   const items = await recipeService.listSnackItems(session.businessId, { activeOnly });
-  return Response.json({ items: items.map(({ id, data }) => serializeSnackItem(id, data)) });
+  // Snack Quest's cost is only sent to people allowed to see it.
+  const showCost = hasPermission(session, 'products.cost.view');
+  return Response.json({ items: items.map(({ id, data }) => serializeSnackItem(id, data, { showCost })) });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -41,8 +44,16 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
+  if (parsed.draft.expectedUnitCostKes !== undefined && !hasPermission(session, 'products.cost.manage')) {
+    return forbiddenForPermission('products.cost.manage');
+  }
+
   try {
     const itemId = await recipeService.createSnackItem(session.businessId, parsed.draft, session.uid);
+    if (parsed.draft.expectedUnitCostKes !== undefined) {
+      // The first cost opens the snack's price history.
+      await priceBookService.setPrice({ businessId: session.businessId, productCatalogue: 'snackItem', productId: itemId, priceType: 'landed_cost', amountKes: Math.round(parsed.draft.expectedUnitCostKes), reason: 'Cost when the snack was added', actor: session.uid });
+    }
     await recordAuditLog(request, {
       businessId: session.businessId,
       actorId: session.uid,
@@ -50,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
       entityType: 'snackItem',
       entityId: itemId,
       before: null,
-      after: { name: parsed.draft.name, expectedUnitCostKes: parsed.draft.expectedUnitCostKes },
+      after: { name: parsed.draft.name, expectedUnitCostKes: parsed.draft.expectedUnitCostKes ?? null },
     });
     return Response.json({ itemId }, { status: 201 });
   } catch (error) {

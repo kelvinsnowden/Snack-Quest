@@ -47,7 +47,10 @@ export interface SerializedSnackItem {
   imageUrl: string | null;
   /** Customer-facing; null when none has been written. */
   description: string | null;
-  expectedUnitCostKes: number;
+  /** Null when this person may not see costs (`products.cost.view`) or no cost has been set yet. */
+  expectedUnitCostKes: number | null;
+  /** True when the snack has no cost set yet. */
+  costPending: boolean;
   unitLabel: string;
   origin: string | null;
   sourcingNote: string | null;
@@ -58,13 +61,14 @@ export interface SerializedSnackItem {
   stockCount?: number;
 }
 
-export function serializeSnackItem(id: string, data: SnackItem): SerializedSnackItem {
+export function serializeSnackItem(id: string, data: SnackItem, options: { showCost?: boolean } = {}): SerializedSnackItem {
   return {
     id,
     name: data.name,
     imageUrl: data.imageUrl,
     description: data.description ?? null,
-    expectedUnitCostKes: data.expectedUnitCostKes,
+    expectedUnitCostKes: options.showCost === false || data.costPending ? null : data.expectedUnitCostKes,
+    costPending: data.costPending === true,
     unitLabel: data.unitLabel,
     origin: data.origin,
     sourcingNote: data.sourcingNote,

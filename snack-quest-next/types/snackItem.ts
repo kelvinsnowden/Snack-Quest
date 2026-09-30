@@ -29,6 +29,13 @@ export interface SnackItem extends AuditFields {
    * this. This is the planning number; that is the history.
    */
   expectedUnitCostKes: number;
+  /**
+   * True when the snack was created by someone who may not set costs: the
+   * cost field then holds 0 as a placeholder, and nothing may read it as a
+   * real cost (the price book reports it as unknown) until someone with
+   * `products.cost.manage` sets it.
+   */
+  costPending?: boolean;
   /** What "one" means for this snack — "bag", "pack", "bottle". Shown next to the quantity so "3" is never ambiguous on a phone at a market stall. */
   unitLabel: string;
   /**

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { MachineSlotService } from '@/services/machineSlotService';
+import { vendingSaleReviewService, SaleReviewError } from '@/services/vendingSaleReviewService';
 import { MachineTransactionService, IdempotencyKeyReusedError } from '@/services/machineTransactionService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
@@ -170,5 +171,40 @@ describe('late and contradicting outcomes', () => {
     expect((await state(transactionId, machineId)).status).toBe('dispensed');
     const events = await machineEventRepository.listByMachine(BUSINESS_ID, machineId);
     expect(events.some(({ data }) => data.type === 'INVENTORY_MISMATCH')).toBe(true);
+  });
+});
+
+describe('closing a conflict nobody could otherwise resolve (V-18)', () => {
+  it('failure after a completed sale: listed, closable once with a note, and the sale, money and stock are unchanged', async () => {
+    const { machineId, transactionId, vendRef } = await authorizedSale();
+    await apply(machineId, report(vendRef, 'success', 'first'));
+    await apply(machineId, report(vendRef, 'jam', 'late'));
+    expect((await vendingSaleReviewService.listOpenConflicts(BUSINESS_ID)).map((row) => row.id)).toContain(transactionId);
+    const detail = await vendingSaleReviewService.getSale(BUSINESS_ID, transactionId);
+    expect(detail.actions.find((entry) => entry.action === 'acknowledge_conflict')?.allowed).toBe(true);
+
+    await vendingSaleReviewService.resolve(BUSINESS_ID, transactionId, { action: 'acknowledge_conflict', note: 'Slot count matches one sale' }, 'staff-9');
+
+    const after = await state(transactionId, machineId);
+    expect(after).toMatchObject({ status: 'dispensed', quantity: 2, sales: 1 });
+    expect(after.conflict).toMatchObject({ resolved: true, resolvedBy: 'staff-9', resolutionNote: 'Slot count matches one sale' });
+    expect(await vendingSaleReviewService.listOpenConflicts(BUSINESS_ID)).toHaveLength(0);
+    await expect(vendingSaleReviewService.resolve(BUSINESS_ID, transactionId, { action: 'acknowledge_conflict', note: 'again' }, 'staff-9')).rejects.toBeInstanceOf(SaleReviewError);
+  });
+
+  it('success after the customer was refunded can be closed; the refund stands', async () => {
+    const { machineId, transactionId, vendRef } = await authorizedSale();
+    await apply(machineId, report(vendRef, 'failed', 'first'));
+    await service.requestRefund(BUSINESS_ID, transactionId);
+    await service.markRefunded(BUSINESS_ID, transactionId);
+    await apply(machineId, report(vendRef, 'success', 'late'));
+    await vendingSaleReviewService.resolve(BUSINESS_ID, transactionId, { action: 'acknowledge_conflict', note: 'Customer has both; written off' }, 'staff-9');
+    expect(await state(transactionId, machineId)).toMatchObject({ status: 'refunded', conflict: expect.objectContaining({ resolved: true }) });
+  });
+
+  it('a sale without a conflict, or one under review, cannot be closed this way', async () => {
+    const { machineId, transactionId, vendRef } = await authorizedSale();
+    await apply(machineId, report(vendRef, 'success', 'first'));
+    await expect(vendingSaleReviewService.resolve(BUSINESS_ID, transactionId, { action: 'acknowledge_conflict', note: 'nothing to close' }, 'staff-9')).rejects.toBeInstanceOf(SaleReviewError);
   });
 });

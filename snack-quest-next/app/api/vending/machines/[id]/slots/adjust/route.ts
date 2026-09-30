@@ -3,6 +3,7 @@ import {
   machineInventoryMovementService,
   SlotNotFoundError,
   DiscrepancyReasonRequiredError,
+  InvalidStockCountError,
 } from '@/services/machineInventoryMovementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
@@ -68,7 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error instanceof SlotNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
-    if (error instanceof DiscrepancyReasonRequiredError) {
+    if (error instanceof DiscrepancyReasonRequiredError || error instanceof InvalidStockCountError) {
       return Response.json({ error: error.message }, { status: 400 });
     }
     throw error;

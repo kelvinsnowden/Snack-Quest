@@ -4,7 +4,8 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { partnerRepository } from '@/repositories/partnerRepository';
 import { machineRepository } from '@/repositories/machineRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
-import type { Partner, PartnerMachineAgreement, PartnerStatus } from '@/types';
+import type { CommercialTerms, Partner, PartnerMachineAgreement, PartnerStatus } from '@/types';
+import { resolveTerms } from '@/services/machineEconomicProfileService';
 
 /** A request an owner record can't accept — bad input or a rule it would break. The message is written for the person who made it. */
 export class PartnerValidationError extends Error {
@@ -122,6 +123,8 @@ class PartnerService {
     effectiveFrom: Date | null;
     documentRef: string | null;
     note: string | null;
+    /** The commercial terms (§ OWNERSHIP). Terms not given resolve to today's behaviour. */
+    terms?: Partial<CommercialTerms>;
     actor: string;
   }): Promise<string> {
     const partner = await partnerRepository.findById(input.businessId, input.partnerId);
@@ -143,8 +146,23 @@ class PartnerService {
       effectiveTo: null,
       documentRef: cleanText(input.documentRef, 500, 'Document reference'),
       note: cleanText(input.note, 1000, 'Note'),
+      ...(input.terms && Object.keys(input.terms).length > 0 ? { terms: input.terms } : {}),
       createdBy: input.actor,
     });
+  }
+
+  /**
+   * Changes an agreement's commercial terms. Sales already made keep the
+   * terms frozen in their own snapshot, so a change only affects sales from
+   * now on. An ended agreement is history and can't be changed.
+   */
+  async setAgreementTerms(businessId: string, partnerId: string, agreementId: string, terms: Partial<CommercialTerms>, actor: string): Promise<{ machineId: string; before: CommercialTerms; after: CommercialTerms }> {
+    const agreement = await partnerMachineAgreementRepository.findById(businessId, agreementId);
+    if (!agreement || agreement.partnerId !== partnerId) throw new PartnerValidationError('Agreement not found.');
+    if (agreement.status === 'terminated') throw new PartnerValidationError('This agreement has ended; its terms are history. Record a new agreement instead.');
+    const merged = { ...(agreement.terms ?? {}), ...terms };
+    await partnerMachineAgreementRepository.updateTerms(businessId, agreementId, merged, actor);
+    return { machineId: agreement.machineId, before: resolveTerms(agreement.terms), after: resolveTerms(merged) };
   }
 
   /** Starts a draft agreement or ends one. Only an agreement on a machine the owner still holds can start. */

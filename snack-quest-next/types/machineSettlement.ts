@@ -54,6 +54,8 @@ export interface MachineSettlement extends AuditFields {
   cogsKes: number;
   /** Sale movements in the period whose product cost could not be resolved (a `package`-catalogue slot, which carries no cost field today) — counted, never silently zero-cost (docs/INVENTORY_ARCHITECTURE.md §4). */
   unpricedSaleCount: number;
+  /** Sales made before cost snapshots existed, costed at the product's landed cost when the settlement was prepared. */
+  estimatedCostSaleCount?: number;
   /** This machine's active `MachineSubscription` charge for periods overlapping this settlement's window — `0` when no subscription exists, never null. */
   subscriptionChargedKes: number;
   /**

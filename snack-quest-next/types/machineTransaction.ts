@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { SaleEconomicsSnapshot } from './economics';
 import type { DispenseResultStatus } from '@/lib/vending/hardwareAdapter';
 
 /**
@@ -120,12 +121,18 @@ export interface MachineTransaction {
    * alerted); the money side is never silently flipped. Absent on
    * transactions written before conflicts were modelled.
    */
+  /** The sale's economics frozen when it was created (§ HISTORICAL SNAPSHOTS). Missing on sales made before snapshots existed. */
+  economics?: SaleEconomicsSnapshot | null;
   outcomeConflict?: {
     reportedStatus: DispenseResultStatus;
     previousStatus: MachineTransactionStatus;
     reportedAt: Timestamp;
     source: string;
     resolved: boolean;
+    /** Set when a person closed the conflict without changing the sale (`acknowledge_conflict`). */
+    resolvedBy?: string | null;
+    resolvedAt?: Timestamp | null;
+    resolutionNote?: string | null;
   } | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;

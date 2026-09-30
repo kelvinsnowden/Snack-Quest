@@ -38,8 +38,8 @@ function waitingFor(from: Date, now: number): string {
  * comes first.
  */
 export async function SaleReviewQueue({ businessId, basePath, back }: { businessId: string; basePath: string; back?: { href: string; label: string } }) {
-  const queue = await vendingSaleReviewService.listNeedingAttention(businessId, 100);
-  const total = NEEDS_ATTENTION_STATUSES.reduce((sum, status) => sum + queue[status].length, 0);
+  const [queue, conflicts] = await Promise.all([vendingSaleReviewService.listNeedingAttention(businessId, 100), vendingSaleReviewService.listOpenConflicts(businessId, 100)]);
+  const total = NEEDS_ATTENTION_STATUSES.reduce((sum, status) => sum + queue[status].length, 0) + conflicts.length;
   // eslint-disable-next-line react-hooks/purity -- a server component renders once per request; "now" is the request time.
   const now = Date.now();
 
@@ -58,6 +58,43 @@ export async function SaleReviewQueue({ businessId, basePath, back }: { business
 
       {total === 0 ? (
         <EmptyState icon={CheckCircle2} title="All clear" description="Every sale either completed, failed without taking money, or has been refunded. New cases appear here automatically." />
+      ) : null}
+
+      {conflicts.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Machine reports that disagree <span className="font-normal text-muted-foreground">({conflicts.length})</span>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              The machine reported something that contradicts a sale that had already finished or been refunded. Check it and close it: until then, that machine’s settlement for the period can’t be finalised.
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul>
+              {conflicts.map(({ id, sale, machineCode }) => (
+                <li key={id} className="border-t border-border">
+                  <Link href={`${basePath}/${id}`} className="flex items-center gap-4 px-6 py-3 hover:bg-border/20">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {sale.transactionRef}
+                        <span className="ml-2 font-normal text-muted-foreground">{formatKes(sale.amountKes)} · {machineCode ?? sale.machineId} · slot {sale.slotId}</span>
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        Machine said “{sale.outcomeConflict?.reportedStatus}” after the sale was “{sale.outcomeConflict?.previousStatus}”
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right text-xs text-muted-foreground">
+                      <p className="tabular-nums">{dateTime.format(sale.createdAt.toDate())}</p>
+                      <p>waiting {waitingFor(sale.updatedAt.toDate(), now)}</p>
+                    </div>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       ) : null}
 
       {NEEDS_ATTENTION_STATUSES.filter((status) => queue[status].length > 0).map((status) => (

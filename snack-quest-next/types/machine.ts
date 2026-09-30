@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
+import type { MachineOwnershipType } from './economics';
 
 /**
  * `machines/{machineId}` — a physical Discovery Machine
@@ -83,6 +84,11 @@ export interface Machine extends AuditFields {
   /** Null until the machine is assigned to a partner-owned deployment (§ CORE ENTITIES 8) — Snack Quest's own machines have no partner. */
   ownerPartnerId: string | null;
   /**
+   * Who owns the machine (§ OWNERSHIP). Missing on machines written before
+   * it existed: read it through `ownershipTypeOf`, never directly.
+   */
+  ownershipType?: MachineOwnershipType;
+  /**
    * When the current owner took the machine over — absent or null means
    * since registration. The owner portal shows nothing from before this,
    * so a new owner never sees the previous owner's sales.
@@ -131,3 +137,13 @@ export const MACHINE_STATUS_TRANSITIONS: Record<MachineStatus, MachineStatus[]> 
   offline: ['active', 'maintenance', 'decommissioned'],
   decommissioned: [],
 };
+
+/**
+ * The machine's ownership type. A machine stored before `ownershipType`
+ * existed is Snack Quest's when it has no owner and a third party's when it
+ * has one — what `ownerPartnerId` always meant.
+ */
+export function ownershipTypeOf(machine: Pick<Machine, 'ownershipType' | 'ownerPartnerId'>): MachineOwnershipType {
+  if (machine.ownershipType) return machine.ownershipType;
+  return machine.ownerPartnerId ? 'third_party' : 'snack_quest';
+}

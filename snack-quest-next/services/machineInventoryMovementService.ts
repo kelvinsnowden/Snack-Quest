@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
+import { stockTransferRepository } from '@/repositories/stockTransferRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
 import { machineSlotService } from '@/services/machineSlotService';
@@ -27,6 +28,13 @@ export class LedgerAlignmentRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'LedgerAlignmentRefusedError';
+  }
+}
+
+export class InvalidStockCountError extends Error {
+  constructor() {
+    super('The count must be a whole number, zero or more.');
+    this.name = 'InvalidStockCountError';
   }
 }
 
@@ -73,7 +81,17 @@ class MachineInventoryMovementService {
      * and changes nothing.
      */
     idempotencyKey?: string;
-  }): Promise<{ afterQuantity: number; duplicate?: boolean }> {
+    /**
+     * Sets the slot to this quantity instead of applying `quantityDelta`:
+     * the delta is worked out inside the transaction from the slot as it
+     * is at that moment. A physical count uses this, so two identical
+     * counts, or a sale landing between reading and writing, can't apply
+     * the same correction twice.
+     */
+    setQuantityTo?: number;
+    /** Extra writes that must land in the same transaction as the movement (the transfer ledger entry for a removal). */
+    alsoInTransaction?: (tx: FirebaseFirestore.Transaction, movement: { slot: MachineSlot; beforeQuantity: number; afterQuantity: number; quantityDelta: number }) => void;
+  }): Promise<{ afterQuantity: number; beforeQuantity?: number; quantityDelta?: number; duplicate?: boolean }> {
     const movementDocId = input.idempotencyKey ? movementDocIdFor(input.businessId, input.idempotencyKey) : undefined;
     const result = await adminFirestore.runTransaction(async (tx) => {
       if (movementDocId) {
@@ -87,9 +105,10 @@ class MachineInventoryMovementService {
         throw new SlotNotFoundError(input.machineId, input.slotId);
       }
       const beforeQuantity = slot.currentQuantity;
-      const afterQuantity = beforeQuantity + input.quantityDelta;
+      const quantityDelta = input.setQuantityTo === undefined ? input.quantityDelta : input.setQuantityTo - beforeQuantity;
+      const afterQuantity = beforeQuantity + quantityDelta;
       if (afterQuantity < 0) {
-        throw new InsufficientMachineStockError(input.machineId, input.slotId, -input.quantityDelta, beforeQuantity);
+        throw new InsufficientMachineStockError(input.machineId, input.slotId, -quantityDelta, beforeQuantity);
       }
 
       machineSlotRepository.updateQuantityInTransaction(tx, input.machineId, input.slotId, afterQuantity);
@@ -99,7 +118,7 @@ class MachineInventoryMovementService {
         slotId: input.slotId,
         productId: slot.productId,
         reason: input.reason,
-        quantityDelta: input.quantityDelta,
+        quantityDelta,
         beforeQuantity,
         afterQuantity,
         sourceTransactionId: input.sourceTransactionId ?? null,
@@ -109,8 +128,9 @@ class MachineInventoryMovementService {
         note: input.note ?? null,
         actor: input.actor,
       }, movementDocId);
+      input.alsoInTransaction?.(tx, { slot, beforeQuantity, afterQuantity, quantityDelta });
 
-      return { afterQuantity, slot: { ...slot, currentQuantity: afterQuantity } satisfies MachineSlot, duplicate: false };
+      return { afterQuantity, beforeQuantity, quantityDelta, slot: { ...slot, currentQuantity: afterQuantity } satisfies MachineSlot, duplicate: false };
     });
     if (result.duplicate || !result.slot) {
       return { afterQuantity: result.afterQuantity, duplicate: true };
@@ -123,7 +143,7 @@ class MachineInventoryMovementService {
     // correctness problem the way a wrong quantity would be.
     await machineSlotService.checkLowStock(result.slot, input.actor);
 
-    return { afterQuantity: result.afterQuantity };
+    return { afterQuantity: result.afterQuantity, beforeQuantity: result.beforeQuantity, quantityDelta: result.quantityDelta };
   }
 
   /**
@@ -187,6 +207,61 @@ class MachineInventoryMovementService {
   }
 
   /**
+   * Takes stock out of a machine for a stated reason (§ TYPED STOCK REMOVAL):
+   * expired or damaged stock goes to waste, returned stock goes back to the
+   * warehouse. The slot movement and the transfer-ledger entry are one
+   * transaction, carrying who owned the stock and its cost at that moment.
+   */
+  async removeStock(input: {
+    businessId: string;
+    machineId: string;
+    slotId: string;
+    quantity: number;
+    reason: 'expired' | 'damaged' | 'returned';
+    note: string;
+    actor: string;
+    /** Cost basis and ownership, resolved by the caller before the transaction. */
+    ownership: { owner: 'snack_quest' | 'machine_owner'; partnerId: string | null; unitCostBasisKes: number | null };
+  }): Promise<{ afterQuantity: number }> {
+    if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+      throw new InvalidStockCountError();
+    }
+    if (!input.note.trim()) {
+      throw new DiscrepancyReasonRequiredError();
+    }
+    const to = input.reason === 'returned' ? { kind: 'warehouse' as const, id: null } : { kind: input.reason === 'expired' ? ('waste' as const) : ('damaged' as const), id: null };
+    const { afterQuantity } = await this.recordMovement({
+      businessId: input.businessId,
+      machineId: input.machineId,
+      slotId: input.slotId,
+      reason: input.reason === 'returned' ? 'return' : 'waste',
+      quantityDelta: -input.quantity,
+      note: `${input.reason}: ${input.note.trim()}`,
+      actor: input.actor,
+      alsoInTransaction: (tx, movement) => {
+        stockTransferRepository.createInTransaction(tx, {
+          businessId: input.businessId,
+          productCatalogue: movement.slot.productCatalogue,
+          productId: movement.slot.productId,
+          quantity: input.quantity,
+          from: { kind: 'machine', id: input.machineId, slotId: input.slotId },
+          to,
+          ownership: input.ownership.owner,
+          ownerPartnerId: input.ownership.partnerId,
+          unitCostBasisKes: input.ownership.unitCostBasisKes,
+          reason: input.reason === 'expired' ? 'removed_expired' : input.reason === 'damaged' ? 'removed_damaged' : 'returned_to_warehouse',
+          restockTaskId: null,
+          machineId: input.machineId,
+          ownerWholesaleSaleId: null,
+          note: input.note.trim(),
+          actor: input.actor,
+        });
+      },
+    });
+    return { afterQuantity };
+  }
+
+  /**
    * § STOCK DISCREPANCY: "expected quantity vs physical count, require
    * a reason, create an inventory adjustment ledger entry" — the one
    * writer of `reason: 'manual_adjustment'` in this codebase. The
@@ -210,22 +285,23 @@ class MachineInventoryMovementService {
     if (!input.reason.trim()) {
       throw new DiscrepancyReasonRequiredError();
     }
-    const slot = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotId);
-    if (!slot) {
-      throw new SlotNotFoundError(input.machineId, input.slotId);
+    if (!Number.isInteger(input.physicalCountQuantity) || input.physicalCountQuantity < 0) {
+      throw new InvalidStockCountError();
     }
-    const expectedQuantity = slot.currentQuantity;
-    const discrepancy = input.physicalCountQuantity - expectedQuantity;
-
-    const { afterQuantity } = await this.recordMovement({
+    // The expected quantity and the correction are read and written in
+    // one transaction (setQuantityTo), never computed from an earlier read.
+    const { afterQuantity, beforeQuantity, quantityDelta } = await this.recordMovement({
       businessId: input.businessId,
       machineId: input.machineId,
       slotId: input.slotId,
       reason: 'manual_adjustment',
-      quantityDelta: discrepancy,
+      quantityDelta: 0,
+      setQuantityTo: input.physicalCountQuantity,
       note: input.reason,
       actor: input.actor,
     });
+    const expectedQuantity = beforeQuantity ?? afterQuantity;
+    const discrepancy = quantityDelta ?? 0;
 
     return { expectedQuantity, physicalCountQuantity: input.physicalCountQuantity, discrepancy, afterQuantity };
   }
