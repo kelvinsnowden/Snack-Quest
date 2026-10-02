@@ -29,7 +29,8 @@
     "migrate:creator-memberships": "node scripts/migrateCreatorProfilesToBusinessNested.mjs",
     "commission:flatten": "node scripts/setFlatCommission.mjs",
     "pricing:jumia-zones": "node scripts/applyJumiaZonePricing.mjs",
-    "backup:export-auth-users": "node scripts/exportAuthUsers.mjs"
+    "backup:export-auth-users": "node scripts/exportAuthUsers.mjs",
+    "audit:capabilities": "jiti scripts/audit/capabilityMatrix.ts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",

@@ -57,7 +57,10 @@ export default async function AdminVendingReconciliationPage() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Payment Reconciliation</h1>
         <p className="text-sm text-muted-foreground">
-          {totalIssues === 0 ? 'No open issues.' : `${totalIssues} issue${totalIssues === 1 ? '' : 's'} need attention.`}
+          {totalIssues === 0 ? 'No open issues.' : `${totalIssues} issue${totalIssues === 1 ? '' : 's'} need attention.`}{' '}
+          <Link href="/admin/vending/reconciliation/checks" className="text-primary hover:underline">
+            Check prices, owner stock, settlements and ad revenue
+          </Link>
         </p>
       </div>
 

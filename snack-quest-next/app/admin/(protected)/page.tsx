@@ -31,6 +31,7 @@ import { StatusDonutChart, type DonutSlice } from '@/components/admin/StatusDonu
 import { formatDate, formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 import { cn } from '@/lib/utils';
+import { MachineNetworkPanel } from '@/components/admin/MachineNetworkPanel';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -162,6 +163,8 @@ export default async function AdminDashboardPage({
           {interpolate(dict.dashboard.subtitle, { business: business?.name ?? 'Snack Quest' })}
         </p>
       </div>
+
+      <MachineNetworkPanel session={session} />
 
       {/* Two-up on a phone: four KPIs in two rows instead of four. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
