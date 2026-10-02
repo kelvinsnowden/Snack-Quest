@@ -13,6 +13,9 @@ This document sets out what exists today against the 55-part "complete vending o
 | E | Architecturally incorrect |
 | F | Missing |
 
+
+> **Status:** parts B–F were built in phases OS0–OS10. What exists now, what was left out and what was verified is in `docs/OS_BUILD_REPORT.md`; this document records the analysis and decisions as made before building.
+
 ## 1. What exists
 
 | Area | Existing implementation (files) |

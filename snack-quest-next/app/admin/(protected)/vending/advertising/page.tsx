@@ -35,6 +35,11 @@ const STATUS_TONE: Record<AdCampaignStatus, string> = {
   ended: 'bg-muted/20 text-muted-foreground',
   cancelled: 'bg-muted/20 text-muted-foreground',
 };
+/** The Nairobi date `days` days ago. */
+function nairobiDaysAgo(days: number): string {
+  return nairobiClock(new Date(Date.now() - days * 86_400_000)).date;
+}
+
 const kes = (value: number) =>
   `KES ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
 const pct = (value: number | null) =>
@@ -84,7 +89,7 @@ export default async function AdvertisingPage({
     advertisingService.listCampaigns(session.businessId),
     advertisingService.campaignStats(
       session.businessId,
-      nairobiClock(new Date(Date.now() - 29 * 86_400_000)).date,
+      nairobiDaysAgo(29),
       today,
     ),
     canManage
