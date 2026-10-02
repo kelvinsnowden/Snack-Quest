@@ -267,7 +267,7 @@ Run on the emulator in this container, after the final changes:
 | `tsc --noEmit` | clean |
 | `eslint` | 0 errors, 2 warnings (pre-existing, in tests) |
 | `next build` | succeeds |
-| Full test suite (`vitest run`, Firestore and Auth emulators) | FILLED_IN_BELOW |
+| Full test suite (`vitest run`, Firestore and Auth emulators) | 398 of 398 test files passed; 4,277 tests passed, 1 skipped (4,278). Run against the emulators, so this is not evidence of production readiness. One earlier full run had 1 failure in `rateLimitDistributed` › "high-volume key spread over shards", a probabilistic test that passed 3 of 3 times when run alone and passed in this run. |
 | Capability matrix | regenerated from the code |
 
 New test files in this work include:
