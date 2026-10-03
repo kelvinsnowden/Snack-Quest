@@ -154,6 +154,8 @@ export const PERMISSIONS = [
   { key: 'owner_finance.payouts.request', label: 'Request payouts for owners', group: 'Machine sales & owners' },
   { key: 'machines.economics.manage', label: 'Set who owns a machine and the owner’s commercial terms', group: 'Machine sales & owners' },
   { key: 'finance.machine_pnl.view', label: 'See machine profit and loss', group: 'Machine sales & owners' },
+  { key: 'machines.deals.view', label: 'See what machines cost to land and install, and what they sold for', group: 'Machine sales & owners' },
+  { key: 'machines.deals.manage', label: 'Record machine costs and machine sales to owners', group: 'Machine sales & owners' },
 
   // Manufacturers & integrations
   { key: 'integrations.view', label: 'See manufacturers and machine integrations', group: 'Manufacturers & integrations' },
@@ -320,6 +322,9 @@ const FINANCE_PERMISSIONS: PermissionKey[] = [
   // Maintenance spend is part of a machine's P&L.
   'maintenance.view',
   'maintenance.costs.record',
+  // What a machine cost to land and install, and what it sold for.
+  'machines.deals.view',
+  'machines.deals.manage',
 ];
 
 // Support can look a machine sale up to answer a customer; deciding it or refunding stays with finance and admins.

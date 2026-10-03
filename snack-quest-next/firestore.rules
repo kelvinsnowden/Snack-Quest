@@ -647,6 +647,13 @@ service cloud.firestore {
     match /kioskOwnerProposals/{proposalId} {
       allow read, write: if false;
     }
+    // § MACHINE DEALS — machine costs and sales, server-side only.
+    match /machineCostLines/{lineId} {
+      allow read, write: if false;
+    }
+    match /machineDeals/{machineId} {
+      allow read, write: if false;
+    }
     match /cameras/{cameraId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

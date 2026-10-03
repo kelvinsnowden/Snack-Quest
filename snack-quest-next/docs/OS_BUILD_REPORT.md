@@ -33,6 +33,8 @@ Snack Quest now treats who owns a machine, who owns its stock, and on what terms
 | Follow-up 4 | Machine screen in English and Kiswahili, with a customer language switch | `419694b` |
 | Follow-up 5 | Owners propose their machines' screen design; staff accept to publish | `e56df24` |
 | Follow-up 6 | Ad videos up to 50 MB, uploaded straight to storage and checked after | `b400a30` |
+| Payment fix | M-Pesa confirmations for orders handled before the vending lookup; stuck payments listed on Reconciliation with a receipt form | `614eb3f` |
+| Follow-up 7 | Machine deals (landed, installation and sale per machine) and the combined Income view in Finance | this commit |
 
 ## 2. Architecture
 
@@ -250,6 +252,10 @@ Most "No UI caller" rows are UI code that builds the path in pieces (`${base}/pu
 | Who can record maintenance costs | Finance and machine operations (`maintenance.costs.record`); warehouse can log and move requests but not record money | Money entries stay with roles that already handle money |
 | Owners' screen designs | Need acceptance by staff with `kiosk.publish`; idle and ad settings are not the owner's | An owner's screen is still a Snack Quest screen; ads are Snack Quest revenue |
 | Kiswahili wording | Written for this build | Needs review by a native speaker before customers see it |
+| Combined income | Profit before overheads, only where a cost is recorded; revenue without a cost is shown beside it, never counted as profit. Owners' machine sales are excluded; only Snack Quest's income from those machines counts | Nothing estimated; owners' money is theirs |
+| Machine sale profit | Sale price (and any installation charged on top) less landed cost (purchase, freight, duty and clearing, transport to site) and installation cost (installation, branding, other setup); recognised on the sale date. Shown only once landed cost is recorded and installation is recorded or marked "none" | The costs that make up a machine, with nothing assumed |
+| Machines Snack Quest keeps | Their landed and installation cost is shown as money invested, not taken off a period's income, and not depreciated | Depreciation is an accounting policy for your accountant to set |
+| Foreign-currency machine costs | Entered in KES as actually paid; the original amount goes in the description | No exchange rate is guessed |
 | Barcodes | Must be a valid GTIN (8, 12, 13 or 14 digits) and unique among snacks | One barcode, one snack, so a scan can't be ambiguous |
 
 ## 8. Not built, and known limits
@@ -262,11 +268,14 @@ Most "No UI caller" rows are UI code that builds the path in pieces (`${base}/pu
 - Languages beyond English and Kiswahili. Snack names and descriptions are not translated; only the screen's own words and each design's wording are.
 - Barcode scanning at the machine. Barcodes are stored and checked, not yet read by any device.
 - The rest of `codex/public-checkout`. Only multi-box WhatsApp checkout was ported; the branch's own checkout page is superseded by `/checkout` on main.
+- Depreciation of machines Snack Quest keeps, and instalment payments on machine sales (a sale is recorded at its agreed price on its date).
+- Overheads (salaries, rent, marketing) in the Income view; it shows profit before overheads.
 - The server does not decode video. Video length is declared by staff, and machines report the real play time.
 
 **Known limits**
 
 - Record checks read the most recent 5,000 records per check and say so when cut short.
+- The machine P&L (and so the Income view) sorts a machine as Snack Quest's or an owner's by its ownership today. A machine sold to an owner part-way through a period has that whole period's sales counted the owner's way. Each sale does freeze its own ownership, so this can be split per sale later.
 - A direct ad upload that is never finalized leaves an unreferenced file in storage. It plays nowhere and is safe to sweep, but nothing sweeps it yet.
 - Report batch documents carry `expireAt`. A Firestore TTL policy on that field has to be enabled in the Firebase console; it can't be set from this repo.
 - `tests/api/rateLimitDistributed.test.ts` › "a high-volume key is spread over several counter documents" failed once in a full run and passed 3/3 in isolation. It is probabilistic: random shard choice under load. It predates this work and was not changed.
@@ -280,7 +289,7 @@ Run on the emulator in this container, after the final changes:
 | `tsc --noEmit` | clean |
 | `eslint` | 0 errors, 2 warnings (pre-existing, in tests) |
 | `next build` | succeeds |
-| Full test suite (`vitest run`, Firestore and Auth emulators) | 406 of 406 test files passed; 4,350 tests passed, 1 skipped (4,351), after the six follow-ups. Run against the emulators, so this is not evidence of production readiness. |
+| Full test suite (`vitest run`, Firestore and Auth emulators) | 411 of 411 test files passed; 4,380 tests passed, 1 skipped (4,381), after machine deals and the Income view. Run against the emulators, so this is not evidence of production readiness. |
 | Capability matrix | regenerated from the code |
 
 New test files in this work include:

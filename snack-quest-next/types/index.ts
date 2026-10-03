@@ -87,3 +87,4 @@ export * from './manufacturerApiCredential';
 export * from './kioskExperience';
 export * from './advertising';
 export * from './kioskRuntime';
+export * from './machineDeal';
