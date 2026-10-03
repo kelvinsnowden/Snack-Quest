@@ -123,6 +123,9 @@ export const PERMISSIONS = [
   { key: 'cameras.view', label: 'See cameras and snapshots', group: 'Machines' },
   { key: 'cameras.operate', label: 'Take snapshots and test cameras', group: 'Machines' },
   { key: 'cameras.manage', label: 'Add, configure and disable cameras', group: 'Machines' },
+  { key: 'maintenance.view', label: 'See maintenance requests and costs', group: 'Machines' },
+  { key: 'maintenance.manage', label: 'Log maintenance problems and update their progress', group: 'Machines' },
+  { key: 'maintenance.costs.record', label: 'Record and void maintenance costs', group: 'Machines' },
 
   // Machine stock & catalogue
   { key: 'machine_catalog.manage', label: 'Choose what each machine sells', group: 'Machine stock & catalogue' },
@@ -287,6 +290,9 @@ const WAREHOUSE_PERMISSIONS: PermissionKey[] = [
   'sales.view',
   'integrations.view',
   'integrations.machines.maintenance',
+  // The technicians on site: they see and work maintenance requests; recording what it cost is operations' and finance's.
+  'maintenance.view',
+  'maintenance.manage',
   // Warehouse staff buy the stock: they have always seen what a snack costs.
   'products.cost.view',
 ];
@@ -311,6 +317,9 @@ const FINANCE_PERMISSIONS: PermissionKey[] = [
   'products.cost.view',
   'products.wholesale.view',
   'finance.machine_pnl.view',
+  // Maintenance spend is part of a machine's P&L.
+  'maintenance.view',
+  'maintenance.costs.record',
 ];
 
 // Support can look a machine sale up to answer a customer; deciding it or refunding stays with finance and admins.
@@ -347,6 +356,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'integrations.machines.activate',
       'kiosk.view',
       'machines.service_codes.issue',
+      'maintenance.costs.record',
     ],
   },
   { key: 'warehouse', label: 'Warehouse', description: 'Packing, shopping runs and machine restocking.', permissions: WAREHOUSE_PERMISSIONS },

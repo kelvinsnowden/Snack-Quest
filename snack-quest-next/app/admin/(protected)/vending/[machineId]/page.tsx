@@ -227,6 +227,12 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         </Link>
         <span className="text-muted-foreground"> Ownership, owner terms, P&amp;L and the stock ledger.</span>
       </p>
+      <p className="text-sm">
+        <Link href={`/admin/vending/maintenance?machineId=${machineId}`} className="font-medium text-primary hover:underline">
+          Maintenance →
+        </Link>
+        <span className="text-muted-foreground"> Problems reported on this machine and what fixing them cost.</span>
+      </p>
 
       <Card>
         <CardHeader>

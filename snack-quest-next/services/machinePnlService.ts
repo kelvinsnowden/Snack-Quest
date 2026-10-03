@@ -5,6 +5,7 @@ import { machineSettlementRepository } from '@/repositories/machineSettlementRep
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { machineEconomicProfileService } from '@/services/machineEconomicProfileService';
 import { advertisingService } from '@/services/advertisingService';
+import { maintenanceService } from '@/services/maintenanceService';
 import { contribution, productEconomics, shareOf, unitCostFor, wholesaleMargin, type Contribution, type EconomicPerspective, type ProductEconomics, type SaleLine } from '@/lib/finance/economics';
 import { isCustomerSale, type MachineEconomicProfile, type MachineTransaction } from '@/types';
 
@@ -39,7 +40,17 @@ export interface MachinePnl {
    * it — the wholesale margin on units sold, the subscription and its share of
    * advertising. Null for Snack Quest's own machines and for the owner's view.
    */
-  snackQuestIncome: { wholesaleMarginKes: number; wholesaleUnpricedUnits: number; subscriptionKes: number; adShareKes: number; totalKes: number } | null;
+  snackQuestIncome: {
+    wholesaleMarginKes: number;
+    wholesaleUnpricedUnits: number;
+    subscriptionKes: number;
+    adShareKes: number;
+    totalKes: number;
+    /** Maintenance Snack Quest paid for on this owner's machine in the period. */
+    maintenanceKes: number;
+    /** `totalKes` less that maintenance. */
+    afterMaintenanceKes: number;
+  } | null;
   /** Advertising attributed to this machine in the period, before any owner share; months with plays whose revenue hasn't been computed are named. */
   advertising: { grossKes: number; uncomputedMonths: string[] };
   sales: PnlSale[];
@@ -63,9 +74,12 @@ export interface PnlCosts {
  *   location commission + the owner's advertising share. Never contains
  *   Snack Quest's landed cost unless the agreement allows it.
  *
- * Costs the system doesn't hold (payment fees, maintenance) are left out and
- * named in `contribution.missing` — never assumed. The result is labelled
- * contribution, never "net profit".
+ * Maintenance is what was recorded in the maintenance ledger for the
+ * period, split by who bore it. An owner's own spend is only known when it
+ * was recorded: an owner responsible for maintenance with nothing recorded
+ * shows it as missing, not zero. Costs the system doesn't hold (payment
+ * fees) are left out and named in `contribution.missing` — never assumed.
+ * The result is labelled contribution, never "net profit".
  */
 class MachinePnlService {
   async forMachine(input: { businessId: string; machineId: string; periodStart: Date; periodEnd: Date; perspective: EconomicPerspective; costs?: PnlCosts }): Promise<MachinePnl> {
@@ -124,12 +138,14 @@ class MachinePnlService {
     const ownerAdShareKes = profile.settlesWithOwner ? shareOf(adRevenueKes, profile.terms.adRevenueSharePartnerPct) : 0;
 
     const ownersView = input.perspective === 'owner' || profile.settlesWithOwner;
+    const maintenance = await maintenanceService.forPnl(input.businessId, input.machineId, input.periodStart, input.periodEnd, profile.partnerId);
+    const ownerMaintenanceKes = profile.terms.maintenanceResponsibility === 'owner' && maintenance.ownerRecords === 0 ? null : maintenance.ownerKes;
     const result = contribution(product, {
-      // Neither the business's M-Pesa tariff nor maintenance costs are recorded yet: reported as missing, never guessed.
+      // The business's M-Pesa tariff isn't recorded yet: reported as missing, never guessed.
       paymentFeesKes: null,
       locationCommissionKes,
       subscriptionKes: ownersView ? subscriptionKes : 0,
-      maintenanceKes: profile.terms.maintenanceResponsibility === 'owner' || !ownersView ? null : 0,
+      maintenanceKes: ownersView ? ownerMaintenanceKes : maintenance.snackQuestKes,
       adRevenueKes: ownersView ? ownerAdShareKes : adRevenueKes,
     });
 
@@ -143,6 +159,8 @@ class MachinePnlService {
         subscriptionKes,
         adShareKes,
         totalKes: wholesale.marginKes + subscriptionKes + adShareKes,
+        maintenanceKes: maintenance.snackQuestKes,
+        afterMaintenanceKes: wholesale.marginKes + subscriptionKes + adShareKes - maintenance.snackQuestKes,
       };
     }
 

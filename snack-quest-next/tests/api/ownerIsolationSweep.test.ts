@@ -7,6 +7,7 @@ vi.mock('@/lib/auth/session', () => ({ verifyStaffSessionFromRequest: staffSessi
 import { partnerService } from '@/services/partnerService';
 import { cameraService } from '@/services/cameraService';
 import { locationService } from '@/services/locationService';
+import { maintenanceService } from '@/services/maintenanceService';
 import { clearIntegrationCollections } from '../helpers/integrationFixtures';
 import { activeMachine, apiKey, onboardManufacturer, signed, type V1Machine } from '../helpers/v1TestHarness';
 
@@ -30,7 +31,7 @@ afterAll(() => {
 
 type Handler = (request: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
 interface RouteCase { name: string; load: () => Promise<Record<string, unknown>>; method: 'GET' | 'POST' | 'PUT'; params: (b: Fixture) => Record<string, string>; body?: unknown }
-interface Fixture { ownerA: string; ownerB: string; machineA: V1Machine; machineB: V1Machine; cameraB: string; locationB: string }
+interface Fixture { ownerA: string; ownerB: string; machineA: V1Machine; machineB: V1Machine; cameraB: string; locationB: string; requestB: string }
 
 let fx: Fixture;
 
@@ -49,7 +50,8 @@ beforeEach(async () => {
   const cameraB = await cameraService.registerCamera(BUSINESS_ID, { machineId: machineB.machineId, type: 'mock', manufacturer: null, model: null, serialNumber: null, label: 'B cam' }, 'staff-1');
   const locationB = await locationService.create({ businessId: BUSINESS_ID, name: 'B site', locationType: 'office', city: 'Nairobi', actor: 'staff-1' });
   await adminFirestore.collection('machines').doc(machineB.machineId).update({ locationId: locationB });
-  fx = { ownerA, ownerB, machineA, machineB, cameraB, locationB };
+  const requestB = await maintenanceService.raiseByOwner(BUSINESS_ID, ownerB, machineB.machineId, `u-${ownerB}`, { category: 'other', description: 'Owner B’s private problem' });
+  fx = { ownerA, ownerB, machineA, machineB, cameraB, locationB, requestB };
 });
 
 const me = (path: string) => () => import(`@/app/api/vending/partners/me/${path}/route`);
@@ -68,6 +70,9 @@ const TARGETED: RouteCase[] = [
   { name: 'camera snapshots', load: me('cameras/[cameraId]/snapshots'), method: 'GET', params: CAMERA_B },
   { name: 'camera stream info', load: me('cameras/[cameraId]/stream-info'), method: 'GET', params: CAMERA_B },
   { name: 'camera test', load: me('cameras/[cameraId]/test'), method: 'POST', params: CAMERA_B, body: {} },
+  { name: 'machine maintenance', load: me('machines/[machineId]/maintenance'), method: 'GET', params: MACHINE_B },
+  { name: 'report a maintenance problem', load: me('machines/[machineId]/maintenance'), method: 'POST', params: MACHINE_B, body: { category: 'other', description: 'not my machine at all' } },
+  { name: 'withdraw a maintenance request', load: me('maintenance/[requestId]/cancel'), method: 'POST', params: (b) => ({ requestId: b.requestB }), body: { reason: 'not mine to withdraw' } },
   { name: 'location expenses', load: me('locations/[locationId]/expenses'), method: 'PUT', params: (b) => ({ locationId: b.locationB }), body: { rentKes: 1, electricityKes: 1, otherKes: 1 } },
 ];
 
@@ -89,7 +94,7 @@ async function call(route: RouteCase, request?: Request) {
 }
 
 const sessionFor = (partnerId: string) => ({ uid: `u-${partnerId}`, partnerId, businessId: BUSINESS_ID, name: 'Owner', contactEmail: null, status: 'active' });
-const leaksB = (text: string) => [fx.machineB.machineId, fx.machineB.machineCode, fx.cameraB, fx.locationB, fx.ownerB].filter((id) => text.includes(id));
+const leaksB = (text: string) => [fx.machineB.machineId, fx.machineB.machineCode, fx.cameraB, fx.locationB, fx.ownerB, fx.requestB].filter((id) => text.includes(id));
 
 describe('owner portal isolation', () => {
   it.each(TARGETED.map((route) => [route.name, route] as const))('%s: owner A cannot reach owner B\'s resource', async (_name, route) => {
@@ -125,6 +130,12 @@ describe('owner portal isolation', () => {
       const withMethod = new Request(request.url, { method: route.method, headers: request.headers, body: route.method === 'GET' ? undefined : JSON.stringify(route.body ?? {}) });
       expect({ route: route.name, status: (await call(route, withMethod)).status }).toEqual({ route: route.name, status: 401 });
     }
+  });
+
+  it('owner B’s maintenance request is untouched by owner A’s attempts', async () => {
+    partnerSessionMock.mockResolvedValue(sessionFor(fx.ownerA));
+    await call(TARGETED.find((route) => route.name === 'withdraw a maintenance request')!);
+    expect((await maintenanceService.findRequest(BUSINESS_ID, fx.requestB)).status).toBe('open');
   });
 
   it('owner A still sees its own machine (the sweep is not passing because everything is refused)', async () => {
