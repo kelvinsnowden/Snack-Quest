@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Banknote, Package, TrendingUp, AlertTriangle, Boxes } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { networkIntelligenceService } from '@/services/networkIntelligenceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { Badge } from '@/components/ui/badge';
+import { IntelligenceTabs } from '@/components/admin/vending/IntelligenceTabs';
 
 export const metadata: Metadata = { title: 'Network Intelligence' };
 
@@ -22,15 +22,11 @@ export default async function AdminVendingIntelligencePage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <IntelligenceTabs current="network" />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Network Intelligence</h1>
           <p className="text-sm text-muted-foreground">Last {overview.windowDays} days, across {overview.machineCount} machines and {overview.locationCount} locations.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/admin/vending/intelligence/locations" className="text-sm font-medium text-primary hover:underline">Location Intelligence →</Link>
-          <Link href="/admin/vending/intelligence/products" className="text-sm font-medium text-primary hover:underline">Product Intelligence →</Link>
-          <Link href="/admin/vending/intelligence/recommendations" className="text-sm font-medium text-primary hover:underline">Recommendations →</Link>
         </div>
       </div>
 

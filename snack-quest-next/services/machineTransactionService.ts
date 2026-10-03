@@ -1,20 +1,36 @@
+import { parseDeviceTime } from '@/lib/vending/machineEvents';
 import 'server-only';
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
+import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
+import { effectiveSellingPriceKes } from '@/lib/vending/sellingPrice';
+import { saleEconomicsService } from '@/services/saleEconomicsService';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
+import { machineSlotService } from '@/services/machineSlotService';
 import {
   machineTransactionRepository,
   MachineTransactionNotFoundError,
+  IllegalTransactionTransitionError,
 } from '@/repositories/machineTransactionRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
-import { machineInventoryMovementService } from '@/services/machineInventoryMovementService';
-import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { machineInventoryMovementService, InsufficientMachineStockError } from '@/services/machineInventoryMovementService';
+import { DispenseCommandService } from '@/services/dispenseCommandService';
+import { machineIntegrationService } from '@/services/machineIntegrationService';
+import { machineEventService } from '@/services/machineEventService';
+import { eventTypeForDispenseResult } from '@/lib/vending/machineEvents';
+import { decideVendOutcome } from '@/lib/vending/vendOutcomeDecision';
+import { logger } from '@/lib/observability/logger';
+import { defaultVendingAdapterResolver, findAdapterRegistration, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
+import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import type { VendResultReport } from '@/lib/vending/hardwareAdapter';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
-import type { MachineTransaction, MachineTransactionPaymentMethod } from '@/types';
+import { paymentInitiationRepository, type PaymentInitiationResult } from '@/repositories/paymentInitiationRepository';
+import { isCustomerSale, type MachineDispenseCommand, type MachineTransaction, type MachineTransactionPaymentMethod } from '@/types';
 
 /**
  * How long a transaction may sit `paid`/`vend_authorized` before the
@@ -49,10 +65,51 @@ const DEFAULT_STUCK_PENDING_AFTER_MS = 5 * 60 * 1000;
  */
 const DEFAULT_PENDING_QUERY_EXPIRE_AFTER_MS = 6 * 60 * 60 * 1000;
 
+/** Pull-reconciliation schedule for an outbound dispense whose outcome is unknown: ask again after 1 min, 5 min, 15 min, 1 h, 6 h, 24 h — then leave it with a human. */
+const PULL_RECONCILE_BACKOFF_MS = [0, 60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, 24 * 60 * 60_000];
+
 export class SlotUnavailableForSaleError extends Error {
   constructor(machineId: string, slotCode: string, detail: string) {
     super(`Slot ${slotCode} on machine ${machineId} is not available for sale: ${detail}`);
     this.name = 'SlotUnavailableForSaleError';
+  }
+}
+
+/** The same idempotency key sent again with different content — a client bug that must be surfaced, never silently resolved either way. */
+/** The same payment is being started by another request right now — the client should poll or retry in a moment, not start another. */
+export class PaymentInitiationInProgressError extends Error {
+  constructor() {
+    super('A payment for this cart is already being started; retry in a moment');
+    this.name = 'PaymentInitiationInProgressError';
+  }
+}
+
+/** How long an automatic (key-less) duplicate is treated as a retry of the first prompt — an STK prompt itself expires well within this. */
+const AUTO_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+/** How long an explicit Idempotency-Key is remembered. */
+const EXPLICIT_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+
+export class IdempotencyKeyReusedError extends Error {
+  constructor(readonly key: string) {
+    super(`Idempotency key "${key}" was already used for a different report`);
+    this.name = 'IdempotencyKeyReusedError';
+  }
+}
+
+/**
+ * What happened to one outcome report:
+ * - `applied` — it changed the sale's state;
+ * - `duplicate` — this exact report was already applied;
+ * - `already_recorded` — a different report already recorded this (or a more definite) outcome;
+ * - `conflict` — it contradicts a decision already acted on (recorded and escalated, money unchanged);
+ * - `unknown_vend` — no dispatched vend matches it on this machine.
+ */
+export type VendReportResult = 'applied' | 'duplicate' | 'already_recorded' | 'conflict' | 'unknown_vend';
+
+export class DiagnosticVendRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DiagnosticVendRequestError';
   }
 }
 
@@ -82,6 +139,9 @@ export class EmptyCartError extends Error {
  * duplicate check to reach either.
  */
 class MachineTransactionService {
+  /** Every dispense goes through the command ledger, built on this service's own adapter resolver so tests' injected adapters are the ones it reaches. */
+  private readonly dispenser: DispenseCommandService;
+
   constructor(
     private readonly resolveAdapter: VendingAdapterResolver = defaultVendingAdapterResolver,
     /**
@@ -92,7 +152,10 @@ class MachineTransactionService {
      * same three methods and this class never changes.
      */
     private readonly paymentGateway: PaymentGateway = darajaGateway,
-  ) {}
+    dispenser?: DispenseCommandService,
+  ) {
+    this.dispenser = dispenser ?? new DispenseCommandService(resolveAdapter);
+  }
 
   /** Step 1 of the payment flow: a pending transaction, before any money has moved. */
   async createPending(input: {
@@ -119,15 +182,28 @@ class MachineTransactionService {
       throw new SlotUnavailableForSaleError(input.machineId, input.slotId, 'out of stock');
     }
 
+    const productCatalogue = slot.productCatalogue ?? 'package';
+    // The same price the customer screen shows (§ ONE PRICE): a machine's price override wins over the slot price.
+    const assortment = await machineAssortmentRepository.findByProduct(input.businessId, input.machineId, productCatalogue, slot.productId);
+    const amountKes = effectiveSellingPriceKes({ slotPriceKes: slot.priceKes, assortmentOverrideKes: assortment?.assorted ? assortment.priceOverrideKes : null });
+    const economics = await saleEconomicsService.snapshotFor({
+      businessId: input.businessId,
+      machineId: input.machineId,
+      machine,
+      productCatalogue,
+      productId: slot.productId,
+      retailPriceKes: amountKes,
+    });
     return machineTransactionRepository.create({
       businessId: input.businessId,
       machineId: input.machineId,
       slotId: input.slotId,
       productId: slot.productId,
-      productCatalogue: slot.productCatalogue ?? 'package',
-      amountKes: slot.priceKes,
+      productCatalogue,
+      amountKes,
       currency: 'KES',
       paymentMethod: input.paymentMethod,
+      economics,
     });
   }
 
@@ -162,18 +238,77 @@ class MachineTransactionService {
     machineId: string;
     slotIds: string[];
     phoneNumber: string;
-  }): Promise<{
-    checkoutRequestId: string;
-    merchantRequestId: string;
-    customerMessage: string;
-    cartRef: string;
-    transactions: { id: string; transactionRef: string; slotId: string; amountKes: number }[];
-  }> {
+    /** The client's `Idempotency-Key`. Without one, the same machine + phone + cart is deduplicated while its first prompt is still pending. */
+    idempotencyKey?: string | null;
+  }): Promise<PaymentInitiationResult & { idempotentReplay: boolean }> {
     if (input.slotIds.length === 0) {
       throw new EmptyCartError();
     }
+    // Idempotency (§ a retry must never send a second M-Pesa prompt the
+    // customer could also approve). Claimed before any work; a retry of
+    // an in-flight or completed initiation gets the original back.
+    const fingerprint = createHash('sha256').update(`${input.phoneNumber}\u0000${[...input.slotIds].sort().join(',')}`).digest('hex');
+    const explicitKey = Boolean(input.idempotencyKey);
+    const claimId = paymentInitiationRepository.docId(input.businessId, input.machineId, explicitKey ? `key:${input.idempotencyKey}` : `auto:${fingerprint}`);
+    for (let attempt = 0; ; attempt += 1) {
+      const claim = await paymentInitiationRepository.claim(claimId, { businessId: input.businessId, machineId: input.machineId, fingerprint, explicitKey }, explicitKey ? EXPLICIT_KEY_TTL_MS : AUTO_DEDUPE_WINDOW_MS);
+      if (claim.claimed) break;
+      const { existing } = claim;
+      if (existing.fingerprint !== fingerprint) {
+        throw new IdempotencyKeyReusedError(String(input.idempotencyKey));
+      }
+      if (existing.status === 'initiating') {
+        throw new PaymentInitiationInProgressError();
+      }
+      if (existing.result) {
+        // Without an explicit key, a repeat is only a retry while the first
+        // prompt is still unanswered; once it's paid or failed, the same cart
+        // again is a new purchase.
+        const stillPending = explicitKey || (await Promise.all(existing.result.transactions.map((t) => machineTransactionRepository.findById(input.businessId, t.id)))).every((t) => t?.status === 'pending');
+        if (stillPending) {
+          return { ...existing.result, idempotentReplay: true };
+        }
+      }
+      if (attempt > 0) {
+        throw new PaymentInitiationInProgressError();
+      }
+      await paymentInitiationRepository.release(claimId);
+    }
+    try {
+      const result = await this.startCartPayment(input);
+      await paymentInitiationRepository.complete(claimId, result);
+      return { ...result, idempotentReplay: false };
+    } catch (error) {
+      await paymentInitiationRepository.fail(claimId).catch(() => undefined);
+      throw error;
+    }
+  }
 
-    const created: { id: string; transactionRef: string; slotId: string; amountKes: number }[] = [];
+  private async startCartPayment(input: { businessId: string; machineId: string; slotIds: string[]; phoneNumber: string }): Promise<PaymentInitiationResult> {
+    // The same gate the dispatcher applies after payment, applied
+    // before it: a machine whose integration isn't active can't
+    // dispense, so the customer is never asked to pay for it (and
+    // then refunded). The gate's internal reason (suspension,
+    // environment) is deliberately not part of the message.
+    // The machine's own status is what staff set when they pause, take
+    // offline or retire it; only an active machine takes money.
+    const machine = await machineRepository.findById(input.businessId, input.machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(input.machineId);
+    }
+    if (machine.status !== 'active') {
+      throw new SlotUnavailableForSaleError(input.machineId, input.slotIds.join(','), 'machine is not accepting orders');
+    }
+    const gate = await machineIntegrationService.dispenseGate(input.businessId, input.machineId, 'pre_payment');
+    if (!gate.allowed) {
+      throw new SlotUnavailableForSaleError(input.machineId, input.slotIds.join(','), 'machine is not accepting orders');
+    }
+    if (gate.integrated) {
+      // Ask the machine to poll fast while this customer pays (the poll response's `nextPollSeconds`).
+      await machineIntegrationRepository.noteOrderExpected(input.machineId, new Date(Date.now() + 3 * 60 * 1000));
+    }
+
+    const created:{ id: string; transactionRef: string; slotId: string; amountKes: number }[] = [];
     try {
       for (const slotId of input.slotIds) {
         const { id, transactionRef } = await this.createPending({
@@ -242,12 +377,14 @@ class MachineTransactionService {
     machineId: string;
     slotId: string;
     phoneNumber: string;
-  }): Promise<{ id: string; transactionRef: string; checkoutRequestId: string; customerMessage: string }> {
+    idempotencyKey?: string | null;
+  }): Promise<{ id: string; transactionRef: string; checkoutRequestId: string; customerMessage: string; idempotentReplay: boolean }> {
     const cart = await this.initiateCartPayment({
       businessId: input.businessId,
       machineId: input.machineId,
       slotIds: [input.slotId],
       phoneNumber: input.phoneNumber,
+      idempotencyKey: input.idempotencyKey,
     });
     const [transaction] = cart.transactions;
     return {
@@ -255,6 +392,77 @@ class MachineTransactionService {
       transactionRef: transaction.transactionRef,
       checkoutRequestId: cart.checkoutRequestId,
       customerMessage: cart.customerMessage,
+      idempotentReplay: cart.idempotentReplay,
+    };
+  }
+
+  /**
+   * A staff test vend (the admin "Test vend" action), through the same
+   * dispense ledger as a sale: claimed before any machine is contacted,
+   * delivered the way this machine's integration delivers every dispense
+   * (queued for a Model B machine to collect, sent to a Model A API), and
+   * resolved by the machine's own report. So a test vend reaches the
+   * machine for real, is recorded, and is never sent twice.
+   *
+   * `requestId` is the caller's id for this one intended vend (the admin
+   * console generates it when the operator confirms): the transaction id
+   * is derived from it and created atomically, so a double click or a
+   * retried request finds the first vend and doesn't dispense again.
+   *
+   * No customer paid: amount 0, payment method `diagnostic`. It isn't a
+   * sale anywhere (`isCustomerSale`), and its stock leaves as `waste`.
+   */
+  async startDiagnosticVend(input: { businessId: string; machineId: string; slotCode: string; requestId: string; actor: string }): Promise<{
+    transactionId: string;
+    transactionRef: string;
+    replay: boolean;
+    authorized: boolean;
+    commandRef: string | null;
+    commandStatus: MachineDispenseCommand['status'] | null;
+    failureReason: string | null;
+  }> {
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(input.requestId)) {
+      throw new DiagnosticVendRequestError('requestId must be 8–64 characters of [A-Za-z0-9_-]');
+    }
+    const machine = await machineRepository.findById(input.businessId, input.machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(input.machineId);
+    }
+    const slot = await machineSlotRepository.findBySlotCode(input.businessId, input.machineId, input.slotCode);
+    if (!slot) {
+      throw new SlotUnavailableForSaleError(input.machineId, input.slotCode, 'slot not configured');
+    }
+    const id = `diag_${createHash('sha256').update(`${input.businessId}\u0000${input.machineId}\u0000${input.requestId}`).digest('hex').slice(0, 32)}`;
+    const { transactionRef, created } = await machineTransactionRepository.create(
+      {
+        businessId: input.businessId,
+        machineId: input.machineId,
+        slotId: input.slotCode,
+        productId: slot.productId ?? '',
+        productCatalogue: slot.productCatalogue ?? 'package',
+        amountKes: 0,
+        currency: 'KES',
+        paymentMethod: 'diagnostic',
+      },
+      { id },
+    );
+    let authorized = false;
+    if (created) {
+      await machineTransactionRepository.moveStatus(input.businessId, id, 'paid', { paymentRef: `DIAGNOSTIC:${input.actor}` });
+      authorized = (await this.authorizeVend(input.businessId, id)).authorized;
+    }
+    const command = await machineDispenseCommandRepository.findByTransactionId(input.businessId, id);
+    if (!created) {
+      authorized = Boolean(command) && !['rejected', 'failed', 'unknown', 'timeout'].includes(command!.status);
+    }
+    return {
+      transactionId: id,
+      transactionRef,
+      replay: !created,
+      authorized,
+      commandRef: command?.commandRef ?? null,
+      commandStatus: command?.status ?? null,
+      failureReason: command?.failureReason ?? null,
     };
   }
 
@@ -327,8 +535,13 @@ class MachineTransactionService {
       return { handled: true, transactionIds, outcome: 'duplicate' };
     }
 
+    // Only items still waiting on this payment are settled by it. An item
+    // already resolved some other way (e.g. by the stuck-payment sweep) is
+    // left alone rather than aborting the rest of the cart half-way.
+    const waiting = group.filter((t) => t.data.status === 'pending');
+
     if (callback.resultCode !== 0) {
-      for (const { id } of group) {
+      for (const { id } of waiting) {
         await this.markPaymentFailed(businessId, id);
       }
       return { handled: true, transactionIds, outcome: 'failed' };
@@ -339,7 +552,7 @@ class MachineTransactionService {
       // Real money moved, but not the amount this cart was created
       // for — never fabricate a match. A human has to look; see
       // `MachineTransactionStatus.manual_review`'s own doc comment.
-      for (const { id, data } of group) {
+      for (const { id, data } of waiting) {
         await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {
           failureReason: `Daraja confirmed KES ${callback.amountKes} against a KES ${totalAmountKes} cart (this item: KES ${data.amountKes})`,
         });
@@ -347,7 +560,7 @@ class MachineTransactionService {
       return { handled: true, transactionIds, outcome: 'amount_mismatch' };
     }
 
-    for (const { id } of group) {
+    for (const { id } of waiting) {
       await this.markPaymentVerified(businessId, id, callback.mpesaReceiptNumber ?? '');
       await this.authorizeVend(businessId, id);
     }
@@ -369,36 +582,43 @@ class MachineTransactionService {
   }
 
   /**
-   * Asks the hardware adapter to dispense — only reachable once the
-   * transaction is `paid`. An adapter refusal (offline, empty,
-   * disabled) moves straight to `paid_vend_failed`, because nothing
-   * was actually authorized to reverse.
+   * Turns a paid transaction into exactly one dispense instruction
+   * (§ MACHINE COMMAND SAFETY). Everything physical happens inside
+   * `DispenseCommandService.dispatchForTransaction`, which claims the
+   * command *before* contacting any hardware — so a retried callback or
+   * a concurrent caller finds the claim and never reaches the machine a
+   * second time. This method only maps the dispatch outcome onto the
+   * money side:
+   *
+   * - acknowledged / sent → `vend_authorized` (waiting on the outcome)
+   * - rejected (provably never executed) → `paid_vend_failed` (refund path)
+   * - unknown (may have dispensed) → `manual_review`, never a retry
+   * - duplicate → nothing; the first dispatch already moved the money side
    */
-  async authorizeVend(businessId: string, transactionId: string): Promise<{ authorized: boolean; vendRef: string }> {
-    const transaction = await machineTransactionRepository.findById(businessId, transactionId);
-    if (!transaction) {
-      throw new MachineTransactionNotFoundError(transactionId);
-    }
-    const machine = await machineRepository.findById(businessId, transaction.machineId);
-    if (!machine) {
-      throw new MachineNotFoundError(transaction.machineId);
-    }
+  async authorizeVend(businessId: string, transactionId: string): Promise<{ authorized: boolean; vendRef: string | null }> {
+    const { outcome, command } = await this.dispenser.dispatchForTransaction(businessId, transactionId, 'system:payment');
 
-    const adapter = this.resolveAdapter(machine.manufacturer);
-    const result = await adapter.authorizeVend(transaction.machineId, transaction.slotId);
-
-    if (!result.authorized) {
-      await machineTransactionRepository.moveStatus(businessId, transactionId, 'paid_vend_failed', {
-        vendRef: result.vendRef,
-        failureReason: result.reason,
-      });
-      return { authorized: false, vendRef: result.vendRef };
+    switch (outcome) {
+      case 'duplicate':
+        return { authorized: !['rejected', 'failed', 'unknown', 'timeout'].includes(command.status), vendRef: command.vendRef };
+      case 'acknowledged':
+      case 'sent':
+        await machineTransactionRepository.moveStatus(businessId, transactionId, 'vend_authorized', { vendRef: command.vendRef });
+        return { authorized: true, vendRef: command.vendRef };
+      case 'rejected':
+        await machineTransactionRepository.moveStatus(businessId, transactionId, 'paid_vend_failed', {
+          vendRef: command.vendRef,
+          failureReason: command.failureReason,
+        });
+        return { authorized: false, vendRef: command.vendRef };
+      case 'unknown':
+        await machineTransactionRepository.moveStatus(businessId, transactionId, 'manual_review', {
+          vendRef: command.vendRef,
+          failureReason: command.failureReason,
+          dispenseFailureStatus: 'unknown',
+        });
+        return { authorized: false, vendRef: command.vendRef };
     }
-
-    await machineTransactionRepository.moveStatus(businessId, transactionId, 'vend_authorized', {
-      vendRef: result.vendRef,
-    });
-    return { authorized: true, vendRef: result.vendRef };
   }
 
   /**
@@ -424,8 +644,40 @@ class MachineTransactionService {
     }
     const adapter = this.resolveAdapter(machine.manufacturer);
     const report = adapter.receiveVendResult(input.rawPayload); // throws UnrecognisedHardwarePayloadError, deliberately uncaught here
+    return this.applyVendReport({ ...input, report });
+  }
 
-    const { isNew, id: telemetryEventId } = await machineTelemetryEventRepository.recordIfNew({
+  /**
+   * The single place a vend outcome — however it arrived (a pushed
+   * device report parsed by an adapter, a v1 API call, a webhook, a
+   * pulled `getDispenseStatus` during reconciliation) — touches money
+   * and inventory.
+   *
+   * Idempotent and crash-safe:
+   * - The report's idempotency key is claimed with a fingerprint of its
+   *   content. A repeat with the same content is a no-op once processed,
+   *   and is *resumed* if an earlier attempt died part-way. The same key
+   *   with different content is refused (`IdempotencyKeyReusedError`).
+   * - What to do is decided by `decideVendOutcome` (one pure table),
+   *   applied with compare-and-set on the transaction, so two concurrent
+   *   reports can never both apply from the same state.
+   * - Stock moves under the key `sale:{transactionId}` — at most once per
+   *   sale, whichever report or retry gets there.
+   * - A report that contradicts a decision already acted on is a
+   *   *conflict*: the physical fact is recorded, an operator is alerted,
+   *   money is never silently flipped.
+   */
+  async applyVendReport(input: {
+    businessId: string;
+    machineId: string;
+    report: VendResultReport;
+    rawPayload: unknown;
+    source: string;
+    actor: string;
+  }): Promise<{ applied: boolean; transactionId: string | null; result: VendReportResult }> {
+    const { report } = input;
+    const fingerprint = createHash('sha256').update(JSON.stringify([report.vendRef, report.status])).digest('hex');
+    const claim = await machineTelemetryEventRepository.recordIfNew({
       businessId: input.businessId,
       machineId: input.machineId,
       eventType: 'vend_result',
@@ -435,59 +687,312 @@ class MachineTransactionService {
       // `machineTransactionRepository.moveStatus` stamps with the
       // server's own receipt time.
       deviceTimestamp: parseDeviceTimestamp(report.deviceTimestamp),
-      payload: input.rawPayload as Record<string, unknown>,
+      payload: (typeof input.rawPayload === 'object' && input.rawPayload !== null ? input.rawPayload : { report }) as Record<string, unknown>,
       source: input.source,
+      fingerprint,
     });
-
-    if (!isNew) {
-      // Already applied by an earlier delivery of the same report —
-      // exactly the case § idempotency exists to make a no-op.
-      return { applied: false, transactionId: null };
+    const telemetryEventId = claim.id;
+    if (!claim.isNew) {
+      if (claim.fingerprint && claim.fingerprint !== fingerprint) {
+        throw new IdempotencyKeyReusedError(report.idempotencyKey);
+      }
+      if (claim.processed) {
+        return { applied: false, transactionId: null, result: 'duplicate' };
+      }
+      // An earlier attempt claimed this key and died before finishing:
+      // resume it. Every step below is idempotent, so resuming is safe.
     }
 
-    const found = await machineTransactionRepository.findByVendRef(input.businessId, report.vendRef);
-    if (!found) {
-      await machineTelemetryEventRepository.markFailed(telemetryEventId, `no transaction found for vendRef ${report.vendRef}`);
-      return { applied: false, transactionId: null };
-    }
-
-    if (report.status === 'success') {
-      await machineTransactionRepository.moveStatus(input.businessId, found.id, 'dispensed', {
-        dispenseFailureStatus: null,
-        appliedTelemetryEventId: telemetryEventId,
-      });
-      await machineInventoryMovementService.recordMovement({
+    const found = await this.findTransactionForReport(input.businessId, report.vendRef);
+    if (!found || found.data.machineId !== input.machineId) {
+      await machineTelemetryEventRepository.markFailed(telemetryEventId, `no transaction found for vendRef ${report.vendRef} on this machine`);
+      await machineEventService.record({
         businessId: input.businessId,
         machineId: input.machineId,
-        slotId: found.data.slotId,
-        reason: 'sale',
-        quantityDelta: -1,
-        sourceTransactionId: found.id,
-        actor: input.actor,
+        // Not a bug to shrug at: a machine saying it dispensed something we
+        // never ordered means product may have left without payment
+        // (tampering, a local cash sale, or a mis-mapped integration).
+        type: 'DISPENSE_UNRECOGNISED',
+        source: 'dispense_ledger',
+        dedupeKey: `unmatched-vend:${telemetryEventId}`,
+        nativeType: 'UNRECOGNISED_DISPENSE_REPORT',
+        data: { vendRef: report.vendRef, status: report.status },
       });
-    } else if (report.status === 'unknown') {
-      // The device itself cannot say what happened — the same
-      // "genuinely don't know, don't guess" case the timeout sweep
-      // already routes to `manual_review` for, reached here from an
-      // explicit report instead of silence (§ DISPENSE RESULT:
-      // "UNKNOWN vend results require reconciliation"). Inventory is
-      // never touched — the same rule every other non-success status
-      // already follows.
-      await machineTransactionRepository.moveStatus(input.businessId, found.id, 'manual_review', {
-        failureReason: report.failureReason,
-        dispenseFailureStatus: report.status,
-        appliedTelemetryEventId: telemetryEventId,
-      });
-    } else {
-      await machineTransactionRepository.moveStatus(input.businessId, found.id, 'paid_vend_failed', {
-        failureReason: report.failureReason,
-        dispenseFailureStatus: report.status,
-        appliedTelemetryEventId: telemetryEventId,
-      });
+      return { applied: false, transactionId: null, result: 'unknown_vend' };
     }
 
+    // Decide against the transaction's current state and apply with
+    // compare-and-set. If another report changed the state in between,
+    // the CAS refuses and we decide again against the new state — so two
+    // contradicting reports racing each other end as "one applied, one
+    // conflict", never as an error and never as both applied.
+    let transaction = found.data;
+    let decision = decideVendOutcome(transaction.status, report.status);
+    let result: VendReportResult = 'applied';
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        result = await this.applyDecision(input, found.id, transaction, decision, telemetryEventId);
+        break;
+      } catch (error) {
+        if (!(error instanceof IllegalTransactionTransitionError) || attempt >= 2) {
+          throw error;
+        }
+        const fresh = await machineTransactionRepository.findById(input.businessId, found.id);
+        if (!fresh) {
+          throw error;
+        }
+        transaction = fresh;
+        decision = decideVendOutcome(transaction.status, report.status);
+      }
+    }
+
+    if (decision.kind === 'complete_sale' || decision.kind === 'fail_sale' || decision.kind === 'review') {
+      await this.dispenser.recordOutcome(input.businessId, found.id, report.status, report.failureReason);
+      // A jam or an unknown result: stop selling from this slot until someone checks it.
+      await machineSlotService.quarantineAfterVend(input.businessId, found.data.machineId, found.data.slotId, report.status, found.id);
+      await machineEventService.record({
+        businessId: input.businessId,
+        machineId: input.machineId,
+        type: eventTypeForDispenseResult(report.status),
+        source: 'dispense_ledger',
+        dedupeKey: `dispense-result:${telemetryEventId}`,
+        deviceTimestamp: report.deviceTimestamp,
+        slotCode: found.data.slotId,
+        data: { transactionId: found.id, vendRef: report.vendRef, status: report.status, stage: 'machine', reason: report.failureReason },
+      });
+    }
+    if (decision.kind === 'noop' && decision.reason === 'already_in_review' && report.status === 'unknown') {
+      // The sale is already with a human; the machine's "I can't tell" still
+      // belongs on the command, so it isn't asked for this outcome again.
+      await this.dispenser.recordOutcome(input.businessId, found.id, report.status, report.failureReason);
+    }
     await machineTelemetryEventRepository.markProcessed(telemetryEventId);
-    return { applied: true, transactionId: found.id };
+    if (!claim.isNew && result === 'already_recorded') {
+      // Resuming our own earlier attempt: to the caller this is a repeat of a report already applied.
+      result = 'duplicate';
+    }
+    return { applied: result === 'applied', transactionId: found.id, result };
+  }
+
+  /**
+   * The sale a vend report is about. Usually the transaction carries the
+   * vend reference; but the command ledger is written first, so if the
+   * dispatcher died between making the command visible and recording the
+   * reference on the transaction (the recovery sweep repairs that within
+   * minutes), a machine that already dispensed and reported is still
+   * matched — through the command, which always names its transaction.
+   */
+  private async findTransactionForReport(businessId: string, vendRef: string): Promise<{ id: string; data: MachineTransaction } | null> {
+    const direct = await machineTransactionRepository.findByVendRef(businessId, vendRef);
+    if (direct) {
+      return direct;
+    }
+    const command = (await machineDispenseCommandRepository.findByCommandRef(businessId, vendRef)) ?? (await machineDispenseCommandRepository.findByVendRef(businessId, vendRef));
+    if (!command) {
+      return null;
+    }
+    const transaction = await machineTransactionRepository.findById(businessId, command.transactionId);
+    return transaction ? { id: command.transactionId, data: transaction } : null;
+  }
+
+  private async applyDecision(
+    input: { businessId: string; machineId: string; report: VendResultReport; source: string; actor: string },
+    transactionId: string,
+    transaction: MachineTransaction,
+    decision: ReturnType<typeof decideVendOutcome>,
+    telemetryEventId: string,
+  ): Promise<VendReportResult> {
+    const { report } = input;
+    const current = transaction.status;
+    const found = { id: transactionId, data: transaction };
+    let result: VendReportResult = 'applied';
+    switch (decision.kind) {
+      // `changed: false` means a concurrent or earlier attempt already
+      // made this move — the steps after it still run (each is
+      // idempotent, which is what makes resuming a crash safe), but only
+      // the attempt that made the move reports `applied`.
+      case 'complete_sale': {
+        const { changed } = await machineTransactionRepository.moveStatus(input.businessId, found.id, 'dispensed', { dispenseFailureStatus: null, appliedTelemetryEventId: telemetryEventId }, { expectedFrom: [current], allowNoop: true });
+        await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor, found.data);
+        result = changed ? 'applied' : 'duplicate';
+        break;
+      }
+      case 'fail_sale': {
+        const { changed } = await machineTransactionRepository.moveStatus(
+          input.businessId,
+          found.id,
+          'paid_vend_failed',
+          { failureReason: report.failureReason, dispenseFailureStatus: report.status, appliedTelemetryEventId: telemetryEventId },
+          { expectedFrom: [current], allowNoop: true },
+        );
+        result = changed ? 'applied' : 'duplicate';
+        break;
+      }
+      case 'review': {
+        const { changed } = await machineTransactionRepository.moveStatus(
+          input.businessId,
+          found.id,
+          'manual_review',
+          { failureReason: report.failureReason, dispenseFailureStatus: report.status, appliedTelemetryEventId: telemetryEventId },
+          { expectedFrom: [current], allowNoop: true },
+        );
+        result = changed ? 'applied' : 'duplicate';
+        break;
+      }
+      case 'noop':
+        result = 'already_recorded';
+        if (decision.reason === 'same_outcome' && report.status === 'success') {
+          // Self-healing: an earlier attempt may have recorded the sale
+          // and died before moving stock. The movement is keyed per sale,
+          // so ensuring it exists is safe however many times it runs.
+          await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor, found.data);
+        }
+        break;
+      case 'conflict': {
+        result = 'conflict';
+        const conflict = { reportedStatus: report.status, previousStatus: current, reportedAt: Timestamp.now() as unknown as MachineTransaction['createdAt'], source: input.source, resolved: false };
+        if (decision.moveToReview) {
+          await machineTransactionRepository.moveStatus(input.businessId, found.id, 'manual_review', { outcomeConflict: conflict, failureReason: decision.description }, { expectedFrom: [current], allowNoop: true });
+        } else {
+          await machineTransactionRepository.recordOutcomeConflict(input.businessId, found.id, conflict);
+        }
+        if (decision.recordStock) {
+          await this.recordSaleMovement(input.businessId, input.machineId, found.id, found.data.slotId, input.actor, found.data);
+        }
+        await machineEventService.record({
+          businessId: input.businessId,
+          machineId: input.machineId,
+          type: 'DISPENSE_OUTCOME_CONFLICT',
+          source: 'dispense_ledger',
+          dedupeKey: `dispense-conflict:${telemetryEventId}`,
+          slotCode: found.data.slotId,
+          data: { transactionId: found.id, vendRef: report.vendRef, reported: report.status, previousStatus: current, description: decision.description, severity: decision.severity },
+        });
+        logger.warn('dispense outcome conflict', { transactionId: found.id, machineId: input.machineId, reported: report.status, previousStatus: current, source: input.source });
+        break;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * The one sale movement per transaction. A physically dispensed
+   * product against a ledger that already says zero is recorded as an
+   * inventory mismatch for a human, never as negative stock and never as
+   * a failed report.
+   */
+  private async recordSaleMovement(businessId: string, machineId: string, transactionId: string, slotId: string, actor: string, transaction: Pick<MachineTransaction, 'paymentMethod'>): Promise<void> {
+    try {
+      await machineInventoryMovementService.recordMovement({
+        businessId,
+        machineId,
+        slotId,
+        // A diagnostic vend removed the product without selling it.
+        reason: isCustomerSale(transaction) ? 'sale' : 'waste',
+        quantityDelta: -1,
+        sourceTransactionId: transactionId,
+        actor,
+        idempotencyKey: `sale:${transactionId}`,
+      });
+    } catch (error) {
+      if (!(error instanceof InsufficientMachineStockError)) {
+        throw error;
+      }
+      await machineEventService.record({
+        businessId,
+        machineId,
+        type: 'INVENTORY_MISMATCH',
+        source: 'dispense_ledger',
+        dedupeKey: `sale-against-empty:${transactionId}`,
+        slotCode: slotId,
+        data: { transactionId, expected: 0, reported: -1, reason: 'machine dispensed from a slot the ledger says is empty' },
+      });
+    }
+  }
+
+  /**
+   * Resolves dispenses whose outcome is `unknown` or `timeout` by
+   * asking the integration directly (§ RECONCILIATION). Only outbound
+   * integrations can be asked — an inbound machine's outcome only ever
+   * arrives by the machine reporting it. A definitive answer is applied
+   * through `applyVendReport`, exactly like a pushed report; anything
+   * short of definitive (still pending, still dispensing, unknown, or
+   * the manufacturer unreachable) leaves the case with a human.
+   */
+  async reconcileUnknownDispenses(businessId: string): Promise<{ resolved: number; stillUnknown: number; itemErrors: Error[] }> {
+    let resolved = 0;
+    let stillUnknown = 0;
+    const itemErrors: Error[] = [];
+    const now = new Date();
+    for (const status of ['unknown', 'timeout'] as const) {
+      for (const command of await machineDispenseCommandRepository.listByStatusUpdatedBefore(businessId, status, now)) {
+        // One command failing (a bad report, a transient write error) is
+        // counted and skipped; the others still reconcile. Applying a
+        // report is idempotent, so the next sweep retries it safely.
+        try {
+          const outcome = await this.reconcileOneUnknownDispense(businessId, command, now);
+          if (outcome === 'resolved') resolved += 1;
+          else stillUnknown += 1;
+        } catch (error) {
+          stillUnknown += 1;
+          logger.error('pull reconciliation failed for one dispense; continuing', { commandRef: command.commandRef, error });
+          itemErrors.push(new Error(`${command.commandRef}: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      }
+    }
+    return { resolved, stillUnknown, itemErrors };
+  }
+
+  private async reconcileOneUnknownDispense(businessId: string, command: MachineDispenseCommand, now: Date): Promise<'resolved' | 'still_unknown'> {
+    if (findAdapterRegistration(command.adapterKey)?.direction !== 'outbound') {
+      return 'still_unknown';
+    }
+    // Back off per command so a manufacturer outage isn't hammered by every sweep.
+    const attempts = command.reconcileAttempts ?? 0;
+    if (command.nextReconcileAt && command.nextReconcileAt.toMillis() > now.getTime()) {
+      return 'still_unknown';
+    }
+    if (attempts >= PULL_RECONCILE_BACKOFF_MS.length) {
+      // Out of automatic attempts — the case stays with a human.
+      return 'still_unknown';
+    }
+    const scheduleNext = () =>
+      machineDispenseCommandRepository.scheduleReconcile(
+        businessId,
+        command.transactionId,
+        attempts + 1,
+        attempts + 1 < PULL_RECONCILE_BACKOFF_MS.length ? new Date(now.getTime() + PULL_RECONCILE_BACKOFF_MS[attempts + 1]) : null,
+      );
+    const vendRef = command.vendRef ?? command.commandRef;
+    let report: Awaited<ReturnType<ReturnType<VendingAdapterResolver>['getDispenseStatus']>>;
+    try {
+      report = await this.resolveAdapter(command.adapterKey).getDispenseStatus(command.machineId, vendRef);
+    } catch (error) {
+      await machineIntegrationRepository.recordError(command.machineId, 'connection', error instanceof Error ? error.message : 'status lookup failed');
+      await scheduleNext();
+      return 'still_unknown';
+    }
+    if (report.state === 'pending' || report.state === 'dispensing' || report.state === 'unknown') {
+      await scheduleNext();
+      return 'still_unknown';
+    }
+    const { applied } = await this.applyVendReport({
+      businessId,
+      machineId: command.machineId,
+      report: {
+        vendRef,
+        dispensed: report.state === 'success',
+        status: report.state,
+        failureReason: report.failureReason,
+        deviceTimestamp: null,
+        idempotencyKey: `pull:${command.commandRef}:${report.state}`,
+      },
+      rawPayload: { reconciledFrom: 'getDispenseStatus', commandRef: command.commandRef, state: report.state },
+      source: 'reconciliation',
+      actor: 'system:dispense-reconciliation',
+    });
+    return applied ? 'resolved' : 'still_unknown';
   }
 
   /**
@@ -622,13 +1127,43 @@ class MachineTransactionService {
     return { resolvedFailed, flaggedForManualReview, stillPending };
   }
 
-  /** The customer's money is owed back — recorded, never itself moved. See `docs/VENDING_FOUNDATION.md` for why the actual reversal is explicitly not wired here. */
-  async requestRefund(businessId: string, transactionId: string): Promise<void> {
-    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refund_requested');
+  /**
+   * A person checked a sale under review and the customer did get the
+   * product (the camera shows it, the slot count dropped, the customer
+   * confirmed). Completes the sale exactly as a machine report would —
+   * same status, same one stock movement per sale — and marks any
+   * contradicting machine report as settled by that decision. Only from
+   * `manual_review`: a sale the machine already said failed is never
+   * turned into revenue by hand.
+   */
+  async confirmDeliveredAfterReview(businessId: string, transactionId: string, actor: string): Promise<void> {
+    const transaction = await machineTransactionRepository.findById(businessId, transactionId);
+    if (!transaction) {
+      throw new MachineTransactionNotFoundError(transactionId);
+    }
+    const settled = transaction.outcomeConflict ? { outcomeConflict: { ...transaction.outcomeConflict, resolved: true } } : {};
+    await machineTransactionRepository.moveStatus(businessId, transactionId, 'dispensed', settled, { expectedFrom: ['manual_review'] });
+    await this.recordSaleMovement(businessId, transaction.machineId, transactionId, transaction.slotId, actor, transaction);
   }
 
+  /**
+   * The customer's money is owed back: recorded as intent. Moving the
+   * money is `vendingSaleReviewService` (an M-Pesa reversal, or a refund
+   * a person sent and recorded). From a failed vend, or from review once
+   * a person has decided the product did not come out.
+   */
+  async requestRefund(businessId: string, transactionId: string): Promise<void> {
+    const transaction = await machineTransactionRepository.findById(businessId, transactionId);
+    if (!transaction) {
+      throw new MachineTransactionNotFoundError(transactionId);
+    }
+    const settled = transaction.outcomeConflict ? { outcomeConflict: { ...transaction.outcomeConflict, resolved: true } } : {};
+    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refund_requested', settled, { expectedFrom: ['paid_vend_failed', 'manual_review'] });
+  }
+
+  /** The money is confirmed back with the customer. Safe to repeat: a second confirmation of the same refund changes nothing. */
   async markRefunded(businessId: string, transactionId: string): Promise<void> {
-    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refunded');
+    await machineTransactionRepository.moveStatus(businessId, transactionId, 'refunded', {}, { expectedFrom: ['refund_requested'], allowNoop: true });
   }
 
   async findById(businessId: string, transactionId: string): Promise<MachineTransaction | null> {
@@ -641,11 +1176,7 @@ export { MachineTransactionService };
 
 /** A device's own ISO timestamp, kept as a fact rather than trusted for ordering — an unparseable or missing value is simply absent, never a thrown error over a field nothing downstream depends on. */
 function parseDeviceTimestamp(iso: string | null): MachineTransaction['createdAt'] | null {
-  if (!iso) {
-    return null;
-  }
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime())
-    ? null
-    : (Timestamp.fromDate(parsed) as unknown as MachineTransaction['createdAt']);
+  // Offset-less or unparseable times are absent, never guessed (see `parseDeviceTime`).
+  const parsed = parseDeviceTime(iso);
+  return parsed ? (Timestamp.fromDate(parsed) as unknown as MachineTransaction['createdAt']) : null;
 }

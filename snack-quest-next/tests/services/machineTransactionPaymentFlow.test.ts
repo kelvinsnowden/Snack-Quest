@@ -1,3 +1,4 @@
+import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
@@ -34,6 +35,13 @@ class FakePaymentGateway implements PaymentGateway {
   }
 }
 
+/** Installed, tested and active — only an active machine takes money. */
+async function commission(machineId: string) {
+  for (const status of ['installing', 'testing', 'active'] as const) {
+    await machineService.updateStatus(BUSINESS_ID, machineId, status, 'staff-1');
+  }
+}
+
 async function seedMachineWithSlot(adapter: MockVendingAdapter, quantity = 5) {
   const { machineId } = await machineService.provisionDevice({
     businessId: BUSINESS_ID,
@@ -43,6 +51,7 @@ async function seedMachineWithSlot(adapter: MockVendingAdapter, quantity = 5) {
     model: 'test-model',
     actor: 'staff-1',
   });
+  await commission(machineId);
   adapter.seedSlot(machineId, 'A01', { quantity });
   const slots = new MachineSlotService(() => adapter);
   await slots.configureSlot({
@@ -208,6 +217,23 @@ describe('initiateCartPayment', () => {
   });
 });
 
+describe('machine status', () => {
+  it('takes no money for a machine that is not active — paused, offline or retired — and never calls the gateway', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    const { machineId } = await seedMachineWithSlot(adapter);
+    const service = new MachineTransactionService(() => adapter, gateway);
+    for (const status of ['maintenance', 'offline', 'decommissioned'] as const) {
+      if (status === 'offline') await machineService.updateStatus(BUSINESS_ID, machineId, 'active', 'staff-1');
+      await machineService.updateStatus(BUSINESS_ID, machineId, status, 'staff-1');
+      await expect(service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01'], phoneNumber: '254712345678' })).rejects.toThrow('machine is not accepting orders');
+    }
+    expect(gateway.initiateStkPushMock).not.toHaveBeenCalled();
+    const found = await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get();
+    expect(found.docs).toHaveLength(0);
+  });
+});
+
 describe('handleMpesaCallback', () => {
   async function initiatePayment(adapter: MockVendingAdapter, gateway: FakePaymentGateway, machineId: string, checkoutRequestId = 'ws_CO_1') {
     gateway.initiateStkPushMock.mockResolvedValue({
@@ -242,6 +268,42 @@ describe('handleMpesaCallback', () => {
     expect(transaction?.status).toBe('vend_authorized');
     expect(transaction?.paymentRef).toBe('RECEIPT1');
     expect(transaction?.vendRef).toBeTruthy();
+  });
+
+  it('a machine paused while the customer was paying sends nothing: the sale goes to the refund path (V-09)', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    const { machineId } = await seedMachineWithSlot(adapter);
+    const { service, id } = await initiatePayment(adapter, gateway, machineId);
+    await machineService.updateStatus(BUSINESS_ID, machineId, 'maintenance', 'staff-1');
+    const authorizeSpy = vi.spyOn(adapter, 'authorizeVend');
+
+    await service.handleMpesaCallback(BUSINESS_ID, { checkoutRequestId: 'ws_CO_1', merchantRequestId: 'mr-1', resultCode: 0, resultDesc: 'Success', amountKes: 350, mpesaReceiptNumber: 'RECEIPT-PAUSED' });
+
+    const transaction = await service.findById(BUSINESS_ID, id);
+    expect(transaction?.status).toBe('paid_vend_failed');
+    expect(transaction?.paymentRef).toBe('RECEIPT-PAUSED');
+    expect(transaction?.failureReason).toMatch(/maintenance/);
+    expect(authorizeSpy).not.toHaveBeenCalled();
+  });
+
+  it('a cart item already resolved another way is left alone; the rest of the cart is still settled and dispensed', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockResolvedValue({ merchantRequestId: 'mr-cart-2', checkoutRequestId: 'ws_CO_cart_2', responseCode: '0', responseDescription: 'Success', customerMessage: 'Enter your PIN' });
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await addSecondSlot(adapter, machineId);
+    const service = new MachineTransactionService(() => adapter, gateway);
+    const cart = await service.initiateCartPayment({ businessId: BUSINESS_ID, machineId, slotIds: ['A01', 'B01'], phoneNumber: '254712345678' });
+    const [first, second] = cart.transactions;
+    // e.g. the stuck-payment sweep already sent one item to a human.
+    await machineTransactionRepository.moveStatus(BUSINESS_ID, first.id, 'manual_review', { failureReason: 'test' });
+
+    const outcome = await service.handleMpesaCallback(BUSINESS_ID, { checkoutRequestId: 'ws_CO_cart_2', merchantRequestId: 'mr-cart-2', resultCode: 0, resultDesc: 'Success', amountKes: 500, mpesaReceiptNumber: 'RECEIPT-CART-2' });
+
+    expect(outcome).toMatchObject({ handled: true, outcome: 'succeeded' });
+    expect((await service.findById(BUSINESS_ID, first.id))?.status).toBe('manual_review');
+    expect((await service.findById(BUSINESS_ID, second.id))?.status).toBe('vend_authorized');
   });
 
   it('marks payment_failed on a failed callback, and never authorizes a vend', async () => {

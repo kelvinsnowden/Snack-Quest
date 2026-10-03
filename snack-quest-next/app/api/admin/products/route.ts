@@ -1,12 +1,8 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { productService } from '@/services/productService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { Package } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface CreateProductBody {
   name?: unknown;
@@ -124,8 +120,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.manage')) {
+    return forbiddenForPermission('products.manage');
   }
 
   let body: CreateProductBody;

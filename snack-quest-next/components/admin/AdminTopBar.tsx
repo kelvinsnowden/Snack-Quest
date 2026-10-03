@@ -12,6 +12,7 @@ export function AdminTopBar({
   role,
   roles,
   visibleSections,
+  permissions = null,
 }: {
   businessName: string;
   displayName: string;
@@ -21,11 +22,12 @@ export function AdminTopBar({
   roles?: readonly string[];
   /** Passed through to the mobile drawer so it hides the same sections the sidebar does (§ Admin mobile UX overhaul). */
   visibleSections: AdminSection[] | null;
+  permissions?: readonly string[] | null;
 }) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-2 md:gap-4 md:px-6">
       <div className="flex min-w-0 items-center gap-1 md:gap-4">
-        <AdminMobileNav businessName={businessName} visibleSections={visibleSections} />
+        <AdminMobileNav businessName={businessName} visibleSections={visibleSections} permissions={permissions} />
         {/* Renders as an icon on mobile and a search bar from `md` up. */}
         <GlobalSearchTrigger />
       </div>

@@ -1,6 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
 import type { AdminSection } from '@/lib/auth/adminSections';
+import type { PermissionKey } from '@/lib/auth/permissions';
 import {
+  Building2,
+  HandCoins,
+  ListChecks,
   Receipt,
   Banknote,
   BarChart3,
@@ -8,9 +12,14 @@ import {
   ClipboardList,
   ClipboardCheck,
   GitCompareArrows,
+  Search,
   AlertTriangle,
   Activity,
   Cpu,
+  MonitorSmartphone,
+  Palette,
+  Tv,
+  Plug,
   Flag,
   FolderOpen,
   HelpCircle,
@@ -124,13 +133,21 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { href: '/admin/vending', label: 'Vending Machines', shortLabel: 'Vending', icon: Cpu, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/alerts', label: 'Alert Center', shortLabel: 'Alerts', icon: AlertTriangle, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/kiosk-screen', label: 'Machine Screen', shortLabel: 'Screen', icon: MonitorSmartphone, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/kiosk-design', label: 'Screen Design', shortLabel: 'Design', icon: Palette, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/advertising', label: 'Advertising', shortLabel: 'Ads', icon: Tv, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/restock', label: 'Restock Command Center', shortLabel: 'Restock', icon: PackageSearch, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/partners', label: 'Machine Owners', shortLabel: 'Owners', icon: Banknote, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence', label: 'Network Intelligence', shortLabel: 'Intelligence', icon: BarChart3, section: 'vending', group: 'Vending' },
-  { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Locations', icon: MapPinned, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/locations', label: 'Locations', icon: Building2, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/intelligence/locations', label: 'Location Intelligence', shortLabel: 'Location insights', icon: MapPinned, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/products', label: 'Product Intelligence', shortLabel: 'Products', icon: TrendingUp, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence/recommendations', label: 'Recommendations', icon: Lightbulb, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/sales', label: 'Sales', icon: HandCoins, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/sales/review', label: 'Sales to Review', shortLabel: 'Review', icon: ListChecks, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/trace', label: 'Trace a Sale', shortLabel: 'Trace', icon: Search, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/reconciliation', label: 'Payment Reconciliation', shortLabel: 'Reconciliation', icon: GitCompareArrows, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/integrations', label: 'Machine Integrations', shortLabel: 'Integrations', icon: Plug, section: 'vending', group: 'Vending' },
 
   { href: '/admin/conversations', label: 'Conversations', icon: MessageCircle, section: 'conversations', group: 'Customers' },
   { href: '/admin/customers', label: 'Customers', icon: Users, section: 'marketing', group: 'Customers' },
@@ -153,16 +170,78 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/storage', label: 'Storage', icon: FolderOpen, section: 'operations', group: 'System' },
   { href: '/admin/operations', label: 'Operations', icon: Activity, section: 'operations', group: 'System' },
   { href: '/admin/audit-logs', label: 'Audit logs', icon: ScrollText, section: 'operations', group: 'System' },
-  { href: '/admin/staff', label: 'Staff', icon: UserCog, group: 'System' },
+  { href: '/admin/staff', label: 'Users & permissions', shortLabel: 'Users', icon: UserCog, group: 'System' },
   { href: '/admin/settings', label: 'Settings', icon: Settings, section: 'operations', group: 'System' },
 ];
 
-/** Filters the nav for a session's actual access — `visibleSections: null` means unrestricted (every item shows). */
-export function visibleNavItems(visibleSections: AdminSection[] | null): AdminNavItem[] {
-  if (visibleSections === null) {
-    return ADMIN_NAV_ITEMS;
-  }
-  return ADMIN_NAV_ITEMS.filter((item) => !item.section || visibleSections.includes(item.section));
+/**
+ * The permission a page needs before it appears in the menu
+ * (`lib/auth/permissions.ts`). A page missing from this list shows for
+ * anyone who can open its section.
+ */
+export const NAV_PERMISSION: Record<string, PermissionKey> = {
+  '/admin/orders': 'orders.view',
+  '/admin/deliveries': 'orders.view',
+  '/admin/fulfillment-batches': 'logistics.manage',
+  '/admin/delivery-zones': 'logistics.view',
+  '/admin/fulfilment-costs': 'orders.costs.bulk',
+  '/admin/products': 'products.view',
+  '/admin/inventory': 'products.view',
+  '/admin/snack-items': 'products.view',
+  '/admin/recipes': 'products.view',
+  '/admin/purchase-orders': 'procurement.manage',
+  '/admin/suppliers': 'procurement.manage',
+  '/admin/vending': 'machines.view',
+  '/admin/vending/alerts': 'alerts.view',
+  '/admin/vending/kiosk-screen': 'machine_screen.manage',
+  '/admin/vending/kiosk-design': 'kiosk.view',
+  '/admin/vending/advertising': 'advertising.view',
+  '/admin/vending/restock': 'restock.view',
+  '/admin/vending/partners': 'owners.view',
+  '/admin/vending/locations': 'locations.view',
+  '/admin/vending/intelligence': 'analytics.vending.view',
+  '/admin/vending/intelligence/locations': 'analytics.vending.view',
+  '/admin/vending/intelligence/products': 'analytics.vending.view',
+  '/admin/vending/intelligence/recommendations': 'analytics.vending.view',
+  '/admin/vending/sales': 'sales.view',
+  '/admin/vending/sales/review': 'sales.view',
+  '/admin/vending/trace': 'sales.view',
+  '/admin/vending/reconciliation': 'sales.view',
+  '/admin/vending/integrations': 'integrations.view',
+  '/admin/conversations': 'support.conversations.handle',
+  '/admin/customers': 'customers.view',
+  '/admin/reviews': 'content.manage',
+  '/admin/creators': 'creators.manage',
+  '/admin/campaigns': 'marketing.campaigns.manage',
+  '/admin/referrals': 'marketing.campaigns.manage',
+  '/admin/analytics': 'finance.view',
+  '/admin/withdrawals': 'finance.view',
+  '/admin/reconciliation': 'finance.view',
+  '/admin/discount-codes': 'marketing.discounts.manage',
+  '/admin/faqs': 'content.manage',
+  '/admin/marketing-emails': 'marketing.messages.manage',
+  '/admin/marketing-sms': 'marketing.messages.manage',
+  '/admin/sms-opt-outs': 'marketing.optouts.manage',
+  '/admin/notification-templates': 'settings.notifications.manage',
+  '/admin/storage': 'settings.view',
+  '/admin/operations': 'settings.view',
+  '/admin/audit-logs': 'audit.view',
+  '/admin/staff': 'users.manage',
+  '/admin/settings': 'settings.view',
+};
+
+/**
+ * Filters the nav for a session's actual access. `visibleSections: null`
+ * means every section; `permissions: null` means every permission (a
+ * super admin). A page shows when its section is open and, if it names a
+ * permission, the person holds it.
+ */
+export function visibleNavItems(visibleSections: AdminSection[] | null, permissions: readonly string[] | null = null): AdminNavItem[] {
+  return ADMIN_NAV_ITEMS.filter((item) => {
+    if (visibleSections !== null && item.section && !visibleSections.includes(item.section)) return false;
+    const needed = NAV_PERMISSION[item.href];
+    return !needed || permissions === null || permissions.includes(needed);
+  });
 }
 
 /**

@@ -5,9 +5,12 @@ import { machineRepository, MachineNotFoundError } from '@/repositories/machineR
 import { machineLocationHistoryRepository } from '@/repositories/machineLocationHistoryRepository';
 import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
-import type { DispenseConfirmationStrategy, VendAuthorizationResult } from '@/lib/vending/hardwareAdapter';
-import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
-import { hasCapability } from '@/lib/vending/protocol/capabilities';
+import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
+import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
+import { machineSubscriptionRepository } from '@/repositories/machineSubscriptionRepository';
+import { FieldValue } from 'firebase-admin/firestore';
+import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
+import { isRegisteredAdapterKey, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import {
   MACHINE_STATUS_TRANSITIONS,
   type Machine,
@@ -29,18 +32,29 @@ export class PartnerDoesNotOwnMachineError extends Error {
   }
 }
 
-export class TestVendNotSupportedError extends Error {
-  constructor(manufacturer: string) {
-    super(`"${manufacturer}" machines do not declare support for "vend" — a test vend cannot be attempted`);
-    this.name = 'TestVendNotSupportedError';
+export class OwnerReassignmentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OwnerReassignmentError';
   }
+}
+
+/** `SQ-MCH-000001` — Snack Quest's own machine identity, zero-padded so codes sort in registration order. */
+export function formatMachineCode(sequence: number): string {
+  return `SQ-MCH-${String(sequence).padStart(6, '0')}`;
+}
+
+function machineCodeCounterRef(businessId: string) {
+  return adminFirestore.collection('businesses').doc(businessId).collection('counters').doc('machines');
 }
 
 export interface ProvisionMachineInput {
   businessId: string;
-  machineCode: string;
+  /** Omit (or null) to have Snack Quest generate the next `SQ-MCH-nnnnnn`. Supplied only for machines whose code predates generation. */
+  machineCode?: string | null;
   serialNumber: string;
-  manufacturer: Machine['manufacturer'];
+  /** A registered adapter key — see `Machine.manufacturer`. */
+  manufacturer: string;
   model: string;
   hardwareVersion?: string | null;
   firmwareVersion?: string | null;
@@ -65,8 +79,6 @@ export interface ProvisionMachineInput {
  * business meaning of what it then asks to do.
  */
 class MachineService {
-  constructor(private readonly resolveAdapter: VendingAdapterResolver = defaultVendingAdapterResolver) {}
-
   /**
    * Creates the machine record and issues its first device credential
    * in one call — the whole provisioning act (§ MACHINE INSTALLATION
@@ -74,10 +86,14 @@ class MachineService {
    * secret exactly once; there is no way to retrieve it again, only
    * to rotate it via `rotateDeviceCredential`.
    */
-  async provisionDevice(input: ProvisionMachineInput): Promise<{ machineId: string; credential: IssuedDeviceCredential }> {
-    const existing = await machineRepository.findByMachineCode(input.businessId, input.machineCode);
+  async provisionDevice(input: ProvisionMachineInput): Promise<{ machineId: string; machineCode: string; credential: IssuedDeviceCredential }> {
+    if (!isRegisteredAdapterKey(input.manufacturer)) {
+      throw new UnsupportedManufacturerError(input.manufacturer);
+    }
+    const machineCode = input.machineCode ?? (await this.allocateMachineCode(input.businessId));
+    const existing = await machineRepository.findByMachineCode(input.businessId, machineCode);
     if (existing) {
-      throw new Error(`machineCode "${input.machineCode}" is already in use by machine ${existing.id}`);
+      throw new Error(`machineCode "${machineCode}" is already in use by machine ${existing.id}`);
     }
     if (input.ownerPartnerId) {
       const partner = await partnerRepository.findById(input.businessId, input.ownerPartnerId);
@@ -88,14 +104,17 @@ class MachineService {
 
     const machineId = await machineRepository.create({
       businessId: input.businessId,
-      machineCode: input.machineCode,
+      machineCode,
       serialNumber: input.serialNumber,
       manufacturer: input.manufacturer,
+      manufacturerId: null,
+      modelId: null,
       model: input.model,
       hardwareVersion: input.hardwareVersion ?? null,
       firmwareVersion: input.firmwareVersion ?? null,
       status: 'provisioning',
       ownerPartnerId: input.ownerPartnerId ?? null,
+      ownershipType: input.ownerPartnerId ? 'third_party' : 'snack_quest',
       locationId: null,
       latitude: null,
       longitude: null,
@@ -114,7 +133,25 @@ class MachineService {
       issuedBy: input.actor,
     });
 
-    return { machineId, credential };
+    return { machineId, machineCode, credential };
+  }
+
+  /**
+   * The next `SQ-MCH-nnnnnn`, allocated in a transaction on
+   * `businesses/{id}/counters/machines` (the same counter pattern order
+   * numbers use) so two concurrent registrations can never mint the
+   * same code. A gap from a registration that later fails is harmless;
+   * a duplicate would not be.
+   */
+  private async allocateMachineCode(businessId: string): Promise<string> {
+    const ref = machineCodeCounterRef(businessId);
+    const sequence = await adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const next = ((snapshot.data()?.value as number | undefined) ?? 0) + 1;
+      tx.set(ref, { value: next }, { merge: true });
+      return next;
+    });
+    return formatMachineCode(sequence);
   }
 
   async rotateDeviceCredential(businessId: string, machineId: string, actor: string): Promise<IssuedDeviceCredential> {
@@ -123,6 +160,26 @@ class MachineService {
       throw new MachineNotFoundError(machineId);
     }
     return deviceCredentialRepository.issue({ businessId, machineId, issuedBy: actor });
+  }
+
+  /**
+   * Issues a new screen key and, when `revokeOthers` is set, revokes every
+   * other active key for the machine at once — the response to a leaked
+   * key. Without it the old key keeps working until someone revokes it,
+   * so the screen isn't cut off before it's re-paired.
+   */
+  async replaceDeviceCredential(businessId: string, machineId: string, actor: string, options: { revokeOthers: boolean; reason: string | null }): Promise<{ issued: IssuedDeviceCredential; revokedIds: string[] }> {
+    const issued = await this.rotateDeviceCredential(businessId, machineId, actor);
+    const revokedIds: string[] = [];
+    if (options.revokeOthers) {
+      const active = await deviceCredentialRepository.listActiveByMachine(businessId, machineId);
+      for (const { id } of active) {
+        if (id === issued.credentialId) continue;
+        await deviceCredentialRepository.revoke(businessId, id, actor, options.reason ?? 'Replaced by a new key');
+        revokedIds.push(id);
+      }
+    }
+    return { issued, revokedIds };
   }
 
   /** Immediate revocation, per `DeviceCredential`'s own doc comment — the next request with this secret is rejected, no grace window. */
@@ -173,6 +230,78 @@ class MachineService {
     });
   }
 
+  /**
+   * Hands a machine to another owner (or back to Snack Quest with
+   * `partnerId: null`). Refused while the current owner still has an
+   * active agreement on it — terminate that first, so the agreement's
+   * end date and the ownership change line up and no settlement is
+   * computed on the wrong terms. The history close/open and the
+   * machine's own `ownerPartnerId`/`ownerSince` are one transaction.
+   *
+   * On a machine's first reassignment the owner it had since
+   * registration is written into the history too, so settlements can
+   * check who owned it for any period after registration.
+   */
+  async reassignOwner(businessId: string, machineId: string, partnerId: string | null, actor: string, reason: string | null = null): Promise<void> {
+    const machine = await machineRepository.findById(businessId, machineId);
+    if (!machine) {
+      throw new MachineNotFoundError(machineId);
+    }
+    if ((machine.ownerPartnerId ?? null) === partnerId) {
+      throw new OwnerReassignmentError('The machine already belongs to that owner.');
+    }
+    if (machine.status === 'decommissioned') {
+      throw new OwnerReassignmentError('A retired machine can’t change owner.');
+    }
+    if (partnerId !== null) {
+      const partner = await partnerRepository.findById(businessId, partnerId);
+      if (!partner || partner.deletedAt) {
+        throw new OwnerReassignmentError(`Owner ${partnerId} not found.`);
+      }
+      if (partner.status !== 'active') {
+        throw new OwnerReassignmentError('That owner is suspended. Reactivate them before giving them a machine.');
+      }
+    }
+    const agreement = await partnerMachineAgreementRepository.findActiveForMachine(businessId, machineId);
+    if (agreement) {
+      throw new OwnerReassignmentError('This machine still has an active agreement with its current owner. End that agreement first.');
+    }
+    // Settlements take the machine's open subscription off whoever owns it, so the old owner's must end first.
+    const subscription = await machineSubscriptionRepository.findActiveForMachine(businessId, machineId);
+    if (subscription) {
+      throw new OwnerReassignmentError('This machine still has a subscription for its current owner. Cancel it first.');
+    }
+
+    await adminFirestore.runTransaction(async (tx) => {
+      const ref = machineRepository.getRef(machineId);
+      const snapshot = await tx.get(ref);
+      const current = snapshot.data() as Machine | undefined;
+      if (!current || current.businessId !== businessId) {
+        throw new MachineNotFoundError(machineId);
+      }
+      if ((current.ownerPartnerId ?? null) !== (machine.ownerPartnerId ?? null)) {
+        throw new OwnerReassignmentError('Someone else changed this machine’s owner just now. Reload and try again.');
+      }
+      const open = await machineOwnershipHistoryRepository.findOpenInTransaction(tx, businessId, machineId);
+      if (open.length === 0) {
+        machineOwnershipHistoryRepository.recordOriginalInTransaction(tx, {
+          businessId,
+          machineId,
+          partnerId: current.ownerPartnerId ?? null,
+          since: current.createdAt ? (current.createdAt as unknown as { toDate(): Date }).toDate() : new Date(0),
+          changedBy: actor,
+        });
+      }
+      for (const doc of open) {
+        machineOwnershipHistoryRepository.closeInTransaction(tx, doc.ref);
+      }
+      machineOwnershipHistoryRepository.openInTransaction(tx, { businessId, machineId, partnerId, changedBy: actor, reason });
+      // Ownership follows the owner: no owner is a Snack Quest machine; an owner keeps the type already chosen for them (a third party unless set).
+      const ownershipType = partnerId === null ? 'snack_quest' : current.ownershipType && current.ownershipType !== 'snack_quest' ? current.ownershipType : 'third_party';
+      tx.update(ref, { ownerPartnerId: partnerId, ownershipType, ownerSince: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor });
+    });
+  }
+
   async findById(businessId: string, machineId: string): Promise<Machine | null> {
     return machineRepository.findById(businessId, machineId);
   }
@@ -195,29 +324,6 @@ class MachineService {
 
   async listByPartner(businessId: string, partnerId: string) {
     return machineRepository.listByPartner(businessId, partnerId);
-  }
-
-  /**
-   * A real, live `authorizeVend` call against the machine's own
-   * resolved adapter — the diagnostics page's "Test vend" action
-   * (§ DIAGNOSTICS PAGE: "Require elevated permission for actual test
-   * vend"). This is not a simulation and not a queued command: it is
-   * the exact call `machineTransactionService` makes after a real
-   * payment verifies, run here on demand, which really does dispense
-   * product from a live machine — the reason the route calling this
-   * gates it to `ADMIN_ONLY` rather than the read-only diagnostics
-   * roles every other diagnostic field only needs.
-   */
-  async testVend(businessId: string, machineId: string, slotCode: string): Promise<VendAuthorizationResult> {
-    const machine = await machineRepository.findById(businessId, machineId);
-    if (!machine) {
-      throw new MachineNotFoundError(machineId);
-    }
-    const adapter = this.resolveAdapter(machine.manufacturer);
-    if (!hasCapability(adapter.capabilities(), 'vend')) {
-      throw new TestVendNotSupportedError(machine.manufacturer);
-    }
-    return adapter.authorizeVend(machineId, slotCode);
   }
 
   async fleetStatusSummary(businessId: string): Promise<Record<MachineStatus, number> & { total: number }> {

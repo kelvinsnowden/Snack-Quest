@@ -12,6 +12,14 @@ export class MachineAlreadyHasActiveSubscriptionError extends Error {
   }
 }
 
+/** A subscription request the machine's state doesn't allow — e.g. charging someone who doesn't own the machine. */
+export class SubscriptionRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SubscriptionRefusedError';
+  }
+}
+
 const FREQUENCY_DAYS: Record<MachineSubscriptionFrequency, number> = { weekly: 7, monthly: 30 };
 /** How long a missed period stays "in grace" before arrears actually accrue against the machine's own status — a real number to tune once real subscriptions exist, not fabricated precision. */
 const DEFAULT_GRACE_DAYS = 5;
@@ -40,6 +48,16 @@ class MachineSubscriptionService {
     if (!machine) {
       throw new MachineNotFoundError(input.machineId);
     }
+    // The subscription is netted from this owner's settlements, so it can only ever be the machine's own owner's.
+    if (!machine.ownerPartnerId || machine.ownerPartnerId !== input.partnerId) {
+      throw new SubscriptionRefusedError('A subscription can only be for the machine’s current owner.');
+    }
+    if (!Number.isInteger(input.amountKes) || input.amountKes <= 0 || input.amountKes > 10_000_000) {
+      throw new SubscriptionRefusedError('The amount must be a whole number of shillings above 0.');
+    }
+    if (!input.planName.trim() || input.planName.trim().length > 80) {
+      throw new SubscriptionRefusedError('Give the plan a name (80 characters at most).');
+    }
     const existing = await machineSubscriptionRepository.findActiveForMachine(input.businessId, input.machineId);
     if (existing) {
       throw new MachineAlreadyHasActiveSubscriptionError(input.machineId);
@@ -52,7 +70,7 @@ class MachineSubscriptionService {
       businessId: input.businessId,
       machineId: input.machineId,
       partnerId: input.partnerId,
-      planName: input.planName,
+      planName: input.planName.trim(),
       amountKes: input.amountKes,
       frequency: input.frequency,
       status: 'active',

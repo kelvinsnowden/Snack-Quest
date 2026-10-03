@@ -1,7 +1,9 @@
 {
   "framework": "nextjs",
   "outputDirectory": ".next",
-  "regions": ["cpt1"],
+  "regions": [
+    "cpt1"
+  ],
   "crons": [
     {
       "path": "/api/cron/retry-notifications",
@@ -24,12 +26,20 @@
       "schedule": "0 5 * * *"
     },
     {
+      "path": "/api/cron/reconcile-subscription-arrears",
+      "schedule": "30 5 * * *"
+    },
+    {
       "path": "/api/cron/reconcile-vending-transactions",
       "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/reconcile-vending-commands",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/generate-recommendations",
+      "schedule": "0 8 * * *"
     }
   ]
 }

@@ -1,28 +1,18 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { locationService, LocationNotFoundError } from '@/services/locationService';
 import { serializeLocation } from '@/lib/vending/serialize';
 import type { Location } from '@/types';
-
-const VALID_CUSTOMER_TYPES: NonNullable<Location['customerType']>[] = [
-  'students',
-  'employees',
-  'travelers',
-  'patients_and_visitors',
-  'general_public',
-  'mixed',
-  'other',
-];
-
-const VALID_INDOOR_OUTDOOR: NonNullable<Location['indoorOutdoor']>[] = ['indoor', 'outdoor', 'mixed'];
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { VALID_LOCATION_TYPES, VALID_CUSTOMER_TYPES, VALID_INDOOR_OUTDOOR } from '@/lib/vending/locationOptions';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'locations.view')) {
+    return forbiddenForPermission('locations.view');
   }
 
   const { id } = await params;
@@ -39,8 +29,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'locations.manage')) {
+    return forbiddenForPermission('locations.manage');
   }
 
   const { id } = await params;
@@ -58,6 +48,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (patch.indoorOutdoor !== undefined && patch.indoorOutdoor !== null && !VALID_INDOOR_OUTDOOR.includes(patch.indoorOutdoor as NonNullable<Location['indoorOutdoor']>)) {
     return Response.json({ error: `indoorOutdoor must be one of: ${VALID_INDOOR_OUTDOOR.join(', ')}` }, { status: 400 });
+  }
+
+  if ('locationType' in patch && !VALID_LOCATION_TYPES.includes(patch.locationType as Location['locationType'])) {
+    return Response.json({ error: `locationType must be one of: ${VALID_LOCATION_TYPES.join(', ')}` }, { status: 400 });
+  }
+  for (const key of ['name', 'city'] as const) {
+    if (key in patch && (typeof patch[key] !== 'string' || !(patch[key] as string).trim())) {
+      return Response.json({ error: `${key} can't be empty` }, { status: 400 });
+    }
+  }
+  for (const key of ['latitude', 'longitude', 'estimatedFootTraffic'] as const) {
+    if (key in patch && patch[key] !== null && (typeof patch[key] !== 'number' || !Number.isFinite(patch[key]))) {
+      return Response.json({ error: `${key} must be a number or empty` }, { status: 400 });
+    }
   }
 
   const fields: Partial<Omit<Location, 'businessId' | 'createdAt' | 'createdBy' | 'deletedAt'>> = {};
@@ -80,7 +84,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   try {
+    const before = await locationService.findById(session.businessId, id);
     await locationService.update(session.businessId, id, fields, session.uid);
+    await recordAuditLog(request, {
+      businessId: session.businessId,
+      actorId: session.uid,
+      action: 'update_location',
+      entityType: 'location',
+      entityId: id,
+      before: before ? pick(before as unknown as Record<string, unknown>, Object.keys(fields)) : null,
+      after: fields as Record<string, unknown>,
+    });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof LocationNotFoundError) {
@@ -88,4 +102,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     throw error;
   }
+}
+
+function pick(source: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  return Object.fromEntries(keys.map((key) => [key, source[key] ?? null]));
 }

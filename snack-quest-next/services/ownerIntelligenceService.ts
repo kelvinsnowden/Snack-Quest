@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { machineService } from '@/services/machineService';
+import { ownerSince, clipStartDate } from '@/lib/vending/ownerTenure';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
 import { recommendationEngineService } from '@/services/recommendationEngineService';
@@ -47,10 +48,11 @@ export interface OwnerMachineSummary {
  */
 class OwnerIntelligenceService {
   async getMachineOwnerSummary(businessId: string, partnerId: string, machineId: string, windowDays = 30): Promise<OwnerMachineSummary> {
-    await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
+    const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
 
     const { startDate, endDate } = trailingWindow(windowDays);
-    const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, startDate, endDate);
+    // Only this owner's whole days with the machine — never a previous owner's sales.
+    const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, ownerSince(machine)), endDate);
 
     let revenueKes = 0;
     let unitsSold = 0;

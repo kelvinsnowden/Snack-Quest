@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
-import { machineSettlementService, OverlappingSettlementPeriodError } from '@/services/machineSettlementService';
+import { machineSettlementService, OverlappingSettlementPeriodError, OwnershipChangedDuringPeriodError } from '@/services/machineSettlementService';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSettlement } from '@/lib/vending/serialize';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A machine's own settlement history (§ MACHINE ECONOMICS, § SETTLEMENT,
@@ -17,8 +17,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.view')) {
+    return forbiddenForPermission('owner_finance.view');
   }
 
   const { id } = await params;
@@ -31,8 +31,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.settlements.manage')) {
+    return forbiddenForPermission('owner_finance.settlements.manage');
   }
 
   const { id } = await params;
@@ -52,6 +52,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if (parsedEnd <= parsedStart) {
     return Response.json({ error: 'periodEnd must be after periodStart' }, { status: 400 });
+  }
+  // A period still running would settle before all its sales are in.
+  if (parsedEnd.getTime() > Date.now()) {
+    return Response.json({ error: 'The period can’t end in the future — its sales aren’t all in yet.' }, { status: 400 });
   }
 
   const machine = await machineRepository.findById(session.businessId, id);
@@ -73,7 +77,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
     return Response.json({ settlementId }, { status: 201 });
   } catch (error) {
-    if (error instanceof OverlappingSettlementPeriodError) {
+    if (error instanceof OverlappingSettlementPeriodError || error instanceof OwnershipChangedDuringPeriodError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
     throw error;

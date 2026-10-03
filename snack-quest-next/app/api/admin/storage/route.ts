@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { storageService } from '@/services/storageService';
 import {
@@ -11,6 +6,7 @@ import {
 } from '@/lib/storage/policies';
 import { StorageUploadError } from '@/lib/storage/errors';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Lists what's actually stored for this business in one directory (§ Admin: Storage browser) — a real Vercel Blob listing, never a Firestore-derived guess. */
 export async function GET(request: Request): Promise<Response> {
@@ -18,8 +14,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'settings.view')) {
+    return forbiddenForPermission('settings.view');
   }
 
   const { searchParams } = new URL(request.url);
@@ -46,8 +42,8 @@ export async function DELETE(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'settings.storage.manage')) {
+    return forbiddenForPermission('settings.storage.manage');
   }
 
   let body: unknown;

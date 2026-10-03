@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { reconcileStuckTransactionsMock, reconcileStuckPendingTransactionsMock, recordMock } = vi.hoisted(() => ({
+const { reconcileStuckTransactionsMock, reconcileStuckPendingTransactionsMock, reconcileUnknownDispensesMock, recordMock } = vi.hoisted(() => ({
   reconcileStuckTransactionsMock: vi.fn(),
   reconcileStuckPendingTransactionsMock: vi.fn(),
+  reconcileUnknownDispensesMock: vi.fn(),
   recordMock: vi.fn(),
 }));
 
@@ -10,12 +11,19 @@ vi.mock('@/services/machineTransactionService', () => ({
   machineTransactionService: {
     reconcileStuckTransactions: reconcileStuckTransactionsMock,
     reconcileStuckPendingTransactions: reconcileStuckPendingTransactionsMock,
+    reconcileUnknownDispenses: reconcileUnknownDispensesMock,
   },
 }));
 
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({
-  scheduledJobRunRepository: { record: recordMock },
+vi.mock('@/services/dispenseRecoveryService', () => ({
+  dispenseRecoveryService: { sweep: vi.fn().mockResolvedValue({ examined: 0, recovered: {} }) },
 }));
+
+vi.mock('@/services/deepReconciliationService', () => ({
+  deepReconciliationService: { run: vi.fn().mockResolvedValue({ discrepancies: [] }) },
+}));
+
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
 
 import { GET } from '@/app/api/cron/reconcile-vending-transactions/route';
 
@@ -24,6 +32,7 @@ const ORIGINAL_BUSINESS_ID = process.env.SNACK_QUEST_BUSINESS_ID;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reconcileUnknownDispensesMock.mockResolvedValue({ resolved: 0, stillUnknown: 0 });
   process.env.CRON_SECRET = 'test-cron-secret';
   process.env.SNACK_QUEST_BUSINESS_ID = 'snack-quest';
 });
@@ -74,12 +83,16 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
     expect(response.status).toBe(200);
     expect(reconcileStuckTransactionsMock).toHaveBeenCalledWith('snack-quest');
     expect(reconcileStuckPendingTransactionsMock).toHaveBeenCalledWith('snack-quest');
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       movedToManualReview: 3,
       resolvedFailed: 1,
       flaggedForManualReview: 2,
       stillPending: 4,
+      dispensesResolved: 0,
+      dispensesStillUnknown: 0,
+      recoveryExamined: 0,
+      ledgerDiscrepancies: 0,
     });
   });
 
@@ -103,13 +116,17 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
           resolvedFailed: 0,
           flaggedForManualReview: 0,
           stillPending: 0,
+          dispensesResolved: 0,
+          dispensesStillUnknown: 0,
+          recoveryExamined: 0,
+          ledgerDiscrepancies: 0,
         },
         error: null,
       }),
     );
   });
 
-  it('records a failed scheduled job run and rethrows when either sweep throws', async () => {
+  it('records a partial scheduled job run and answers 500 when either sweep throws', async () => {
     reconcileStuckTransactionsMock.mockRejectedValue(new Error('Firestore unavailable'));
     reconcileStuckPendingTransactionsMock.mockResolvedValue({
       resolvedFailed: 0,
@@ -117,14 +134,13 @@ describe('GET /api/cron/reconcile-vending-transactions', () => {
       stillPending: 0,
     });
 
-    await expect(GET(request())).rejects.toThrow('Firestore unavailable');
+    expect((await GET(request())).status).toBe(500);
 
     expect(recordMock).toHaveBeenCalledWith(
       expect.objectContaining({
         businessId: 'snack-quest',
         jobName: 'reconcile-vending-transactions',
-        status: 'failed',
-        resultSummary: null,
+        status: 'partial',
         error: 'Firestore unavailable',
       }),
     );

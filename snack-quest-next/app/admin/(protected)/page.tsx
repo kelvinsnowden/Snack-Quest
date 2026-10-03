@@ -10,6 +10,7 @@ import {
   Truck,
   Users,
 } from 'lucide-react';
+import { hasPermission, hasAnyPermission } from '@/lib/auth/permissions';
 import { requireStaffSession } from '@/lib/auth/session';
 import { getLocale } from '@/lib/i18n/getLocale';
 import { getDictionary, interpolate } from '@/lib/i18n/dictionary';
@@ -30,6 +31,7 @@ import { StatusDonutChart, type DonutSlice } from '@/components/admin/StatusDonu
 import { formatDate, formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 import { cn } from '@/lib/utils';
+import { MachineNetworkPanel } from '@/components/admin/MachineNetworkPanel';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -82,27 +84,38 @@ export default async function AdminDashboardPage({
   const visibleSections = visibleAdminSections(session);
   const quickLinks = visibleSections === null ? QUICK_LINKS : QUICK_LINKS.filter((link) => visibleSections.includes(link.section));
 
+  // Revenue needs finance.view and the staff list needs users.manage; neither is read for anyone else.
+  const canSeeRevenue = hasPermission(session, 'finance.view');
+  const canSeeStaff = hasPermission(session, 'users.manage');
+  // Orders and deliveries carry customers' names and phone numbers; the
+  // conversation queue is support's; site traffic is for finance and
+  // marketing. Each panel is read only for someone allowed to see it.
+  const canSeeOrders = hasPermission(session, 'orders.view');
+  const canSeeConversations = hasPermission(session, 'support.conversations.handle');
+  const canSeeTraffic = hasAnyPermission(session, ['finance.view', 'customers.view']);
   const [business, totalOrders, agentQueueCount, staff, revenue, recentOrders, delivery, traffic] =
     await Promise.all([
       businessRepository.findById(session.businessId),
-      orderRepository.countByBusiness(session.businessId),
-      conversationRepository.countByStatus(
-        session.businessId,
-        'agent_assigned',
-      ),
-      staffRepository.listByBusiness(session.businessId),
-      businessAnalyticsService.getRevenueOverview(session.businessId, 30),
-      orderRepository.listByBusiness(session.businessId, { limit: 5 }),
-      businessAnalyticsService.getDeliveryPerformance(session.businessId),
-      businessAnalyticsService.getTraffic(session.businessId, 30),
+      canSeeOrders ? orderRepository.countByBusiness(session.businessId) : Promise.resolve(null),
+      canSeeConversations
+        ? conversationRepository.countByStatus(
+            session.businessId,
+            'agent_assigned',
+          )
+        : Promise.resolve(null),
+      canSeeStaff ? staffRepository.listByBusiness(session.businessId) : Promise.resolve(null),
+      canSeeRevenue ? businessAnalyticsService.getRevenueOverview(session.businessId, 30) : Promise.resolve(null),
+      canSeeOrders ? orderRepository.listByBusiness(session.businessId, { limit: 5 }) : Promise.resolve(null),
+      canSeeOrders ? businessAnalyticsService.getDeliveryPerformance(session.businessId) : Promise.resolve(null),
+      canSeeTraffic ? businessAnalyticsService.getTraffic(session.businessId, 30) : Promise.resolve(null),
     ]);
 
-  const revenueTrend = computePeriodTrend(
+  const revenueTrend = revenue ? computePeriodTrend(
     revenue.totalRevenueKes,
     revenue.previousPeriod.totalRevenueKes,
     'vs previous 30 days',
-  );
-  const revenueDeltaKes = revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes;
+  ) : undefined;
+  const revenueDeltaKes = revenue ? revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes : 0;
 
   const STATUS_COLOR: Record<string, string> = {
     delivered: 'var(--color-success)',
@@ -112,7 +125,7 @@ export default async function AdminDashboardPage({
     pending: 'var(--color-muted)',
     failed: 'var(--color-danger)',
   };
-  const statusSlices: DonutSlice[] = delivery.statusBreakdown.map((s) => ({
+  const statusSlices: DonutSlice[] = (delivery?.statusBreakdown ?? []).map((s) => ({
     key: s.status,
     label: s.label,
     count: s.count,
@@ -122,7 +135,7 @@ export default async function AdminDashboardPage({
     pickup: 'var(--color-primary)',
     door: 'var(--color-secondary)',
   };
-  const methodSlices: DonutSlice[] = delivery.methodBreakdown.map((m) => ({
+  const methodSlices: DonutSlice[] = (delivery?.methodBreakdown ?? []).map((m) => ({
     key: m.method,
     label: m.method === 'pickup' ? dict.dashboard.pickupStation : dict.dashboard.doorDelivery,
     count: m.count,
@@ -151,33 +164,43 @@ export default async function AdminDashboardPage({
         </p>
       </div>
 
+      <MachineNetworkPanel session={session} />
+
       {/* Two-up on a phone: four KPIs in two rows instead of four. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <TrendStatCard
-          label={dict.dashboard.revenue30}
-          value={formatKes(revenue.totalRevenueKes)}
-          icon={<Banknote className="size-5" />}
-          trend={revenueTrend}
-          sparkline={revenue.days.map((d) => d.revenueKes)}
-        />
-        <TrendStatCard
-          label={dict.dashboard.totalOrders}
-          value={totalOrders.toLocaleString()}
-          icon={<ClipboardList className="size-5" />}
-          tone="secondary"
-        />
-        <TrendStatCard
-          label={dict.dashboard.awaitingAgent}
-          value={agentQueueCount.toLocaleString()}
-          icon={<MessageCircleWarning className="size-5" />}
-          tone={agentQueueCount > 0 ? 'warning' : 'secondary'}
-        />
-        <TrendStatCard
-          label={dict.dashboard.staffMembers}
-          value={staff.length.toLocaleString()}
-          icon={<Users className="size-5" />}
-          tone="secondary"
-        />
+        {revenue ? (
+          <TrendStatCard
+            label={dict.dashboard.revenue30}
+            value={formatKes(revenue.totalRevenueKes)}
+            icon={<Banknote className="size-5" />}
+            trend={revenueTrend}
+            sparkline={revenue.days.map((d) => d.revenueKes)}
+          />
+        ) : null}
+{totalOrders !== null ? (
+          <TrendStatCard
+            label={dict.dashboard.totalOrders}
+            value={totalOrders.toLocaleString()}
+            icon={<ClipboardList className="size-5" />}
+            tone="secondary"
+          />
+        ) : null}
+{agentQueueCount !== null ? (
+          <TrendStatCard
+            label={dict.dashboard.awaitingAgent}
+            value={agentQueueCount.toLocaleString()}
+            icon={<MessageCircleWarning className="size-5" />}
+            tone={agentQueueCount > 0 ? 'warning' : 'secondary'}
+          />
+        ) : null}
+        {staff ? (
+          <TrendStatCard
+            label={dict.dashboard.staffMembers}
+            value={staff.length.toLocaleString()}
+            icon={<Users className="size-5" />}
+            tone="secondary"
+          />
+        ) : null}
       </div>
 
       {revenueTrend ? (
@@ -209,83 +232,89 @@ export default async function AdminDashboardPage({
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>{dict.dashboard.revenueChart}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RevenueChart days={revenue.days} />
-          </CardContent>
-        </Card>
+        {revenue ? (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>{dict.dashboard.revenueChart}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RevenueChart days={revenue.days} />
+            </CardContent>
+          </Card>
+        ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{dict.dashboard.deliverySnapshot}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-6">
-            {delivery.totalShipments > 0 ? (
-              <>
-                <StatusDonutChart slices={statusSlices} totalLabel="shipments" />
-                <div className="border-t border-border pt-6">
-                  <StatusDonutChart slices={methodSlices} totalLabel="shipments" />
-                </div>
-              </>
-            ) : (
-              <p className="py-4 text-center text-sm text-muted-foreground">{dict.dashboard.noShipments}</p>
-            )}
-          </CardContent>
-        </Card>
+{delivery ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>{dict.dashboard.deliverySnapshot}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6">
+              {delivery.totalShipments > 0 ? (
+                <>
+                  <StatusDonutChart slices={statusSlices} totalLabel="shipments" />
+                  <div className="border-t border-border pt-6">
+                    <StatusDonutChart slices={methodSlices} totalLabel="shipments" />
+                  </div>
+                </>
+              ) : (
+                <p className="py-4 text-center text-sm text-muted-foreground">{dict.dashboard.noShipments}</p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>{dict.dashboard.visitors}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {traffic.totalVisits > 0 ? (
-              <>
-                <TrafficChart days={traffic.days} />
-                <div className="mt-3 flex items-center gap-4 text-caption text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="size-2 rounded-full bg-primary" />
-                    {dict.dashboard.pageViews}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="size-2 rounded-full bg-secondary" />
-                    {dict.dashboard.uniqueVisitors}
-                  </span>
-                </div>
-                {traffic.topPages.length > 0 ? (
-                  <div className="mt-4 border-t border-border pt-4">
-                    <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
-                      {dict.dashboard.topPages}
-                    </p>
-                    <ul className="mt-2 flex flex-col gap-1.5">
-                      {traffic.topPages.slice(0, 5).map((page) => (
-                        <li key={page.path} className="flex items-center justify-between gap-3 text-sm">
-                          <span className="truncate text-foreground">{page.path}</span>
-                          <span className="shrink-0 tabular-nums text-muted-foreground">
-                            {interpolate(
-                              page.visits === 1
-                                ? dict.dashboard.visitCountOne
-                                : dict.dashboard.visitCountMany,
-                              { count: page.visits.toLocaleString() },
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+{traffic ? (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>{dict.dashboard.visitors}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {traffic.totalVisits > 0 ? (
+                <>
+                  <TrafficChart days={traffic.days} />
+                  <div className="mt-3 flex items-center gap-4 text-caption text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span aria-hidden="true" className="size-2 rounded-full bg-primary" />
+                      {dict.dashboard.pageViews}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span aria-hidden="true" className="size-2 rounded-full bg-secondary" />
+                      {dict.dashboard.uniqueVisitors}
+                    </span>
                   </div>
-                ) : null}
-              </>
-            ) : (
-              <p className="py-16 text-center text-sm text-muted-foreground">
-                {dict.dashboard.noVisits}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                  {traffic.topPages.length > 0 ? (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
+                        {dict.dashboard.topPages}
+                      </p>
+                      <ul className="mt-2 flex flex-col gap-1.5">
+                        {traffic.topPages.slice(0, 5).map((page) => (
+                          <li key={page.path} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="truncate text-foreground">{page.path}</span>
+                            <span className="shrink-0 tabular-nums text-muted-foreground">
+                              {interpolate(
+                                page.visits === 1
+                                  ? dict.dashboard.visitCountOne
+                                  : dict.dashboard.visitCountMany,
+                                { count: page.visits.toLocaleString() },
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p className="py-16 text-center text-sm text-muted-foreground">
+                  {dict.dashboard.noVisits}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>
@@ -317,72 +346,74 @@ export default async function AdminDashboardPage({
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <CardTitle>{dict.dashboard.recentOrders}</CardTitle>
-          <Link
-            href="/admin/orders"
-            className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
-          >
-            {dict.dashboard.viewAll}
-            <ArrowRight className="size-4" aria-hidden="true" />
-          </Link>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {recentOrders.orders.length === 0 ? (
-            <EmptyState
-              icon={ClipboardList}
-              title={dict.dashboard.noOrdersTitle}
-              description={dict.dashboard.noOrdersBody}
-            />
-          ) : (
-            <div className="border-border overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
-                    <th className="px-4 py-3">{dict.dashboard.table.customer}</th>
-                    <th className="px-4 py-3">{dict.dashboard.table.total}</th>
-                    <th className="px-4 py-3">{dict.dashboard.table.status}</th>
-                    <th className="px-4 py-3">{dict.dashboard.table.placed}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.orders.map(({ id, data }) => {
-                    const customerLabel = data.customer.customerName || data.customer.phoneNumber;
-                    return (
-                      <tr key={id} className="border-border border-b last:border-0">
-                        <td className="px-4 py-3">
-                          <Link href={`/admin/orders/${id}`} className="group flex items-center gap-3">
-                            <span
-                              aria-hidden="true"
-                              className={cn(
-                                'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-                                'bg-secondary/10 text-secondary',
-                              )}
-                            >
-                              {initials(customerLabel)}
-                            </span>
-                            <span className="text-foreground font-medium group-hover:underline">{customerLabel}</span>
-                          </Link>
-                        </td>
-                        <td className="text-foreground px-4 py-3 tabular-nums">
-                          {formatKes(data.pricing.totalKes)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <OrderStatusBadge status={data.status} dict={dict} />
-                        </td>
-                        <td className="text-muted-foreground px-4 py-3 tabular-nums">
-                          {formatDate(data.createdAt, dateLocale)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+{recentOrders ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <CardTitle>{dict.dashboard.recentOrders}</CardTitle>
+            <Link
+              href="/admin/orders"
+              className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
+            >
+              {dict.dashboard.viewAll}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {recentOrders.orders.length === 0 ? (
+              <EmptyState
+                icon={ClipboardList}
+                title={dict.dashboard.noOrdersTitle}
+                description={dict.dashboard.noOrdersBody}
+              />
+            ) : (
+              <div className="border-border overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-border text-caption text-muted-foreground border-b text-left font-medium tracking-wide uppercase">
+                      <th className="px-4 py-3">{dict.dashboard.table.customer}</th>
+                      <th className="px-4 py-3">{dict.dashboard.table.total}</th>
+                      <th className="px-4 py-3">{dict.dashboard.table.status}</th>
+                      <th className="px-4 py-3">{dict.dashboard.table.placed}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentOrders.orders.map(({ id, data }) => {
+                      const customerLabel = data.customer.customerName || data.customer.phoneNumber;
+                      return (
+                        <tr key={id} className="border-border border-b last:border-0">
+                          <td className="px-4 py-3">
+                            <Link href={`/admin/orders/${id}`} className="group flex items-center gap-3">
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                                  'bg-secondary/10 text-secondary',
+                                )}
+                              >
+                                {initials(customerLabel)}
+                              </span>
+                              <span className="text-foreground font-medium group-hover:underline">{customerLabel}</span>
+                            </Link>
+                          </td>
+                          <td className="text-foreground px-4 py-3 tabular-nums">
+                            {formatKes(data.pricing.totalKes)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <OrderStatusBadge status={data.status} dict={dict} />
+                          </td>
+                          <td className="text-muted-foreground px-4 py-3 tabular-nums">
+                            {formatDate(data.createdAt, dateLocale)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

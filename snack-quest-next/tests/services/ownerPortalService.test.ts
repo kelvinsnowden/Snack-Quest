@@ -11,6 +11,7 @@ import { machineSettlementService } from '@/services/machineSettlementService';
 import { restockTaskService } from '@/services/restockTaskService';
 import { withdrawalService } from '@/services/withdrawalService';
 import { cameraService } from '@/services/cameraService';
+import { alertService } from '@/services/alertService';
 import { ownerPortalService, PartnerDoesNotOwnMachineError, NothingToRestockError, CameraNotFoundError } from '@/services/ownerPortalService';
 import { vendingRollupService } from '@/services/vendingRollupService';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
@@ -51,6 +52,8 @@ async function cleanCollections() {
     'cameras',
     'cameraSnapshots',
     'alerts',
+    'machineOwnershipHistory',
+    'partnerMachineAgreements',
   ]) {
     const snapshot = await adminFirestore.collection(collection).where('businessId', '==', BUSINESS_ID).get();
     await Promise.all(snapshot.docs.map((doc) => doc.ref.delete()));
@@ -244,6 +247,58 @@ describe('OwnerPortalService.getRecentActivity', () => {
     expect(activity).toHaveLength(2);
     expect(activity.every((item) => item.machineId === machineA || item.machineCode.startsWith(`SQ-SALE-${partnerA}`))).toBe(true);
     expect(new Date(activity[0].dispensedAt).getTime()).toBeGreaterThanOrEqual(new Date(activity[1].dispensedAt).getTime());
+  });
+});
+
+describe('OwnerPortalService.getSalesWithStatus', () => {
+  it('shows each paid sale with where it stands, and leaves out payments that never completed', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Status Owner', actor: 'staff-1' });
+    const skuId = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Status Snack', imageUrl: null, expectedUnitCostKes: 50, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    const yesterday = dateKey(new Date(Date.now() - DAY_MS));
+    const { machineId } = await seedDispensedSale(partnerId, skuId, yesterday);
+    const base = (await adminFirestore.collection('machineTransactions').where('machineId', '==', machineId).get()).docs[0].data();
+    const add = (status: string, paymentMethod = 'mpesa') => adminFirestore.collection('machineTransactions').add({ ...base, status, paymentMethod, dispensedAt: null, createdAt: new Date() });
+    await add('manual_review');
+    await add('refunded');
+    await add('paid_vend_failed');
+    await add('payment_failed');
+    await add('dispensed', 'diagnostic');
+
+    const sales = await ownerPortalService.getSalesWithStatus(BUSINESS_ID, partnerId, 20);
+    expect(sales.map((sale) => sale.status).sort()).toEqual(['refund_due', 'refunded', 'sold', 'under_review']);
+    expect(sales.every((sale) => sale.productName === 'Status Snack')).toBe(true);
+  });
+});
+
+describe('after a machine changes owner', () => {
+  it('shows the new owner nothing from before the handover, and the old owner loses the machine entirely', async () => {
+    const oldOwner = await partnerService.create({ businessId: BUSINESS_ID, name: 'Seller', actor: 'staff-1' });
+    const newOwner = await partnerService.create({ businessId: BUSINESS_ID, name: 'Buyer', actor: 'staff-1' });
+    const skuId = await snackItemRepository.create(
+      { businessId: BUSINESS_ID, name: 'Handover Snack', imageUrl: null, expectedUnitCostKes: 50, unitLabel: 'bag', origin: 'Korea', sourcingNote: null, isActive: true },
+      'staff-1',
+    );
+    const twoDaysAgo = dateKey(new Date(Date.now() - 2 * DAY_MS));
+    const { machineId } = await seedDispensedSale(oldOwner, skuId, twoDaysAgo);
+    expect(await ownerPortalService.getRecentActivity(BUSINESS_ID, oldOwner, 10)).toHaveLength(1);
+
+    await machineService.reassignOwner(BUSINESS_ID, machineId, newOwner, 'staff-1');
+
+    expect(await ownerPortalService.getRecentActivity(BUSINESS_ID, newOwner, 10)).toEqual([]);
+    const trend = await ownerPortalService.getSalesTrend(BUSINESS_ID, newOwner, 7);
+    expect(trend.reduce((sum, point) => sum + point.revenueKes, 0)).toBe(0);
+    expect(await ownerPortalService.getTopProducts(BUSINESS_ID, newOwner, 7)).toEqual([]);
+    const detail = await ownerPortalService.getMachineDetail(BUSINESS_ID, newOwner, machineId);
+    expect(detail.lastSaleAt).toBeNull();
+    expect(detail.performanceByWindow[7].revenueKes).toBe(0);
+    const summary = await ownerPortalService.getDashboardSummary(BUSINESS_ID, newOwner, 7);
+    expect(summary.totalSalesKes).toBe(0);
+
+    await expect(ownerPortalService.getMachineDetail(BUSINESS_ID, oldOwner, machineId)).rejects.toBeInstanceOf(PartnerDoesNotOwnMachineError);
+    expect(await ownerPortalService.getRecentActivity(BUSINESS_ID, oldOwner, 10)).toEqual([]);
   });
 });
 
@@ -447,6 +502,8 @@ describe('OwnerPortalService.getAlerts', () => {
     await adminFirestore.collection('machines').doc(machineA).update({ status: 'active', lastSeenAt: longOffline });
     await adminFirestore.collection('machines').doc(machineB).update({ status: 'active', lastSeenAt: longOffline });
 
+    // Alerts are raised by the scheduled sweep, not by reading them.
+    await alertService.evaluateAndSync(BUSINESS_ID);
     const alertsForA = await ownerPortalService.getAlerts(BUSINESS_ID, partnerA);
     expect(alertsForA.length).toBeGreaterThan(0);
     expect(alertsForA.every((alert) => alert.machineId === machineA)).toBe(true);
@@ -478,5 +535,15 @@ describe('OwnerPortalService camera-for-owner methods', () => {
 
     const { diagnostics } = await ownerPortalService.getCameraDiagnosticsForOwner(BUSINESS_ID, partnerA, cameraId);
     expect(diagnostics.registered).toBe(true);
+
+    // Live view is a capability, never the camera's address: an owner
+    // must not be able to reach the camera around Snack Quest.
+    const liveView = await ownerPortalService.getCameraStreamInfoForOwner(BUSINESS_ID, partnerA, cameraId);
+    expect(liveView.mode).toBe('unavailable');
+    const serialized = JSON.stringify(liveView);
+    for (const leak of ['mock-camera.local', '554', '/mock-stream', 'rtsp', 'host', 'port', 'streamPath']) {
+      expect(serialized).not.toContain(leak);
+    }
+    await expect(ownerPortalService.getCameraStreamInfoForOwner(BUSINESS_ID, partnerB, cameraId)).rejects.toThrow(PartnerDoesNotOwnMachineError);
   });
 });

@@ -148,6 +148,19 @@ class PartnerRepository {
     return match ? { id: match.id, data: match.data() as Partner } : null;
   }
 
+  /** Another partner in this business already using `contactEmail` (case-insensitive) — used to keep claim emails unique, so a sign-up can never claim the wrong owner. */
+  async findOtherByContactEmail(businessId: string, contactEmail: string, exceptPartnerId: string | null): Promise<{ id: string; data: Partner } | null> {
+    const normalized = contactEmail.trim().toLowerCase();
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    const match = snapshot.docs.find((doc) => doc.id !== exceptPartnerId && (doc.data() as Partner).contactEmail?.trim().toLowerCase() === normalized);
+    return match ? { id: match.id, data: match.data() as Partner } : null;
+  }
+
+  /** Staff edits to an owner's details or status. Never touches `authUid` or the wallet totals. */
+  async update(partnerId: string, changes: Partial<Pick<Partner, 'name' | 'contactEmail' | 'contactPhone' | 'note' | 'status'>>, updatedBy: string): Promise<void> {
+    await partnerRef(partnerId).update({ ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy });
+  }
+
   /** § partner authentication — the one and only writer of `authUid`, called exactly once per partner, the moment `register()` links it. */
   async linkAuthUid(partnerId: string, authUid: string): Promise<void> {
     await partnerRef(partnerId).update({ authUid, updatedAt: FieldValue.serverTimestamp() });

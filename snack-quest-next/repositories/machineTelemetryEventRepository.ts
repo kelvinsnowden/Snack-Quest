@@ -27,7 +27,14 @@ export type MachineTelemetryEventInput = Omit<MachineTelemetryEvent, 'receivedAt
  * unique per machine, not fleet-wide.
  */
 class MachineTelemetryEventRepository {
-  async recordIfNew(input: MachineTelemetryEventInput): Promise<{ isNew: boolean; id: string }> {
+  /**
+   * Claims an idempotency key. When the key already exists, also says
+   * whether the earlier attempt finished (`processed`) and what it
+   * carried (`fingerprint`) — so a caller can resume a crashed attempt
+   * instead of dropping it, and refuse a reused key with different
+   * content instead of silently ignoring it.
+   */
+  async recordIfNew(input: MachineTelemetryEventInput): Promise<{ isNew: boolean; id: string; processed?: boolean; fingerprint?: string | null }> {
     const id = docId(input.businessId, input.machineId, input.idempotencyKey);
     const ref = adminFirestore.collection(COLLECTION).doc(id);
     try {
@@ -35,7 +42,8 @@ class MachineTelemetryEventRepository {
       return { isNew: true, id };
     } catch (error) {
       if (isAlreadyExistsError(error)) {
-        return { isNew: false, id };
+        const existing = (await ref.get()).data() as MachineTelemetryEvent | undefined;
+        return { isNew: false, id, processed: existing?.processed ?? true, fingerprint: existing?.fingerprint ?? null };
       }
       throw error;
     }

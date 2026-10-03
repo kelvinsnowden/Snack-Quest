@@ -1,8 +1,8 @@
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { orderRepository } from '@/repositories/orderRepository';
 import { publishEvent } from '@/lib/events/eventBus';
 import { splitEvenly } from '@/lib/orders/splitCost';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Costs recorded against several orders at once, after the fact
@@ -44,8 +44,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'orders.costs.bulk')) {
+    return forbiddenForPermission('orders.costs.bulk');
   }
 
   let body: unknown;

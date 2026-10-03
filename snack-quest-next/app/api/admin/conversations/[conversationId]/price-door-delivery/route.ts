@@ -1,14 +1,10 @@
-import {
-  hasStaffRole,
-  ADMIN_OR_AGENT,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   conversationService,
   ConversationNotFoundError,
 } from '@/services/conversationService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A human agent's Bolt quote for a door-delivery order (§ Human Sales
@@ -31,8 +27,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_AGENT)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'support.conversations.handle')) {
+    return forbiddenForPermission('support.conversations.handle');
   }
 
   const { conversationId } = await params;

@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { peerLearningService } from '@/services/peerLearningService';
 import { parseWindowDays } from '@/lib/vending/intelligenceQueryParams';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Deterministic product opportunity detection (§ PRODUCT OPPORTUNITY ENGINE) — every result carries a `reason` and `supportingMetrics`; nothing here is a probability. */
 export async function GET(request: Request): Promise<Response> {
@@ -9,8 +9,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'analytics.vending.view')) {
+    return forbiddenForPermission('analytics.vending.view');
   }
 
   const windowDays = parseWindowDays(request);

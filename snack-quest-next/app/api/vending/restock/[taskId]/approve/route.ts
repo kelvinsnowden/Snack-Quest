@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { restockTaskService, RestockTaskNotFoundError, IllegalRestockTaskTransitionError } from '@/services/restockTaskService';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** `draft → approved`. `warehouseId` is optional — assignable here if it wasn't known when the task was opened. */
 export async function POST(request: Request, { params }: { params: Promise<{ taskId: string }> }): Promise<Response> {
@@ -10,8 +10,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tas
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'restock.plan')) {
+    return forbiddenForPermission('restock.plan');
   }
 
   const { taskId } = await params;

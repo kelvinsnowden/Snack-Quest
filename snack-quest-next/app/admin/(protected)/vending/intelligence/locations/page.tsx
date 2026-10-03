@@ -4,6 +4,7 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { locationService } from '@/services/locationService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { IntelligenceTabs } from '@/components/admin/vending/IntelligenceTabs';
 
 export const metadata: Metadata = { title: 'Location Intelligence' };
 
@@ -17,6 +18,7 @@ export default async function AdminLocationIntelligenceListPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <IntelligenceTabs current="locations" />
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Location Intelligence</h1>
         <p className="text-sm text-muted-foreground">Every profiled location — click through for its own Location DNA.</p>

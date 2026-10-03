@@ -16,9 +16,14 @@ export type MachineInventoryMovementInput = Omit<MachineInventoryMovement, 'crea
  */
 class MachineInventoryMovementRepository {
   /** Records a movement inside the caller's transaction — used by `machineInventoryMovementService` alongside the slot-quantity update it always accompanies, so the two never disagree. */
-  createInTransaction(tx: Transaction, input: MachineInventoryMovementInput): void {
-    const ref = adminFirestore.collection(COLLECTION).doc();
+  /** With a `docId`, the movement's identity is fixed — the caller reads it first in the same transaction to make the movement idempotent. */
+  createInTransaction(tx: Transaction, input: MachineInventoryMovementInput, docId?: string): void {
+    const ref = docId ? adminFirestore.collection(COLLECTION).doc(docId) : adminFirestore.collection(COLLECTION).doc();
     tx.set(ref, { ...input, createdAt: FieldValue.serverTimestamp() });
+  }
+
+  refFor(docId: string) {
+    return adminFirestore.collection(COLLECTION).doc(docId);
   }
 
   async create(input: MachineInventoryMovementInput): Promise<string> {
@@ -39,6 +44,20 @@ class MachineInventoryMovementRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineInventoryMovement }));
   }
 
+  /** One machine's movements in `[since, until)`, oldest first, at most `limit` — the stock-movement export. */
+  async listByMachineInRange(businessId: string, machineId: string, since: Date, until: Date, limit: number): Promise<{ id: string; data: MachineInventoryMovement }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('createdAt', '>=', since)
+      .where('createdAt', '<', until)
+      .orderBy('createdAt', 'asc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineInventoryMovement }));
+  }
+
   /**
    * Recomputes what a slot's `currentQuantity` *should* be by summing
    * every movement ever recorded for it — the reconciliation check
@@ -54,6 +73,12 @@ class MachineInventoryMovementRepository {
       .where('machineId', '==', machineId)
       .where('slotId', '==', slotId)
       .get();
+    return snapshot.docs.reduce((sum, doc) => sum + (doc.data() as MachineInventoryMovement).quantityDelta, 0);
+  }
+
+  /** The same sum as `sumDeltasForSlot`, read inside a transaction so the result and a write based on it can't be split by a concurrent movement. */
+  async sumDeltasForSlotInTransaction(tx: Transaction, businessId: string, machineId: string, slotId: string): Promise<number> {
+    const snapshot = await tx.get(adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('machineId', '==', machineId).where('slotId', '==', slotId));
     return snapshot.docs.reduce((sum, doc) => sum + (doc.data() as MachineInventoryMovement).quantityDelta, 0);
   }
 

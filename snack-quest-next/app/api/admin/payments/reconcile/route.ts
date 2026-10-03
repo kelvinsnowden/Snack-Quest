@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { paymentService } from '@/services/paymentService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * Asks Safaricom what happened to payments that are stuck in
@@ -30,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'payments.reconcile')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

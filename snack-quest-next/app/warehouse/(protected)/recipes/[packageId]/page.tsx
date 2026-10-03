@@ -3,7 +3,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ImageOff, MapPin, TriangleAlert } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
+import { hasPermission } from '@/lib/auth/permissions';
 import { recipeService } from '@/services/recipeService';
 import { Card } from '@/components/ui/card';
 
@@ -22,7 +23,8 @@ export const metadata: Metadata = { title: 'Recipe' };
  * useful, an empty square is confusing.
  */
 export default async function WarehouseRecipeDetailPage({ params }: { params: Promise<{ packageId: string }> }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('products.view');
+  const showCosts = hasPermission(session, 'products.cost.view');
   const { packageId } = await params;
   const recipe = await recipeService.getRecipe(session.businessId, packageId);
 
@@ -42,8 +44,13 @@ export default async function WarehouseRecipeDetailPage({ params }: { params: Pr
         </Link>
         <h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground md:text-3xl">{recipe.packageName}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {recipe.lines.length} snack{recipe.lines.length === 1 ? '' : 's'} · KES{' '}
-          <span className="tabular-nums">{recipe.totalCostKes.toLocaleString()}</span> to fill one box
+          {recipe.lines.length} snack{recipe.lines.length === 1 ? '' : 's'}
+          {showCosts ? (
+            <>
+              {' '}
+              · KES <span className="tabular-nums">{recipe.totalCostKes.toLocaleString()}</span> to fill one box
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -95,9 +102,14 @@ export default async function WarehouseRecipeDetailPage({ params }: { params: Pr
                         {line.quantity} {line.item.unitLabel}
                         {line.quantity === 1 ? '' : 's'}
                       </span>{' '}
-                      · KES <span className="tabular-nums">{line.item.expectedUnitCostKes.toLocaleString()}</span> each
-                      {' · '}
-                      <span className="tabular-nums">KES {line.lineCostKes.toLocaleString()}</span>
+                      {showCosts ? (
+                        <>
+                          {' '}
+                          · KES <span className="tabular-nums">{line.item.expectedUnitCostKes.toLocaleString()}</span> each
+                          {' · '}
+                          <span className="tabular-nums">KES {line.lineCostKes.toLocaleString()}</span>
+                        </>
+                      ) : null}
                     </p>
                     {line.item.sourcingNote ? (
                       <p className="flex items-start gap-1 text-caption text-muted-foreground">

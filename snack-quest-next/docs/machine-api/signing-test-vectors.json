@@ -1,0 +1,90 @@
+{
+  "description": "Snack Quest request signing v1 test vectors. Every implementation must reproduce every signatureHeader exactly. bodyUtf8Hex is the exact body bytes; hash those bytes, never a re-serialization.",
+  "secret": "sqs_example_secret_do_not_use_0000000000000000",
+  "vectors": [
+    {
+      "name": "heartbeat (compact JSON)",
+      "method": "POST",
+      "pathWithQuery": "/api/v1/machines/SQ-MCH-000001/heartbeat",
+      "timestamp": "1790500000",
+      "nonce": "Q2xhdWRlU2lnbmluZ05vbmNl",
+      "body": "{\"eventId\":\"hb-20260927-0001\",\"uptimeSeconds\":86400}",
+      "bodyUtf8Hex": "7b226576656e744964223a2268622d32303236303932372d30303031222c22757074696d655365636f6e6473223a38363430307d",
+      "bodySha256": "084a5ffcb9cc2c468810ed359b15ded2b4f8c6a6c7d77ebbc2918cf2b33f55a3",
+      "canonical": "v1\n1790500000\nQ2xhdWRlU2lnbmluZ05vbmNl\nPOST\n/api/v1/machines/SQ-MCH-000001/heartbeat\n084a5ffcb9cc2c468810ed359b15ded2b4f8c6a6c7d77ebbc2918cf2b33f55a3",
+      "signatureHeader": "v1=ad94a5230dfeb4e4aeef9e6bf265f35cdb9397b0f2b9bcf91aa8eb92cafed4ca"
+    },
+    {
+      "name": "command poll (GET, empty body)",
+      "method": "GET",
+      "pathWithQuery": "/api/v1/machines/SQ-MCH-000001/commands",
+      "timestamp": "1790500010",
+      "nonce": "bm9uY2UtMDAwMDAwMDAwMg",
+      "body": "",
+      "bodyUtf8Hex": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "v1\n1790500010\nbm9uY2UtMDAwMDAwMDAwMg\nGET\n/api/v1/machines/SQ-MCH-000001/commands\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signatureHeader": "v1=66f10d4db4d4f3a370d56f7d2328c25dac11a268037f7a9bfc5b4de52295a1d9"
+    },
+    {
+      "name": "acknowledge (POST, empty body)",
+      "method": "POST",
+      "pathWithQuery": "/api/v1/machines/SQ-MCH-000001/commands/DSP-3F9A1C22/ack",
+      "timestamp": "1790500011",
+      "nonce": "bm9uY2UtMDAwMDAwMDAwMw",
+      "body": "",
+      "bodyUtf8Hex": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "v1\n1790500011\nbm9uY2UtMDAwMDAwMDAwMw\nPOST\n/api/v1/machines/SQ-MCH-000001/commands/DSP-3F9A1C22/ack\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signatureHeader": "v1=f24aedc8b87b8fd4e44eec56293926828673f3ad9a006b86e25f91943bc2cd96"
+    },
+    {
+      "name": "non-ASCII UTF-8 body (hash the bytes)",
+      "method": "POST",
+      "pathWithQuery": "/api/v1/machines/SQ-MCH-000001/commands/DSP-3F9A1C22/status",
+      "timestamp": "1790500020",
+      "nonce": "bm9uY2UtMDAwMDAwMDAwNA",
+      "body": "{\"status\":\"failed\",\"eventId\":\"dsp-1-end\",\"failureCode\":\"jam\",\"failureReason\":\"Spirale blockiert — motor 07 ☕🍫\"}",
+      "bodyUtf8Hex": "7b22737461747573223a226661696c6564222c226576656e744964223a226473702d312d656e64222c226661696c757265436f6465223a226a616d222c226661696c757265526561736f6e223a2253706972616c6520626c6f636b6965727420e28094206d6f746f7220303720e29895f09f8dab227d",
+      "bodySha256": "545504bd10c5ed908d8ae7293db7dc465d1bac87a4256b8d791f985cc1cbe04d",
+      "canonical": "v1\n1790500020\nbm9uY2UtMDAwMDAwMDAwNA\nPOST\n/api/v1/machines/SQ-MCH-000001/commands/DSP-3F9A1C22/status\n545504bd10c5ed908d8ae7293db7dc465d1bac87a4256b8d791f985cc1cbe04d",
+      "signatureHeader": "v1=0c4c9980c2042c0a08e6685f8d22e0cc7163ae45f9dc7fa6b9de5748961e3b21"
+    },
+    {
+      "name": "same JSON pretty-printed (different bytes, different signature)",
+      "method": "POST",
+      "pathWithQuery": "/api/v1/machines/SQ-MCH-000001/heartbeat",
+      "timestamp": "1790500000",
+      "nonce": "Q2xhdWRlU2lnbmluZ05vbmNl",
+      "body": "{\n  \"eventId\": \"hb-20260927-0001\",\n  \"uptimeSeconds\": 86400\n}",
+      "bodyUtf8Hex": "7b0a2020226576656e744964223a202268622d32303236303932372d30303031222c0a202022757074696d655365636f6e6473223a2038363430300a7d",
+      "bodySha256": "fb7c519311dc93842a646e10999bbb2c883bd2bc4aebabacb0d990bc6b1f7f14",
+      "canonical": "v1\n1790500000\nQ2xhdWRlU2lnbmluZ05vbmNl\nPOST\n/api/v1/machines/SQ-MCH-000001/heartbeat\nfb7c519311dc93842a646e10999bbb2c883bd2bc4aebabacb0d990bc6b1f7f14",
+      "signatureHeader": "v1=2b14c1ab3c38ae2cc8a61153703187d258b49e0630943de241486d064e893510"
+    },
+    {
+      "name": "path with query string (signed exactly as sent)",
+      "method": "GET",
+      "pathWithQuery": "/api/v1/machines/SQ-MCH-000001?include=slots&v=1",
+      "timestamp": "1790500030",
+      "nonce": "bm9uY2UtMDAwMDAwMDAwNg",
+      "body": "",
+      "bodyUtf8Hex": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "v1\n1790500030\nbm9uY2UtMDAwMDAwMDAwNg\nGET\n/api/v1/machines/SQ-MCH-000001?include=slots&v=1\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signatureHeader": "v1=8641fe0d444ae70aa2e97639b095b67bb3c673912f5e2a39359bc1832c5019d1"
+    },
+    {
+      "name": "lowercase method is uppercased before signing",
+      "method": "post",
+      "pathWithQuery": "/api/v1/machines/connect",
+      "timestamp": "1790500040",
+      "nonce": "bm9uY2UtMDAwMDAwMDAwNw",
+      "body": "{\"manufacturerMachineId\":\"NV-0001\"}",
+      "bodyUtf8Hex": "7b226d616e7566616374757265724d616368696e654964223a224e562d30303031227d",
+      "bodySha256": "6f98f50d9764dcf8b03227fcfeba1962b28ba6f05cb5e4cb8c0bc74f11fea1a7",
+      "canonical": "v1\n1790500040\nbm9uY2UtMDAwMDAwMDAwNw\nPOST\n/api/v1/machines/connect\n6f98f50d9764dcf8b03227fcfeba1962b28ba6f05cb5e4cb8c0bc74f11fea1a7",
+      "signatureHeader": "v1=0f2302e88fe6f041d5321df9df2db1dd0c19a872e27ec9b5af287cefc8c7c81f"
+    }
+  ]
+}

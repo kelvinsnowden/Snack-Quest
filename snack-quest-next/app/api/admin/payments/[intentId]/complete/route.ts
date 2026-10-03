@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { paymentService } from '@/services/paymentService';
 import { conversationService } from '@/services/conversationService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * Finishes a payment Daraja itself already confirmed succeeded — via
@@ -24,7 +24,7 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'payments.reconcile')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

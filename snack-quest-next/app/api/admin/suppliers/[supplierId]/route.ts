@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   supplierService,
@@ -10,6 +5,7 @@ import {
   InvalidSupplierInputError,
 } from '@/services/supplierService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface UpdateSupplierBody {
   name?: unknown;
@@ -28,8 +24,8 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'procurement.manage')) {
+    return forbiddenForPermission('procurement.manage');
   }
 
   const { supplierId } = await params;

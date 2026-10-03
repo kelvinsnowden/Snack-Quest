@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { cameraService, CameraNotFoundError, CameraCapabilityNotSupportedError } from '@/services/cameraService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** POST — "Run health check" (§8/§9), distinct from "Test connection". Requires `camera_health`; if this camera is currently `active`, a failing check independently marks the camera `error` — never the machine, never vending (§8's own instruction). */
 export async function POST(request: Request, { params }: { params: Promise<{ cameraId: string }> }): Promise<Response> {
@@ -9,8 +9,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'cameras.operate')) {
+    return forbiddenForPermission('cameras.operate');
   }
 
   const { cameraId } = await params;

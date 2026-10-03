@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { MarketingSmsComposer } from '@/components/admin/MarketingSmsComposer';
 import { Card } from '@/components/ui/card';
 
@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'New SMS campaign' };
 export default async function NewMarketingSmsPage() {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
         <Card className="flex flex-col items-center gap-3 p-10 text-center">

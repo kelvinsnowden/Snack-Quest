@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { serializeMachineSubscription } from '@/lib/vending/serialize';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Every subscription across a partner's fleet (§ SUBSCRIPTION) — one read for "what does this owner owe across all their machines". */
 export async function GET(request: Request, { params }: { params: Promise<{ partnerId: string }> }): Promise<Response> {
@@ -9,8 +9,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.view')) {
+    return forbiddenForPermission('owner_finance.view');
   }
 
   const { partnerId } = await params;

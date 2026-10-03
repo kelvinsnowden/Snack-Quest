@@ -1,3 +1,5 @@
+import type { JobHealthState } from '@/services/scheduledJobService';
+import type { ScheduledJobRunStatus } from '@/types';
 import type { Metadata } from 'next';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
@@ -8,6 +10,9 @@ import { IntegrationStatusBadge } from '@/components/admin/IntegrationStatusBadg
 import { INTEGRATION_PROVIDER_LABELS } from '@/lib/integrations/statusFormat';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDateTime, formatKes } from '@/lib/orders/format';
+import { hasPermission } from '@/lib/auth/permissions';
+import { dateKey } from '@/lib/analytics/dateKey';
+import { RunJobNowButton, RebuildAnalyticsForm } from '@/components/admin/JobControls';
 
 export const metadata: Metadata = { title: 'Operations' };
 
@@ -38,9 +43,33 @@ function Section({
   );
 }
 
+const JOB_STATE_BADGE: Record<JobHealthState, 'success' | 'warning' | 'danger' | 'secondary' | 'outline'> = {
+  ok: 'success',
+  running: 'secondary',
+  never_run: 'outline',
+  overdue: 'warning',
+  abandoned: 'danger',
+  failing: 'danger',
+};
+const RUN_STATUS_BADGE: Record<ScheduledJobRunStatus, 'success' | 'warning' | 'danger' | 'secondary' | 'outline'> = {
+  succeeded: 'success',
+  partial: 'warning',
+  failed: 'danger',
+  running: 'secondary',
+  skipped: 'outline',
+};
+
+/** The last seven finished analytics days, as the rebuild form's starting range. */
+function defaultRebuildRange(now = new Date()): { weekBefore: string; yesterday: string } {
+  const day = 24 * 60 * 60 * 1000;
+  return { weekBefore: dateKey(new Date(now.getTime() - 7 * day)), yesterday: dateKey(new Date(now.getTime() - day)) };
+}
+
 export default async function AdminOperationsPage() {
   const session = await requireStaffSession();
   const snapshot = await operationsService.getSnapshot(session.businessId);
+  const canRunJobs = hasPermission(session, 'ops.jobs.run');
+  const { weekBefore, yesterday } = defaultRebuildRange();
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,38 +315,77 @@ export default async function AdminOperationsPage() {
 
       <Section
         title="Scheduled jobs"
-        description="Recent Vercel Cron runs — the notification retry sweep's real run history."
-        count={snapshot.scheduledJobRuns.filter((r) => r.data.status === 'failed').length}
+        description="Health of every recovery, reconciliation and rollup job, from its own run records. A job that has never run here shows as never run — nothing is assumed."
+        count={snapshot.jobHealth.filter((job) => job.state === 'failing' || job.state === 'abandoned' || job.state === 'overdue').length}
       >
-        {snapshot.scheduledJobRuns.length === 0 ? (
-          <EmptyState icon={AlertTriangle} title="No runs recorded yet" description="This job hasn't run since observability was added." />
-        ) : (
+        <div className="flex flex-col gap-6">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
+            <table className="w-full min-w-[560px] text-sm">
               <thead className="border-b border-border text-left text-caption text-muted-foreground uppercase">
                 <tr>
                   <th className="py-2 pr-4 font-medium">Job</th>
-                  <th className="py-2 pr-4 font-medium">Status</th>
-                  <th className="py-2 pr-4 font-medium">Duration</th>
-                  <th className="py-2 font-medium">Ran</th>
+                  <th className="py-2 pr-4 font-medium">State</th>
+                  <th className="py-2 pr-4 font-medium">Last run</th>
+                  <th className="py-2 pr-4 font-medium">Last success</th>
+                  <th className="py-2 pr-4 font-medium">Last error</th>
+                  {canRunJobs ? <th className="py-2 font-medium"><span className="sr-only">Run</span></th> : null}
                 </tr>
               </thead>
               <tbody>
-                {snapshot.scheduledJobRuns.map(({ id, data }) => (
-                  <tr key={id} className="border-b border-border last:border-0">
-                    <td className="py-2 pr-4 text-foreground">{data.jobName}</td>
-                    <td className="py-2 pr-4">
-                      <Badge variant={data.status === 'succeeded' ? 'success' : 'danger'}>{data.status}</Badge>
-                    </td>
-                    <td className="py-2 pr-4 tabular-nums text-foreground">{data.durationMs}ms</td>
-                    <td className="py-2 text-muted-foreground tabular-nums">{formatDateTime(data.startedAt)}</td>
+                {snapshot.jobHealth.map((job) => (
+                  <tr key={job.jobName} className="border-b border-border last:border-0 align-top">
+                    <td className="py-2 pr-4 text-foreground">{job.jobName}</td>
+                    <td className="py-2 pr-4"><Badge variant={JOB_STATE_BADGE[job.state]}>{job.state.replace('_', ' ')}</Badge></td>
+                    <td className="py-2 pr-4 text-muted-foreground tabular-nums">{job.lastRunAt ? new Date(job.lastRunAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+                    <td className="py-2 pr-4 text-muted-foreground tabular-nums">{job.lastSuccessAt ? new Date(job.lastSuccessAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+                    <td className="py-2 pr-4 text-muted-foreground">{job.state === 'ok' ? '—' : job.lastError ?? '—'}</td>
+                    {canRunJobs ? <td className="py-2"><RunJobNowButton jobName={job.jobName} /></td> : null}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+          {snapshot.scheduledJobRuns.length === 0 ? (
+            <EmptyState icon={AlertTriangle} title="No runs recorded yet" description="No scheduled job has run on this deployment yet." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] text-sm">
+                <thead className="border-b border-border text-left text-caption text-muted-foreground uppercase">
+                  <tr>
+                    <th className="py-2 pr-4 font-medium">Recent run</th>
+                    <th className="py-2 pr-4 font-medium">Status</th>
+                    <th className="py-2 pr-4 font-medium">Duration</th>
+                    <th className="py-2 font-medium">Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.scheduledJobRuns.map(({ id, data }) => (
+                    <tr key={id} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-4 text-foreground">{data.jobName}</td>
+                      <td className="py-2 pr-4" title={data.error ?? undefined}>
+                        <Badge variant={RUN_STATUS_BADGE[data.status]}>{data.status}</Badge>
+                      </td>
+                      <td className="py-2 pr-4 tabular-nums text-foreground">{data.status === 'running' ? '—' : `${data.durationMs}ms`}</td>
+                      <td className="py-2 text-muted-foreground tabular-nums">{formatDateTime(data.startedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </Section>
+
+      {canRunJobs ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Rebuild machine analytics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RebuildAnalyticsForm defaultStart={weekBefore} defaultEnd={yesterday} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

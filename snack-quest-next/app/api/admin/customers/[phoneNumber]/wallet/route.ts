@@ -1,12 +1,8 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { walletService, WalletValidationError } from '@/services/walletService';
 import { InsufficientWalletBalanceError } from '@/repositories/customerWalletRepository';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface AdjustWalletBody {
   amountKes?: unknown;
@@ -22,8 +18,8 @@ export async function GET(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'customers.view')) {
+    return forbiddenForPermission('customers.view');
   }
 
   const { phoneNumber: encodedPhoneNumber } = await params;
@@ -46,8 +42,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'customers.wallet.adjust')) {
+    return forbiddenForPermission('customers.wallet.adjust');
   }
 
   const { phoneNumber: encodedPhoneNumber } = await params;

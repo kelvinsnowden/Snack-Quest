@@ -1,5 +1,6 @@
 'use client';
 
+import { ROLE_TEMPLATES } from '@/lib/auth/permissions';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Copy, Check, Mail, MailWarning } from 'lucide-react';
@@ -15,7 +16,6 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { ADMIN_SECTIONS } from '@/lib/auth/adminSections';
 import type { StaffRole } from '@/types';
 
 const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
@@ -26,7 +26,7 @@ const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'finance', label: 'Finance' },
 ];
 
-const DEFAULTS = { email: '', displayName: '', role: 'admin' as StaffRole, department: '', permissions: [] as string[] };
+const DEFAULTS = { email: '', displayName: '', role: 'admin' as StaffRole, department: '', template: '' };
 
 export function InviteStaffDialog() {
   const router = useRouter();
@@ -60,10 +60,10 @@ export function InviteStaffDialog() {
           displayName: values.displayName.trim(),
           role: values.role,
           department: values.department.trim(),
+          template: values.template || null,
           // Only meaningful for role 'admin' — the server ignores it
           // for every other role anyway, but sending it only when it
           // could matter keeps the request honest about intent.
-          ...(values.role === 'admin' ? { permissions: values.permissions } : {}),
         }),
       });
       if (!response.ok) {
@@ -173,7 +173,7 @@ export function InviteStaffDialog() {
                     value={values.role}
                     onChange={(event) => {
                       const role = event.target.value as StaffRole;
-                      setValues((v) => ({ ...v, role, permissions: role === 'admin' ? v.permissions : [] }));
+                      setValues((v) => ({ ...v, role }));
                     }}
                   >
                     {ROLE_OPTIONS.map((option) => (
@@ -193,38 +193,27 @@ export function InviteStaffDialog() {
                   />
                 </div>
               </div>
-              {values.role === 'admin' ? (
-                <div className="flex flex-col gap-1.5">
-                  <Label>Admin Portal access</Label>
-                  <p className="text-caption text-muted-foreground">
-                    Leave everything unchecked for full access. Check specific sections to restrict this admin to
-                    only those.
-                  </p>
-                  <div className="mt-1 flex flex-col gap-2 rounded-md border border-border p-3">
-                    {ADMIN_SECTIONS.map((section) => (
-                      <label key={section.key} className="flex items-start gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={values.permissions.includes(section.key)}
-                          onChange={(event) =>
-                            setValues((v) => ({
-                              ...v,
-                              permissions: event.target.checked
-                                ? [...v.permissions, section.key]
-                                : v.permissions.filter((p) => p !== section.key),
-                            }))
-                          }
-                        />
-                        <span>
-                          <span className="block font-medium text-foreground">{section.label}</span>
-                          <span className="block text-caption text-muted-foreground">{section.description}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="invite-template">Starting access</Label>
+                <select
+                  id="invite-template"
+                  className="h-10 rounded-md border border-border bg-surface px-3 text-sm text-foreground"
+                  value={values.template}
+                  onChange={(event) => setValues((v) => ({ ...v, template: event.target.value }))}
+                >
+                  <option value="">Everything their role allows</option>
+                  {ROLE_TEMPLATES.filter((template) => template.key !== 'super_admin').map((template) => (
+                    <option key={template.key} value={template.key}>
+                      {template.label} — {template.permissions.length} permissions
+                    </option>
+                  ))}
+                </select>
+                <p className="text-caption text-muted-foreground">
+                  {values.template
+                    ? ROLE_TEMPLATES.find((template) => template.key === values.template)?.description
+                    : 'Pick the narrowest template that fits their job. You can add or remove single permissions from the Users page afterwards. You can only give access you have yourself.'}
+                </p>
+              </div>
               {error ? <p className="text-sm text-danger">{error}</p> : null}
             </div>
             <DialogFooter>

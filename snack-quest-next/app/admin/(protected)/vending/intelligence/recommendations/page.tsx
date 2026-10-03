@@ -5,7 +5,10 @@ import { serializeIntelligenceRecommendation } from '@/lib/vending/serialize';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { RecommendationActions } from '@/components/admin/RecommendationActions';
+import { GenerateRecommendationsButton } from '@/components/admin/GenerateRecommendationsButton';
+import { scheduledJobService } from '@/services/scheduledJobService';
 import type { RecommendationStatus } from '@/types';
+import { IntelligenceTabs } from '@/components/admin/vending/IntelligenceTabs';
 
 export const metadata: Metadata = { title: 'Recommendations' };
 
@@ -28,15 +31,22 @@ export default async function AdminRecommendationsPage({ searchParams }: { searc
 
   const rows = await recommendationEngineService.listByBusiness(session.businessId, { status: filterStatus, limit: 100 });
   const recommendations = rows.map(({ id, data }) => serializeIntelligenceRecommendation(id, data));
+  const lastRun = (await scheduledJobService.health(session.businessId)).find((job) => job.jobName === 'generate-recommendations');
+  const lastRunText = lastRun?.lastRunAt
+    ? `Last generated ${new Date(lastRun.lastRunAt).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}${lastRun.state === 'failing' ? ' — with errors; see Operations' : ''}. Runs nightly.`
+    : 'Not generated yet. Runs nightly, or generate now.';
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <IntelligenceTabs current="recommendations" />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Recommendations</h1>
           <p className="text-sm text-muted-foreground">Restock, assortment, and product-opportunity recommendations — every one explainable, none auto-executed.</p>
+          <p className="mt-1 text-xs text-muted-foreground">{lastRunText}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="flex gap-2">
           {(['pending', 'approved', 'dismissed'] as const).map((s) => (
             <a
               key={s}
@@ -46,6 +56,8 @@ export default async function AdminRecommendationsPage({ searchParams }: { searc
               {s}
             </a>
           ))}
+          </div>
+          <GenerateRecommendationsButton />
         </div>
       </div>
 

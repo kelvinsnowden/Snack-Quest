@@ -27,10 +27,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
     return Response.json({ snapshot: serializeCameraSnapshot(id, data) }, { status: 201 });
   } catch (error) {
     if (error instanceof CameraNotFoundError) {
-      return Response.json({ error: error.message }, { status: 404 });
+      return Response.json({ error: 'not found' }, { status: 404 });
     }
     if (error instanceof PartnerDoesNotOwnMachineError) {
-      return Response.json({ error: error.message }, { status: 403 });
+      return Response.json({ error: 'not found' }, { status: 404 });
     }
     if (error instanceof CameraCapabilityNotSupportedError) {
       return Response.json({ error: error.message }, { status: 409 });

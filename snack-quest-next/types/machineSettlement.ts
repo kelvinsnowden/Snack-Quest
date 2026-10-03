@@ -27,8 +27,14 @@ export interface MachineSettlement extends AuditFields {
   periodStart: Timestamp;
   periodEnd: Timestamp;
   status: MachineSettlementStatus;
+  /** Completed sales in the period, attributed by completion time (`dispensedAt`). */
   grossSalesKes: number;
+  /** Revenue reversed — refunds of sales counted in `grossSalesKes`. Zero under today's rules (see `MachineSettlementService.revenueReversalsForPeriod`). */
   refundsKes: number;
+  /** Informational: customers refunded for failed vends. Never revenue, so never deducted from the owner. */
+  failedVendRefundsKes?: number;
+  /** Sales with an unresolved outcome conflict (e.g. a dispense reported after a refund) — who bears that loss is a business decision; settle once resolved. */
+  outcomeConflictCount?: number;
   /** Null until an operating-cost model exists — see `PartnerMachineAgreement.operatingCostNote`. */
   operatingCostsKes: number | null;
   /** Any correction applied by a staff member, with a required reason — never silent. */
@@ -48,6 +54,8 @@ export interface MachineSettlement extends AuditFields {
   cogsKes: number;
   /** Sale movements in the period whose product cost could not be resolved (a `package`-catalogue slot, which carries no cost field today) — counted, never silently zero-cost (docs/INVENTORY_ARCHITECTURE.md §4). */
   unpricedSaleCount: number;
+  /** Sales made before cost snapshots existed, costed at the product's landed cost when the settlement was prepared. */
+  estimatedCostSaleCount?: number;
   /** This machine's active `MachineSubscription` charge for periods overlapping this settlement's window — `0` when no subscription exists, never null. */
   subscriptionChargedKes: number;
   /**

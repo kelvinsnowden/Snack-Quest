@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { networkIntelligenceService } from '@/services/networkIntelligenceService';
 import { parseWindowDays } from '@/lib/vending/intelligenceQueryParams';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Location-type performance (§ NETWORK INTELLIGENCE: "location-type performance") — grouped, never a single ranked winner. */
 export async function GET(request: Request): Promise<Response> {
@@ -9,8 +9,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'analytics.vending.view')) {
+    return forbiddenForPermission('analytics.vending.view');
   }
 
   const windowDays = parseWindowDays(request);

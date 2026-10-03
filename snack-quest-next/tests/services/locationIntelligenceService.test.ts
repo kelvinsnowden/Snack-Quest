@@ -78,7 +78,9 @@ describe('LocationIntelligenceService.getLocationDna', () => {
     expect(dna.categoryMix['Asian Snacks']).toEqual({ unitsSold: 1, revenueKes: 250 });
     expect(dna.assortmentDepth).toBe(1);
     expect(dna.topProducts[0]?.productId).toBe(skuId);
-    expect(dna.peakHours[13]).toBe(1);
+    // Peak hours are Nairobi time: a sale at 13:00 UTC counts at 16:00.
+    expect(dna.peakHours[16]).toBe(1);
+    expect(dna.peakHours[13]).toBe(0);
   });
 
   it('throws LocationNotFoundError for a location that does not exist', async () => {

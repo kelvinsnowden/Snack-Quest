@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PackageCheck, Truck } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { orderRepository } from '@/repositories/orderRepository';
 import { shipmentRepository } from '@/repositories/shipmentRepository';
 import { Card } from '@/components/ui/card';
@@ -34,7 +34,7 @@ export default async function WarehouseQueuePage({
 }: {
   searchParams: Promise<{ packCursor?: string; courierCursor?: string; outCursor?: string }>;
 }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('warehouse_fulfilment.manage');
   const { packCursor, courierCursor, outCursor } = await searchParams;
 
   const [toPack, readyForCourier, outForDelivery] = await Promise.all([

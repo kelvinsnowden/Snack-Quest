@@ -26,6 +26,8 @@ const DIRECTORY_LABELS: Record<StorageDirectory, string> = {
   orders: 'Orders',
   documents: 'Documents',
   reviews: 'Review photos',
+  kiosk: 'Machine screen',
+  ads: 'Ad creatives',
 };
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];

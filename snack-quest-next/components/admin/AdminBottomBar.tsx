@@ -30,13 +30,15 @@ import type { AdminSection } from '@/lib/auth/adminSections';
  */
 export function AdminBottomBar({
   visibleSections,
+  permissions = null,
 }: {
   /** `null` means unrestricted (§ Staff access control). */
   visibleSections: AdminSection[] | null;
+  permissions?: readonly string[] | null;
 }) {
   const pathname = usePathname();
   const { dict } = useI18n();
-  const quickItems = quickAccessNavItems(visibleNavItems(visibleSections));
+  const quickItems = quickAccessNavItems(visibleNavItems(visibleSections, permissions));
 
   // A staff member restricted out of every quick-access page gets no
   // bar at all rather than a row containing only "More", which would

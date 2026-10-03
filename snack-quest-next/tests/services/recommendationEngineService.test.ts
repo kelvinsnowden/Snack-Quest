@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { machineService } from '@/services/machineService';
 import { MachineSlotService } from '@/services/machineSlotService';
@@ -222,5 +222,59 @@ describe('RecommendationEngineService status lifecycle', () => {
 
     const [recommendationId] = await recommendationEngineService.generateDeadStockRecommendations(BUSINESS_ID, machineId, 'staff-1');
     await expect(recommendationEngineService.approve('some-other-business', recommendationId, 'x', 'staff-2')).rejects.toThrow(RecommendationNotFoundError);
+  });
+});
+
+describe('RecommendationEngineService.generateForFleet', () => {
+  async function provision(code: string, status: string) {
+    const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: code, serialNumber: `SN-${code}`, manufacturer: 'mock', model: 'test', actor: 'staff-1' });
+    await adminFirestore.collection('machines').doc(machineId).update({ status });
+    return machineId;
+  }
+
+  it('advises only on selling machines, and one machine failing never stops the rest', async () => {
+    const sellingA = await provision(`SQ-FLEET-A-${Date.now()}`, 'active');
+    const sellingB = await provision(`SQ-FLEET-B-${Date.now()}`, 'active');
+    const beingRepaired = await provision(`SQ-FLEET-C-${Date.now()}`, 'maintenance');
+
+    const restock = vi.spyOn(recommendationEngineService, 'generateRestockRecommendations').mockImplementation(async (_businessId, machineId) => {
+      if (machineId === sellingA) throw new Error('rollup unreadable');
+      return ['rec-1'];
+    });
+    const deadStock = vi.spyOn(recommendationEngineService, 'generateDeadStockRecommendations').mockResolvedValue([]);
+    const opportunities = vi.spyOn(recommendationEngineService, 'generateProductOpportunityRecommendations').mockResolvedValue(['opp-1', 'opp-2']);
+    const failed: string[] = [];
+    try {
+      const result = await recommendationEngineService.generateForFleet(BUSINESS_ID, 'system', (machineId) => failed.push(machineId));
+      expect(result).toEqual({ machinesChecked: 2, restock: 1, deadStock: 0, productOpportunities: 2 });
+      expect(failed).toEqual([sellingA]);
+      const checked = restock.mock.calls.map(([, machineId]) => machineId);
+      expect(checked.sort()).toEqual([sellingA, sellingB].sort());
+      expect(checked).not.toContain(beingRepaired);
+      expect(deadStock).toHaveBeenCalledWith(BUSINESS_ID, sellingB, 'system');
+      expect(opportunities).toHaveBeenCalledTimes(1);
+    } finally {
+      restock.mockRestore();
+      deadStock.mockRestore();
+      opportunities.mockRestore();
+    }
+  });
+
+  it('adds nothing on a second run while the first run’s recommendations are still waiting', async () => {
+    const skuId = await createSnackItem('Rerun Product');
+    const machineId = await provision(`SQ-FLEET-RERUN-${Date.now()}`, 'active');
+    const adapter = new MockVendingAdapter();
+    const slots = new MachineSlotService(() => adapter);
+    adapter.seedSlot(machineId, 'A01', { quantity: 10 });
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: skuId, productCatalogue: 'snackItem', priceKes: 250, capacity: 20, position: 1 });
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__A01`).update({ currentQuantity: 10 });
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: skuId, productCatalogue: 'snackItem', actor: 'staff-1' });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', skuId, 'A01');
+    await vendingRollupService.rebuildMachineDay(BUSINESS_ID, machineId, dateKey(new Date(Date.now() - DAY_MS)));
+
+    const first = await recommendationEngineService.generateForFleet(BUSINESS_ID, 'system');
+    expect(first.deadStock).toBe(1);
+    const second = await recommendationEngineService.generateForFleet(BUSINESS_ID, 'system');
+    expect(second.deadStock).toBe(0);
   });
 });

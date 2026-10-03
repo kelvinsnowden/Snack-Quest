@@ -11,10 +11,13 @@ import type { AdminSection } from '@/lib/auth/adminSections';
 export function AdminSidebar({
   businessName,
   visibleSections,
+  permissions = null,
 }: {
   businessName: string;
   /** `null` means unrestricted (§ Staff access control) — every section shows. */
   visibleSections: AdminSection[] | null;
+  /** The viewer's permissions; null for a super admin (everything). */
+  permissions?: readonly string[] | null;
 }) {
   const pathname = usePathname();
   const { dict } = useI18n();
@@ -22,7 +25,7 @@ export function AdminSidebar({
   // built from one list, and letting them disagree about how the
   // product is organised would make the rail and the drawer feel like
   // different applications (§ Admin mobile UX overhaul).
-  const groups = groupedNavItems(visibleNavItems(visibleSections));
+  const groups = groupedNavItems(visibleNavItems(visibleSections, permissions));
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface md:flex">

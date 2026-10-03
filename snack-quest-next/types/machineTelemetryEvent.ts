@@ -55,4 +55,6 @@ export interface MachineTelemetryEvent {
   source: string;
   processed: boolean;
   processingError: string | null;
+  /** SHA-256 over the semantic content of the report (e.g. vendRef + outcome). A retry must match it; the same idempotency key with a different fingerprint is refused as a key reuse. Absent on older records. */
+  fingerprint?: string | null;
 }

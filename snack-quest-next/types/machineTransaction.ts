@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { SaleEconomicsSnapshot } from './economics';
 import type { DispenseResultStatus } from '@/lib/vending/hardwareAdapter';
 
 /**
@@ -55,7 +56,19 @@ export type MachineTransactionStatus =
    */
   | 'manual_review';
 
-export type MachineTransactionPaymentMethod = 'mpesa' | 'cash' | 'other';
+/**
+ * `diagnostic` is a staff test vend (the admin "Test vend" action): it
+ * goes through the same dispense ledger as a sale — so it is delivered,
+ * tracked and never duplicated the same way — but no customer paid for
+ * it (amount 0). It is never a sale: not revenue, not units sold, not a
+ * refund owed, and its stock leaves as `waste`, not `sale`.
+ */
+export type MachineTransactionPaymentMethod = 'mpesa' | 'cash' | 'other' | 'diagnostic';
+
+/** Whether a transaction is a customer's purchase — everything that counts sales, revenue or refunds owed must skip the rest. */
+export function isCustomerSale(transaction: Pick<MachineTransaction, 'paymentMethod'>): boolean {
+  return transaction.paymentMethod !== 'diagnostic';
+}
 
 export interface MachineTransaction {
   businessId: string;
@@ -101,6 +114,26 @@ export interface MachineTransaction {
   dispenseFailureStatus: DispenseResultStatus | null;
   /** The raw `machineTelemetryEvents` idempotency key this transaction's vend result was applied from — lets a duplicate device report be recognised and ignored rather than double-processed. Null until a vend result has actually been applied. */
   appliedTelemetryEventId: string | null;
+  /**
+   * Set when the machine reported an outcome that contradicts one
+   * already acted on — e.g. "dispensed" arriving after the refund
+   * decision. The physical fact is recorded (stock moves, an operator is
+   * alerted); the money side is never silently flipped. Absent on
+   * transactions written before conflicts were modelled.
+   */
+  /** The sale's economics frozen when it was created (§ HISTORICAL SNAPSHOTS). Missing on sales made before snapshots existed. */
+  economics?: SaleEconomicsSnapshot | null;
+  outcomeConflict?: {
+    reportedStatus: DispenseResultStatus;
+    previousStatus: MachineTransactionStatus;
+    reportedAt: Timestamp;
+    source: string;
+    resolved: boolean;
+    /** Set when a person closed the conflict without changing the sale (`acknowledge_conflict`). */
+    resolvedBy?: string | null;
+    resolvedAt?: Timestamp | null;
+    resolutionNote?: string | null;
+  } | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -127,11 +160,19 @@ export const MACHINE_TRANSACTION_STATUS_TRANSITIONS: Record<
   // authorization outright (offline, slot empty, slot disabled) never
   // reaches "authorized" at all, and the customer's money still needs
   // the same refund path either way.
-  paid: ['vend_authorized', 'paid_vend_failed', 'manual_review'],
+  // `dispensed` directly from `paid`: the command ledger is written before
+  // the sale, so if the dispatcher dies between queuing the dispense and
+  // recording it here, the machine can collect, dispense and report while
+  // the sale still says `paid`. That report — matched to a dispatched
+  // command — is the truth, and must not be refused.
+  paid: ['vend_authorized', 'dispensed', 'paid_vend_failed', 'manual_review'],
   vend_authorized: ['dispensed', 'paid_vend_failed', 'manual_review'],
   dispensed: [],
-  paid_vend_failed: ['refund_requested'],
-  refund_requested: ['refunded'],
+  // `manual_review` from the refund path covers one case only: the
+  // machine reported the product *was* dispensed after we had decided to
+  // refund. Until the money has actually gone back, a human decides.
+  paid_vend_failed: ['refund_requested', 'manual_review'],
+  refund_requested: ['refunded', 'manual_review'],
   refunded: [],
   // A late device report is more authoritative than the sweep's own
   // guess that nothing would ever arrive — if one does, it resolves

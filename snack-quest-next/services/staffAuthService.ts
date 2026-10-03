@@ -4,6 +4,7 @@ import { adminAuth } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { staffRepository } from '@/repositories/staffRepository';
 import type { Role } from '@/types';
+import { effectivePermissions, type PermissionKey } from '@/lib/auth/permissions';
 
 /**
  * Owns the staff/admin login handshake (§ Admin auth foundation): a
@@ -52,6 +53,15 @@ export interface StaffSession {
    */
   viewingAs?: Role;
   actualRoles?: Role[];
+  /**
+   * What this person may do (`lib/auth/permissions.ts`), computed from
+   * their template, individual grants and removals each time the session
+   * is verified — so a change on the Users page applies on their next
+   * request, not their next sign-in.
+   */
+  effectivePermissions?: PermissionKey[];
+  /** The role template they were given, or null for their role's default. */
+  template?: string | null;
 }
 
 class StaffAuthService {
@@ -125,6 +135,14 @@ class StaffAuthService {
       roles: user.roles,
       businessId: staffProfile.businessId,
       permissions: staffProfile.permissions,
+      template: staffProfile.template ?? null,
+      effectivePermissions: effectivePermissions({
+        roles: user.roles,
+        template: staffProfile.template,
+        granted: staffProfile.grantedPermissions,
+        revoked: staffProfile.revokedPermissions,
+        legacySections: staffProfile.permissions,
+      }),
     };
   }
 }

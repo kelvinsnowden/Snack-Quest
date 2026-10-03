@@ -106,6 +106,8 @@ export interface SellableCatalogItem {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  /** Where the snack comes from ("Japan", "Korea") — the snack catalogue's own `origin`; null for boxes and snacks without one. */
+  origin: string | null;
   category: string | null;
   priceKes: number;
   /**

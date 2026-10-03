@@ -11,7 +11,12 @@ import { machineRepository, MachineNotFoundError } from '@/repositories/machineR
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
 import { SlotNotFoundError } from '@/services/machineInventoryMovementService';
-import type { RestockTask, RestockTaskItem, RestockTaskStatus } from '@/types';
+import { stockTransferRepository } from '@/repositories/stockTransferRepository';
+import { priceBookService, type CurrentPrices } from '@/services/priceBookService';
+import { machineEconomicProfileService } from '@/services/machineEconomicProfileService';
+import type { OwnerWholesaleSale, RestockTask, RestockTaskItem, RestockTaskStatus } from '@/types';
+
+type OwnerWholesaleSaleLine = OwnerWholesaleSale['lines'][number];
 
 export { RestockTaskNotFoundError, IllegalRestockTaskTransitionError, SlotNotFoundError };
 
@@ -142,6 +147,8 @@ class RestockTaskService {
     actor: string,
     items: { slotId: string; quantityDispatched: number; batchId?: string | null; expiresAt?: Date | null }[],
   ): Promise<void> {
+    // Cost basis for the transfer ledger, read before the transaction: what each product costs Snack Quest now.
+    const pricing = await this.pricingForTask(businessId, taskId);
     await adminFirestore.runTransaction(async (tx) => {
       const found = await restockTaskRepository.getInTransaction(tx, businessId, taskId);
       if (!found) {
@@ -174,7 +181,47 @@ class RestockTaskService {
         dispatchedBy: actor,
         dispatchedAt: FieldValue.serverTimestamp(),
       });
+      // § INVENTORY TRANSFER LEDGER: the stock leaves the warehouse and is in transit on this task — still Snack Quest's.
+      for (const item of mergedItems) {
+        if (!item.quantityDispatched) continue;
+        const product = pricing.bySlot.get(item.slotId);
+        stockTransferRepository.createInTransaction(tx, {
+          businessId,
+          productCatalogue: product?.productCatalogue ?? null,
+          productId: item.productId,
+          quantity: item.quantityDispatched,
+          from: { kind: 'warehouse', id: found.data.warehouseId },
+          to: { kind: 'transit', id: taskId },
+          ownership: 'snack_quest',
+          ownerPartnerId: null,
+          unitCostBasisKes: product?.prices?.landedCostKes ?? null,
+          reason: 'restock_dispatch',
+          restockTaskId: taskId,
+          machineId: found.data.machineId,
+          ownerWholesaleSaleId: null,
+          note: item.batchId ? `batch ${item.batchId}` : null,
+          actor,
+        });
+      }
     });
+  }
+
+  /** The product and current prices behind each slot of a task's machine, read once before a transaction that records transfers. */
+  private async pricingForTask(businessId: string, taskId: string): Promise<{ machineId: string | null; bySlot: Map<string, { productCatalogue: 'package' | 'snackItem' | null; productId: string | null; prices: CurrentPrices | null }> }> {
+    const task = await restockTaskRepository.findById(businessId, taskId);
+    const bySlot = new Map<string, { productCatalogue: 'package' | 'snackItem' | null; productId: string | null; prices: CurrentPrices | null }>();
+    if (!task) return { machineId: null, bySlot };
+    const slots = await machineSlotRepository.listByMachine(businessId, task.machineId);
+    const products = slots.filter((slot) => slot.productId && slot.productCatalogue).map((slot) => ({ productCatalogue: slot.productCatalogue!, productId: slot.productId! }));
+    const prices = await priceBookService.currentPricesMany(businessId, products);
+    for (const slot of slots) {
+      bySlot.set(slot.slotCode, {
+        productCatalogue: slot.productCatalogue,
+        productId: slot.productId,
+        prices: slot.productId && slot.productCatalogue ? (prices.get(`${slot.productCatalogue}__${slot.productId}`) ?? null) : null,
+      });
+    }
+    return { machineId: task.machineId, bySlot };
   }
 
   /** `dispatched → in_transit` — no new data, just the fact that the shipment has left. */
@@ -197,7 +244,11 @@ class RestockTaskService {
     actor: string,
     items: { slotId: string; quantityReceived: number }[],
     discrepancyNote?: string | null,
-  ): Promise<{ status: RestockTaskStatus }> {
+  ): Promise<{ status: RestockTaskStatus; ownerWholesaleSaleId: string | null }> {
+    // Read before the transaction: prices, and whether this machine's stock belongs to its owner (§ OWNER INVENTORY COST).
+    const pricing = await this.pricingForTask(businessId, taskId);
+    const profile = pricing.machineId ? await machineEconomicProfileService.resolve(businessId, pricing.machineId) : null;
+    const ownerStocked = Boolean(profile && profile.partnerId && profile.terms.inventoryOwner === 'machine_owner');
     return adminFirestore.runTransaction(async (tx) => {
       const found = await restockTaskRepository.getInTransaction(tx, businessId, taskId);
       if (!found) {
@@ -284,7 +335,71 @@ class RestockTaskService {
         discrepancyNote: anyDiscrepancy ? (discrepancyNote ?? null) : null,
       });
 
-      return { status: targetStatus };
+      // § INVENTORY TRANSFER LEDGER: what arrived moves from transit into the machine — and, for an owner-stocked
+      // machine, becomes the owner's at the owner price, recorded once as a wholesale sale. What didn't arrive is lost.
+      const wholesaleRef = ownerStocked ? stockTransferRepository.newWholesaleSaleRef() : null;
+      const wholesaleLines: OwnerWholesaleSaleLine[] = [];
+      for (const { existing, quantityReceived, slot } of slotReads) {
+        const prices = pricing.bySlot.get(existing.slotId)?.prices ?? null;
+        const productCatalogue = slot.productCatalogue;
+        stockTransferRepository.createInTransaction(tx, {
+          businessId,
+          productCatalogue,
+          productId: slot.productId,
+          quantity: quantityReceived,
+          from: { kind: 'transit', id: taskId },
+          to: { kind: 'machine', id: found.data.machineId, slotId: existing.slotId },
+          ownership: ownerStocked ? 'machine_owner' : 'snack_quest',
+          ownerPartnerId: ownerStocked ? profile!.partnerId : null,
+          unitCostBasisKes: ownerStocked ? (prices?.ownerWholesaleKes ?? null) : (prices?.landedCostKes ?? null),
+          reason: ownerStocked ? 'wholesale_to_owner' : 'restock_receive',
+          restockTaskId: taskId,
+          machineId: found.data.machineId,
+          ownerWholesaleSaleId: wholesaleRef?.id ?? null,
+          note: null,
+          actor,
+        });
+        if (ownerStocked) {
+          wholesaleLines.push({ productCatalogue, productId: slot.productId, slotId: existing.slotId, quantity: quantityReceived, unitWholesaleKes: prices?.ownerWholesaleKes ?? null, unitLandedKes: prices?.landedCostKes ?? null });
+        }
+      }
+      for (const { existing, discrepancyQuantity } of computed) {
+        if (discrepancyQuantity <= 0) continue;
+        const product = pricing.bySlot.get(existing.slotId);
+        stockTransferRepository.createInTransaction(tx, {
+          businessId,
+          productCatalogue: product?.productCatalogue ?? null,
+          productId: existing.productId,
+          quantity: discrepancyQuantity,
+          from: { kind: 'transit', id: taskId },
+          to: { kind: 'lost', id: null },
+          ownership: 'snack_quest',
+          ownerPartnerId: null,
+          unitCostBasisKes: product?.prices?.landedCostKes ?? null,
+          reason: 'restock_shortfall',
+          restockTaskId: taskId,
+          machineId: found.data.machineId,
+          ownerWholesaleSaleId: null,
+          note: discrepancyNote ?? null,
+          actor,
+        });
+      }
+      if (wholesaleRef && wholesaleLines.length > 0) {
+        const priced = wholesaleLines.filter((line) => line.unitWholesaleKes !== null);
+        stockTransferRepository.createWholesaleSaleInTransaction(tx, wholesaleRef, {
+          businessId,
+          partnerId: profile!.partnerId!,
+          machineId: found.data.machineId,
+          restockTaskId: taskId,
+          lines: wholesaleLines,
+          totalWholesaleKes: priced.reduce((sum, line) => sum + line.quantity * (line.unitWholesaleKes ?? 0), 0),
+          totalLandedKes: wholesaleLines.reduce((sum, line) => sum + line.quantity * (line.unitLandedKes ?? 0), 0),
+          unpricedUnits: wholesaleLines.filter((line) => line.unitWholesaleKes === null).reduce((sum, line) => sum + line.quantity, 0),
+          actor,
+        });
+      }
+
+      return { status: targetStatus, ownerWholesaleSaleId: wholesaleRef && wholesaleLines.length > 0 ? wholesaleRef.id : null };
     });
   }
 

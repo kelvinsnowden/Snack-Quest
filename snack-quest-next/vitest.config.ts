@@ -18,6 +18,11 @@ export default defineConfig({
     // file parallelism so the suite is deterministic against the one
     // shared emulator.
     fileParallelism: false,
+    // Integration tests make dozens of emulator round trips each; under a
+    // loaded machine a correct test can take longer than vitest's 5 s
+    // default. A timeout is not an assertion — keep it out of the way.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
   resolve: {
     alias: {

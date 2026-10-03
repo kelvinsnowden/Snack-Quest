@@ -147,6 +147,62 @@ class AlertRepository {
   }
 
   /**
+   * Claims the right to run the fleet-wide alert sweep for this
+   * business if nobody has in the last `minIntervalMs`. One small
+   * transactional read — this is what keeps the sweep off every page
+   * load: a hundred staff and owners refreshing at once cause one
+   * sweep, not a hundred.
+   */
+  /** Records that a full sweep just ran — what "alerts last checked" shows. */
+  async recordEvaluation(businessId: string, at = new Date()): Promise<void> {
+    await adminFirestore.collection('alertEvaluationRuns').doc(businessId).set({ businessId, lastCompletedAt: at }, { merge: true });
+  }
+
+  async lastCompletedEvaluation(businessId: string): Promise<Date | null> {
+    const snapshot = await adminFirestore.collection('alertEvaluationRuns').doc(businessId).get();
+    const value = snapshot.get('lastCompletedAt') as FirebaseFirestore.Timestamp | undefined;
+    return value ? value.toDate() : null;
+  }
+
+  async claimEvaluation(businessId: string, minIntervalMs: number, now = new Date()): Promise<boolean> {
+    const ref = adminFirestore.collection('alertEvaluationRuns').doc(businessId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const last = snapshot.get('lastRunAt') as FirebaseFirestore.Timestamp | undefined;
+      if (last && now.getTime() - last.toMillis() < minIntervalMs) {
+        return false;
+      }
+      tx.set(ref, { businessId, lastRunAt: now }, { merge: true });
+      return true;
+    });
+  }
+
+  /** Marks alerts as texted, so the notifier never texts the same alert twice (the outbound-message dedupe is the second line of defence). */
+  /** Which of these conditions already had an alert texted since `since` (any status) — the notification cooldown. */
+  async dedupeKeysNotifiedSince(businessId: string, dedupeKeys: string[], since: Date): Promise<Set<string>> {
+    const unique = [...new Set(dedupeKeys)];
+    const out = new Set<string>();
+    for (let offset = 0; offset < unique.length; offset += 30) {
+      const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('dedupeKey', 'in', unique.slice(offset, offset + 30)).get();
+      for (const doc of snapshot.docs) {
+        const notifiedAt = (doc.data() as Alert).notifiedAt;
+        if (notifiedAt && notifiedAt.toMillis() >= since.getTime()) out.add((doc.data() as Alert).dedupeKey);
+      }
+    }
+    return out;
+  }
+
+  async markNotified(alertIds: string[]): Promise<void> {
+    for (let offset = 0; offset < alertIds.length; offset += 400) {
+      const batch = adminFirestore.batch();
+      for (const id of alertIds.slice(offset, offset + 400)) {
+        batch.update(adminFirestore.collection(COLLECTION).doc(id), { notifiedAt: FieldValue.serverTimestamp() });
+      }
+      await batch.commit();
+    }
+  }
+
+  /**
    * Every open/acknowledged alert, newest first. `type`/`severity`/
    * `machineId` are filtered in memory, not folded into the Firestore
    * query — the query itself only ever needs the one composite index

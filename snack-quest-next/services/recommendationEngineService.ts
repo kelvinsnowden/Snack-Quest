@@ -10,6 +10,7 @@ import { machineAssortmentIntelligenceService } from '@/services/machineAssortme
 import { peerLearningService } from '@/services/peerLearningService';
 import type { DataQuality, SlotPerformance } from '@/services/machineAssortmentIntelligenceService';
 import type { IntelligenceRecommendation, RecommendationConfidence } from '@/types';
+import { machineRepository } from '@/repositories/machineRepository';
 
 export { RecommendationNotFoundError, IllegalRecommendationTransitionError, RecommendationNotApprovedError };
 
@@ -164,6 +165,35 @@ class RecommendationEngineService {
       created.push(id);
     }
     return created;
+  }
+
+  /**
+   * Every generator, across the fleet — what the nightly job and the
+   * "Generate now" button run. Restock and dead-stock look at each
+   * machine that is selling (`active`); a machine being installed,
+   * repaired or retired has no sales pattern worth advising on. One
+   * machine failing is reported through `onMachineError` and never stops
+   * the rest. Safe to run again: every generator skips a target that
+   * already has a pending recommendation of the same kind.
+   */
+  async generateForFleet(
+    businessId: string,
+    actor: string,
+    onMachineError: (machineId: string, error: unknown) => void = () => {},
+  ): Promise<{ machinesChecked: number; restock: number; deadStock: number; productOpportunities: number }> {
+    const machines = (await machineRepository.listAllForBusiness(businessId)).filter(({ data }) => data.status === 'active');
+    let restock = 0;
+    let deadStock = 0;
+    for (const { id: machineId } of machines) {
+      try {
+        restock += (await this.generateRestockRecommendations(businessId, machineId, actor)).length;
+        deadStock += (await this.generateDeadStockRecommendations(businessId, machineId, actor)).length;
+      } catch (error) {
+        onMachineError(machineId, error);
+      }
+    }
+    const productOpportunities = (await this.generateProductOpportunityRecommendations(businessId, actor)).length;
+    return { machinesChecked: machines.length, restock, deadStock, productOpportunities };
   }
 
   /** Wraps `peerLearningService.findProductOpportunities` into stored, trackable recommendations (§ PRODUCT OPPORTUNITY ENGINE). */

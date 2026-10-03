@@ -39,7 +39,29 @@ export type AlertType =
   | 'inventory_discrepancy'
   | 'expiry_risk'
   | 'subscription_issue'
-  | 'settlement_failure';
+  | 'settlement_failure'
+  /** A machine's outcome report contradicted a money decision already made — see `MachineTransaction.outcomeConflict`. */
+  | 'dispense_conflict'
+  /** A machine integration is misbehaving at the protocol level: rate-limited, sending invalid requests, or on uncertified firmware. */
+  | 'integration_issue'
+  /** Most of one manufacturer's machines went silent together — the manufacturer's cloud (or its link to us) is the likely cause, not the machines. */
+  | 'manufacturer_outage'
+  /** A scheduled job (recovery, reconciliation, rollups) failed, partly failed, was abandoned mid-run, or has not run on schedule. Condition alert, one per job. */
+  | 'job_failure'
+  /** Repeated failed or unresolved dispenses on one machine within an hour. */
+  | 'dispense_failures'
+  /** An abnormal share of one manufacturer's dispenses ended with no known outcome (timeout/unknown). */
+  | 'dispense_timeout_rate'
+  /** Snack Quest cannot reach an outbound manufacturer's API from most of its machines. */
+  | 'manufacturer_api_unavailable'
+  /** A manufacturer's own keys are failing authentication (revoked, expired, wrong secret, clock). */
+  | 'integration_auth_failures'
+  /** A signing key expires soon, or a rotation grace ends while the old key is still in use. */
+  | 'credential_expiring'
+  /** A revoked credential is still needed: Snack Quest's API key for a manufacturer with active machines. */
+  | 'credential_revoked'
+  /** A manufacturer's authenticated webhook deliveries are being refused. */
+  | 'webhook_failures';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertStatus = 'open' | 'acknowledged' | 'resolved';
@@ -62,6 +84,8 @@ export interface Alert {
   resolvedBy: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /** When operators were texted about it (critical alerts only). Absent until then. */
+  notifiedAt?: Timestamp | null;
 }
 
 /** The severity `alertService` assigns each type — a fixed table, not a per-alert judgement call, so the same condition always reads the same urgency across the whole fleet. */
@@ -76,4 +100,15 @@ export const ALERT_SEVERITY_BY_TYPE: Record<AlertType, AlertSeverity> = {
   expiry_risk: 'warning',
   subscription_issue: 'warning',
   settlement_failure: 'critical',
+  dispense_conflict: 'critical',
+  integration_issue: 'warning',
+  manufacturer_outage: 'critical',
+  job_failure: 'warning',
+  dispense_failures: 'critical',
+  dispense_timeout_rate: 'warning',
+  manufacturer_api_unavailable: 'critical',
+  integration_auth_failures: 'critical',
+  credential_expiring: 'warning',
+  credential_revoked: 'critical',
+  webhook_failures: 'warning',
 };

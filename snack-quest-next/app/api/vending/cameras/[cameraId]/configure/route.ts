@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { cameraService, CameraNotFoundError, IllegalCameraTransitionError } from '@/services/cameraService';
 import { cameraRepository } from '@/repositories/cameraRepository';
 import { serializeCamera } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * PATCH — saves connection configuration (§ CAMERA CONFIGURATION
@@ -19,8 +19,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ca
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'cameras.manage')) {
+    return forbiddenForPermission('cameras.manage');
   }
 
   const { cameraId } = await params;

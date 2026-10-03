@@ -1,10 +1,7 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { auditLogRepository } from '@/repositories/auditLogRepository';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
+import { parseAuditFilters } from '@/lib/audit/auditFilters';
 
 /** Lists this business's staff-action trail (§ Admin: Audit Logs), newest first, optionally filtered to one entity type. */
 export async function GET(request: Request): Promise<Response> {
@@ -12,21 +9,18 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'audit.view')) {
+    return forbiddenForPermission('audit.view');
   }
 
-  const { searchParams } = new URL(request.url);
-  const entityType = searchParams.get('entityType') ?? undefined;
-  const cursor = searchParams.get('cursor') ?? undefined;
-
-  const { logs, nextCursor } = await auditLogRepository.listByBusiness(
-    session.businessId,
-    {
-      entityType,
-      cursor,
-    },
-  );
+  // Same filters as the page: area, actor, machine (code), from, to. `entityType` is the older name for area.
+  const query = new URL(request.url).searchParams;
+  if (!query.get('area') && query.get('entityType')) query.set('area', query.get('entityType')!);
+  const filters = await parseAuditFilters(session.businessId, query);
+  if (filters.unknownMachine) {
+    return Response.json({ error: `No machine has the code ${filters.machineCode}.` }, { status: 400 });
+  }
+  const { logs, nextCursor } = await auditLogRepository.search(session.businessId, { ...filters, cursor: query.get('cursor') ?? undefined });
 
   return Response.json({
     logs: logs.map(({ id, data }) => ({ id, ...data })),

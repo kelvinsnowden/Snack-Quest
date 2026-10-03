@@ -15,7 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ADMIN_SECTIONS } from '@/lib/auth/adminSections';
+import Link from 'next/link';
+import { findTemplate } from '@/lib/auth/permissions';
 import type { StaffListItem } from '@/services/staffManagementService';
 import type { StaffRole } from '@/types';
 
@@ -61,83 +62,11 @@ function ResetLinkDialog({ open, onOpenChange, resetLink }: { open: boolean; onO
   );
 }
 
-function PermissionsDialog({
-  member,
-  onOpenChange,
-  onSave,
-}: {
-  member: StaffListItem | null;
-  onOpenChange: (open: boolean) => void;
-  onSave: (uid: string, permissions: string[]) => Promise<void>;
-}) {
-  const [selected, setSelected] = useState<string[]>(member?.permissions ?? []);
-  const [saving, setSaving] = useState(false);
-
-  return (
-    <Dialog
-      open={member !== null}
-      onOpenChange={(open) => {
-        if (!open) onOpenChange(false);
-      }}
-    >
-      {member ? (
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{member.displayName}&apos;s Admin Portal access</DialogTitle>
-            <DialogDescription>
-              Leave everything unchecked for full access. Check specific sections to restrict this admin to only
-              those.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-2 flex flex-col gap-2 rounded-md border border-border p-3">
-            {ADMIN_SECTIONS.map((section) => (
-              <label key={section.key} className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  defaultChecked={member.permissions.includes(section.key)}
-                  onChange={(event) =>
-                    setSelected((current) =>
-                      event.target.checked
-                        ? [...current, section.key]
-                        : current.filter((p) => p !== section.key),
-                    )
-                  }
-                />
-                <span>
-                  <span className="block font-medium text-foreground">{section.label}</span>
-                  <span className="block text-caption text-muted-foreground">{section.description}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              loading={saving}
-              onClick={async () => {
-                setSaving(true);
-                await onSave(member.uid, selected);
-                setSaving(false);
-              }}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      ) : null}
-    </Dialog>
-  );
-}
-
 export function StaffTable({ staff, currentUid }: { staff: StaffListItem[]; currentUid: string }) {
   const router = useRouter();
   const [busyUid, setBusyUid] = useState<string | null>(null);
   const [resetLink, setResetLink] = useState<string | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
-  const [permissionsMember, setPermissionsMember] = useState<StaffListItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function patch(uid: string, body: Record<string, unknown>) {
@@ -249,21 +178,10 @@ export function StaffTable({ staff, currentUid }: { staff: StaffListItem[]; curr
                       </select>
                     </td>
                     <td className="px-4 py-3">
-                      {member.role === 'admin' ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto px-2 py-1 text-caption"
-                          onClick={() => setPermissionsMember(member)}
-                        >
-                          <ShieldCheck className="size-3.5" aria-hidden="true" />
-                          {member.permissions.length === 0
-                            ? 'Everything'
-                            : `${member.permissions.length} section${member.permissions.length === 1 ? '' : 's'}`}
-                        </Button>
-                      ) : (
-                        <span className="text-caption text-muted-foreground">—</span>
-                      )}
+                      <Link href={`/admin/staff/${member.uid}`} className="inline-flex items-center gap-1.5 text-caption text-primary hover:underline">
+                        <ShieldCheck className="size-3.5" aria-hidden="true" />
+                        {member.roles.includes('super_admin') ? 'Everything' : `${findTemplate(member.template)?.label ?? 'Role default'} · ${member.effectivePermissions.length}`}
+                      </Link>
                     </td>
                     <td className="px-4 py-3 text-foreground">{member.department}</td>
                     <td className="px-4 py-3">
@@ -304,17 +222,6 @@ export function StaffTable({ staff, currentUid }: { staff: StaffListItem[]; curr
       </Card>
 
       <ResetLinkDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen} resetLink={resetLink} />
-      <PermissionsDialog
-        key={permissionsMember?.uid ?? 'none'}
-        member={permissionsMember}
-        onOpenChange={(open) => {
-          if (!open) setPermissionsMember(null);
-        }}
-        onSave={async (uid, permissions) => {
-          await patch(uid, { permissions });
-          setPermissionsMember(null);
-        }}
-      />
     </>
   );
 }

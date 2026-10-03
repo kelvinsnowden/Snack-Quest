@@ -95,7 +95,7 @@ curling the API.
 | Remote commands | None | Remote commands + ack | NEXT — needs a transport and a command model neither of which exist; do not build ahead of a caller |
 | Order lifecycle | 8-state transaction state machine, payment/dispense separated | Order lifecycle | EXTEND with a timeout→manual_review path (Phase 1); otherwise keep |
 | Dispense confirmation | `applyVendResult`, idempotent, device-authenticated | Dispense confirmation | Keep |
-| Refunds/exceptions | `requestRefund`/`markRefunded` record state; no reversal call wired | Refunds | Keep the state; wiring an actual Daraja reversal is NEXT (needs real transaction volume to justify) |
+| Refunds/exceptions | Admin review queue: confirm delivered, refund by M-Pesa reversal (single-item payments), or record a refund sent another way (`vendingSaleReviewService`) | Refunds | Run the reversal against Safaricom's sandbox before relying on it |
 | Slot-level inventory | Full ledger + reconciliation | Inventory | Keep |
 | Restocking | Auto-opened low-stock tasks | Restocking | "Restock intelligence" (velocity/lead-time) is SCALE — meaningless before real sales data |
 | Analytics | Daily rollups, request-scoped cache, self-healing | Analytics | Keep the primitive; richer cross-cuts (§22 of the brief) are SCALE, need real data |

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Banknote, ClipboardList, Receipt, Users, Eye, RotateCcw, Repeat, Wallet } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireAdminPage } from '@/lib/auth/requireAdminSection';
 import { businessAnalyticsService, ORDER_CHANNEL_LABELS } from '@/services/businessAnalyticsService';
 import { fulfillmentAccountingService } from '@/services/fulfillmentAccountingService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,7 +36,7 @@ export default async function AdminAnalyticsPage({
 }: {
   searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
-  const session = await requireStaffSession();
+  const session = await requireAdminPage('finance', 'finance.view');
   const month = currentMonth();
   const trafficParams = await searchParams;
   const trafficRange = resolveTrafficRange(trafficParams);

@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { marketingSmsService, MarketingSmsValidationError } from '@/services/marketingSmsService';
 import { parseSmsDraftBody, type SmsDraftBody } from '@/lib/marketingSms/parseDraftBody';
 import { serializeSmsCampaign } from '@/lib/marketingSms/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * `/api/admin/marketing-sms` (§ Admin: Marketing SMS). Super admin only,
@@ -16,7 +16,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -34,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

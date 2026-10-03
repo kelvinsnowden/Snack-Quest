@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
-import { staffManagementService, StaffNotFoundError } from '@/services/staffManagementService';
+import { staffManagementService, StaffNotFoundError, PermissionEscalationError, SuperAdminOnlyError } from '@/services/staffManagementService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { effectivePermissionsOf, hasPermission } from '@/lib/auth/permissions';
 
 /** Generates a fresh password-reset link for a staff account (§ Staff Management). Never logs the link itself. */
 export async function POST(
@@ -12,14 +12,14 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'users.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const { uid } = await params;
 
   try {
-    const { resetLink } = await staffManagementService.resetPassword(session.businessId, uid);
+    const { resetLink } = await staffManagementService.resetPassword(session.businessId, uid, { uid: session.uid, roles: session.roles, permissions: effectivePermissionsOf(session) });
 
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -31,6 +31,9 @@ export async function POST(
 
     return Response.json({ resetLink });
   } catch (error) {
+    if (error instanceof SuperAdminOnlyError || error instanceof PermissionEscalationError) {
+      return Response.json({ error: error.message }, { status: 403 });
+    }
     if (error instanceof StaffNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }

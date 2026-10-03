@@ -36,6 +36,7 @@
  * one already covers every action the business layer needs.
  */
 
+import type { IntegrationFailureCode } from './integrationErrors';
 import type { HardwareCapabilities } from './protocol/capabilities';
 
 export interface VendingMachineStatusReport {
@@ -59,6 +60,62 @@ export interface VendAuthorizationResult {
   authorized: boolean;
   /** Present only when `authorized` is false — the adapter's own reason (e.g. "slot empty", "door jammed"), never invented by the caller. */
   reason: string | null;
+  /**
+   * How an accepted vend reached the machine. `'synchronous'` (the
+   * default when omitted): the hardware — or the manufacturer's own
+   * cloud — confirmed receipt within this call. `'queued'`: nothing
+   * has reached the machine yet; it collects the instruction on its
+   * next poll of the Snack Quest Machine API (the inbound direction,
+   * where the manufacturer builds against us). The dispense command
+   * ledger records the two differently — acknowledged vs. merely sent.
+   */
+  delivery?: 'synchronous' | 'queued';
+}
+
+export interface VendAuthorizationOptions {
+  /**
+   * Snack Quest's own dispense-command reference. An adapter talking to
+   * a manufacturer API sends it as that API's idempotency key, so a
+   * retry is deduplicated on their side too — and uses it to ask for
+   * the outcome later if the original request timed out.
+   */
+  commandRef?: string;
+  /** The manufacturer's own name for the slot (`lib/vending/slotMapping.ts`), already translated. */
+  manufacturerSlotId?: string;
+}
+
+/** The outcome of an explicit connectivity/credential check — the TEST step of CONFIGURE → TEST → ACTIVATE. Never throws for an ordinary failure; `ok: false` with a reason is the answer. */
+export interface ConnectionTestResult {
+  ok: boolean;
+  /** What was checked and what happened — shown verbatim to the admin. */
+  detail: string;
+  latencyMs: number | null;
+  /** Classifies a failure for integration-health counters. Null on success. */
+  errorKind: 'connection' | 'authentication' | 'timeout' | 'protocol' | null;
+}
+
+/** Identity facts the machine/integration reports about itself — never trusted to overwrite Snack Quest's own identity (the SQ machine code), only recorded alongside it. */
+export interface MachineInfoReport {
+  manufacturerMachineId: string | null;
+  serialNumber: string | null;
+  model: string | null;
+  firmwareVersion: string | null;
+  controllerType: string | null;
+  controllerVersion: string | null;
+}
+
+/** What the hardware says about one previously authorized vend — the pull-side counterpart to a pushed `receiveVendResult`. */
+export interface DispenseStatusReport {
+  vendRef: string;
+  /** `'pending'`: the machine hasn't finished (or started). Any other value is a `DispenseResultStatus` outcome. */
+  state: 'pending' | 'dispensing' | DispenseResultStatus;
+  failureReason: string | null;
+}
+
+export interface PaymentDeviceStatusReport {
+  present: boolean;
+  ok: boolean | null;
+  detail: string | null;
 }
 
 /**
@@ -154,6 +211,41 @@ export class ProtocolNotConfiguredError extends Error {
   }
 }
 
+/**
+ * The request provably never reached the machine (connection refused,
+ * DNS failure, the manufacturer API rejected it before accepting it).
+ * For a dispense this is the one failure that is safe to treat as
+ * "nothing happened" — the customer is refunded, never re-dispensed.
+ */
+export class HardwareUnreachableError extends Error {
+  constructor(adapterKey: string, detail: string, readonly code: IntegrationFailureCode = 'transport.network') {
+    super(`${adapterKey}: machine unreachable — ${detail}`);
+    this.name = 'HardwareUnreachableError';
+  }
+}
+
+/**
+ * The request may or may not have reached the machine — it was sent,
+ * and no answer came back in time. For a dispense this must never be
+ * retried automatically and never assumed failed: the product may
+ * already be in the tray. The dispense command ledger records `unknown`
+ * and the transaction goes to manual review.
+ */
+export class HardwareTimeoutError extends Error {
+  constructor(adapterKey: string, detail: string, readonly code: IntegrationFailureCode = 'transport.timeout') {
+    super(`${adapterKey}: no response in time — ${detail}`);
+    this.name = 'HardwareTimeoutError';
+  }
+}
+
+/** The manufacturer's API rejected Snack Quest's credentials. Classified separately so integration health can show an auth problem, not a generic outage. */
+export class HardwareAuthenticationError extends Error {
+  constructor(adapterKey: string, detail: string, readonly code: IntegrationFailureCode = 'auth.invalid_credentials') {
+    super(`${adapterKey}: credentials rejected — ${detail}`);
+    this.name = 'HardwareAuthenticationError';
+  }
+}
+
 export interface VendingHardwareAdapter {
   readonly manufacturer: string;
 
@@ -176,7 +268,7 @@ export interface VendingHardwareAdapter {
    * payment is verified server-side — never in response to anything a
    * device itself asserted (§ financial correctness).
    */
-  authorizeVend(machineId: string, slotCode: string): Promise<VendAuthorizationResult>;
+  authorizeVend(machineId: string, slotCode: string, options?: VendAuthorizationOptions): Promise<VendAuthorizationResult>;
   /**
    * Parses a manufacturer's raw vend-result payload into
    * `VendResultReport`. Pure and synchronous — no I/O, no trust
@@ -190,4 +282,44 @@ export interface VendingHardwareAdapter {
   receiveTelemetry(rawPayload: unknown): VendingTelemetryReport;
   getTemperature(machineId: string): Promise<number | null>;
   getFaults(machineId: string): Promise<string[]>;
+
+  /**
+   * The TEST step of CONFIGURE → TEST → ACTIVATE. Must never throw for
+   * an ordinary failure (unreachable, rejected credentials, no protocol
+   * wired) — it returns `ok: false` with a reason, because "the test
+   * failed" is itself the answer the admin asked for.
+   */
+  testConnection(machineId: string): Promise<ConnectionTestResult>;
+  getMachineInfo(machineId: string): Promise<MachineInfoReport>;
+  /** Pull the outcome of a vend this adapter authorized earlier — used by reconciliation when no pushed result arrived. */
+  getDispenseStatus(machineId: string, vendRef: string): Promise<DispenseStatusReport>;
+  getDoorStatus(machineId: string): Promise<'open' | 'closed' | null>;
+  getPaymentDeviceStatus(machineId: string): Promise<PaymentDeviceStatusReport>;
+  /**
+   * Webhook-capable integrations only: parse one signed, already
+   * verified manufacturer webhook body into Snack Quest's normalized
+   * events. Pure and synchronous like the other two parsers; absent on
+   * adapters whose manufacturer sends no webhooks.
+   */
+  parseWebhook?(rawPayload: unknown): ParsedWebhook;
+}
+
+/** A normalized event as an adapter translates it from a manufacturer payload — the input to `machineEventService.record`. */
+export interface AdapterMachineEvent {
+  /** Snack Quest's own event type (`types/machineEvent.ts`), already translated — never the manufacturer's native name. */
+  type: string;
+  /** The manufacturer's own machine identifier as it appears in their payload; Snack Quest resolves it to a machine through the integration record, never trusts it as an SQ id. */
+  manufacturerMachineId: string;
+  /** Unique per manufacturer + machine — the dedupe key for this one event. */
+  eventId: string;
+  occurredAt: string | null;
+  /** The manufacturer's own slot identifier, when the event concerns one. */
+  manufacturerSlotId: string | null;
+  data: Record<string, unknown>;
+}
+
+export interface ParsedWebhook {
+  /** The manufacturer's delivery id — the replay/idempotency key for the delivery as a whole. */
+  deliveryId: string;
+  events: AdapterMachineEvent[];
 }

@@ -12,6 +12,7 @@ import { clearCreatorMemberships } from '../helpers/creatorFixtures';
 
 const BUSINESS_ID = 'biz-global-search-test';
 const OTHER_BUSINESS_ID = 'biz-global-search-other';
+const everything = () => true;
 
 beforeEach(async () => {
   await Promise.all(
@@ -21,6 +22,11 @@ beforeEach(async () => {
       'purchaseOrders',
       'conversations',
       'users',
+      'machines',
+      'machineTransactions',
+      'partners',
+      'locations',
+      'manufacturers',
     ].map((name) =>
       adminFirestore.recursiveDelete(adminFirestore.collection(name)),
     ),
@@ -42,12 +48,12 @@ describe('GlobalSearchService.search', () => {
       false,
       'staff-1',
     );
-    const response = await globalSearchService.search(BUSINESS_ID, 'Starter');
+    const response = await globalSearchService.search(BUSINESS_ID, 'Starter', everything);
     expect(response).toEqual({ enabled: false, results: [] });
   });
 
   it('returns no results for a query shorter than 2 characters', async () => {
-    const response = await globalSearchService.search(BUSINESS_ID, 'a');
+    const response = await globalSearchService.search(BUSINESS_ID, 'a', everything);
     expect(response.results).toHaveLength(0);
   });
 
@@ -77,7 +83,7 @@ describe('GlobalSearchService.search', () => {
       'staff-1',
     );
 
-    const response = await globalSearchService.search(BUSINESS_ID, 'starter');
+    const response = await globalSearchService.search(BUSINESS_ID, 'starter', everything);
     const productHit = response.results.find((r) => r.type === 'product');
     expect(productHit).toMatchObject({ title: 'Starter Box' });
     expect(
@@ -100,7 +106,7 @@ describe('GlobalSearchService.search', () => {
       },
       'staff-1',
     );
-    const response = await globalSearchService.search(BUSINESS_ID, 'starter');
+    const response = await globalSearchService.search(BUSINESS_ID, 'starter', everything);
     const inventoryHit = response.results.find((r) => r.type === 'inventory');
     expect(inventoryHit).toMatchObject({
       title: 'Starter Box',
@@ -122,11 +128,12 @@ describe('GlobalSearchService.search', () => {
       },
       'staff-1',
     );
-    const byName = await globalSearchService.search(BUSINESS_ID, 'coastal');
+    const byName = await globalSearchService.search(BUSINESS_ID, 'coastal', everything);
     expect(byName.results.some((r) => r.type === 'supplier')).toBe(true);
     const byPhone = await globalSearchService.search(
       BUSINESS_ID,
       '254700000001',
+      everything,
     );
     expect(byPhone.results.some((r) => r.type === 'supplier')).toBe(true);
   });
@@ -161,7 +168,7 @@ describe('GlobalSearchService.search', () => {
       'staff-1',
     );
 
-    const response = await globalSearchService.search(BUSINESS_ID, 'coastal');
+    const response = await globalSearchService.search(BUSINESS_ID, 'coastal', everything);
     expect(response.results.some((r) => r.type === 'purchaseOrder')).toBe(true);
   });
 
@@ -173,6 +180,7 @@ describe('GlobalSearchService.search', () => {
     const response = await globalSearchService.search(
       BUSINESS_ID,
       '254712345678',
+      everything,
     );
     expect(response.results.some((r) => r.type === 'conversation')).toBe(true);
   });
@@ -210,7 +218,7 @@ describe('GlobalSearchService.search', () => {
       schemaVersion: 1,
     });
 
-    const response = await globalSearchService.search(BUSINESS_ID, 'amina');
+    const response = await globalSearchService.search(BUSINESS_ID, 'amina', everything);
     const hit = response.results.find((r) => r.type === 'creator');
     expect(hit).toMatchObject({ title: 'Amina Hassan' });
   });
@@ -231,7 +239,46 @@ describe('GlobalSearchService.search', () => {
     const response = await globalSearchService.search(
       BUSINESS_ID,
       'rival starter',
+      everything,
     );
     expect(response.results).toHaveLength(0);
+  });
+
+  it('finds machines by code or serial, owners, locations, manufacturers, and a sale by its M-Pesa receipt', async () => {
+    await adminFirestore.collection('machines').doc('m-search-1').set({ businessId: BUSINESS_ID, machineCode: 'SQ-SEARCH-01', serialNumber: 'SN-778899', venueName: 'Library', status: 'active' });
+    await adminFirestore.collection('partners').doc('p-search-1').set({ businessId: BUSINESS_ID, name: 'Wanjiru Vending', contactPhone: '254711000111', contactEmail: null, status: 'active' });
+    await adminFirestore.collection('locations').doc('l-search-1').set({ businessId: BUSINESS_ID, name: 'Westlands Mall', area: 'Westlands', city: 'Nairobi', address: null });
+    await adminFirestore.collection('manufacturers').doc('mf-search-1').set({ businessId: BUSINESS_ID, name: 'Acme Vending Co', slug: 'acme' });
+    await adminFirestore.collection('machineTransactions').doc('t-search-1').set({ businessId: BUSINESS_ID, machineId: 'm-search-1', transactionRef: 'TXREF-000123', paymentRef: 'SKL8ABC123', amountKes: 150, status: 'dispensed' });
+
+    const types = async (q: string) => (await globalSearchService.search(BUSINESS_ID, q, everything)).results.map((r) => `${r.type}:${r.id}`);
+    expect(await types('SN-778899')).toContain('machine:m-search-1');
+    expect(await types('sq-search')).toContain('machine:m-search-1');
+    expect(await types('wanjiru')).toContain('machineOwner:p-search-1');
+    expect(await types('westlands')).toContain('location:l-search-1');
+    expect(await types('acme')).toContain('manufacturer:mf-search-1');
+    expect(await types('skl8abc123')).toContain('machineSale:t-search-1');
+    expect(await types('TXREF-000123')).toContain('machineSale:t-search-1');
+  });
+
+  it('only returns kinds of results the person can open, and never reads the rest', async () => {
+    await adminFirestore.collection('machines').doc('m-search-2').set({ businessId: BUSINESS_ID, machineCode: 'SQ-HIDDEN-02', serialNumber: 'SN-1', venueName: null, status: 'active' });
+    await adminFirestore.collection('partners').doc('p-search-2').set({ businessId: BUSINESS_ID, name: 'Hidden Owner', contactPhone: null, contactEmail: null, status: 'active' });
+    const asked: string[] = [];
+    const onlyMachines = (permission: string) => {
+      asked.push(permission);
+      return permission === 'machines.view';
+    };
+    const hidden = await globalSearchService.search(BUSINESS_ID, 'hidden', onlyMachines);
+    expect(hidden.results.map((r) => r.type)).toEqual(['machine']);
+    expect(asked).toContain('owners.view');
+    const nothing = await globalSearchService.search(BUSINESS_ID, 'hidden', () => false);
+    expect(nothing.results).toEqual([]);
+  });
+
+  it('does not find another business\'s machines', async () => {
+    await adminFirestore.collection('machines').doc('m-search-3').set({ businessId: OTHER_BUSINESS_ID, machineCode: 'SQ-RIVAL-03', serialNumber: 'SN-3', venueName: null, status: 'active' });
+    const response = await globalSearchService.search(BUSINESS_ID, 'rival-03', everything);
+    expect(response.results).toEqual([]);
   });
 });

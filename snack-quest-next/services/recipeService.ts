@@ -21,10 +21,16 @@ export class SnackItemNotFoundError extends Error {
   }
 }
 
+/** A customer description is read standing at a machine — two short sentences at most. */
+export const SNACK_DESCRIPTION_MAX = 160;
+
 export interface SnackItemDraft {
   name: string;
   imageUrl: string | null;
-  expectedUnitCostKes: number;
+  /** Customer-facing; see `SnackItem.description`. */
+  description?: string | null;
+  /** Undefined: not given (an update leaves the cost alone; a new snack starts with its cost pending). */
+  expectedUnitCostKes?: number;
   unitLabel: string;
   origin: string | null;
   sourcingNote: string | null;
@@ -79,12 +85,16 @@ class RecipeService {
 
   async createSnackItem(businessId: string, draft: SnackItemDraft, actor: string): Promise<string> {
     const validated = this.validateSnackItem(draft);
-    return snackItemRepository.create({ businessId, ...validated }, actor);
+    // A snack created without a cost gets a 0 placeholder marked pending — never read as a real cost.
+    const cost = validated.expectedUnitCostKes === undefined ? { expectedUnitCostKes: 0, costPending: true } : { expectedUnitCostKes: validated.expectedUnitCostKes };
+    return snackItemRepository.create({ businessId, ...validated, ...cost }, actor);
   }
 
   async updateSnackItem(businessId: string, itemId: string, draft: SnackItemDraft, actor: string): Promise<void> {
     await this.getSnackItem(businessId, itemId);
-    const validated = this.validateSnackItem(draft);
+    // The cost never changes here: it changes through the price book (`priceBookService.setPrice`), which keeps its history.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- deliberately dropped
+    const { expectedUnitCostKes: _ignoredCost, ...validated } = this.validateSnackItem(draft);
     await snackItemRepository.update(itemId, {
       ...validated,
       // Explicitly removed rather than omitted: an absent key on an
@@ -264,15 +274,22 @@ class RecipeService {
     if (!name) {
       throw new RecipeValidationError('The snack needs a name specific enough to buy it — include the size or flavour.');
     }
-    const cost = Number(draft.expectedUnitCostKes);
-    if (!Number.isFinite(cost) || cost < 0) {
+    const cost = draft.expectedUnitCostKes === undefined ? undefined : Number(draft.expectedUnitCostKes);
+    if (cost !== undefined && (!Number.isFinite(cost) || cost < 0)) {
       throw new RecipeValidationError('The expected cost must be a number, and cannot be negative.');
+    }
+    const description = draft.description?.trim() || null;
+    if (description && description.length > SNACK_DESCRIPTION_MAX) {
+      throw new RecipeValidationError(`Keep the customer description under ${SNACK_DESCRIPTION_MAX} characters — it has to fit on the machine screen.`);
     }
 
     return {
       name,
       imageUrl: draft.imageUrl?.trim() || null,
-      expectedUnitCostKes: Math.round(cost),
+      // Absent key when the caller did not send one — an update then
+      // leaves the stored description alone (and Firestore rejects undefined).
+      ...(draft.description === undefined ? {} : { description }),
+      ...(cost === undefined ? {} : { expectedUnitCostKes: Math.round(cost) }),
       unitLabel,
       origin: draft.origin?.trim() || null,
       sourcingNote: draft.sourcingNote?.trim() || null,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { verifyStaffSessionFromRequestMock, evaluateAndSyncMock, listOpenMock, acknowledgeMock, resolveMock } = vi.hoisted(() => ({
+const { verifyStaffSessionFromRequestMock, evaluateAndSyncMock, listOpenMock, acknowledgeMock, resolveMock, lastEvaluatedAtMock } = vi.hoisted(() => ({
+  lastEvaluatedAtMock: vi.fn(),
   verifyStaffSessionFromRequestMock: vi.fn(),
   evaluateAndSyncMock: vi.fn(),
   listOpenMock: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock('@/services/alertService', async () => {
   const actual = await vi.importActual<typeof import('@/services/alertService')>('@/services/alertService');
   return {
     ...actual,
-    alertService: { evaluateAndSync: evaluateAndSyncMock, listOpen: listOpenMock, acknowledge: acknowledgeMock, resolve: resolveMock },
+    alertService: { evaluateIfStale: evaluateAndSyncMock, evaluateAndSync: evaluateAndSyncMock, listOpen: listOpenMock, acknowledge: acknowledgeMock, resolve: resolveMock, lastEvaluatedAt: lastEvaluatedAtMock },
   };
 });
 
@@ -67,17 +68,18 @@ describe('GET /api/vending/alerts', () => {
     expect(response.status).toBe(403);
   });
 
-  it('syncs before listing, and returns the serialized open alerts', async () => {
+  it('lists open alerts without running the fleet sweep (that runs on the schedule), with when it last ran', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
-    evaluateAndSyncMock.mockResolvedValue(undefined);
     listOpenMock.mockResolvedValue([{ id: 'alert-1', data: ALERT }]);
+    lastEvaluatedAtMock.mockResolvedValue(new Date('2026-09-29T10:00:00Z'));
 
     const response = await alertsGet(new Request('http://localhost/api/vending/alerts'));
     expect(response.status).toBe(200);
-    expect(evaluateAndSyncMock).toHaveBeenCalledWith('biz-1');
+    expect(evaluateAndSyncMock).not.toHaveBeenCalled();
     expect(listOpenMock).toHaveBeenCalledWith('biz-1', { type: undefined, severity: undefined, machineId: undefined });
     const body = await response.json();
     expect(body.alerts).toEqual([expect.objectContaining({ id: 'alert-1', type: 'stockout', severity: 'critical', machineId: 'm-1' })]);
+    expect(body.lastEvaluatedAt).toBe('2026-09-29T10:00:00.000Z');
   });
 
   it('passes a recognised type/severity/machineId query param through to listOpen', async () => {
@@ -187,5 +189,24 @@ describe('POST /api/vending/alerts/[id]/resolve', () => {
     resolveMock.mockRejectedValue(new AlertNotOpenError('alert-1', 'resolved'));
     const response = await post({ resolution: 'note' });
     expect(response.status).toBe(409);
+  });
+});
+
+describe('POST /api/vending/alerts/evaluate', () => {
+  it('runs the sweep on request, rate-limited by evaluateIfStale, for anyone who can see alerts', async () => {
+    const { POST: evaluatePost } = await import('@/app/api/vending/alerts/evaluate/route');
+    verifyStaffSessionFromRequestMock.mockResolvedValue(null);
+    expect((await evaluatePost(new Request('http://localhost/x', { method: 'POST' }))).status).toBe(401);
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, effectivePermissions: ['machines.view'] });
+    expect((await evaluatePost(new Request('http://localhost/x', { method: 'POST' }))).status).toBe(403);
+    expect(evaluateAndSyncMock).not.toHaveBeenCalled();
+
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    evaluateAndSyncMock.mockResolvedValue(false);
+    lastEvaluatedAtMock.mockResolvedValue(new Date('2026-09-29T10:00:00Z'));
+    const response = await evaluatePost(new Request('http://localhost/x', { method: 'POST' }));
+    expect(response.status).toBe(200);
+    expect(evaluateAndSyncMock).toHaveBeenCalledWith('biz-1');
+    expect(await response.json()).toEqual({ ran: false, lastEvaluatedAt: '2026-09-29T10:00:00.000Z' });
   });
 });

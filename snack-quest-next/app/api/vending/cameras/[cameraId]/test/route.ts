@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { cameraService, CameraNotFoundError } from '@/services/cameraService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** POST — "Test connection" (§9/§10 step 4): `connect()` then `disconnect()`. Never destructive, so the same read-diagnostics-tier role as the rest of the machine diagnostics panel. */
 export async function POST(request: Request, { params }: { params: Promise<{ cameraId: string }> }): Promise<Response> {
@@ -9,8 +9,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'cameras.operate')) {
+    return forbiddenForPermission('cameras.operate');
   }
 
   const { cameraId } = await params;

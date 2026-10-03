@@ -1,3 +1,4 @@
+import { slotMappingHistoryRepository } from '@/repositories/slotMappingHistoryRepository';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -16,10 +17,22 @@ import { restockTaskService } from '@/services/restockTaskService';
 import { machineAssortmentIntelligenceService } from '@/services/machineAssortmentIntelligenceService';
 import { cameraService } from '@/services/cameraService';
 import { serializeRestockTask, serializeCamera } from '@/lib/vending/serialize';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
-import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
-import { ALL_HARDWARE_CAPABILITIES, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
+import { HardwareAuthenticationError, HardwareTimeoutError, HardwareUnreachableError, ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
+import { ALL_HARDWARE_CAPABILITIES, HARDWARE_CAPABILITY_LABELS, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
+import { machineIntegrationService } from '@/services/machineIntegrationService';
+import { manufacturerRegistryService } from '@/services/manufacturerRegistryService';
+import { machineEventService } from '@/services/machineEventService';
+import { dispenseCommandService } from '@/services/dispenseCommandService';
+import { toJsonSafe } from '@/lib/vending/serializeIntegration';
+import {
+  MachineIntegrationPanel,
+  type IntegrationPanelView,
+  type PanelDispenseCommand,
+  type PanelEvent,
+} from '@/components/admin/integrations/MachineIntegrationPanel';
 import { findProtocolRegistryEntry } from '@/lib/vending/protocol/registry';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +42,7 @@ import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransac
 import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
 import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
 import { TestVendAction } from '@/components/admin/TestVendAction';
+import { CertificationToolsPanel } from '@/components/admin/integrations/CertificationToolsPanel';
 import { StockDiscrepancyForm } from '@/components/admin/StockDiscrepancyForm';
 import { RestockTaskStatusBadge } from '@/components/admin/RestockTaskStatusBadge';
 import { RestockTaskActions } from '@/components/admin/RestockTaskActions';
@@ -37,22 +51,6 @@ import { AddCameraForm } from '@/components/admin/AddCameraForm';
 import { CameraActions } from '@/components/admin/CameraActions';
 import { formatDateTime } from '@/lib/orders/format';
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  vend: 'Vend',
-  slot_read: 'Slot read',
-  inventory_read: 'Inventory read',
-  inventory_write: 'Inventory write',
-  dispense_confirmation: 'Dispense confirmation',
-  heartbeat: 'Heartbeat',
-  telemetry: 'Telemetry',
-  faults: 'Faults',
-  temperature: 'Temperature',
-  door_status: 'Door status',
-  remote_price_update: 'Remote pricing',
-  remote_enable_disable: 'Remote enable/disable',
-  remote_restart: 'Remote restart',
-  audit_export: 'Audit export',
-};
 
 /** The four-way capability read (§ classifyCapabilityStatus) rendered as one badge look each — never collapsed back into a single ✓/○. */
 const CAPABILITY_STATUS_PRESENTATION: Record<CapabilityStatus, { label: string; icon: string; variant: 'success' | 'outline' | 'warning' | 'secondary' }> = {
@@ -92,7 +90,14 @@ async function runDiagnostics(manufacturer: string, machineId: string) {
     ]);
     return { registered: true as const, capabilities, live: { ok: true as const, status, slotCount: slots.length, faults } };
   } catch (error) {
-    if (error instanceof ProtocolNotConfiguredError) {
+    // Not wired, or wired but unreachable right now — either way an
+    // honest "couldn't read it", never a crashed page.
+    if (
+      error instanceof ProtocolNotConfiguredError ||
+      error instanceof HardwareUnreachableError ||
+      error instanceof HardwareTimeoutError ||
+      error instanceof HardwareAuthenticationError
+    ) {
       return { registered: true as const, capabilities, live: { ok: false as const, reason: error.message } };
     }
     throw error;
@@ -137,11 +142,21 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       cameraService.listByMachine(session.businessId, machineId),
     ]);
 
+  const [integrationView, registryManufacturers, registryModels, machineEvents, dispenseCommands, mappingHistory] = await Promise.all([
+    machineIntegrationService.getView(session.businessId, machineId),
+    manufacturerRegistryService.listManufacturers(session.businessId),
+    manufacturerRegistryService.listModels(session.businessId),
+    machineEventService.listForMachine(session.businessId, machineId, 15),
+    dispenseCommandService.listForMachine(session.businessId, machineId, 10),
+    slotMappingHistoryRepository.listForMachine(session.businessId, machineId, 50),
+  ]);
+
   const cameraRows = await Promise.all(
     cameras.map(async ({ id, data }) => ({ id, camera: serializeCamera(id, data), diagnostics: await cameraService.getDiagnostics(data) })),
   );
 
-  const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
+  const liveness = machineLiveness(machine, await machineIntegrationRepository.findByMachineId(session.businessId, machineId));
+  const connectivityStatus = connectivityOf(liveness);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);
   const lastVendTransaction = transactionPage.transactions.find((t) => t.data.status === 'dispensed' || t.data.status === 'paid_vend_failed');
   const lastFaultEvent = telemetryEvents.find((e) => e.data.eventType === 'fault');
@@ -159,12 +174,37 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <div>
           <h1 className="text-2xl font-semibold text-foreground">{machine.machineCode}</h1>
           <p className="text-sm text-muted-foreground">
-            {machine.model} · {machine.manufacturer} · Serial {machine.serialNumber}
+            {machine.model} · adapter {machine.manufacturer} · Serial {machine.serialNumber}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <MachineStatusBadge status={machine.status} />
           <MachineConnectivityBadge status={connectivityStatus} />
+          <span className="text-xs text-muted-foreground">{LIVENESS_REASON_LABEL[liveness.reason]}</span>
+          <Link
+            href={`/admin/vending/${machineId}/setup`}
+            className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Set up machine
+          </Link>
+          <Link
+            href={`/admin/vending/${machineId}/slots`}
+            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
+          >
+            Slots
+          </Link>
+          <Link
+            href={`/admin/vending/${machineId}/catalogue`}
+            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
+          >
+            What it sells
+          </Link>
+          <Link
+            href={`/admin/vending/${machineId}/screen`}
+            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
+          >
+            Edit customer screen
+          </Link>
           <Link
             href={`/admin/vending/${machineId}/catalog-preview`}
             className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-border/30"
@@ -180,6 +220,48 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <DetailStat label="Firmware" value={machine.firmwareVersion ?? '—'} />
         <DetailStat label="Owner partner" value={machine.ownerPartnerId ?? 'Snack Quest'} />
       </div>
+
+      <p className="text-sm">
+        <Link href={`/admin/vending/${machineId}/economics`} className="font-medium text-primary hover:underline">
+          Economics and profit →
+        </Link>
+        <span className="text-muted-foreground"> Ownership, owner terms, P&amp;L and the stock ledger.</span>
+      </p>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Integration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MachineIntegrationPanel
+            machineId={machineId}
+            view={toJsonSafe(integrationView) as IntegrationPanelView}
+            options={{
+              manufacturers: registryManufacturers.map(({ id, data }) => ({ id, name: data.name })),
+              models: registryModels.map(({ id, data }) => ({ id, manufacturerId: data.manufacturerId, name: data.name })),
+            }}
+            slots={slots.map((slot) => ({ slotCode: slot.slotCode, manufacturerSlotId: slot.manufacturerSlotId ?? null }))}
+            events={toJsonSafe(machineEvents.map(({ id, data }) => ({ id, type: data.type, severity: data.severity, occurredAt: data.occurredAt, source: data.source, slotCode: data.slotCode, nativeType: data.nativeType }))) as PanelEvent[]}
+            mappingHistory={toJsonSafe(mappingHistory) as { slotCode: string; from: string | null; to: string | null; changedBy: string; changedAt: string | null }[]}
+            dispenseCommands={toJsonSafe(dispenseCommands.map((command) => ({ commandRef: command.commandRef, status: command.status, slotCode: command.slotCode, manufacturerSlotId: command.manufacturerSlotId, delivery: command.delivery, failureReason: command.failureReason, updatedAt: command.updatedAt }))) as PanelDispenseCommand[]}
+          />
+        </CardContent>
+      </Card>
+
+      {integrationView.integration ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Manufacturer verification</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CertificationToolsPanel
+              machineId={machineId}
+              environment={integrationView.integration.environment}
+              slotIds={slots.map((slot) => slot.manufacturerSlotId ?? slot.slotCode)}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -206,7 +288,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                   const presentation = CAPABILITY_STATUS_PRESENTATION[status];
                   return (
                     <Badge key={capability} variant={presentation.variant} title={presentation.label}>
-                      {presentation.icon} {CAPABILITY_LABELS[capability] ?? capability}
+                      {presentation.icon} {HARDWARE_CAPABILITY_LABELS[capability] ?? capability}
                     </Badge>
                   );
                 })}
@@ -416,7 +498,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                       <td className="px-6 py-3 text-muted-foreground">
                         {slot.currentQuantity} / {slot.capacity}
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground">{slot.enabled ? 'Yes' : 'No'}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{slot.quarantine ? 'Paused — check it' : slot.enabled ? 'Yes' : 'No'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -594,8 +676,9 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle>Recent transactions</CardTitle>
+          <Link href={`/admin/vending/sales?machineCode=${encodeURIComponent(machine.machineCode)}`} className="text-sm text-primary hover:underline">All sales for this machine</Link>
         </CardHeader>
         <CardContent className="p-0">
           {transactionPage.transactions.length === 0 ? (
@@ -614,7 +697,9 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                 <tbody>
                   {transactionPage.transactions.map(({ id, data }) => (
                     <tr key={id} className="border-b border-border last:border-0">
-                      <td className="px-6 py-3 font-medium text-foreground">{data.transactionRef}</td>
+                      <td className="px-6 py-3 font-medium">
+                        <Link href={`/admin/vending/sales/${id}`} className="text-primary hover:underline">{data.transactionRef}</Link>
+                      </td>
                       <td className="px-6 py-3">
                         <MachineTransactionStatusBadge status={data.status} />
                       </td>

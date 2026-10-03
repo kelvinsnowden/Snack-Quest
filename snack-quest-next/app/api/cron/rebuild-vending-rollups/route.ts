@@ -1,12 +1,7 @@
-import { vendingRollupService } from '@/services/vendingRollupService';
-import { machineRepository } from '@/repositories/machineRepository';
-import { partnerRepository } from '@/repositories/partnerRepository';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
-import { dateKey } from '@/lib/analytics/dateKey';
-
-const JOB_NAME = 'rebuild-vending-rollups';
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { scheduledJobService } from '@/services/scheduledJobService';
+import { rebuildVendingRollups } from '@/services/jobs/rebuildVendingRollups';
 
 /**
  * Keeps `machineDailySummary`, `partnerDailySummary` and
@@ -35,55 +30,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * the dashboards it feeds.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-
-  try {
-    const startDate = dateKey(new Date(Date.now() - 3 * DAY_MS));
-    const endDate = dateKey(new Date());
-
-    const { machines } = await machineRepository.listByBusiness(businessId, { limit: 10000 });
-    const partners = await partnerRepository.listByBusiness(businessId);
-
-    let machineDays = 0;
-    for (const { id: machineId } of machines) {
-      const { days } = await vendingRollupService.rebuildMachineDayRange(businessId, machineId, startDate, endDate);
-      machineDays += days;
-    }
-
-    let partnerDays = 0;
-    for (const { id: partnerId } of partners) {
-      const { days } = await vendingRollupService.rebuildPartnerDayRange(businessId, partnerId, startDate, endDate);
-      partnerDays += days;
-    }
-
-    const { days: networkDays } = await vendingRollupService.rebuildNetworkDayRange(businessId, startDate, endDate);
-
-    const result = { machineCount: machines.length, machineDays, partnerCount: partners.length, partnerDays, networkDays };
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'succeeded',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: result,
-      error: null,
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: null,
-      error: error instanceof Error ? error.message : 'unknown error',
-    });
-    throw error;
-  }
+  const outcome = await scheduledJobService.run(businessId, 'rebuild-vending-rollups', (job) => rebuildVendingRollups(businessId, job));
+  return scheduledJobService.toResponse(outcome);
 }

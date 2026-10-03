@@ -1,7 +1,7 @@
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { orderService } from '@/services/orderService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * `POST /api/admin/orders/{orderId}/send-confirmation-sms`
@@ -24,8 +24,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'orders.notify')) {
+    return forbiddenForPermission('orders.notify');
   }
 
   const { orderId } = await params;

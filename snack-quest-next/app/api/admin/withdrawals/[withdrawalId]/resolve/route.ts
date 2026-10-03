@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   withdrawalService,
@@ -10,6 +5,7 @@ import {
   InvalidWithdrawalTransitionError,
 } from '@/services/withdrawalService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A human's explicit, audited resolution of a withdrawal that
@@ -27,8 +23,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'finance.withdrawals.approve')) {
+    return forbiddenForPermission('finance.withdrawals.approve');
   }
 
   const { withdrawalId } = await params;

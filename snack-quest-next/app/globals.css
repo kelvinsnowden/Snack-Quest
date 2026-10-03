@@ -191,10 +191,11 @@
   --shadow-md: var(--sq-shadow-md);
   --shadow-lg: var(--sq-shadow-lg);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* `--sq-radius-*` is unset everywhere except a themed kiosk screen (lib/kiosk/experienceConfig.ts), so the fallbacks are the site's radii. */
+  --radius-sm: var(--sq-radius-sm, 8px);
+  --radius-md: var(--sq-radius-md, 12px);
+  --radius-lg: var(--sq-radius-lg, 16px);
+  --radius-xl: var(--sq-radius-xl, 24px);
   --radius-full: 999px;
 
   /* Type scale — design-system skill: Display Hero 72 / Hero 56 / Page Title 48 / Section Title 36 / Card Title 24 / Subtitle 20 / Body 16 / Small 14 / Caption 12 */
@@ -233,7 +234,23 @@
   --color-home-purple-deep: #38137f;
   --color-home-orange-glow: #ff9633;
 
-  --font-display: var(--font-bagel-fat-one), 'Titan One', ui-sans-serif, system-ui, sans-serif;
+  /*
+   * Customer machine screen (components/kiosk). The "stage" is the deep
+   * purple of the brand mark itself (sampled from public/logo.png's own
+   * ground), used for the built-in menu banner and the idle screen so the
+   * logo sits seamlessly on it; the
+   * highlight is the mark's lime, for the one thing on a surface that
+   * should be read first. Like the lightbox's immersive ground, these
+   * do not change with theme: the machine screen is a single, fixed
+   * brand surface. A published kiosk theme (lib/kiosk/experienceConfig.ts)
+   * can re-colour them for its own screen subtree through `--sq-kiosk-*`.
+   */
+  --color-kiosk-stage: var(--sq-kiosk-stage, #170132);
+  --color-kiosk-stage-foreground: var(--sq-kiosk-stage-foreground, #fff8ee);
+  --color-kiosk-highlight: var(--sq-kiosk-highlight, #c8ff00);
+  --color-kiosk-highlight-foreground: var(--sq-kiosk-highlight-foreground, #1f1f1f);
+
+  --font-display: var(--sq-font-display, var(--font-bagel-fat-one)), 'Titan One', ui-sans-serif, system-ui, sans-serif;
   --font-signature: Georgia, 'Times New Roman', serif;
 }
 
@@ -586,4 +603,12 @@ body {
 }
 .animate-own-step-in {
   animation: own-step-in 0.32s ease-out both;
+}
+
+/* A kiosk design with motion set to "reduced" (lib/kiosk/experienceConfig.ts): stills, whatever the device reports. */
+.kiosk-reduced-motion *,
+.kiosk-reduced-motion *::before,
+.kiosk-reduced-motion *::after {
+  animation: none !important;
+  transition: none !important;
 }

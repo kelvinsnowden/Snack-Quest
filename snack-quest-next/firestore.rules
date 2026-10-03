@@ -495,6 +495,11 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
       allow write: if false;
     }
+    // One row per machine for the fleet page; written by the server only, read by staff (owners use their own portal).
+    match /machineFleetSummary/{machineId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
     match /partnerDailySummary/{summaryId} {
       allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(resource.data.partnerId);
       allow write: if false;
@@ -512,6 +517,32 @@ service cloud.firestore {
       allow write: if false;
     }
     match /machineLocationHistory/{entryId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineOwnershipHistory/{entryId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    // § PRICE BOOK / INVENTORY TRANSFER LEDGER — costs and owner prices are
+    // never readable by a client SDK: staff read them through permission-checked
+    // routes (products.cost.view / products.wholesale.view), owners through the
+    // owner portal's own filtered routes. Written only by the Admin SDK.
+    match /productPrices/{priceId} {
+      allow read, write: if false;
+    }
+    match /productPriceCurrent/{docId} {
+      allow read, write: if false;
+    }
+    match /stockTransfers/{transferId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /ownerWholesaleSales/{saleId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineSlotPriceHistory/{entryId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
@@ -542,11 +573,113 @@ service cloud.firestore {
     // admin-only rather than relying on that alone. No device or
     // partner writes directly — every write goes through
     // `cameraService`, same as `alerts`.
+    // Artwork staff choose for the customer machine screen. Written only
+    // through `kioskScreenService`; machines read their own resolved set
+    // through a device-authenticated route, never this collection.
+    // Money returned to vending customers — written only by
+    // `vendingSaleReviewService` (and the Daraja reversal callback).
+    match /vendingRefunds/{refundId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /kioskScreenImages/{imageId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    // § KIOSK EXPERIENCE BUILDER / § ADVERTISING — designs, campaigns,
+    // creatives, playback and ad revenue are read and written only through
+    // permission-checked routes (kiosk.*, advertising.*, finance.*) and the
+    // device content package; machines never touch Firestore directly.
+    // Advertiser prices and revenue are money, so no client SDK reads them.
+    match /kioskLayers/{layerId} {
+      allow read, write: if false;
+    }
+    match /kioskLayerVersions/{versionId} {
+      allow read, write: if false;
+    }
+    match /kioskPublishedIndex/{businessId} {
+      allow read, write: if false;
+    }
+    match /advertisers/{advertiserId} {
+      allow read, write: if false;
+    }
+    match /adCreatives/{creativeId} {
+      allow read, write: if false;
+    }
+    match /adCampaigns/{campaignId} {
+      allow read, write: if false;
+    }
+    match /adPlaybackBatches/{batchId} {
+      allow read, write: if false;
+    }
+    match /adDailyStats/{statId} {
+      allow read, write: if false;
+    }
+    match /adRevenueEntries/{entryId} {
+      allow read, write: if false;
+    }
+    // § KIOSK SERVICE MODE / § KIOSK OBSERVABILITY — service codes (hashed),
+    // lockout counters and screen reports are server-side only.
+    match /machineServiceCodes/{codeId} {
+      allow read, write: if false;
+    }
+    match /machineServiceAttempts/{machineId} {
+      allow read, write: if false;
+    }
+    match /kioskReportBatches/{batchId} {
+      allow read, write: if false;
+    }
+    match /kioskDailyStats/{statId} {
+      allow read, write: if false;
+    }
+    match /kioskDeviceStates/{machineId} {
+      allow read, write: if false;
+    }
     match /cameras/{cameraId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }
     match /cameraSnapshots/{snapshotId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    // Manufacturer-agnostic integration layer (docs/MACHINE_INTEGRATION_LAYER.md).
+    // Every one of these describes infrastructure an owner never needs to
+    // see — manufacturer relationships, adapters, controller versions,
+    // health counters, credentials, raw command/event ledgers — so all are
+    // tenant-admin read only, and every write goes through a Service under
+    // the Admin SDK. `machines/{id}` (partner-readable) carries only the
+    // registry ids, never any of this.
+    match /manufacturers/{manufacturerId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineModels/{modelId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineIntegrations/{machineId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineIntegrationIdentities/{claimId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    // Holds signing secrets (encrypted when SECRET_ENCRYPTION_KEY is
+    // set). Staff see credential summaries through the admin API, which
+    // omits the secret; no client ever reads this collection directly.
+    match /integrationCredentials/{credentialId} {
+      allow read, write: if false;
+    }
+    match /integrationRequestNonces/{nonceId} {
+      allow read, write: if false;
+    }
+    match /machineDispenseCommands/{commandId} {
+      allow read: if isTenantAdmin(resource.data.businessId);
+      allow write: if false;
+    }
+    match /machineEvents/{eventId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;
     }

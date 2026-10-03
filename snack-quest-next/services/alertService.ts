@@ -1,27 +1,68 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { machineSubscriptionRepository } from '@/repositories/machineSubscriptionRepository';
 import { machineSettlementRepository } from '@/repositories/machineSettlementRepository';
 import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
+import { machineEventRepository } from '@/repositories/machineEventRepository';
+import { ALERTING_EVENT_TYPES } from '@/lib/vending/machineEvents';
 import { alertRepository, AlertNotFoundError, AlertNotOpenError, type AlertConditionInput } from '@/repositories/alertRepository';
 import { vendingReconciliationService } from '@/services/vendingReconciliationService';
 import { LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { detectManufacturerSilence } from '@/lib/vending/machineLiveness';
+import { findAdapterRegistration } from '@/lib/vending/adapterRegistry';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import { manufacturerRepository } from '@/repositories/manufacturerRepository';
 import { ALERT_SEVERITY_BY_TYPE, type Alert, type AlertSeverity, type AlertType } from '@/types';
+import { businessRepository } from '@/repositories/businessRepository';
+import { orderAlertRecipientsFor } from '@/lib/notifications/orderAlertRecipients';
+import { notificationService, TemplateNotFoundError, type NotificationService } from '@/services/notificationService';
+import { scheduledJobService } from '@/services/scheduledJobService';
+import { machineDispenseCommandRepository } from '@/repositories/machineDispenseCommandRepository';
+import { integrationCredentialRepository } from '@/repositories/integrationCredentialRepository';
+import { manufacturerApiCredentialRepository } from '@/repositories/manufacturerApiCredentialRepository';
+import {
+  INTEGRATION_ALERT_THRESHOLDS,
+  abnormalTimeoutRates,
+  authenticationFailures,
+  expiringCredentials,
+  failingWebhooks,
+  repeatedDispenseFailures,
+  unavailableManufacturerApis,
+} from '@/lib/vending/integrationAlerts';
+import { logger } from '@/lib/observability/logger';
 
 const DEFAULT_EXPIRY_WARNING_DAYS = 7;
 const DEFAULT_SETTLEMENT_STALE_AFTER_DAYS = 3;
 const DEFAULT_EVENT_LOOKBACK_DAYS = 14;
+/**
+ * Page loads re-run the sweep at most this often per business; the
+ * scheduled sweep runs regardless. 0 under the test runner (every test
+ * sees fresh alerts), unless `ALERT_EVALUATION_MIN_INTERVAL_MS` is set.
+ */
+function alertEvaluationMinIntervalMs(): number {
+  const configured = Number(process.env.ALERT_EVALUATION_MIN_INTERVAL_MS);
+  if (process.env.ALERT_EVALUATION_MIN_INTERVAL_MS && Number.isFinite(configured) && configured >= 0) {
+    return configured;
+  }
+  return process.env.NODE_ENV === 'test' ? 0 : 60_000;
+}
+/** More new critical alerts than this in one sweep are texted as one digest — a fleet-wide outage is one text, not a thousand. */
+export const CRITICAL_ALERT_DIGEST_THRESHOLD = 3;
+/** The same condition is texted at most once per this interval, however often it re-opens. */
+export const CRITICAL_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
 
 type ConditionDraft = Omit<AlertConditionInput, 'severity'>;
 
 /**
  * § PART 6 — ALERT CENTER. `evaluateAndSync` is the whole service: a
- * sweep, safe to call on every Alert Center page load (or from a
- * future cron, unchanged), that re-derives every alert type from the
+ * sweep, run by the fast-recovery cron and — at most once a minute —
+ * by page loads (`evaluateIfStale`), that re-derives every alert type from the
  * live state the rest of this codebase already keeps — never a
  * second, independently-maintained copy of "is this machine okay."
  * See `types/alert.ts` for the condition-alert vs event-alert split
@@ -33,16 +74,242 @@ class AlertService {
     const machines = await machineRepository.listAllStatuses(businessId);
     const locationByMachine = new Map(machines.map((m) => [m.id, m.locationId]));
 
-    await Promise.all([
-      this.evaluateConnectivity(businessId, machines),
-      this.evaluateInventory(businessId, machines, locationByMachine),
-      this.evaluateReconciliation(businessId, locationByMachine),
-      this.evaluateSubscriptions(businessId, locationByMachine),
-      this.evaluateSettlements(businessId, locationByMachine),
-      this.evaluateFaults(businessId, locationByMachine),
-      this.evaluateInventoryDiscrepancies(businessId, locationByMachine),
-      this.evaluateExpiryRisk(businessId, locationByMachine),
-    ]);
+    // Each evaluator is independent: one failing (a bad record, a
+    // missing index) must not stop the others from raising their alerts.
+    const evaluators: [string, () => Promise<void>][] = [
+      ['connectivity', () => this.evaluateConnectivity(businessId, machines)],
+      ['inventory', () => this.evaluateInventory(businessId, machines, locationByMachine)],
+      ['reconciliation', () => this.evaluateReconciliation(businessId, locationByMachine)],
+      ['subscriptions', () => this.evaluateSubscriptions(businessId, locationByMachine)],
+      ['settlements', () => this.evaluateSettlements(businessId, locationByMachine)],
+      ['faults', () => this.evaluateFaults(businessId, locationByMachine)],
+      ['inventory discrepancies', () => this.evaluateInventoryDiscrepancies(businessId, locationByMachine)],
+      ['expiry risk', () => this.evaluateExpiryRisk(businessId, locationByMachine)],
+      ['integration events', () => this.evaluateIntegrationEvents(businessId, locationByMachine)],
+      ['manufacturer outages', () => this.evaluateManufacturerOutages(businessId)],
+      ['scheduled jobs', () => this.evaluateScheduledJobs(businessId)],
+      ['integration health', () => this.evaluateIntegrationHealth(businessId, locationByMachine)],
+    ];
+    const results = await Promise.allSettled(evaluators.map(([, run]) => run()));
+    const failed = results.flatMap((result, index) => (result.status === 'rejected' ? [{ name: evaluators[index][0], error: result.reason as unknown }] : []));
+    for (const { name, error } of failed) {
+      logger.error('alert evaluator failed', { businessId, evaluator: name, error });
+    }
+    if (failed.length > 0) {
+      throw new Error(`alert evaluation incomplete: ${failed.map(({ name, error }) => `${name} (${error instanceof Error ? error.message : String(error)})`).join('; ')}`);
+    }
+    await alertRepository.recordEvaluation(businessId);
+  }
+
+  /** When the last complete sweep finished — shown beside alert lists, since pages no longer run the sweep themselves. */
+  async lastEvaluatedAt(businessId: string): Promise<Date | null> {
+    return alertRepository.lastCompletedEvaluation(businessId);
+  }
+
+  /**
+   * Integration conditions (`lib/vending/integrationAlerts.ts` holds every
+   * threshold): repeated dispense failures per machine, an abnormal
+   * unresolved-outcome rate per manufacturer, an outbound manufacturer API
+   * that most machines can't reach, authentication failures, keys expiring
+   * or still in use at the end of a rotation, Snack Quest's own API key
+   * revoked while machines need it, and refused webhook deliveries. All
+   * condition alerts: one per subject, auto-resolving when it clears.
+   */
+  private async evaluateIntegrationHealth(businessId: string, locationByMachine: Map<string, string | null>): Promise<void> {
+    const now = Date.now();
+    const [integrations, manufacturers] = await Promise.all([machineIntegrationRepository.listByBusiness(businessId), manufacturerRepository.listByBusiness(businessId)]);
+    const manufacturerOf = new Map(integrations.map((integration) => [integration.machineId, integration.manufacturerId]));
+    const nameOf = new Map(manufacturers.map(({ id, data }) => [id, data.name]));
+    const ms = (value: { toMillis(): number } | null | undefined) => (value ? value.toMillis() : null);
+
+    const since = new Date(now - INTEGRATION_ALERT_THRESHOLDS.timeoutRate.windowMs);
+    const commands = (await Promise.all((['dispensed', 'failed', 'timeout', 'unknown'] as const).map((status) => machineDispenseCommandRepository.listByStatusUpdatedSince(businessId, status, since)))).flat();
+    const commandFacts = commands.map((command) => ({ machineId: command.machineId, manufacturerId: manufacturerOf.get(command.machineId) ?? null, status: command.status, updatedAtMs: command.updatedAt.toMillis() }));
+
+    const failuresOpen = new Set<string>();
+    for (const [machineId, count] of repeatedDispenseFailures(commandFacts, now)) {
+      const key = `dispense_failures:${machineId}`;
+      failuresOpen.add(key);
+      await this.open({ businessId, type: 'dispense_failures', machineId, locationId: locationByMachine.get(machineId) ?? null, dedupeKey: key, title: `${count} dispenses failed or unresolved in the last hour`, detail: 'Customers on this machine are not getting their products. Check for a jam, an empty spiral or a connectivity problem; unresolved ones are in manual review.' });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'dispense_failures', failuresOpen);
+
+    const rateOpen = new Set<string>();
+    for (const [manufacturerId, { total, unresolved, rate }] of abnormalTimeoutRates(commandFacts, now)) {
+      const key = `dispense_timeout_rate:${manufacturerId}`;
+      rateOpen.add(key);
+      await this.open({ businessId, type: 'dispense_timeout_rate', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId}: ${Math.round(rate * 100)}% of dispenses had no known outcome`, detail: `${unresolved} of ${total} dispenses in the last 24 hours ended as timeout or unknown. Each one needs a human; ask the manufacturer why outcomes aren't being reported.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'dispense_timeout_rate', rateOpen);
+
+    const integrationFacts = integrations.map((integration) => ({
+      machineId: integration.machineId,
+      manufacturerId: integration.manufacturerId,
+      active: integration.state === 'active',
+      outbound: findAdapterRegistration(integration.adapterKey)?.direction === 'outbound',
+      lastError: integration.lastError ? { kind: integration.lastError.kind, atMs: ms(integration.lastError.at), message: integration.lastError.message } : null,
+      lastSuccessMs: Math.max(0, ...(['api_request', 'heartbeat', 'webhook', 'dispense_success'] as const).map((kind) => ms(integration.signals?.[kind]) ?? 0)),
+    }));
+
+    const apiOpen = new Set<string>();
+    for (const [manufacturerId, { failing, active, lastError }] of unavailableManufacturerApis(integrationFacts, now)) {
+      const key = `manufacturer_api_unavailable:${manufacturerId}`;
+      apiOpen.add(key);
+      await this.open({ businessId, type: 'manufacturer_api_unavailable', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId} API unreachable`, detail: `${failing} of ${active} active machines could not reach the manufacturer's API (${lastError}). New orders to them are refused while it lasts; nothing is refunded or re-sent blindly.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'manufacturer_api_unavailable', apiOpen);
+
+    const authOpen = new Set<string>();
+    for (const [manufacturerId, { machines, lastError }] of authenticationFailures(integrationFacts, now)) {
+      const key = `integration_auth_failures:${manufacturerId}`;
+      authOpen.add(key);
+      await this.open({ businessId, type: 'integration_auth_failures', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId}: requests failing authentication`, detail: `${machines} machine(s) are sending requests Snack Quest refuses (${lastError}). Usually a revoked or expired key, an unfinished rotation, or a clock far off.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'integration_auth_failures', authOpen);
+
+    const expiringOpen = new Set<string>();
+    const revokedOpen = new Set<string>();
+    const webhookFacts = [];
+    for (const { id: manufacturerId, data: manufacturer } of manufacturers) {
+      const credentials = await integrationCredentialRepository.listByManufacturer(businessId, manufacturerId);
+      for (const expiring of expiringCredentials(credentials.map((c) => ({ keyId: c.keyId, manufacturerId, revokedAtMs: ms(c.revokedAt), expiresAtMs: ms(c.expiresAt), graceEndsAtMs: ms(c.graceEndsAt), supersededAtMs: ms(c.supersededAt), lastUsedAtMs: ms(c.lastUsedAt) })), now)) {
+        const key = `credential_expiring:${expiring.keyId}`;
+        expiringOpen.add(key);
+        await this.open({
+          businessId,
+          type: 'credential_expiring',
+          machineId: null,
+          locationId: null,
+          dedupeKey: key,
+          title: `${manufacturer.name}: key ${expiring.keyId} ${expiring.reason === 'expires_soon' ? 'expires' : 'stops working'} ${new Date(expiring.atMs).toISOString().slice(0, 10)}`,
+          detail: expiring.reason === 'expires_soon' ? 'Issue a replacement and have the manufacturer switch before it expires.' : 'The rotation grace period is ending and machines are still signing with the old key. They will be refused afterwards.',
+        });
+      }
+      const needsOutbound = integrations.filter((i) => i.manufacturerId === manufacturerId && i.state === 'active' && findAdapterRegistration(i.adapterKey)?.requiresOutboundCredential);
+      if (needsOutbound.length > 0) {
+        for (const credential of await manufacturerApiCredentialRepository.listForManufacturer(businessId, manufacturerId)) {
+          const affected = needsOutbound.filter((i) => i.environment === credential.environment);
+          if (credential.status === 'revoked' && affected.length > 0) {
+            const key = `credential_revoked:${manufacturerId}__${credential.environment}`;
+            revokedOpen.add(key);
+            await this.open({ businessId, type: 'credential_revoked', machineId: null, locationId: null, dedupeKey: key, title: `${manufacturer.name}: ${credential.environment} API key revoked`, detail: `${affected.length} active machine(s) depend on it; they cannot sell (payments are declined) until a new key is set.` });
+          }
+        }
+      }
+      const health = manufacturer.webhookHealth;
+      if (health) {
+        webhookFacts.push({ manufacturerId, lastRejectedAtMs: ms(health.lastRejectedAt), lastRejectedCode: health.lastRejectedCode ?? null, lastAcceptedAtMs: ms(health.lastAcceptedAt) });
+      }
+    }
+    await alertRepository.autoResolveMissing(businessId, 'credential_expiring', expiringOpen);
+    await alertRepository.autoResolveMissing(businessId, 'credential_revoked', revokedOpen);
+
+    const webhookOpen = new Set<string>();
+    for (const [manufacturerId, { code }] of failingWebhooks(webhookFacts, now)) {
+      const key = `webhook_failures:${manufacturerId}`;
+      webhookOpen.add(key);
+      await this.open({ businessId, type: 'webhook_failures', machineId: null, locationId: null, dedupeKey: key, title: `${nameOf.get(manufacturerId) ?? manufacturerId}: webhook deliveries refused`, detail: `Their signed deliveries are being refused (${code ?? 'unknown reason'}) and none has been accepted since. Events and dispense outcomes they send are not arriving.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'webhook_failures', webhookOpen);
+  }
+
+  /**
+   * A scheduled job that failed, partly failed, was abandoned mid-run
+   * or hasn't run on schedule — from the run records alone
+   * (`scheduledJobService.health`). A job that has never run raises
+   * nothing: it may simply not be scheduled on this deployment, and the
+   * Operations page shows "never run" for it.
+   */
+  private async evaluateScheduledJobs(businessId: string): Promise<void> {
+    const open = new Set<string>();
+    for (const job of await scheduledJobService.health(businessId)) {
+      if (job.state !== 'failing' && job.state !== 'overdue' && job.state !== 'abandoned') continue;
+      const key = `job_failure:${job.jobName}`;
+      open.add(key);
+      const detail =
+        job.state === 'failing'
+          ? `The last run ${job.lastStatus === 'partial' ? 'partly failed' : 'failed'}: ${job.lastError ?? 'no error recorded'}. It runs again on its schedule (${job.trigger}); steps are idempotent, so a re-run is safe.`
+          : job.state === 'abandoned'
+            ? `A run started at ${job.lastRunAt} never finished (killed or timed out). The next run will retry; if this repeats, the job is exceeding the platform's time limit.`
+            : `No run since ${job.lastRunAt} — expected about every ${Math.round(job.expectedEveryMs / 60_000)} minutes (${job.trigger}). Check the scheduler.`;
+      await this.open({ businessId, type: 'job_failure', machineId: null, locationId: null, dedupeKey: key, title: `Scheduled job ${job.jobName}: ${job.state}`, detail });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'job_failure', open);
+  }
+
+  /**
+   * The sweep on request, for the Alert Center's "Check now" button: runs
+   * only if nobody has in the last minute. Pages no longer run it on load
+   * (the scheduled fast-recovery job sweeps every few minutes); the sweep
+   * reads the whole fleet, so running it per page view made every load
+   * O(fleet) and multiplied with the number of people looking.
+   */
+  async evaluateIfStale(businessId: string, minIntervalMs = alertEvaluationMinIntervalMs()): Promise<boolean> {
+    if (!(await alertRepository.claimEvaluation(businessId, minIntervalMs))) {
+      return false;
+    }
+    await this.evaluateAndSync(businessId);
+    await this.notifyCritical(businessId).catch((error: unknown) => logger.error('critical alert notification failed', { businessId, error }));
+    return true;
+  }
+
+  /**
+   * Texts operators about open critical alerts they haven't been told
+   * about, using the same recipients as new-order texts. Each alert is
+   * texted once (`notifiedAt`, plus the outbound-message dedupe key);
+   * a burst becomes one digest. Best-effort: a failed text never fails
+   * the sweep, and with no recipients or no template it's a no-op that
+   * logs why.
+   */
+  async notifyCritical(businessId: string, notifications: Pick<NotificationService, 'send'> = notificationService): Promise<{ notified: number; digest: boolean }> {
+    const unnotified = (await alertRepository.listOpen(businessId, { severity: 'critical' })).filter(({ data }) => !data.notifiedAt);
+    // Cooldown: a condition that flaps (resolves, then re-opens as a new
+    // alert) is texted at most once an hour. The alert still shows in the
+    // Alert Center immediately; it is texted once the cooldown has passed
+    // if it is still open.
+    const recentlyTexted = await alertRepository.dedupeKeysNotifiedSince(businessId, unnotified.map(({ data }) => data.dedupeKey), new Date(Date.now() - CRITICAL_ALERT_COOLDOWN_MS));
+    const pending = unnotified.filter(({ data }) => !recentlyTexted.has(data.dedupeKey));
+    if (pending.length === 0) {
+      return { notified: 0, digest: false };
+    }
+    const recipients = orderAlertRecipientsFor(await businessRepository.findById(businessId));
+    if (recipients.length === 0) {
+      logger.warn('critical alerts open but no alert recipients configured', { businessId, count: pending.length });
+      return { notified: 0, digest: false };
+    }
+    const digest = pending.length > CRITICAL_ALERT_DIGEST_THRESHOLD;
+    const messages = digest
+      ? [{
+          key: `digest-${createHash('sha256').update(pending.map(({ id }) => id).sort().join(',')).digest('hex').slice(0, 16)}`,
+          params: { title: `${pending.length} critical alerts`, machine: `${new Set(pending.map(({ data }) => data.machineId)).size} machines`, detail: 'Open the Alert Center.' },
+        }]
+      : await Promise.all(pending.map(async ({ id, data }) => ({
+          key: id,
+          params: { title: data.title, machine: data.machineId ? ((await machineRepository.findById(businessId, data.machineId))?.machineCode ?? data.machineId) : 'fleet', detail: data.detail.slice(0, 120) },
+        })));
+    try {
+      for (const message of messages) {
+        for (const recipient of recipients) {
+          await notifications.send(businessId, {
+            channel: 'sms',
+            templateCode: 'vending_critical_alert_sms',
+            recipientType: 'staff',
+            recipientId: message.key,
+            recipientRef: recipient.phone,
+            params: message.params,
+            dedupeKey: `vending-alert:${message.key}:${recipient.phone}`,
+          });
+        }
+      }
+    } catch (error) {
+      if (error instanceof TemplateNotFoundError) {
+        logger.warn('critical alert template not seeded; run scripts/seedNotificationTemplates.mjs', { businessId });
+        return { notified: 0, digest };
+      }
+      throw error;
+    }
+    await alertRepository.markNotified(pending.map(({ id }) => id));
+    return { notified: pending.length, digest };
   }
 
   private async open(draft: ConditionDraft): Promise<void> {
@@ -54,30 +321,33 @@ class AlertService {
   }
 
   /**
-   * `machine_offline`/`heartbeat_missing` — read straight off
-   * `lib/vending/connectivity.ts`'s own `deriveConnectivityStatus`,
-   * the exact function the admin fleet view already uses to render
-   * 🟢/🟡/🔴. `stale` becomes the warning-level `heartbeat_missing`,
-   * `offline` becomes the critical `machine_offline` — two alert
-   * types over one derived signal, not two separate detections.
-   * Scoped to `active` machines only: a machine mid-install, in
-   * maintenance, or already staff-marked `offline` has no useful
-   * "is it unexpectedly quiet" signal — staff already know.
+   * `machine_offline`/`heartbeat_missing` — from `machineLiveness`, the
+   * same answer the fleet, machine and owner pages show. DEGRADED (missed
+   * check-ins) is the warning-level `heartbeat_missing`; OFFLINE (silent,
+   * or the machine says it's offline) is the critical `machine_offline`.
+   * Planned maintenance and UNKNOWN (never heard, or its manufacturer's
+   * whole fleet went quiet — `manufacturer_outage` covers that) raise
+   * nothing. Scoped to `active` machines only: a machine mid-install or
+   * already staff-marked offline has no useful "is it unexpectedly
+   * quiet" signal — staff already know.
    */
   private async evaluateConnectivity(businessId: string, machines: Awaited<ReturnType<typeof machineRepository.listAllStatuses>>): Promise<void> {
     const offlineKeys = new Set<string>();
     const staleKeys = new Set<string>();
+    const integrations = new Map((await machineIntegrationRepository.listByBusiness(businessId)).map((integration) => [integration.machineId, integration]));
+    const now = new Date();
     for (const m of machines) {
       if (m.status !== 'active') continue;
-      const connectivity = deriveConnectivityStatus(m.lastSeenAt);
-      if (connectivity === 'offline') {
+      const liveness = machineLiveness(m, integrations.get(m.id) ?? null, now);
+      if (liveness.state === 'OFFLINE' && !liveness.planned) {
         const key = `machine_offline:${m.id}`;
         offlineKeys.add(key);
-        await this.open({ businessId, type: 'machine_offline', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: 'Machine offline', detail: 'No heartbeat received past the offline threshold.' });
-      } else if (connectivity === 'stale') {
+        const detail = liveness.reason === 'reports_offline' ? 'The machine is in contact but reports itself offline.' : 'No contact past the offline threshold.';
+        await this.open({ businessId, type: 'machine_offline', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: `Machine offline — ${LIVENESS_REASON_LABEL[liveness.reason].toLowerCase()}`, detail });
+      } else if (liveness.state === 'DEGRADED') {
         const key = `heartbeat_missing:${m.id}`;
         staleKeys.add(key);
-        await this.open({ businessId, type: 'heartbeat_missing', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: 'Heartbeat missing', detail: 'No heartbeat received recently — not yet offline, but later than expected.' });
+        await this.open({ businessId, type: 'heartbeat_missing', machineId: m.id, locationId: m.locationId, dedupeKey: key, title: 'Heartbeat missing', detail: 'Missed its last check-ins — not yet offline, but later than expected.' });
       }
     }
     await alertRepository.autoResolveMissing(businessId, 'machine_offline', offlineKeys);
@@ -215,6 +485,101 @@ class AlertService {
           detail: `Fault code ${code}.`,
         },
         `machine_fault:event:${id}`,
+      );
+    }
+  }
+
+  /**
+   * Event alerts for critical normalized events that arrived through
+   * the manufacturer integration layer (v1 Machine API, manufacturer
+   * webhooks, inventory sync) — the same `machine_fault` /
+   * `inventory_discrepancy` alert types, so the Alert Center needs no
+   * idea which manufacturer a machine came from. `telemetry`-sourced
+   * events are skipped: `evaluateFaults` already raises those from the
+   * raw ledger, and one fault must not become two alerts.
+   */
+  /**
+   * `manufacturer_outage` — most of one manufacturer's machines went
+   * silent together. N machines offline at once is one problem, not N:
+   * this names it (and the per-machine offline alerts still open, so
+   * nothing is hidden). Only machines that report in on their own
+   * (inbound adapters) count — an outbound machine is only contacted
+   * when someone buys, so its silence means nothing.
+   */
+  private async evaluateManufacturerOutages(businessId: string): Promise<void> {
+    const integrations = (await machineIntegrationRepository.listByBusiness(businessId)).filter(
+      (integration) => integration.state === 'active' && findAdapterRegistration(integration.adapterKey)?.direction === 'inbound',
+    );
+    const byManufacturer = new Map<string, (Date | null)[]>();
+    for (const integration of integrations) {
+      const contacts = [integration.signals?.heartbeat, integration.signals?.api_request, integration.signals?.webhook]
+        .filter((value): value is NonNullable<typeof value> => Boolean(value))
+        .map((value) => value.toMillis());
+      const list = byManufacturer.get(integration.manufacturerId) ?? [];
+      list.push(contacts.length > 0 ? new Date(Math.max(...contacts)) : null);
+      byManufacturer.set(integration.manufacturerId, list);
+    }
+    const open = new Set<string>();
+    for (const [manufacturerId, contacts] of byManufacturer) {
+      if (!detectManufacturerSilence(contacts)) continue;
+      const key = `manufacturer_outage:${manufacturerId}`;
+      open.add(key);
+      const manufacturer = await manufacturerRepository.findById(businessId, manufacturerId);
+      const heard = contacts.filter(Boolean).length;
+      await this.open({
+        businessId,
+        type: 'manufacturer_outage',
+        machineId: null,
+        locationId: null,
+        dedupeKey: key,
+        title: `${manufacturer?.name ?? manufacturerId}: machines went silent together`,
+        detail: `Most of this manufacturer's ${heard} reporting machines stopped reporting at about the same time. Orders to them are refused until they return; check the manufacturer's status before visiting machines.`,
+      });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'manufacturer_outage', open);
+  }
+
+  private async evaluateIntegrationEvents(businessId: string, locationByMachine: Map<string, string | null>): Promise<void> {
+    const since = new Date(Date.now() - DEFAULT_EVENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+    for await (const { id, data } of machineEventRepository.streamReceived(businessId, { since, types: ALERTING_EVENT_TYPES })) {
+      if (data.source === 'telemetry') {
+        continue;
+      }
+      const isInventory = data.type === 'INVENTORY_MISMATCH' || data.type === 'DISPENSE_UNRECOGNISED';
+      const dedupeKey = `integration_event:${id}`;
+      if (data.type === 'DISPENSE_OUTCOME_CONFLICT' || data.type === 'FIRMWARE_CHANGED') {
+        await this.recordEvent(
+          {
+            businessId,
+            type: data.type === 'DISPENSE_OUTCOME_CONFLICT' ? 'dispense_conflict' : 'integration_issue',
+            machineId: data.machineId,
+            locationId: locationByMachine.get(data.machineId) ?? null,
+            dedupeKey,
+            title: data.type === 'DISPENSE_OUTCOME_CONFLICT' ? 'Dispense outcome contradicts a money decision' : 'Machine firmware changed',
+            detail:
+              data.type === 'DISPENSE_OUTCOME_CONFLICT'
+                ? `${String(data.data.description ?? 'Contradicting outcome reported')} (transaction ${String(data.data.transactionId ?? '—')}).`
+                : `Firmware ${String(data.data.previousFirmwareVersion ?? 'unknown')} → ${String(data.data.firmwareVersion ?? 'unknown')}${data.data.certifiedBefore === true ? ' — the model was certified before this change' : ''}.`,
+          },
+          dedupeKey,
+        );
+        continue;
+      }
+      await this.recordEvent(
+        {
+          businessId,
+          type: isInventory ? 'inventory_discrepancy' : 'machine_fault',
+          machineId: data.machineId,
+          locationId: locationByMachine.get(data.machineId) ?? null,
+          dedupeKey,
+          title: data.type === 'DISPENSE_UNRECOGNISED' ? 'Machine reported a dispense Snack Quest never ordered' : isInventory ? 'Machine count disagrees with inventory' : `${data.type.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())} reported`,
+          detail: data.type === 'DISPENSE_UNRECOGNISED'
+            ? `Unrecognised vend ${String(data.data.vendRef ?? '—')} reported as "${String(data.data.status ?? '—')}" — check the slot count and the camera.`
+            : isInventory
+            ? `Slot ${data.slotCode ?? String(data.data.manufacturerSlotId ?? 'unknown')}: ledger ${String(data.data.expected ?? '—')}, machine reported ${String(data.data.reported ?? '—')}.`
+            : `${data.nativeType ?? data.type}${typeof data.data.code === 'string' ? ` (code ${data.data.code})` : ''}.`,
+        },
+        dedupeKey,
       );
     }
   }

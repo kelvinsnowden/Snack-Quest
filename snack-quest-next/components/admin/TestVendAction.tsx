@@ -4,21 +4,46 @@ import { useState } from 'react';
 import { AlertTriangle, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+interface DiagnosticVendResult {
+  transactionRef: string;
+  replay: boolean;
+  authorized: boolean;
+  commandRef: string | null;
+  commandStatus: string | null;
+  failureReason: string | null;
+}
+
+/** What the command's status means for the operator standing at the machine. */
+function describeOutcome(result: DiagnosticVendResult): { tone: 'text-success' | 'text-warning' | 'text-danger'; text: string } {
+  switch (result.commandStatus) {
+    case 'sent':
+      return { tone: 'text-success', text: 'Queued — the machine collects it on its next poll. Watch the machine, then check the dispense history below.' };
+    case 'acknowledged':
+    case 'dispensing':
+      return { tone: 'text-success', text: 'Accepted by the machine; waiting for its outcome report.' };
+    case 'dispensed':
+      return { tone: 'text-success', text: 'The machine reported the product dispensed.' };
+    case 'unknown':
+    case 'timeout':
+      return { tone: 'text-warning', text: `Outcome unknown — it may have dispensed. Check the machine before trying again. ${result.failureReason ?? ''}`.trim() };
+    default:
+      return { tone: 'text-danger', text: `Not dispensed: ${result.failureReason ?? 'refused'}` };
+  }
+}
+
 /**
- * The diagnostics page's "Test vend" action (§ DIAGNOSTICS PAGE:
- * "Require elevated permission for actual test vend"). Only shown
- * when the caller already confirmed `hasCapability(..., 'vend')` —
- * same discipline as `IssueMachineCommandAction`'s own gate — but
- * this one has a real physical/financial consequence a remote restart
- * doesn't: it actually dispenses product from a live slot, so the
- * browser confirm() below is deliberate friction on top of the
- * server's own `ADMIN_ONLY` check, not a replacement for it.
+ * The diagnostics page's "Test vend" action. It really dispenses: it
+ * goes through the dispense ledger like a sale (the machine receives a
+ * real command, the outcome is tracked, stock leaves as waste), so the
+ * browser confirm() is deliberate friction on top of the server's
+ * `ADMIN_ONLY` check. One request id per confirmed vend: a double click
+ * or a network retry reuses it, and the server never dispenses twice.
  */
 export function TestVendAction({ machineId, slotCodes }: { machineId: string; slotCodes: string[] }) {
   const [slotCode, setSlotCode] = useState(slotCodes[0] ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ authorized: boolean; reason: string | null; vendRef: string } | null>(null);
+  const [result, setResult] = useState<DiagnosticVendResult | null>(null);
 
   async function runTestVend() {
     if (!slotCode) {
@@ -27,6 +52,7 @@ export function TestVendAction({ machineId, slotCodes }: { machineId: string; sl
     if (!window.confirm(`This will attempt to physically dispense product from slot ${slotCode}. Continue?`)) {
       return;
     }
+    const requestId = crypto.randomUUID();
     setBusy(true);
     setError(null);
     setResult(null);
@@ -34,15 +60,13 @@ export function TestVendAction({ machineId, slotCodes }: { machineId: string; sl
       const response = await fetch(`/api/vending/machines/${machineId}/testVend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotCode }),
+        body: JSON.stringify({ slotCode, requestId }),
       });
-      const data = (await response.json().catch(() => null)) as
-        | { authorized?: boolean; reason?: string | null; vendRef?: string; error?: string }
-        | null;
+      const data = (await response.json().catch(() => null)) as (DiagnosticVendResult & { error?: string }) | null;
       if (!response.ok) {
         throw new Error(data?.error ?? `Could not run the test vend (HTTP ${response.status}).`);
       }
-      setResult({ authorized: Boolean(data?.authorized), reason: data?.reason ?? null, vendRef: data?.vendRef ?? '' });
+      setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not run the test vend.');
     } finally {
@@ -74,11 +98,11 @@ export function TestVendAction({ machineId, slotCodes }: { machineId: string; sl
         </Button>
       </div>
       <p className="text-caption text-muted-foreground">
-        Requires admin — calls the machine&apos;s adapter live and really attempts to dispense. Not a simulation.
+        Requires admin. Sends the machine a real dispense command, exactly as a paid sale would. Not a simulation; the product is recorded as waste, not a sale.
       </p>
       {result ? (
-        <p className={`text-sm ${result.authorized ? 'text-success' : 'text-warning'}`}>
-          {result.authorized ? 'Authorized' : 'Refused'} — {result.reason ?? 'no reason given'} (vendRef: {result.vendRef})
+        <p className={`text-sm ${describeOutcome(result).tone}`} role="status">
+          {describeOutcome(result).text} ({result.transactionRef}{result.commandRef ? `, ${result.commandRef}` : ''})
         </p>
       ) : null}
       {error ? (

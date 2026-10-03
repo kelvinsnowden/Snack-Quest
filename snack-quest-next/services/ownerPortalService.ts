@@ -9,19 +9,25 @@ import { machineSubscriptionService } from '@/services/machineSubscriptionServic
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
-import { snackItemRepository } from '@/repositories/snackItemRepository';
-import { packageRepository } from '@/repositories/packageRepository';
+import { resolveVendingProductNames } from '@/lib/vending/productNames';
 import { withdrawalService } from '@/services/withdrawalService';
 import { alertService } from '@/services/alertService';
 import { machineSlotService, LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
 import { restockTaskService } from '@/services/restockTaskService';
 import { cameraService, CameraNotFoundError } from '@/services/cameraService';
-import { machineTelemetryEventRepository } from '@/repositories/machineTelemetryEventRepository';
+import { machineEventRepository } from '@/repositories/machineEventRepository';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
-import { ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
+import {
+  HardwareAuthenticationError,
+  HardwareTimeoutError,
+  HardwareUnreachableError,
+  ProtocolNotConfiguredError,
+} from '@/lib/vending/hardwareAdapter';
 import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
-import type { Location, Machine, MachineConnectivityStatus, MachineSubscription } from '@/types';
+import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import { ownerSince, clipStartDate, withinTenure } from '@/lib/vending/ownerTenure';
+import { isCustomerSale, type Location, type Machine, type MachineConnectivityStatus, type MachineEventType, type MachineSubscription, type MachineTransactionStatus } from '@/types';
 
 export { PartnerDoesNotOwnMachineError, CameraNotFoundError };
 
@@ -32,7 +38,9 @@ export interface OwnerMachineCard {
   machineId: string;
   machineCode: string;
   status: Machine['status'];
-  connectivity: ReturnType<typeof deriveConnectivityStatus>;
+  connectivity: MachineConnectivityStatus;
+  /** Why, in words — e.g. "Says it is offline" (`LIVENESS_REASON_LABEL`). */
+  connectivityReason: string;
   locationName: string | null;
   revenueKes: number;
   unitsSold: number;
@@ -96,6 +104,33 @@ export interface OwnerRecentActivityItem {
   amountKes: number;
   dispensedAt: string;
 }
+
+/**
+ * A payment on the owner's machine in the owner's words. Only `sold`
+ * counts as a sale (and towards settlements); the others explain money
+ * a customer paid that didn't become one.
+ */
+export type OwnerSaleStatus = 'sold' | 'under_review' | 'refund_due' | 'refunded' | 'in_progress';
+
+export interface OwnerSaleItem {
+  transactionId: string;
+  machineId: string;
+  machineCode: string;
+  productName: string;
+  amountKes: number;
+  status: OwnerSaleStatus;
+  at: string;
+}
+
+const OWNER_SALE_STATUS: Partial<Record<MachineTransactionStatus, OwnerSaleStatus>> = {
+  dispensed: 'sold',
+  manual_review: 'under_review',
+  paid_vend_failed: 'refund_due',
+  refund_requested: 'refund_due',
+  refunded: 'refunded',
+  paid: 'in_progress',
+  vend_authorized: 'in_progress',
+};
 
 export interface OwnerAlertItem {
   id: string;
@@ -169,7 +204,8 @@ export interface OwnerMachineDetail {
   machineId: string;
   machineCode: string;
   status: Machine['status'];
-  connectivity: ReturnType<typeof deriveConnectivityStatus>;
+  connectivity: MachineConnectivityStatus;
+  connectivityReason: string;
   lastHeartbeatAt: string | null;
   lastSaleAt: string | null;
   lastRestock: { taskId: string; status: string; createdAt: string } | null;
@@ -188,7 +224,17 @@ export interface OwnerMachineDetail {
  * or directly) so a partner can never reach another partner's
  * machine by trying a different id.
  */
+/** What an owner may do with a camera's live feed — see `getCameraStreamInfoForOwner`. */
+export type OwnerLiveViewCapability =
+  | { mode: 'unavailable'; cameraOnline: boolean; reason: string }
+  | { mode: 'relay_url'; url: string; expiresAt: string };
+
 class OwnerPortalService {
+  /** The one liveness answer (`machineLiveness`), the same the admin fleet and alerts use. */
+  private async livenessOf(businessId: string, machineId: string, machine: Machine) {
+    return machineLiveness(machine, await machineIntegrationRepository.findByMachineId(businessId, machineId));
+  }
+
   async getDashboard(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboard> {
     const partner = await partnerService.findById(businessId, partnerId);
     if (!partner) {
@@ -205,12 +251,13 @@ class OwnerPortalService {
 
     const cards: OwnerMachineCard[] = await Promise.all(
       machines.map(async ({ id: machineId, data: machine }) => {
-        const summary = await ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30);
+        const [summary, liveness] = await Promise.all([ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30), this.livenessOf(businessId, machineId, machine)]);
         return {
           machineId,
           machineCode: machine.machineCode,
           status: machine.status,
-          connectivity: deriveConnectivityStatus(machine.lastSeenAt),
+          connectivity: connectivityOf(liveness),
+          connectivityReason: LIVENESS_REASON_LABEL[liveness.reason],
           locationName: machine.locationId ? locationById.get(machine.locationId)?.name ?? null : null,
           revenueKes: summary.revenueKes,
           unitsSold: summary.unitsSold,
@@ -237,21 +284,26 @@ class OwnerPortalService {
 
   async getMachineDetail(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineDetail> {
     const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
+    const since = ownerSince(machine);
 
-    const [performanceEntries, lastSalePage, restockRows, settlements, location] = await Promise.all([
+    const [performanceEntries, lastSalePage, restockRows, settlementRows, location, liveness] = await Promise.all([
       Promise.all(OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, days))),
-      machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 1 }),
+      // A few, not one: a staff test vend is dispensed too, and isn't a sale.
+      machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
       restockTaskRepository.listByMachine(businessId, machineId, 1),
       machineSettlementService.listByMachine(businessId, machineId),
       machine.locationId ? locationService.findById(businessId, machine.locationId) : Promise.resolve(null),
+      this.livenessOf(businessId, machineId, machine),
     ]);
 
     const performanceByWindow = Object.fromEntries(
       OWNER_PERFORMANCE_WINDOWS_DAYS.map((days, index) => [days, performanceEntries[index]]),
     ) as Record<(typeof OWNER_PERFORMANCE_WINDOWS_DAYS)[number], OwnerMachineSummary>;
 
-    const lastSale = lastSalePage.transactions[0] ?? null;
-    const lastRestockRow = restockRows[0] ?? null;
+    // Only this owner's time with the machine: a previous owner's sales, restocks and settlements stay theirs.
+    const settlements = settlementRows.filter(({ data }) => data.partnerId === partnerId);
+    const lastSale = lastSalePage.transactions.find(({ data }) => isCustomerSale(data) && withinTenure(data.dispensedAt ?? data.createdAt, since)) ?? null;
+    const lastRestockRow = restockRows.find(({ data }) => withinTenure(data.createdAt, since)) ?? null;
     const lifetimeDistributableProfitKes = settlements
       .filter(({ data }) => data.status === 'finalized' || data.status === 'paid')
       .reduce((sum, { data }) => sum + data.distributableOwnerKes, 0);
@@ -260,7 +312,8 @@ class OwnerPortalService {
       machineId,
       machineCode: machine.machineCode,
       status: machine.status,
-      connectivity: deriveConnectivityStatus(machine.lastSeenAt),
+      connectivity: connectivityOf(liveness),
+      connectivityReason: LIVENESS_REASON_LABEL[liveness.reason],
       lastHeartbeatAt: machine.lastSeenAt ? machine.lastSeenAt.toDate().toISOString() : null,
       lastSaleAt: lastSale ? lastSale.data.dispensedAt?.toDate().toISOString() ?? null : null,
       lastRestock: lastRestockRow ? { taskId: lastRestockRow.id, status: lastRestockRow.data.status, createdAt: lastRestockRow.data.createdAt.toDate().toISOString() } : null,
@@ -271,13 +324,13 @@ class OwnerPortalService {
   }
 
   /** Every owned machine, or just one — `assertPartnerOwnsMachine` still runs for the single-machine case, so a caller can never widen scope by passing an id that isn't actually theirs. */
-  private async resolveOwnedMachineIds(businessId: string, partnerId: string, machineId?: string): Promise<{ id: string; machineCode: string }[]> {
+  private async resolveOwnedMachineIds(businessId: string, partnerId: string, machineId?: string): Promise<{ id: string; machineCode: string; since: Date | null }[]> {
     if (machineId) {
       const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
-      return [{ id: machineId, machineCode: machine.machineCode }];
+      return [{ id: machineId, machineCode: machine.machineCode, since: ownerSince(machine) }];
     }
     const machines = await partnerService.listMachines(businessId, partnerId);
-    return machines.map(({ id, data }) => ({ id, machineCode: data.machineCode }));
+    return machines.map(({ id, data }) => ({ id, machineCode: data.machineCode, since: ownerSince(data) }));
   }
 
   /**
@@ -291,27 +344,7 @@ class OwnerPortalService {
    * a product that has since been deleted from both.
    */
   private async resolveProductNames(businessId: string, productIds: string[]): Promise<Map<string, string>> {
-    const names = new Map<string, string>();
-    if (productIds.length === 0) {
-      return names;
-    }
-    const snackItems = await snackItemRepository.findManyById(productIds);
-    const missing: string[] = [];
-    for (const id of productIds) {
-      const item = snackItems.get(id);
-      if (item) {
-        names.set(id, item.name);
-      } else {
-        missing.push(id);
-      }
-    }
-    if (missing.length > 0) {
-      const packages = await Promise.all(missing.map((id) => packageRepository.findById(businessId, id)));
-      missing.forEach((id, index) => {
-        names.set(id, packages[index]?.name ?? id);
-      });
-    }
-    return names;
+    return resolveVendingProductNames(businessId, productIds);
   }
 
   /**
@@ -325,8 +358,8 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const byDate = new Map<string, { revenueKes: number; unitsSold: number }>();
-    for (const { id } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, id, startDate, endDate);
+    for (const { id, since } of machines) {
+      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
       for (const [date, rollup] of rollups) {
         const existing = byDate.get(date) ?? { revenueKes: 0, unitsSold: 0 };
         existing.revenueKes += rollup.grossSalesKes;
@@ -353,8 +386,8 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const totals = new Map<string, { unitsSold: number; revenueKes: number }>();
-    for (const { id } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, id, startDate, endDate);
+    for (const { id, since } of machines) {
+      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
       for (const rollup of rollups.values()) {
         for (const [productId, product] of Object.entries(rollup.byProduct)) {
           const existing = totals.get(productId) ?? { unitsSold: 0, revenueKes: 0 };
@@ -387,7 +420,7 @@ class OwnerPortalService {
     const ownedMachineIds = new Set(machines.map((m) => m.id));
     const machineCodeById = new Map(machines.map((m) => [m.id, m.machineCode]));
 
-    await alertService.evaluateAndSync(businessId);
+    // As the last scheduled sweep left them; an owner's page never runs the fleet-wide sweep.
     const openAlerts = await alertService.listOpen(businessId);
 
     return openAlerts
@@ -408,11 +441,14 @@ class OwnerPortalService {
   async getRecentActivity(businessId: string, partnerId: string, limit = 10, machineId?: string): Promise<OwnerRecentActivityItem[]> {
     const machines = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
     const machineCodeById = new Map(machines.map((m) => [m.id, m.machineCode]));
+    const sinceById = new Map(machines.map((m) => [m.id, m.since]));
 
     const perMachine = await Promise.all(
       machines.map(({ id }) => machineTransactionRepository.listByBusiness(businessId, { machineId: id, status: 'dispensed', limit })),
     );
-    const transactions = perMachine.flatMap((page) => page.transactions);
+    const transactions = perMachine
+      .flatMap((page) => page.transactions)
+      .filter(({ data }) => isCustomerSale(data) && withinTenure(data.dispensedAt ?? data.createdAt, sinceById.get(data.machineId) ?? null));
     transactions.sort((a, b) => (b.data.dispensedAt?.toMillis() ?? 0) - (a.data.dispensedAt?.toMillis() ?? 0));
     const top = transactions.slice(0, limit);
 
@@ -429,9 +465,38 @@ class OwnerPortalService {
   }
 
   /**
+   * Recent paid sales on the owner's machines with where each stands —
+   * sold, being checked, refund due or refunded — so an owner can see why
+   * a payment they know about isn't in their sales. Payments that never
+   * completed aren't shown; nothing is shown from before this owner's
+   * time with a machine; staff test vends never appear.
+   */
+  async getSalesWithStatus(businessId: string, partnerId: string, limit = 20, machineId?: string): Promise<OwnerSaleItem[]> {
+    const machines = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
+    const codes = new Map(machines.map((m) => [m.id, m.machineCode]));
+    const sinceById = new Map(machines.map((m) => [m.id, m.since]));
+    const pages = await Promise.all(machines.map(({ id }) => machineTransactionRepository.listByBusiness(businessId, { machineId: id, limit: Math.max(limit, 20) })));
+    const rows = pages
+      .flatMap((page) => page.transactions)
+      .filter(({ data }) => isCustomerSale(data) && OWNER_SALE_STATUS[data.status] !== undefined && withinTenure(data.createdAt, sinceById.get(data.machineId) ?? null))
+      .sort((a, b) => (b.data.dispensedAt ?? b.data.createdAt).toMillis() - (a.data.dispensedAt ?? a.data.createdAt).toMillis())
+      .slice(0, limit);
+    const names = await this.resolveProductNames(businessId, Array.from(new Set(rows.map(({ data }) => data.productId))));
+    return rows.map(({ id, data }) => ({
+      transactionId: id,
+      machineId: data.machineId,
+      machineCode: codes.get(data.machineId) ?? data.machineId,
+      productName: names.get(data.productId) ?? data.productId,
+      amountKes: data.amountKes,
+      status: OWNER_SALE_STATUS[data.status] as OwnerSaleStatus,
+      at: (data.dispensedAt ?? data.createdAt).toDate().toISOString(),
+    }));
+  }
+
+  /**
    * § MACHINE HEALTH tab. `controllerOnline`/`networkOk` are both
    * restatements of the one real connectivity fact this codebase has
-   * (`deriveConnectivityStatus`) — this codebase does not have two
+   * (`machineLiveness`) — this codebase does not have two
    * independent signals for "is the controller reachable" and "is the
    * network good"; presenting them as two rows without inventing a
    * second measurement is a UI convenience, not a second fact. Live
@@ -443,13 +508,14 @@ class OwnerPortalService {
    */
   async getMachineHealth(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineHealth> {
     const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
-    const connectivity = deriveConnectivityStatus(machine.lastSeenAt);
+    const since = ownerSince(machine);
+    const connectivity = connectivityOf(await this.livenessOf(businessId, machineId, machine));
     const controllerOnline = connectivity === 'online';
 
-    const [openAlerts, cameras, telemetryEvents, recentDispensed] = await Promise.all([
+    const [openAlerts, cameras, machineEvents, recentDispensed] = await Promise.all([
       alertService.listOpen(businessId, { machineId }),
       cameraService.listByMachine(businessId, machineId),
-      machineTelemetryEventRepository.listByMachine(businessId, machineId, { limit: 10 }),
+      machineEventRepository.listByMachine(businessId, machineId, 20),
       machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
     ]);
 
@@ -463,7 +529,16 @@ class OwnerPortalService {
       temperatureCelsius = status.temperatureCelsius;
       doorOpen = status.doorOpen;
     } catch (error) {
-      if (!(error instanceof UnsupportedManufacturerError) && !(error instanceof ProtocolNotConfiguredError)) {
+      // A live reading the hardware couldn't give right now is shown as
+      // unknown, never a crash of the owner's page — whichever
+      // manufacturer's integration it came from.
+      if (
+        !(error instanceof UnsupportedManufacturerError) &&
+        !(error instanceof ProtocolNotConfiguredError) &&
+        !(error instanceof HardwareUnreachableError) &&
+        !(error instanceof HardwareTimeoutError) &&
+        !(error instanceof HardwareAuthenticationError)
+      ) {
         throw error;
       }
     }
@@ -480,13 +555,20 @@ class OwnerPortalService {
     }
 
     const events: OwnerMachineHealthEvent[] = [
-      ...telemetryEvents.map(({ id, data }) => ({
-        id,
-        label: TELEMETRY_EVENT_LABEL[data.eventType] ?? data.eventType,
-        detail: data.processingError,
-        occurredAt: data.receivedAt.toDate().toISOString(),
-      })),
-      ...recentDispensed.transactions.map(({ id, data }) => ({
+      // The normalized event stream every integration writes — so an
+      // owner sees the same kind of history whichever manufacturer built
+      // the machine. Only owner-meaningful types, in owner language;
+      // never the manufacturer's native event names or the channel.
+      ...machineEvents
+        .filter(({ data }) => OWNER_EVENT_LABEL[data.type] !== undefined && withinTenure(data.occurredAt, since))
+        .slice(0, 10)
+        .map(({ id, data }) => ({
+          id,
+          label: OWNER_EVENT_LABEL[data.type] as string,
+          detail: data.type === 'MACHINE_ERROR' && typeof data.data.code === 'string' ? `Code ${data.data.code}` : null,
+          occurredAt: data.occurredAt.toDate().toISOString(),
+        })),
+      ...recentDispensed.transactions.filter(({ data }) => isCustomerSale(data) && withinTenure(data.dispensedAt ?? data.createdAt, since)).map(({ id, data }) => ({
         id,
         label: 'Vend completed',
         detail: `KES ${data.amountKes.toLocaleString('en-KE')}`,
@@ -588,8 +670,8 @@ class OwnerPortalService {
     if (!camera) {
       throw new CameraNotFoundError(cameraId);
     }
-    await machineService.assertPartnerOwnsMachine(businessId, partnerId, camera.machineId);
-    return camera;
+    const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, camera.machineId);
+    return Object.assign(camera, { ownerSince: ownerSince(machine) });
   }
 
   /** § CAMERA tab. Deliberately read + test + capture only — configuring credentials or activating a camera stays a staff-only action, the same `ADMIN_ONLY` bar the admin routes already hold; an owner sees and uses a camera, never reconfigures one. */
@@ -614,25 +696,44 @@ class OwnerPortalService {
     return cameraService.captureSnapshot(businessId, { cameraId, reason: 'manual_capture', actor });
   }
 
+  /** Only snapshots from this owner's time with the machine. */
   async listCameraSnapshotsForOwner(businessId: string, partnerId: string, cameraId: string) {
-    await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
-    return cameraService.listSnapshotsByCamera(businessId, cameraId);
+    const camera = await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
+    const snapshots = await cameraService.listSnapshotsByCamera(businessId, cameraId);
+    return snapshots.filter((row) => withinTenure(row.data.capturedAt, camera.ownerSince));
   }
 
-  async getCameraStreamInfoForOwner(businessId: string, partnerId: string, cameraId: string) {
+  /**
+   * The owner's live-view *capability*, never the camera's address.
+   *
+   * A raw stream location (host, port, path — and on most cameras the
+   * credentials that go with it) would let an owner, or anyone they
+   * forward it to, reach the camera directly and bypass every Snack Quest
+   * access check. Live view for owners therefore needs a relay that
+   * issues short-lived, per-viewer URLs; until that relay exists the
+   * contract answers honestly with `unavailable` rather than leaking the
+   * address. When it ships, only this method changes: `{ mode:
+   * 'relay_url', url, expiresAt }`.
+   */
+  async getCameraStreamInfoForOwner(businessId: string, partnerId: string, cameraId: string): Promise<OwnerLiveViewCapability> {
     await this.assertPartnerOwnsCamera(businessId, partnerId, cameraId);
-    return cameraService.getStreamInfo(businessId, cameraId);
+    const info = await cameraService.getStreamInfo(businessId, cameraId);
+    return {
+      mode: 'unavailable',
+      cameraOnline: info.available,
+      reason: 'Live view needs the Snack Quest streaming relay, which is not enabled yet. Snapshots are available.',
+    };
   }
 
-  private async sumRollupsAcross(businessId: string, machineIds: string[], startDate: string, endDate: string): Promise<{ revenueKes: number; unitsSold: number; grossProfitKes: number }> {
+  private async sumRollupsAcross(businessId: string, machines: { id: string; since: Date | null }[], startDate: string, endDate: string): Promise<{ revenueKes: number; unitsSold: number; grossProfitKes: number }> {
     if (new Date(startDate) > new Date(endDate)) {
       return { revenueKes: 0, unitsSold: 0, grossProfitKes: 0 };
     }
     let revenueKes = 0;
     let unitsSold = 0;
     let grossProfitKes = 0;
-    for (const machineId of machineIds) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, startDate, endDate);
+    for (const { id: machineId, since } of machines) {
+      const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate);
       for (const rollup of rollups.values()) {
         revenueKes += rollup.grossSalesKes;
         unitsSold += rollup.unitsSold;
@@ -661,7 +762,7 @@ class OwnerPortalService {
    */
   async getDashboardSummary(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboardSummary> {
     const machines = await partnerService.listMachines(businessId, partnerId);
-    const machineIds = machines.map(({ id }) => id);
+    const owned = machines.map(({ id, data }) => ({ id, since: ownerSince(data) }));
     const activeMachineCount = machines.filter(({ data }) => data.status === 'active').length;
 
     const { startDate: curStart, endDate: curEnd } = trailingWindow(windowDays);
@@ -669,8 +770,8 @@ class OwnerPortalService {
     const prevStart = shiftDateKey(curStart, -windowDays);
 
     const [current, previous, subscriptions] = await Promise.all([
-      this.sumRollupsAcross(businessId, machineIds, curStart, curEnd),
-      this.sumRollupsAcross(businessId, machineIds, prevStart, prevEnd),
+      this.sumRollupsAcross(businessId, owned, curStart, curEnd),
+      this.sumRollupsAcross(businessId, owned, prevStart, prevEnd),
       machineSubscriptionService.listByPartner(businessId, partnerId),
     ]);
 
@@ -714,12 +815,22 @@ function percentChange(current: number, previous: number): number | null {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-const TELEMETRY_EVENT_LABEL: Record<string, string> = {
-  heartbeat: 'Heartbeat received',
-  fault: 'Fault reported',
-  vend_result: 'Dispense result received',
-  door_status: 'Door status changed',
-  temperature: 'Temperature reading',
+/** Owner-facing wording per normalized event. Types absent here (dispense internals already shown as sales, unknown native events) are not shown to owners. */
+const OWNER_EVENT_LABEL: Partial<Record<MachineEventType, string>> = {
+  MACHINE_ONLINE: 'Machine came online',
+  MACHINE_OFFLINE: 'Machine went offline',
+  HEARTBEAT_RECEIVED: 'Heartbeat received',
+  STATUS_REPORTED: 'Status reported',
+  MACHINE_ERROR: 'Fault reported',
+  TEMPERATURE_REPORTED: 'Temperature reading',
+  TEMPERATURE_ALERT: 'Temperature alarm',
+  DOOR_OPENED: 'Door opened',
+  DOOR_CLOSED: 'Door closed',
+  SLOT_EMPTY: 'A slot ran empty',
+  SLOT_LOW: 'A slot is running low',
+  INVENTORY_MISMATCH: 'Stock count needs checking',
+  CAMERA_OFFLINE: 'Camera offline',
+  PAYMENT_DEVICE_ERROR: 'Payment device problem',
 };
 
 export const ownerPortalService = new OwnerPortalService();

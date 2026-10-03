@@ -1,6 +1,6 @@
 import { authenticateDevice } from '@/lib/vending/deviceAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { machineTransactionService, SlotUnavailableForSaleError, EmptyCartError } from '@/services/machineTransactionService';
+import { machineTransactionService, SlotUnavailableForSaleError, EmptyCartError, IdempotencyKeyReusedError, PaymentInitiationInProgressError } from '@/services/machineTransactionService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { normalizeKenyanPhone, InvalidPhoneNumberError } from '@/lib/checkout/phone';
 
@@ -61,6 +61,14 @@ export async function POST(request: Request): Promise<Response> {
     throw error;
   }
 
+  // A retried request must never send the customer a second prompt: with
+  // this header the original payment is returned for 24 h; without it, the
+  // same cart and phone is deduplicated while its first prompt is pending.
+  const idempotencyKey = request.headers.get('idempotency-key');
+  if (idempotencyKey !== null && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    return Response.json({ error: 'Idempotency-Key must be 8–128 characters of A-Z a-z 0-9 . _ : -' }, { status: 400 });
+  }
+
   try {
     if (isCart) {
       const result = await machineTransactionService.initiateCartPayment({
@@ -68,17 +76,25 @@ export async function POST(request: Request): Promise<Response> {
         machineId: auth.machineId,
         slotIds: slotIds as string[],
         phoneNumber: normalizedPhone,
+        idempotencyKey,
       });
-      return Response.json(result, { status: 201 });
+      return Response.json(result, { status: result.idempotentReplay ? 200 : 201 });
     }
     const result = await machineTransactionService.initiateMpesaPayment({
       businessId: auth.businessId,
       machineId: auth.machineId,
       slotId: slotId as string,
       phoneNumber: normalizedPhone,
+      idempotencyKey,
     });
-    return Response.json(result, { status: 201 });
+    return Response.json(result, { status: result.idempotentReplay ? 200 : 201 });
   } catch (error) {
+    if (error instanceof IdempotencyKeyReusedError) {
+      return Response.json({ error: error.message }, { status: 422 });
+    }
+    if (error instanceof PaymentInitiationInProgressError) {
+      return Response.json({ error: error.message }, { status: 409, headers: { 'Retry-After': '2' } });
+    }
     if (error instanceof MachineNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }

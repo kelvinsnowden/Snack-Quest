@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { KioskScreen } from '@/components/kiosk/KioskScreen';
 import type { ProductAvailabilityState } from '@/types';
 
@@ -19,20 +19,24 @@ import type { ProductAvailabilityState } from '@/types';
  * item's own vend once that one payment clears, and this screen polls
  * every transaction id it gets back until each has its own outcome. A
  * fetch failure falls back to the last cached catalog rather than
- * blanking the screen.
+ * blanking the screen. Staff-chosen artwork appears where it was
+ * placed, and an order left behind is cleared when the screen goes idle.
  */
 
 const MACHINE_ID = 'machine-kiosk-1';
 const MACHINE_CODE = 'SQ-001';
 
-function catalogItem(overrides: Partial<{ productId: string; name: string; slotCode: string; priceKes: number; availabilityState: ProductAvailabilityState; sellable: boolean; category: string | null }> = {}) {
+function catalogItem(
+  overrides: Partial<{ productId: string; name: string; slotCode: string; priceKes: number; availabilityState: ProductAvailabilityState; sellable: boolean; category: string | null; description: string | null; origin: string | null }> = {},
+) {
   return {
     productId: overrides.productId ?? 'sku-1',
     productCatalogue: 'snackItem' as const,
     slotCode: overrides.slotCode ?? 'A01',
     name: overrides.name ?? 'Korean Spicy Snack',
-    description: null,
+    description: overrides.description ?? null,
     imageUrl: null,
+    origin: overrides.origin ?? null,
     category: overrides.category ?? 'Korean Snacks',
     priceKes: overrides.priceKes ?? 250,
     availabilityState: overrides.availabilityState ?? 'available',
@@ -108,9 +112,16 @@ describe('KioskScreen — browse and product states', () => {
     expect(screen.getByText('Chips')).toBeTruthy();
     expect(screen.getByText('Drinks')).toBeTruthy();
 
+    // Only the available product offers an add button at all.
+    expect(screen.queryByRole('button', { name: /Add Sold Out Snack to cart/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add Coming Soon Snack to cart/ })).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: /Add Available Snack to cart/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Cart/ })).toBeTruthy());
-    expect(screen.getByRole('button', { name: /Cart/ }).textContent).toContain('1');
+    const order = screen.getByRole('region', { name: 'Your order' });
+    await waitFor(() => expect(within(order).getByText('Available Snack')).toBeTruthy());
+    expect(within(order).getByText('1 item')).toBeTruthy();
+    // The line's subtotal and the order total.
+    expect(within(order).getAllByText('KES 250')).toHaveLength(2);
   });
 
   it('filters the grid by the selected category', async () => {
@@ -188,15 +199,18 @@ describe('KioskScreen — cart and multi-item checkout', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Add Snack A to cart/ }));
     fireEvent.click(screen.getByRole('button', { name: /Add Snack B to cart/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Cart/ }));
 
-    await waitFor(() => expect(screen.getByText('Your Cart')).toBeTruthy());
-    expect(screen.getByText('KES 500')).toBeTruthy(); // 200 + 300 combined total shown to the customer
+    const order = screen.getByRole('region', { name: 'Your order' });
+    await waitFor(() => expect(within(order).getByText('KES 500')).toBeTruthy()); // 200 + 300 combined total shown to the customer
 
-    fireEvent.click(screen.getByRole('button', { name: 'Proceed to M-Pesa' }));
+    fireEvent.click(within(order).getByRole('button', { name: /^Pay/ }));
     const phoneInput = await screen.findByPlaceholderText('07XXXXXXXX');
+    expect(screen.getByText('KES 500')).toBeTruthy();
+    // The pay button stays off until the number is complete.
+    fireEvent.change(phoneInput, { target: { value: '07000' } });
+    expect((screen.getByRole('button', { name: 'Send payment request' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(phoneInput, { target: { value: '0700000000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send STK Push' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send payment request' }));
 
     // Exactly one POST for the whole cart — the mock's own assertion on `slotIds` above is what actually proves the shape; this proves it was only called once.
     await waitFor(() => {
@@ -215,14 +229,37 @@ describe('KioskScreen — cart and multi-item checkout', () => {
     await waitFor(() => expect(screen.getByText('Snack A')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Add Snack A to cart/ }));
     fireEvent.click(screen.getByRole('button', { name: /Add Snack B to cart/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Cart/ }));
 
-    await waitFor(() => expect(screen.getByText('Your Cart')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Snack A from cart' }));
-    expect(screen.queryByText('Snack A')).toBeNull();
-    // The remaining line's unit price, its Order Summary subtotal, and the grand Total all read KES 300 — and no leftover reference to Snack A's KES 200 anywhere.
-    expect(screen.getAllByText('KES 300').length).toBeGreaterThan(0);
-    expect(screen.queryByText('KES 200')).toBeNull();
+    const order = screen.getByRole('region', { name: 'Your order' });
+    await waitFor(() => expect(within(order).getByText('Snack A')).toBeTruthy());
+    fireEvent.click(within(order).getByRole('button', { name: 'Remove Snack A from cart' }));
+    expect(within(order).queryByText('Snack A')).toBeNull();
+    // The remaining line's subtotal and the order total both read KES 300 — and no leftover reference to Snack A's KES 200 anywhere in the order.
+    expect(within(order).getAllByText('KES 300')).toHaveLength(2);
+    expect(within(order).queryByText('KES 200')).toBeNull();
+  });
+
+  it('builds the number from the on-screen keypad and sends exactly those digits', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    mockCatalogAndPayments();
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Snack A')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Add Snack A to cart/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Snack B to cart/ }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Your order' })).getByRole('button', { name: /^Pay/ }));
+
+    const keypad = await screen.findByRole('group', { name: 'Number pad' });
+    for (const digit of '07123456789') fireEvent.click(within(keypad).getByRole('button', { name: digit }));
+    fireEvent.click(within(keypad).getByRole('button', { name: 'Delete last digit' }));
+    expect((screen.getByLabelText('M-Pesa number') as HTMLInputElement).value).toBe('0712 345 678');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send payment request' }));
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find((call: unknown[]) => call[0] === '/api/vending/payments');
+      expect(post).toBeTruthy();
+      expect(JSON.parse((post![1] as RequestInit).body as string).phoneNumber).toBe('0712345678');
+    });
   });
 });
 
@@ -235,5 +272,308 @@ describe('KioskScreen — offline behaviour', () => {
     render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
     await waitFor(() => expect(screen.getByText(/Offline/)).toBeTruthy());
     expect(screen.getByText('Korean Spicy Snack')).toBeTruthy();
+  });
+});
+
+describe('KioskScreen — product sheet', () => {
+  it('shows the description and origin, and adds the chosen quantity to the order', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ catalogVersion: 'v1', items: [catalogItem({ name: 'Honey Butter Chips', origin: 'Korea', description: 'Sweet, buttery and salty all at once.' })] }),
+    });
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Honey Butter Chips')).toBeTruthy());
+    fireEvent.click(screen.getByRole('heading', { name: 'Honey Butter Chips' }));
+
+    const sheet = await screen.findByRole('dialog', { name: 'Honey Butter Chips' });
+    expect(within(sheet).getByText('Sweet, buttery and salty all at once.')).toBeTruthy();
+    expect(within(sheet).getByText('From Korea')).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Add one more Honey Butter Chips' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: /Add to order · KES 500/ }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const order = screen.getByRole('region', { name: 'Your order' });
+    expect(within(order).getByText('2 items')).toBeTruthy();
+    expect(within(order).getAllByText('KES 500').length).toBeGreaterThan(0);
+  });
+});
+
+describe('KioskScreen — staff-chosen artwork', () => {
+  it('shows the menu banner images staff chose, fetched with the device credential', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            screen: {
+              menu_banner: [
+                { imageUrl: 'https://blob.example/banner.webp', altText: 'New: honey butter chips' },
+                // Never rendered: not an https or site-relative address.
+                { imageUrl: 'javascript:alert(1)', altText: 'bad' },
+              ],
+              attract: [],
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    const banner = await screen.findByAltText('New: honey butter chips');
+    expect(banner.getAttribute('src')).toBe('https://blob.example/banner.webp');
+    expect(screen.queryByAltText('bad')).toBeNull();
+    const screenCall = fetchMock.mock.calls.find((call: unknown[]) => String(call[0]).endsWith('/content')) as [string, RequestInit];
+    expect(screenCall[0]).toBe(`/api/vending/machines/${MACHINE_ID}/content`);
+    expect((screenCall[1].headers as Record<string, string>).Authorization).toBe(`Bearer ${MACHINE_ID}:secret`);
+  });
+
+  it('draws the built-in banner, naming where the snacks come from, when staff chose none', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem({ origin: 'Japan' }), catalogItem({ productId: 'sku-2', slotCode: 'A02', name: 'Other', origin: 'Korea' })] }) });
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Taste the world')).toBeTruthy());
+    expect(screen.getByText(/Snacks from Japan, Korea\./)).toBeTruthy();
+  });
+});
+
+describe('KioskScreen — idle', () => {
+  it('clears an abandoned order and shows the idle screen; a tap opens a fresh menu', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ screen: { menu_banner: [], attract: [{ imageUrl: 'https://blob.example/idle.webp', altText: 'Snacks from 12 countries' }] } }) };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={200} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Add Korean Spicy Snack to cart/ }));
+    expect(within(screen.getByRole('region', { name: 'Your order' })).getByText('1 item')).toBeTruthy();
+
+    const start = await screen.findByRole('button', { name: 'Tap to start your order' }, { timeout: 3000 });
+    expect(screen.getByAltText('Snacks from 12 countries')).toBeTruthy();
+    fireEvent.click(start);
+
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    expect(within(screen.getByRole('region', { name: 'Your order' })).queryByText('1 item')).toBeNull();
+  });
+
+  it('never goes idle while a payment is in flight', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ screen: { menu_banner: [], attract: [] } }) };
+      if (url === '/api/vending/payments' && init?.method === 'POST') return { ok: true, status: 201, json: async () => ({ transactions: [{ id: 'txn-1', slotId: 'A01' }] }) };
+      if (url === '/api/vending/payments/txn-1') return { ok: true, status: 200, json: async () => ({ status: 'pending', failureReason: null }) };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={200} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Add Korean Spicy Snack to cart/ }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Your order' })).getByRole('button', { name: /^Pay/ }));
+    fireEvent.change(await screen.findByPlaceholderText('07XXXXXXXX'), { target: { value: '0700000000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send payment request' }));
+    await screen.findByText('Check your phone');
+
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(screen.getByText('Check your phone')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Tap to start your order' })).toBeNull();
+  });
+});
+
+describe('KioskScreen — published design (§ KIOSK EXPERIENCE)', () => {
+  function serve(experience: unknown, items = [catalogItem()]) {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] }, experience: { config: experience, version: 'x1' } }) };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  it('applies the design’s colours as tokens and its wording', async () => {
+    serve({ theme: { colors: { primary: '#0055aa' } }, copy: { bannerHeadline: 'Snacks at the mall' } });
+    const { container } = render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await screen.findByText('Snacks at the mall');
+    const root = container.querySelector('[data-kiosk-design]') as HTMLElement;
+    expect(root.style.getPropertyValue('--sq-primary')).toBe('#0055aa');
+  });
+
+  it('shows the sections in the published order, with a message strip', async () => {
+    serve({
+      browseSections: [
+        { id: 'msg', type: 'promo_message', visible: true, props: { text: 'Two for KES 400 today', tone: 'primary' } },
+        { id: 'grid', type: 'product_grid', visible: true, props: { columns: 2 } },
+      ],
+    });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    const note = await screen.findByRole('note');
+    expect(note.textContent).toBe('Two for KES 400 today');
+    expect(screen.queryByText('Taste the world')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Categories' })).toBeNull();
+    expect(screen.getByText('Korean Spicy Snack')).toBeTruthy();
+  });
+
+  it('a design that would hide the menu grid is ignored — the built-in design shows', async () => {
+    serve({ browseSections: [{ id: 'msg', type: 'promo_message', visible: true, props: { text: 'Nothing to buy' } }] });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await screen.findByText('Korean Spicy Snack');
+    expect(screen.queryByText('Nothing to buy')).toBeNull();
+    expect(screen.getByText('Taste the world')).toBeTruthy();
+  });
+
+  it('a colour that isn’t a plain hex colour is never applied', async () => {
+    serve({ theme: { colors: { primary: 'url(https://evil.example/x)' } } });
+    const { container } = render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await screen.findByText('Korean Spicy Snack');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const root = container.querySelector('[data-kiosk-design]') as HTMLElement;
+    expect(root.style.getPropertyValue('--sq-primary')).toBe('#ff7a00');
+  });
+
+  it('badge wording comes from the design, and a hidden badge isn’t shown', async () => {
+    const featured = { ...catalogItem(), promotionalState: 'featured' as const };
+    const fresh = { ...catalogItem({ productId: 'sku-2', slotCode: 'A02', name: 'Fresh Thing' }), promotionalState: 'new' as const };
+    serve({ badges: { featured: { label: 'Staff pick' }, new: { visible: false } } }, [featured, fresh] as unknown as ReturnType<typeof catalogItem>[]);
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await screen.findByText('Staff pick');
+    expect(screen.queryByText('New')).toBeNull();
+  });
+});
+
+describe('KioskScreen — preview', () => {
+  it('renders a given design and menu without pairing or network, and never takes a payment', async () => {
+    const { DEFAULT_KIOSK_EXPERIENCE } = await import('@/lib/kiosk/experienceConfig');
+    render(
+      <KioskScreen
+        machineId={MACHINE_ID}
+        machineCode={MACHINE_CODE}
+        preview={{ experience: { ...DEFAULT_KIOSK_EXPERIENCE, copy: { ...DEFAULT_KIOSK_EXPERIENCE.copy, bannerHeadline: 'Draft headline' } }, catalog: { catalogVersion: 'v1', items: [catalogItem()] }, screen: { menu_banner: [], attract: [] } }}
+      />,
+    );
+    expect(screen.getByText('Draft headline')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Add Korean Spicy Snack to cart/ }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Your order' })).getByRole('button', { name: /^Pay/ }));
+    fireEvent.change(await screen.findByPlaceholderText('07XXXXXXXX'), { target: { value: '0700000000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send payment request' }));
+    expect(await screen.findByText(/payments are switched off/)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('KioskScreen — idle-screen ads (§ ATTRACT MODE)', () => {
+  const adBytes = new TextEncoder().encode('an ad image');
+  async function sha(bytes: Uint8Array) {
+    const digest = await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer);
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  function playlist(sha256: string) {
+    return { version: 'a1', campaigns: [{ campaignId: 'camp-1', weight: 1, frequencyCapPerHour: null, schedule: { startDate: '2000-01-01', endDate: null, daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startMinute: 0, endMinute: 1440 }, creatives: [{ creativeId: 'cr-1', mediaKind: 'image', mimeType: 'image/png', mediaUrl: 'https://blob.example/ad.png', sha256, bytes: adBytes.byteLength, durationSeconds: 8 }] }] };
+  }
+  function serveWithAds(sha256: string) {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] }, experience: { config: {}, version: 'x1' }, ads: playlist(sha256) }) };
+      if (url === 'https://blob.example/ad.png') return new Response(adBytes, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:verified-ad'), revokeObjectURL: vi.fn() }));
+  });
+
+  it('plays a verified ad when idle, labels it, reports it, and a tap still opens the menu', async () => {
+    serveWithAds(await sha(adBytes));
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={200} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Ad')).toBeTruthy(), { timeout: 3000 });
+    expect(document.querySelector('img[src="blob:verified-ad"]')).toBeTruthy();
+    const queued = JSON.parse(window.localStorage.getItem(`sq_kiosk_ad_events_${MACHINE_ID}`) ?? '{}');
+    expect(queued.pending.map((event: { eventType: string }) => event.eventType)).toContain('started');
+    fireEvent.click(screen.getByRole('button', { name: 'Tap to start your order' }));
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    const after = JSON.parse(window.localStorage.getItem(`sq_kiosk_ad_events_${MACHINE_ID}`) ?? '{}');
+    expect(after.pending.map((event: { eventType: string }) => event.eventType)).toContain('interacted');
+  });
+
+  it('never plays a file whose checksum doesn’t match', async () => {
+    serveWithAds('0'.repeat(64));
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={200} />);
+    await screen.findByRole('button', { name: 'Tap to start your order' }, { timeout: 3000 });
+    expect(screen.queryByText('Ad')).toBeNull();
+    const metrics = JSON.parse(window.localStorage.getItem(`sq_kiosk_metrics_${MACHINE_ID}`) ?? '{}');
+    expect(metrics.pending).toContain('ad_media_rejected');
+  });
+});
+
+describe('KioskScreen — activity counts (§ KIOSK ANALYTICS)', () => {
+  it('counts what customers do, and nothing about who they are', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] } }) };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Add Korean Spicy Snack to cart/ }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Your order' })).getByRole('button', { name: /^Pay/ }));
+    const metrics = JSON.parse(window.localStorage.getItem(`sq_kiosk_metrics_${MACHINE_ID}`) ?? '{}');
+    expect(metrics.pending).toEqual(expect.arrayContaining(['added_to_cart', 'checkout_started', 'content_activated']));
+    expect(JSON.stringify(metrics)).not.toMatch(/07\d{8}|Korean/);
+  });
+});
+
+describe('KioskScreen — service mode (§ KIOSK SERVICE MODE)', () => {
+  function servePaired(sessionResponse: { ok: boolean; status: number; body: unknown }) {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.endsWith('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] } }) };
+      if (url.endsWith('/service-session')) return { ok: sessionResponse.ok, status: sessionResponse.status, json: async () => sessionResponse.body };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+  async function holdLogoAndType(code: string) {
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    const logo = document.querySelector('header img') as HTMLElement;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.pointerDown(logo);
+    vi.advanceTimersByTime(3_100);
+    vi.useRealTimers();
+    await screen.findByText('Staff only');
+    for (const digit of code) fireEvent.click(screen.getByRole('button', { name: digit }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+  }
+
+  it('the right code opens the service screen, sent with the device credential', async () => {
+    servePaired({ ok: true, status: 200, body: { sessionExpiresAt: new Date(Date.now() + 15 * 60_000).toISOString() } });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await holdLogoAndType('12345678');
+    await screen.findByText('Service mode');
+    const call = fetchMock.mock.calls.find((c: unknown[]) => String(c[0]).endsWith('/service-session')) as [string, RequestInit];
+    expect(JSON.parse(String(call[1].body))).toEqual({ code: '12345678' });
+    expect((call[1].headers as Record<string, string>).Authorization).toBe(`Bearer ${MACHINE_ID}:secret`);
+    fireEvent.click(screen.getByRole('button', { name: 'Close service mode' }));
+    await screen.findByRole('button', { name: 'Tap to start your order' });
+  });
+
+  it('a wrong code says so and stays out of service mode', async () => {
+    servePaired({ ok: false, status: 403, body: { error: 'That code isn’t right, has been used, or has expired.' } });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await holdLogoAndType('00000000');
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('Service mode')).toBeNull();
   });
 });

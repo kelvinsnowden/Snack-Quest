@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
   ProtocolNotConfiguredError,
+  type ConnectionTestResult,
+  type DispenseStatusReport,
+  type MachineInfoReport,
+  type PaymentDeviceStatusReport,
   type VendAuthorizationResult,
   type VendResultReport,
   type VendingHardwareAdapter,
@@ -95,6 +99,32 @@ export class ShengmaAdapter implements VendingHardwareAdapter {
 
   async getFaults(_machineId: string): Promise<string[]> {
     throw new ProtocolNotConfiguredError(this.manufacturer, 'getFaults');
+  }
+
+  /** Never throws — "the test failed, and here is why" is the honest answer for an unwired stub. */
+  async testConnection(_machineId: string): Promise<ConnectionTestResult> {
+    return {
+      ok: false,
+      detail: 'No protocol is configured for Shengma machines yet — nothing can be reached.',
+      latencyMs: null,
+      errorKind: 'protocol',
+    };
+  }
+
+  async getMachineInfo(_machineId: string): Promise<MachineInfoReport> {
+    throw new ProtocolNotConfiguredError(this.manufacturer, 'getMachineInfo');
+  }
+
+  async getDispenseStatus(_machineId: string, _vendRef: string): Promise<DispenseStatusReport> {
+    throw new ProtocolNotConfiguredError(this.manufacturer, 'getDispenseStatus');
+  }
+
+  async getDoorStatus(_machineId: string): Promise<'open' | 'closed' | null> {
+    throw new ProtocolNotConfiguredError(this.manufacturer, 'getDoorStatus');
+  }
+
+  async getPaymentDeviceStatus(_machineId: string): Promise<PaymentDeviceStatusReport> {
+    throw new ProtocolNotConfiguredError(this.manufacturer, 'getPaymentDeviceStatus');
   }
 }
 /* eslint-enable @typescript-eslint/no-unused-vars */

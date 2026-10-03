@@ -20,6 +20,7 @@ import { GET as slotsGet, PATCH as slotsPatch } from '@/app/api/vending/machines
 const STAFF_SESSION = { uid: 'staff-1', email: 'staff@example.com', displayName: 'Staff', roles: ['warehouse'], businessId: 'biz-1' };
 const FINANCE_SESSION = { ...STAFF_SESSION, roles: ['finance'] };
 const AGENT_SESSION = { ...STAFF_SESSION, roles: ['agent'] };
+const ADMIN_SESSION = { ...STAFF_SESSION, roles: ['admin'] };
 
 const SLOT = {
   businessId: 'biz-1',
@@ -101,15 +102,30 @@ describe('PATCH /api/vending/machines/[id]/slots', () => {
     expect(setPriceMock).not.toHaveBeenCalled();
   });
 
-  it('updates price and enabled together, scoped to the session businessId', async () => {
+  it('lets warehouse switch a slot off, but not change its price', async () => {
     verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    listByMachineMock.mockResolvedValue([{ ...SLOT, enabled: false }]);
+    expect((await patchReq({ slotCode: 'A01', enabled: false })).status).toBe(200);
+    expect(setEnabledMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', false);
+
+    const priced = await patchReq({ slotCode: 'A01', priceKes: 10, enabled: true });
+    expect(priced.status).toBe(403);
+    expect((await priced.json()).permission).toBe('pricing.manage');
+    expect(setPriceMock).not.toHaveBeenCalled();
+    // Refused as a whole: the enable half of a refused request does not slip through.
+    expect(setEnabledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates price and enabled together for an admin, scoped to the session businessId', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(ADMIN_SESSION);
     setPriceMock.mockResolvedValue(undefined);
     setEnabledMock.mockResolvedValue(undefined);
     listByMachineMock.mockResolvedValue([{ ...SLOT, priceKes: 400, enabled: false }]);
 
     const response = await patchReq({ slotCode: 'A01', priceKes: 400, enabled: false });
     expect(response.status).toBe(200);
-    expect(setPriceMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', 400);
+    // The acting user is passed along so the price change is recorded against them.
+    expect(setPriceMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', 400, 'staff-1');
     expect(setEnabledMock).toHaveBeenCalledWith('biz-1', 'm-1', 'A01', false);
     const body = await response.json();
     expect(body.slot.priceKes).toBe(400);

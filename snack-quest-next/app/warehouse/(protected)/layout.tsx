@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { hasPermission } from '@/lib/auth/permissions';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminUserMenu } from '@/components/admin/AdminUserMenu';
@@ -37,6 +38,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
   }
 
   const business = await businessRepository.findById(session.businessId);
+  const navItems = hasPermission(session, 'restock.view') ? [...NAV_ITEMS, { href: '/warehouse/machines', label: 'Machines' }] : NAV_ITEMS;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -55,7 +57,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
             <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Warehouse</span>
           </div>
           <nav className="hidden items-center gap-1 sm:flex">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -77,7 +79,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
         no menu to open first.
       */}
       <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface/95 backdrop-blur sm:hidden">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}

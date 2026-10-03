@@ -7,6 +7,7 @@ import { locationService } from '@/services/locationService';
 import { partnerService } from '@/services/partnerService';
 import { withdrawalService } from '@/services/withdrawalService';
 import { networkOverviewService } from '@/services/networkOverviewService';
+import { alertService } from '@/services/alertService';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 
 /**
@@ -68,6 +69,8 @@ describe('NetworkOverviewService.getOverview', () => {
 
     await withdrawalService.requestWithdrawal({ businessId: BUSINESS_ID, ownerId: partnerId, ownerType: 'partner', amountKes: 500, phoneNumber: '254712345678' });
 
+    // The scheduled job sweeps alerts; the overview only reads what the sweep left.
+    await alertService.evaluateAndSync(BUSINESS_ID);
     const overview = await networkOverviewService.getOverview(BUSINESS_ID);
 
     expect(overview.machineCount).toBe(1);

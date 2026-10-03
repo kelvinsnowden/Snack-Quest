@@ -1,8 +1,7 @@
-import { notificationService } from '@/services/notificationService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
-
-const JOB_NAME = 'retry-notifications';
+import { scheduledJobService } from '@/services/scheduledJobService';
+import { retryNotifications } from '@/services/jobs/retryNotifications';
 
 /**
  * The retry sweep's real trigger (§ Notification breadth,
@@ -23,35 +22,10 @@ const JOB_NAME = 'retry-notifications';
  * helper.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-
-  try {
-    const result = await notificationService.retrySweep(businessId);
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'succeeded',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: result,
-      error: null,
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: null,
-      error: error instanceof Error ? error.message : 'unknown error',
-    });
-    throw error;
-  }
+  const outcome = await scheduledJobService.run(businessId, 'retry-notifications', (job) => retryNotifications(businessId, job));
+  return scheduledJobService.toResponse(outcome);
 }

@@ -66,6 +66,16 @@ class MachineCommandRepository {
     return data.businessId === businessId ? data : null;
   }
 
+  async findByCommandRef(businessId: string, commandRef: string): Promise<{ id: string; data: MachineCommand } | null> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('commandRef', '==', commandRef)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as MachineCommand };
+  }
+
   /**
    * A machine's own pending commands, oldest first — the poll route's
    * read. Filtering by `expiresAt` here would need an inequality on a

@@ -49,10 +49,16 @@ export class IllegalTransactionTransitionError extends Error {
  * Service method that happens to update a status.
  */
 class MachineTransactionRepository {
-  async create(input: MachineTransactionInput): Promise<{ id: string; transactionRef: string }> {
+  /**
+   * @param options.id A caller-chosen document id, created atomically —
+   *   a second create with the same id returns the existing transaction
+   *   with `created: false` instead of making another one (idempotent
+   *   creation, e.g. a retried diagnostic vend).
+   */
+  async create(input: MachineTransactionInput, options: { id?: string } = {}): Promise<{ id: string; transactionRef: string; created: boolean }> {
     const now = FieldValue.serverTimestamp();
     const transactionRef = `TXN-${randomUUID().slice(0, 8).toUpperCase()}`;
-    const ref = await adminFirestore.collection(COLLECTION).add({
+    const data = {
       ...input,
       transactionRef,
       status: 'pending' satisfies MachineTransactionStatus,
@@ -67,8 +73,21 @@ class MachineTransactionRepository {
       appliedTelemetryEventId: null,
       createdAt: now,
       updatedAt: now,
-    });
-    return { id: ref.id, transactionRef };
+    };
+    if (options.id) {
+      const ref = adminFirestore.collection(COLLECTION).doc(options.id);
+      try {
+        await ref.create(data);
+        return { id: options.id, transactionRef, created: true };
+      } catch (error) {
+        if ((error as { code?: unknown }).code !== 6) throw error; // ALREADY_EXISTS
+        const existing = (await ref.get()).data() as MachineTransaction | undefined;
+        if (!existing || existing.businessId !== input.businessId) throw error;
+        return { id: options.id, transactionRef: existing.transactionRef, created: false };
+      }
+    }
+    const ref = await adminFirestore.collection(COLLECTION).add(data);
+    return { id: ref.id, transactionRef, created: true };
   }
 
   async findById(businessId: string, transactionId: string): Promise<MachineTransaction | null> {
@@ -124,6 +143,26 @@ class MachineTransactionRepository {
    * cart's own item order" back (as opposed to an arbitrary but
    * still complete and correct set) can rely on it.
    */
+  /** By M-Pesa receipt — what a customer quotes when they complain. */
+  async findByPaymentRef(businessId: string, paymentRef: string): Promise<{ id: string; data: MachineTransaction } | null> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('paymentRef', '==', paymentRef).limit(1).get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as MachineTransaction };
+  }
+
+  /** One machine's sales started in a window — "I paid at about 14:32 at machine X". */
+  async listByMachineCreatedInRange(businessId: string, machineId: string, since: Date, until: Date, limit = 20): Promise<{ id: string; data: MachineTransaction }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('createdAt', '>=', since)
+      .where('createdAt', '<=', until)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
+  }
+
   async listByCheckoutRequestId(businessId: string, checkoutRequestId: string): Promise<{ id: string; data: MachineTransaction }[]> {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
@@ -191,36 +230,111 @@ class MachineTransactionRepository {
    * window; this removes that possibility rather than trusting every
    * call site to avoid it.
    */
+  /**
+   * Applies one transition atomically (compare-and-set in a Firestore
+   * transaction): two concurrent reports about the same vend can never
+   * both pass the transition check from the same starting state — the
+   * second sees the first's result and is refused or treated as a no-op.
+   *
+   * - `expectedFrom`: refuse unless the current status is one of these
+   *   (IllegalTransactionTransitionError otherwise).
+   * - `allowNoop`: already in `to` → `{ changed: false }` rather than an error.
+   */
   async moveStatus(
     businessId: string,
     transactionId: string,
     to: MachineTransactionStatus,
-    fields: Partial<Pick<MachineTransaction, 'paymentRef' | 'vendRef' | 'failureReason' | 'dispenseFailureStatus' | 'appliedTelemetryEventId'>> = {},
-  ): Promise<void> {
+    fields: Partial<Pick<MachineTransaction, 'paymentRef' | 'vendRef' | 'failureReason' | 'dispenseFailureStatus' | 'appliedTelemetryEventId' | 'outcomeConflict'>> = {},
+    options: { expectedFrom?: MachineTransactionStatus[]; allowNoop?: boolean } = {},
+  ): Promise<{ changed: boolean; from: MachineTransactionStatus }> {
     const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
-    const snapshot = await ref.get();
-    const data = snapshot.data() as MachineTransaction | undefined;
-    if (!data || data.businessId !== businessId) {
-      throw new MachineTransactionNotFoundError(transactionId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineTransaction | undefined;
+      if (!data || data.businessId !== businessId) {
+        throw new MachineTransactionNotFoundError(transactionId);
+      }
+      if (data.status === to && options.allowNoop) {
+        return { changed: false, from: data.status };
+      }
+      if (options.expectedFrom && !options.expectedFrom.includes(data.status)) {
+        throw new IllegalTransactionTransitionError(data.status, to);
+      }
+      const allowed = MACHINE_TRANSACTION_STATUS_TRANSITIONS[data.status] ?? [];
+      if (!allowed.includes(to)) {
+        throw new IllegalTransactionTransitionError(data.status, to);
+      }
+      const now = FieldValue.serverTimestamp();
+      tx.update(ref, {
+        ...fields,
+        status: to,
+        updatedAt: now,
+        ...(to === 'paid' ? { paidAt: now } : {}),
+        ...(to === 'dispensed' ? { dispensedAt: now } : {}),
+      });
+      return { changed: true, from: data.status };
+    });
+  }
+
+  /** Records a contradicting outcome without changing status — for a conflict that arrives after the money has already moved (e.g. after `refunded`). */
+  /** Many transactions by id in few round trips; ids from another business are left out. */
+  async findManyById(businessId: string, ids: string[]): Promise<Map<string, MachineTransaction>> {
+    const result = new Map<string, MachineTransaction>();
+    const unique = [...new Set(ids)];
+    for (let index = 0; index < unique.length; index += 300) {
+      const refs = unique.slice(index, index + 300).map((id) => adminFirestore.collection(COLLECTION).doc(id));
+      if (refs.length === 0) continue;
+      for (const snapshot of await adminFirestore.getAll(...refs)) {
+        const data = snapshot.data() as MachineTransaction | undefined;
+        if (data && data.businessId === businessId) result.set(snapshot.id, data);
+      }
     }
-    const allowed = MACHINE_TRANSACTION_STATUS_TRANSITIONS[data.status] ?? [];
-    if (!allowed.includes(to)) {
-      throw new IllegalTransactionTransitionError(data.status, to);
-    }
-    const now = FieldValue.serverTimestamp();
-    await ref.update({
-      ...fields,
-      status: to,
-      updatedAt: now,
-      ...(to === 'paid' ? { paidAt: now } : {}),
-      ...(to === 'dispensed' ? { dispensedAt: now } : {}),
+    return result;
+  }
+
+  /**
+   * Sales whose machine report contradicted what had already happened
+   * and nobody has closed yet. Equality filters only, so Firestore serves
+   * it without a composite index.
+   */
+  async listUnresolvedConflicts(businessId: string, limit = 100): Promise<{ id: string; data: MachineTransaction }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('outcomeConflict.resolved', '==', false).limit(limit).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
+  }
+
+  /** Closes an unresolved conflict without touching the sale's status. False when there was nothing open to close (already closed, or none). */
+  async acknowledgeOutcomeConflict(businessId: string, transactionId: string, input: { actor: string; note: string }): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineTransaction | undefined;
+      if (!data || data.businessId !== businessId || !data.outcomeConflict || data.outcomeConflict.resolved) {
+        return false;
+      }
+      tx.update(ref, {
+        outcomeConflict: { ...data.outcomeConflict, resolved: true, resolvedBy: input.actor, resolvedAt: FieldValue.serverTimestamp(), resolutionNote: input.note },
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+  }
+
+  async recordOutcomeConflict(businessId: string, transactionId: string, conflict: NonNullable<MachineTransaction['outcomeConflict']>): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
+    await adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineTransaction | undefined;
+      if (!data || data.businessId !== businessId) {
+        throw new MachineTransactionNotFoundError(transactionId);
+      }
+      tx.update(ref, { outcomeConflict: conflict, updatedAt: FieldValue.serverTimestamp() });
     });
   }
 
   /** One bounded page, newest first — the admin/finance list view's own read, same shape as `machineRepository.listByBusiness`. Never unbounded like `streamRange`, which exists for rollup rebuilds, not a request handler. */
   async listByBusiness(
     businessId: string,
-    options: { machineId?: string; status?: MachineTransactionStatus; limit?: number; cursor?: string } = {},
+    options: { machineId?: string; status?: MachineTransactionStatus; since?: Date; until?: Date; limit?: number; cursor?: string } = {},
   ): Promise<{ transactions: { id: string; data: MachineTransaction }[]; nextCursor: string | null }> {
     const pageSize = options.limit ?? 50;
     let query = adminFirestore.collection(COLLECTION).where('businessId', '==', businessId) as FirebaseFirestore.Query;
@@ -229,6 +343,13 @@ class MachineTransactionRepository {
     }
     if (options.status) {
       query = query.where('status', '==', options.status);
+    }
+    // Same field the list is ordered by, so every existing (…, createdAt) index still serves it.
+    if (options.since) {
+      query = query.where('createdAt', '>=', options.since);
+    }
+    if (options.until) {
+      query = query.where('createdAt', '<', options.until);
     }
     query = query.orderBy('createdAt', 'desc').limit(pageSize + 1);
     if (options.cursor) {
@@ -246,6 +367,39 @@ class MachineTransactionRepository {
   }
 
   /** Every transaction in a window, cursor-paged — the rollup primitive, same shape as `orderRepository.streamRange` (§ analytics rollups). */
+  /**
+   * Completed sales by *when they completed* (`dispensedAt`), not when
+   * they were started — what revenue attribution needs: a sale resolved
+   * from manual review days later belongs to the period it resolved in,
+   * never to a period that may already be settled.
+   */
+  async *streamDispensedInRange(businessId: string, options: { machineId: string; since: Date; until: Date; pageSize?: number }): AsyncGenerator<{ id: string; data: MachineTransaction }> {
+    const pageSize = options.pageSize ?? 500;
+    let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    for (;;) {
+      let query = adminFirestore
+        .collection(COLLECTION)
+        .where('businessId', '==', businessId)
+        .where('machineId', '==', options.machineId)
+        .where('status', '==', 'dispensed')
+        .where('dispensedAt', '>=', options.since)
+        .where('dispensedAt', '<', options.until)
+        .orderBy('dispensedAt')
+        .limit(pageSize);
+      if (cursor) {
+        query = query.startAfter(cursor);
+      }
+      const snapshot = await query.get();
+      for (const doc of snapshot.docs) {
+        yield { id: doc.id, data: doc.data() as MachineTransaction };
+      }
+      if (snapshot.docs.length < pageSize) {
+        return;
+      }
+      cursor = snapshot.docs[snapshot.docs.length - 1];
+    }
+  }
+
   async *streamRange(
     businessId: string,
     options: { since?: Date; until?: Date; machineId?: string; pageSize?: number } = {},

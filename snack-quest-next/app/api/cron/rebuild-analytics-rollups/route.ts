@@ -1,10 +1,7 @@
-import { analyticsRollupService } from '@/services/analyticsRollupService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
-import { dateKey } from '@/lib/analytics/dateKey';
-
-const JOB_NAME = 'rebuild-analytics-rollups';
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { scheduledJobService } from '@/services/scheduledJobService';
+import { rebuildAnalyticsRollups } from '@/services/jobs/rebuildAnalyticsRollups';
 
 /**
  * Keeps `trafficDaily` and `customerLifetime` current without the
@@ -36,43 +33,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * day has one.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-
-  try {
-    const startDate = dateKey(new Date(Date.now() - 3 * DAY_MS));
-    const endDate = dateKey(new Date());
-
-    const [traffic, lifetime] = await Promise.all([
-      analyticsRollupService.rebuildTrafficRange(businessId, startDate, endDate),
-      analyticsRollupService.rebuildCustomerLifetime(businessId),
-    ]);
-
-    const result = { traffic, lifetime };
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'succeeded',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: result,
-      error: null,
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: null,
-      error: error instanceof Error ? error.message : 'unknown error',
-    });
-    throw error;
-  }
+  const outcome = await scheduledJobService.run(businessId, 'rebuild-analytics-rollups', (job) => rebuildAnalyticsRollups(businessId, job));
+  return scheduledJobService.toResponse(outcome);
 }

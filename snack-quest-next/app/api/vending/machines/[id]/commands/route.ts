@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineCommandService, CommandNotSupportedError } from '@/services/machineCommandService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineCommand } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineCommandType } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_COMMAND_TYPES: MachineCommandType[] = ['restart'];
 
@@ -22,8 +22,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.view')) {
+    return forbiddenForPermission('machines.view');
   }
 
   const { id } = await params;
@@ -46,8 +46,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.commands.issue')) {
+    return forbiddenForPermission('machines.commands.issue');
   }
 
   const { id } = await params;

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AlertTriangle, Banknote, PiggyBank, Receipt } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { fulfillmentAccountingService } from '@/services/fulfillmentAccountingService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ export const metadata: Metadata = { title: 'Fulfilment accounting' };
  * figure worth trusting.
  */
 export default async function FinanceFulfillmentPage() {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('finance.view');
   const overview = await fulfillmentAccountingService.getOverview(session.businessId, 30);
 
   const coverageIsPartial = overview.costCoveragePct < 99.5;

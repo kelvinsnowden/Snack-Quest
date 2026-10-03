@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Banknote, ClipboardList, Receipt } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RevenueChart } from '@/components/admin/RevenueChart';
@@ -19,7 +19,7 @@ export const metadata: Metadata = { title: 'Revenue' };
  * `/admin/analytics` — that's a marketing/growth audience, not finance.
  */
 export default async function FinanceRevenuePage() {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('finance.view');
   const revenue = await businessAnalyticsService.getRevenueOverview(session.businessId, 30);
 
   const previousAverageOrderValueKes =

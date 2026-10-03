@@ -4,20 +4,19 @@ import { Cpu, MapPin, Users, Wifi, WifiOff, Banknote, ClipboardList, Boxes, Aler
 import { requireStaffSession } from '@/lib/auth/session';
 import { machineRepository } from '@/repositories/machineRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
-import { machineSlotRepository } from '@/repositories/machineSlotRepository';
-import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
-import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
-import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { alertService } from '@/services/alertService';
 import { networkOverviewService } from '@/services/networkOverviewService';
-import { trailingWindow } from '@/services/machineAssortmentIntelligenceService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineFleetSummaryService } from '@/services/machineFleetSummaryService';
+import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { MachineStatusBadge } from '@/components/admin/MachineStatusBadge';
 import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivityBadge';
 import { formatDateTime } from '@/lib/orders/format';
-import type { Alert, Machine } from '@/types';
+import { hasPermission } from '@/lib/auth/permissions';
+import { Button } from '@/components/ui/button';
+import type { Alert, Machine, MachineConnectivityStatus } from '@/types';
 
 export const metadata: Metadata = { title: 'Vending Machines' };
 
@@ -35,13 +34,16 @@ const FLEET_FILTERS: { key: FleetFilter; label: string }[] = [
 interface FleetRow {
   id: string;
   data: Machine;
-  connectivityStatus: ReturnType<typeof deriveConnectivityStatus>;
+  connectivityStatus: MachineConnectivityStatus;
+  connectivityReason: string;
   ownerName: string | null;
   revenueKes7d: number;
   sellableCount: number;
   slotCount: number;
+  pausedSlotCount: number;
   lastSaleAt: string | null;
   lastRestockAt: string | null;
+  figuresAt: string | null;
   hasFault: boolean;
   hasStockout: boolean;
   hasLowStock: boolean;
@@ -58,17 +60,22 @@ interface FleetRow {
  * — see `machineRepository.listAllForBusiness`'s own doc comment for
  * why that's an accepted, revisitable bound rather than an oversight.
  */
-export default async function AdminVendingPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
-  const session = await requireStaffSession();
-  const { filter: filterParam } = await searchParams;
-  const activeFilter = FLEET_FILTERS.some((f) => f.key === filterParam) ? (filterParam as FleetFilter) : null;
+const PAGE_SIZE = 50;
 
-  await alertService.evaluateAndSync(session.businessId);
-  const [machines, partners, openAlerts] = await Promise.all([
+export default async function AdminVendingPage({ searchParams }: { searchParams: Promise<{ filter?: string; q?: string; owner?: string; page?: string }> }) {
+  const session = await requireStaffSession();
+  const { filter: filterParam, q: rawQuery, owner: ownerParam, page: pageParam } = await searchParams;
+  const activeFilter = FLEET_FILTERS.some((f) => f.key === filterParam) ? (filterParam as FleetFilter) : null;
+  const query = (rawQuery ?? '').trim().toLowerCase();
+
+  // Alerts are as the last scheduled sweep left them (see the Alert Center); this page never runs the sweep.
+  const [machines, partners, openAlerts, integrations] = await Promise.all([
     machineRepository.listAllForBusiness(session.businessId),
     partnerRepository.listByBusiness(session.businessId),
     alertService.listOpen(session.businessId),
+    machineIntegrationRepository.listByBusiness(session.businessId),
   ]);
+  const integrationByMachine = new Map(integrations.map((integration) => [integration.machineId, integration]));
   const overview = await networkOverviewService.getOverview(session.businessId, openAlerts);
 
   const ownerNameById = new Map(partners.map(({ id, data }) => [id, data.name]));
@@ -78,68 +85,94 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
     alertsByMachine.set(data.machineId, [...(alertsByMachine.get(data.machineId) ?? []), data]);
   }
 
-  const { startDate, endDate } = trailingWindow(7);
-  const rows: FleetRow[] = await Promise.all(
-    machines.map(async ({ id, data }) => {
-      const [rollups, slots, lastSale, restockTasks] = await Promise.all([
-        machineDailySummaryRepository.listRange(session.businessId, id, startDate, endDate),
-        machineSlotRepository.listByMachine(session.businessId, id),
-        machineTransactionRepository.listByBusiness(session.businessId, { machineId: id, limit: 1 }),
-        restockTaskRepository.listByMachine(session.businessId, id, 10),
-      ]);
-
-      let revenueKes7d = 0;
-      for (const rollup of rollups.values()) revenueKes7d += rollup.grossSalesKes;
-
-      const enabledSlots = slots.filter((s) => s.enabled && s.productId);
-      const sellableCount = enabledSlots.filter((s) => s.currentQuantity > 0).length;
-      const lastReceived = restockTasks.find((t) => t.data.status === 'received');
-
+  // Filter and sort using only what's already on each machine document and in the alert list;
+  // the per-machine figures are read for the page shown, not the whole fleet (G-C9).
+  const candidates = machines
+    .map(({ id, data }) => {
       const machineAlerts = alertsByMachine.get(id) ?? [];
+      const liveness = machineLiveness(data, integrationByMachine.get(id) ?? null);
       return {
         id,
         data,
-        connectivityStatus: deriveConnectivityStatus(data.lastSeenAt),
+        connectivityStatus: connectivityOf(liveness),
+        connectivityReason: LIVENESS_REASON_LABEL[liveness.reason],
         ownerName: data.ownerPartnerId ? ownerNameById.get(data.ownerPartnerId) ?? null : null,
-        revenueKes7d,
-        sellableCount,
-        slotCount: enabledSlots.length,
-        lastSaleAt: lastSale.transactions[0]?.data.createdAt ? lastSale.transactions[0].data.createdAt.toDate().toISOString() : null,
-        lastRestockAt: lastReceived?.data.updatedAt ? lastReceived.data.updatedAt.toDate().toISOString() : null,
         hasFault: machineAlerts.some((a) => a.type === 'machine_fault'),
         hasStockout: machineAlerts.some((a) => a.type === 'stockout'),
         hasLowStock: machineAlerts.some((a) => a.type === 'stockout_risk'),
         hasSubscriptionIssue: machineAlerts.some((a) => a.type === 'subscription_issue'),
       };
-    }),
-  );
+    })
+    .filter((row) => {
+      if (ownerParam && (ownerParam === 'none' ? row.data.ownerPartnerId : row.data.ownerPartnerId !== ownerParam)) return false;
+      if (query && ![row.data.machineCode, row.data.serialNumber, row.data.venueName ?? '', row.ownerName ?? ''].some((value) => value.toLowerCase().includes(query))) return false;
+      switch (activeFilter) {
+        case 'online':
+          return row.connectivityStatus === 'online';
+        case 'offline':
+          return row.connectivityStatus === 'offline';
+        case 'lowstock':
+          return row.hasLowStock;
+        case 'stockout':
+          return row.hasStockout;
+        case 'fault':
+          return row.hasFault;
+        case 'subscription':
+          return row.hasSubscriptionIssue;
+        case 'inactive':
+          return row.data.status !== 'active';
+        default:
+          return true;
+      }
+    })
+    .sort((a, b) => a.data.machineCode.localeCompare(b.data.machineCode));
 
-  const filtered = rows.filter((row) => {
-    switch (activeFilter) {
-      case 'online':
-        return row.connectivityStatus === 'online';
-      case 'offline':
-        return row.connectivityStatus === 'offline';
-      case 'lowstock':
-        return row.hasLowStock;
-      case 'stockout':
-        return row.hasStockout;
-      case 'fault':
-        return row.hasFault;
-      case 'subscription':
-        return row.hasSubscriptionIssue;
-      case 'inactive':
-        return row.data.status !== 'active';
-      default:
-        return true;
-    }
+  const pageCount = Math.max(1, Math.ceil(candidates.length / PAGE_SIZE));
+  const page = Math.min(pageCount, Math.max(1, Number.parseInt(pageParam ?? '1', 10) || 1));
+  const pageSlice = candidates.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const summaries = await machineFleetSummaryService.getForPage(session.businessId, pageSlice.map((row) => row.id));
+  const iso = (value: { toDate(): Date } | null | undefined) => (value ? value.toDate().toISOString() : null);
+  const filtered: FleetRow[] = pageSlice.map((row) => {
+    const summary = summaries.get(row.id);
+    return {
+      ...row,
+      revenueKes7d: summary?.revenueKes7d ?? 0,
+      sellableCount: summary?.sellableCount ?? 0,
+      slotCount: summary?.slotCount ?? 0,
+      pausedSlotCount: summary?.pausedSlotCount ?? 0,
+      lastSaleAt: iso(summary?.lastSaleAt),
+      lastRestockAt: iso(summary?.lastRestockAt),
+      figuresAt: iso(summary?.refreshedAt),
+    };
   });
+  const rows = machines;
+  const pageHref = (target: number) => {
+    const params = new URLSearchParams();
+    if (activeFilter) params.set('filter', activeFilter);
+    if (rawQuery) params.set('q', rawQuery);
+    if (ownerParam) params.set('owner', ownerParam);
+    if (target > 1) params.set('page', String(target));
+    const text = params.toString();
+    return text ? `/admin/vending?${text}` : '/admin/vending';
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Vending Machines</h1>
-        <p className="text-sm text-muted-foreground">Network Overview &mdash; {overview.machineCount} machine{overview.machineCount === 1 ? '' : 's'} across the fleet.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Vending Machines</h1>
+          <p className="text-sm text-muted-foreground">Network Overview &mdash; {overview.machineCount} machine{overview.machineCount === 1 ? '' : 's'} across the fleet.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/vending/products">Products on machines</Link>
+          </Button>
+          {hasPermission(session, 'machines.create') ? (
+            <Button asChild>
+              <Link href="/admin/vending/new">Register a machine</Link>
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">
@@ -162,9 +195,25 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
       <Card>
         <CardHeader className="flex flex-col gap-3">
           <CardTitle>Machine Fleet</CardTitle>
+          <form action="/admin/vending" className="flex flex-wrap items-end gap-2">
+            {activeFilter ? <input type="hidden" name="filter" value={activeFilter} /> : null}
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Search
+              <input name="q" defaultValue={rawQuery ?? ''} placeholder="Code, serial, place or owner" className="h-9 w-64 rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Owner
+              <select name="owner" defaultValue={ownerParam ?? ''} className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground">
+                <option value="">Any</option>
+                <option value="none">Snack Quest</option>
+                {[...partners].sort((a, b) => a.data.name.localeCompare(b.data.name)).map(({ id, data }) => <option key={id} value={id}>{data.name}</option>)}
+              </select>
+            </label>
+            <button type="submit" className="h-9 rounded-lg border border-border px-3 text-sm font-medium text-foreground hover:bg-border/30">Apply</button>
+          </form>
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/admin/vending"
+              href={`/admin/vending${rawQuery || ownerParam ? `?${new URLSearchParams({ ...(rawQuery ? { q: rawQuery } : {}), ...(ownerParam ? { owner: ownerParam } : {}) }).toString()}` : ''}`}
               className={`rounded-full px-3 py-1 text-xs font-medium ${!activeFilter ? 'bg-primary text-primary-foreground' : 'bg-border/30 text-muted-foreground hover:bg-border/50'}`}
             >
               All ({rows.length})
@@ -172,7 +221,7 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
             {FLEET_FILTERS.map(({ key, label }) => (
               <Link
                 key={key}
-                href={`/admin/vending?filter=${key}`}
+                href={`/admin/vending?${new URLSearchParams({ filter: key, ...(rawQuery ? { q: rawQuery } : {}), ...(ownerParam ? { owner: ownerParam } : {}) }).toString()}`}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${activeFilter === key ? 'bg-primary text-primary-foreground' : 'bg-border/30 text-muted-foreground hover:bg-border/50'}`}
               >
                 {label}
@@ -218,13 +267,16 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
                       <td className="px-6 py-3">
                         <div className="flex flex-col gap-1">
                           <MachineStatusBadge status={row.data.status} />
-                          <MachineConnectivityBadge status={row.connectivityStatus} />
+                          <span title={row.connectivityReason}>
+                            <MachineConnectivityBadge status={row.connectivityStatus} />
+                          </span>
                         </div>
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">{row.data.lastSeenAt ? formatDateTime(row.data.lastSeenAt) : 'Never'}</td>
                       <td className="px-6 py-3 text-muted-foreground">KES {row.revenueKes7d.toLocaleString('en-KE')}</td>
                       <td className={`px-6 py-3 ${row.hasStockout ? 'text-danger' : row.hasLowStock ? 'text-warning' : 'text-muted-foreground'}`}>
                         {row.sellableCount}/{row.slotCount} sellable
+                        {row.pausedSlotCount > 0 ? <span className="block text-xs text-warning">{row.pausedSlotCount} paused</span> : null}
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">{row.lastSaleAt ? formatDateTime(row.lastSaleAt) : '—'}</td>
                       <td className="px-6 py-3 text-muted-foreground">{row.lastRestockAt ? formatDateTime(row.lastRestockAt) : '—'}</td>
@@ -235,6 +287,18 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
               </table>
             </div>
           )}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-3 text-sm text-muted-foreground">
+            <span>
+              {candidates.length === 0 ? 'No machines' : `${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + filtered.length} of ${candidates.length}`}. Revenue, stock and last sale are usually no more than 15 minutes old.
+            </span>
+            {pageCount > 1 ? (
+              <span className="flex gap-2">
+                {page > 1 ? <Link href={pageHref(page - 1)} className="rounded-lg border border-border px-3 py-1 hover:bg-border/30">Previous</Link> : null}
+                <span className="px-2 py-1">Page {page} of {pageCount}</span>
+                {page < pageCount ? <Link href={pageHref(page + 1)} className="rounded-lg border border-border px-3 py-1 hover:bg-border/30">Next</Link> : null}
+              </span>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
     </div>

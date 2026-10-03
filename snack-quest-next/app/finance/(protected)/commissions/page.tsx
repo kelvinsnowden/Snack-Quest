@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { ReceiptText } from 'lucide-react';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { referralService } from '@/services/referralService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: 'Commissions' };
  * approval gate to build here (see that Service's own doc comment).
  */
 export default async function FinanceCommissionsPage() {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('finance.view');
   const { commissions } = await referralService.listCommissions(session.businessId);
 
   const totalCommissionKes = commissions.reduce((sum, { data }) => sum + data.commissionKes, 0);

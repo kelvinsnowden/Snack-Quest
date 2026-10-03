@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Plus, ShieldAlert, BellOff } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { marketingSmsService } from '@/services/marketingSmsService';
 import { smsOptOutRepository } from '@/repositories/smsOptOutRepository';
 import { serializeSmsCampaign } from '@/lib/marketingSms/serialize';
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: 'Marketing SMS' };
 export default async function AdminMarketingSmsPage() {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
         <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Marketing SMS</h1>

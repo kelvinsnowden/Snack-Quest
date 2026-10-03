@@ -6,7 +6,10 @@ import { alertService } from '@/services/alertService';
 import { serializeAlert, type SerializedAlert } from '@/lib/vending/serialize';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { CheckAlertsNowButton } from '@/components/admin/vending/CheckAlertsNowButton';
 import { AlertActions } from '@/components/admin/AlertActions';
+import { alertFixLink } from '@/lib/vending/alertFixLink';
+import { machineRepository } from '@/repositories/machineRepository';
 
 export const metadata: Metadata = { title: 'Alert Center' };
 
@@ -28,18 +31,30 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
   expiry_risk: 'Expiry risk',
   subscription_issue: 'Subscription issue',
   settlement_failure: 'Settlement failure',
+  dispense_conflict: 'Dispense conflict',
+  integration_issue: 'Integration issue',
+  manufacturer_outage: 'Manufacturer outage',
+  job_failure: 'Scheduled job',
+  dispense_failures: 'Repeated dispense failures',
+  dispense_timeout_rate: 'Dispense timeout rate',
+  manufacturer_api_unavailable: 'Manufacturer API unavailable',
+  integration_auth_failures: 'Integration authentication',
+  credential_expiring: 'Credential expiring',
+  credential_revoked: 'Credential revoked',
+  webhook_failures: 'Webhook failures',
 };
 
 /**
- * § PART 6 — ALERT CENTER. Runs the sweep on every load (cheap,
- * idempotent — see `alertService.evaluateAndSync`'s own doc comment)
- * so this page is never a stale, separately-maintained view of the
- * fleet's own state.
+ * § PART 6 — ALERT CENTER. Shows open alerts as the last sweep left
+ * them. The sweep reads the whole fleet, so it runs every few minutes on
+ * the schedule and on "Check now", never on page load; the header says
+ * when it last ran.
  */
 export default async function AdminVendingAlertsPage() {
   const session = await requireStaffSession();
-  await alertService.evaluateAndSync(session.businessId);
-  const alerts = await alertService.listOpen(session.businessId);
+  const [alerts, lastEvaluatedAt] = await Promise.all([alertService.listOpen(session.businessId), alertService.lastEvaluatedAt(session.businessId)]);
+  const fixLinks = new Map(alerts.map(({ id, data }) => [id, alertFixLink(data.type, data.machineId, data.dedupeKey)]));
+  const machineCodes = new Map((await machineRepository.listAllForBusiness(session.businessId)).map(({ id, data }) => [id, data.machineCode]));
   const serialized = alerts
     .map(({ id, data }) => serializeAlert(id, data))
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.createdAt.localeCompare(a.createdAt));
@@ -49,13 +64,19 @@ export default async function AdminVendingAlertsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Alert Center</h1>
-        <p className="text-sm text-muted-foreground">
-          {serialized.length === 0
-            ? 'No open alerts across the fleet.'
-            : `${criticalCount} critical, ${warningCount} warning — ${serialized.length} open in total.`}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Alert Center</h1>
+          <p className="text-sm text-muted-foreground">
+            {serialized.length === 0
+              ? 'No open alerts across the fleet.'
+              : `${criticalCount} critical, ${warningCount} warning — ${serialized.length} open in total.`}{' '}
+            {lastEvaluatedAt
+              ? `Last checked ${lastEvaluatedAt.toLocaleString('en-KE', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`
+              : 'Not checked yet.'}
+          </p>
+        </div>
+        <CheckAlertsNowButton />
       </div>
 
       <Card>
@@ -94,7 +115,7 @@ export default async function AdminVendingAlertsPage() {
                         <td className="px-6 py-3">
                           {alert.machineId ? (
                             <Link href={`/admin/vending/${alert.machineId}`} className="text-primary hover:underline">
-                              {alert.machineId}
+                              {machineCodes.get(alert.machineId) ?? alert.machineId}
                             </Link>
                           ) : (
                             <span className="text-muted-foreground">&mdash;</span>
@@ -103,6 +124,11 @@ export default async function AdminVendingAlertsPage() {
                         <td className="px-6 py-3 text-muted-foreground">
                           <p>{alert.title}</p>
                           <p className="text-xs">{alert.detail}</p>
+                          {fixLinks.get(alert.id) ? (
+                            <Link href={fixLinks.get(alert.id)!.href} className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
+                              {fixLinks.get(alert.id)!.label} →
+                            </Link>
+                          ) : null}
                           {alert.status === 'acknowledged' ? (
                             <p className="mt-1 text-xs text-muted-foreground">Acknowledged by {alert.assignee ?? 'staff'}</p>
                           ) : null}

@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_OR_WAREHOUSE, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineSlotService } from '@/services/machineSlotService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSlot } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, hasAnyPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A machine's own slots (§ CORE ENTITIES 2). `GET` is the panel-layout
@@ -15,14 +15,18 @@ import { recordAuditLog } from '@/lib/audit/recordAuditLog';
  * Reassigning a slot's product/capacity is `configureSlot`, not
  * exposed here yet — this route only covers the two adjustments an
  * operator makes routinely, not a full re-provision.
+ *
+ * Switching a slot on or off is routine machine work (a jammed lane
+ * has to stop selling now), so warehouse staff may; changing what a
+ * customer is charged is an admin decision.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.view')) {
+    return forbiddenForPermission('machines.view');
   }
 
   const { id } = await params;
@@ -35,8 +39,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasAnyPermission(session, ['machines.slots.toggle', 'pricing.manage'])) {
+    return forbiddenForPermission('machines.slots.toggle');
   }
 
   const { id } = await params;
@@ -61,13 +65,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (enabled !== undefined && typeof enabled !== 'boolean') {
     return Response.json({ error: 'enabled must be a boolean' }, { status: 400 });
   }
+  // Refused whole: the switch half of a request never applies without the price half.
+  if (enabled !== undefined && !hasPermission(session, 'machines.slots.toggle')) {
+    return forbiddenForPermission('machines.slots.toggle');
+  }
+  if (priceKes !== undefined && !hasPermission(session, 'pricing.manage')) {
+    return forbiddenForPermission('pricing.manage');
+  }
 
   try {
     const beforeSlots = await machineSlotService.listByMachine(session.businessId, id);
     const before = beforeSlots.find((slot) => slot.slotCode === slotCode);
+    // A paused slot comes back through "Return to sale", which records that someone checked it.
+    if (enabled === true && before?.quarantine) {
+      return Response.json({ error: `Slot ${slotCode} was paused after a ${before.quarantine.reason.replace('_', ' ')}. Check it, then use Return to sale.` }, { status: 409 });
+    }
 
     if (priceKes !== undefined) {
-      await machineSlotService.setPrice(session.businessId, id, slotCode, priceKes);
+      await machineSlotService.setPrice(session.businessId, id, slotCode, priceKes, session.uid);
     }
     if (enabled !== undefined) {
       await machineSlotService.setEnabled(session.businessId, id, slotCode, enabled);

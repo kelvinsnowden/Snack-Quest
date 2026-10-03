@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { vendingRollupService } from '@/services/vendingRollupService';
 import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { partnerDailySummaryRepository } from '@/repositories/partnerDailySummaryRepository';
 import { serializeMachineDailySummary, serializePartnerDailySummary } from '@/lib/vending/serialize';
 import { dateKey } from '@/lib/analytics/dateKey';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const MAX_RANGE_DAYS = 92;
 
@@ -21,8 +21,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'analytics.vending.view')) {
+    return forbiddenForPermission('analytics.vending.view');
   }
 
   const url = new URL(request.url);

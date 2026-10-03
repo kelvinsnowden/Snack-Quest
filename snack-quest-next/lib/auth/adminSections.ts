@@ -1,4 +1,5 @@
 import type { StaffSession } from '@/services/staffAuthService';
+import { canOpenSection } from './permissions';
 
 /**
  * Per-workspace access control within the Admin Portal (§ Staff access
@@ -79,20 +80,17 @@ export function isAdminSection(value: string): value is AdminSection {
  * to actively check boxes to narrow someone from "everything" down to
  * "only this."
  */
-export function canAccessAdminSection(session: Pick<StaffSession, 'roles' | 'permissions'>, section: AdminSection): boolean {
-  if (session.roles.includes('super_admin')) {
-    return true;
-  }
-  if (session.permissions.length === 0) {
-    return true;
-  }
-  return session.permissions.includes(section);
+export function canAccessAdminSection(session: Pick<StaffSession, 'roles' | 'permissions' | 'effectivePermissions'>, section: AdminSection): boolean {
+  // A section opens for anyone holding at least one permission in it.
+  return canOpenSection(session, section);
 }
 
 /** The sections a session can reach, for filtering nav — `null` means unrestricted (show everything), never an array of all five (that would silently go stale the day a sixth section is added). */
-export function visibleAdminSections(session: Pick<StaffSession, 'roles' | 'permissions'>): AdminSection[] | null {
-  if (session.roles.includes('super_admin') || session.permissions.length === 0) {
+export function visibleAdminSections(session: Pick<StaffSession, 'roles' | 'permissions' | 'effectivePermissions'>): AdminSection[] | null {
+  if (session.roles.includes('super_admin')) {
     return null;
   }
-  return ADMIN_SECTION_KEYS.filter((key) => session.permissions.includes(key));
+  const open = ADMIN_SECTION_KEYS.filter((key) => canOpenSection(session, key));
+  // Every section open is the same as unrestricted — `null`, so nothing downstream goes stale when a section is added.
+  return open.length === ADMIN_SECTION_KEYS.length ? null : open;
 }

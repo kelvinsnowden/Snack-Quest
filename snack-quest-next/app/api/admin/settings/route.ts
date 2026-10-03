@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   businessSettingsService,
@@ -11,6 +6,7 @@ import {
   type BusinessSettingsPatch,
 } from '@/services/businessSettingsService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Reads this tenant's own Business config (§ Admin: Settings). */
 export async function GET(request: Request): Promise<Response> {
@@ -18,8 +14,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'settings.view')) {
+    return forbiddenForPermission('settings.view');
   }
 
   try {
@@ -73,8 +69,8 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'settings.manage')) {
+    return forbiddenForPermission('settings.manage');
   }
 
   let body: unknown;

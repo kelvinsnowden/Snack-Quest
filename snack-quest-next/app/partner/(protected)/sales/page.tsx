@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { DailySalesBarChart } from '@/components/partner/DailySalesBarChart';
+import { SaleStatusPill } from '@/components/partner/SaleStatusPill';
 
 export const metadata: Metadata = { title: 'Sales & Revenue' };
 
@@ -27,7 +28,7 @@ export default async function PartnerSalesPage({ searchParams }: { searchParams:
     ownerPortalService.getDashboard(session.businessId, session.partnerId, windowDays),
     ownerPortalService.getSalesTrend(session.businessId, session.partnerId, windowDays),
     ownerPortalService.getTopProducts(session.businessId, session.partnerId, windowDays, undefined, 10),
-    ownerPortalService.getRecentActivity(session.businessId, session.partnerId, 15),
+    ownerPortalService.getSalesWithStatus(session.businessId, session.partnerId, 20),
   ]);
   const { summary } = dashboard;
 
@@ -99,7 +100,8 @@ export default async function PartnerSalesPage({ searchParams }: { searchParams:
       </div>
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold text-foreground">Recent Sales</h2>
+        <h2 className="mb-1 text-lg font-semibold text-foreground">Recent Sales</h2>
+        <p className="mb-3 text-sm text-muted-foreground">Only “Sold” counts towards your sales. “Being checked” means the machine didn’t confirm the vend; it counts once confirmed. “Refund due” and “Refunded” never count — the customer gets their money back.</p>
         {activity.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No sales recorded yet.</p>
         ) : (
@@ -110,10 +112,13 @@ export default async function PartnerSalesPage({ searchParams }: { searchParams:
                   <div>
                     <p className="font-medium text-foreground">{item.productName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {item.machineCode} · {new Date(item.dispensedAt).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                      {item.machineCode} · {new Date(item.at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
                     </p>
                   </div>
-                  <span className="shrink-0 font-semibold text-foreground">KES {item.amountKes.toLocaleString('en-KE')}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <SaleStatusPill status={item.status} />
+                    <span className={`font-semibold tabular-nums ${item.status === 'refund_due' || item.status === 'refunded' ? 'text-muted-foreground line-through decoration-1' : item.status === 'sold' ? 'text-foreground' : 'text-muted-foreground'}`}>KES {item.amountKes.toLocaleString('en-KE')}</span>
+                  </span>
                 </div>
               ))}
             </CardContent>

@@ -1,5 +1,11 @@
 # Snack Quest — Machine Gateway API Integration Guide
 
+> **New integrations should use the Snack Quest Machine API v1**
+> (`docs/SNACK_QUEST_MACHINE_API_V1.md`): signed manufacturer
+> credentials, Snack Quest machine codes, per-manufacturer slot names,
+> and an explicit dispense-command lifecycle. The per-machine API below
+> remains supported for machines already built against it.
+
 **Audience:** the engineering team building the gateway software that
 runs on (or alongside) a physical Snack Quest Discovery Machine.
 
@@ -272,6 +278,7 @@ as — you cannot fetch another machine's catalog.
       "name": "Lay's Original Chips",
       "description": "Classic salted potato chips.",
       "imageUrl": "https://.../chips.jpg",
+      "origin": null,
       "category": "chips",
       "priceKes": 150,
       "availabilityState": "available",

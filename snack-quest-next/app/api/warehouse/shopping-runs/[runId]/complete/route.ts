@@ -1,19 +1,17 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { shoppingRunService, ShoppingRunNotFoundError } from '@/services/shoppingRunService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Closes a run, or reopens one. Audit-logged, unlike the per-line writes — this is the transition worth being able to look up later. */
-function canUseWarehouse(roles: string[]): boolean {
-  return roles.some((role) => role === 'warehouse' || role === 'admin' || role === 'super_admin');
-}
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!canUseWarehouse(session.roles)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!hasPermission(session, 'warehouse_fulfilment.manage')) {
+    return forbiddenForPermission('warehouse_fulfilment.manage');
   }
 
   const reopen = new URL(request.url).searchParams.get('reopen') === 'true';

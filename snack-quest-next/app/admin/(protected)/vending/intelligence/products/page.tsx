@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { requireStaffSession } from '@/lib/auth/session';
 import { productIntelligenceService } from '@/services/productIntelligenceService';
 import { peerLearningService } from '@/services/peerLearningService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { IntelligenceTabs } from '@/components/admin/vending/IntelligenceTabs';
 
 export const metadata: Metadata = { title: 'Product Intelligence' };
 
@@ -20,9 +23,11 @@ export default async function AdminProductIntelligencePage() {
     peerLearningService.findProductOpportunities(session.businessId, 30),
   ]);
   const sorted = [...products].sort((a, b) => b.revenueKes - a.revenueKes);
+  const names = await snackItemRepository.findManyById(sorted.map((p) => p.productId));
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <IntelligenceTabs current="products" />
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Product Intelligence</h1>
         <p className="text-sm text-muted-foreground">Every SKU that has moved through the fleet in the last 30 days.</p>
@@ -75,7 +80,11 @@ export default async function AdminProductIntelligencePage() {
                 <tbody>
                   {sorted.map((p) => (
                     <tr key={p.productId} className="border-b border-border last:border-0">
-                      <td className="px-6 py-3 font-medium text-foreground">{p.productId}</td>
+                      <td className="px-6 py-3 font-medium text-foreground">
+                        <Link href={`/admin/vending/intelligence/products/${encodeURIComponent(p.productId)}`} className="hover:underline">
+                          {names.get(p.productId)?.name ?? p.productId}
+                        </Link>
+                      </td>
                       <td className="px-6 py-3 text-muted-foreground">{p.category ?? '—'}</td>
                       <td className="px-6 py-3 text-muted-foreground">{p.unitsSold}</td>
                       <td className="px-6 py-3 text-muted-foreground">KES {p.revenueKes.toLocaleString('en-KE')}</td>

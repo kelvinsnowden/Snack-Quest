@@ -1,8 +1,7 @@
 import { getRealStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
-import { forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { VIEW_AS_COOKIE, isViewableRole } from '@/lib/auth/viewAs';
 import { publishEvent } from '@/lib/events/eventBus';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A super admin choosing which role to look through, or stepping back
@@ -29,8 +28,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'users.view_as')) {
+    return forbiddenForPermission('users.view_as');
   }
 
   let body: unknown;

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { hasPermission } from '@/lib/auth/permissions';
 import { requireStaffSession } from '@/lib/auth/session';
 import { businessRepository } from '@/repositories/businessRepository';
 import { AdminUserMenu } from '@/components/admin/AdminUserMenu';
@@ -48,6 +49,7 @@ export default async function FinanceLayout({ children }: { children: React.Reac
   }
 
   const business = await businessRepository.findById(session.businessId);
+  const navItems = hasPermission(session, 'sales.view') ? [...NAV_ITEMS, { href: '/finance/machine-sales', label: 'Machine sales' }] : NAV_ITEMS;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -66,7 +68,7 @@ export default async function FinanceLayout({ children }: { children: React.Reac
             <span className="font-semibold text-foreground">{business?.name ?? 'Snack Quest'} Finance</span>
           </div>
           <nav className="hidden items-center gap-1 sm:flex">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

@@ -1,8 +1,7 @@
-import { machineTransactionService } from '@/services/machineTransactionService';
+import { isAuthorizedCronRequest } from '@/lib/auth/cronAuth';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
-import { scheduledJobRunRepository } from '@/repositories/scheduledJobRunRepository';
-
-const JOB_NAME = 'reconcile-vending-transactions';
+import { scheduledJobService } from '@/services/scheduledJobService';
+import { reconcileVendingTransactions } from '@/services/jobs/reconcileVendingTransactions';
 
 /**
  * The vending transaction-timeout sweep's real trigger
@@ -19,7 +18,9 @@ const JOB_NAME = 'reconcile-vending-transactions';
  * because Daraja's own callback was lost or delayed
  * (`reconcileStuckPendingTransactions` — the vending equivalent of
  * `PaymentService.reconcileStuckIntents`'s `queryStkStatus` fallback,
- * which e-commerce already had and vending did not).
+ * which e-commerce already had and vending did not). A third pass asks
+ * outbound manufacturer integrations what happened to dispenses whose
+ * outcome is unknown (`reconcileUnknownDispenses`).
  *
  * Daily for now, matching every other cron in `vercel.json` — at zero
  * real transaction volume, a stuck transaction sitting undetected for
@@ -31,40 +32,10 @@ const JOB_NAME = 'reconcile-vending-transactions';
  * actually happens, not something being planned for in the abstract.
  */
 export async function GET(request: Request): Promise<Response> {
-  const expectedSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-
   const businessId = getCurrentBusinessId();
-  const startedAtMs = Date.now();
-
-  try {
-    const [stuckResult, pendingResult] = await Promise.all([
-      machineTransactionService.reconcileStuckTransactions(businessId),
-      machineTransactionService.reconcileStuckPendingTransactions(businessId),
-    ]);
-    const result = { ...stuckResult, ...pendingResult };
-
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'succeeded',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: result,
-      error: null,
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    await scheduledJobRunRepository.record({
-      businessId,
-      jobName: JOB_NAME,
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      resultSummary: null,
-      error: error instanceof Error ? error.message : 'unknown error',
-    });
-    throw error;
-  }
+  const outcome = await scheduledJobService.run(businessId, 'reconcile-vending-transactions', (job) => reconcileVendingTransactions(businessId, job));
+  return scheduledJobService.toResponse(outcome);
 }

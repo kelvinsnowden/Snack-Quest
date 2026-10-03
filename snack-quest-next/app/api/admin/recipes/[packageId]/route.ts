@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { recipeService, RecipeValidationError, SnackItemNotFoundError } from '@/services/recipeService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { BoxRecipeItem } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** Saves or clears one box's recipe (§ Box Recipes). */
 export async function PUT(request: Request, { params }: { params: Promise<{ packageId: string }> }): Promise<Response> {
@@ -10,8 +10,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ pack
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.recipes.manage')) {
+    return forbiddenForPermission('products.recipes.manage');
   }
 
   let body: unknown;
@@ -56,8 +56,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ p
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'products.recipes.manage')) {
+    return forbiddenForPermission('products.recipes.manage');
   }
 
   const { packageId } = await params;

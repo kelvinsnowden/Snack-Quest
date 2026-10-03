@@ -8,7 +8,7 @@ import type { SnackItemDraft } from '@/services/recipeService';
  * valid snack is.
  */
 export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | { error: string } {
-  const { name, imageUrl, expectedUnitCostKes, unitLabel, origin, sourcingNote, isActive, availableForPremiumSelection, stockCount } = (body ?? {}) as Record<
+  const { name, imageUrl, description, expectedUnitCostKes, unitLabel, origin, sourcingNote, isActive, availableForPremiumSelection, stockCount } = (body ?? {}) as Record<
     string,
     unknown
   >;
@@ -16,15 +16,19 @@ export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | {
   if (typeof name !== 'string') {
     return { error: 'name is required' };
   }
-  if (typeof expectedUnitCostKes !== 'number' && typeof expectedUnitCostKes !== 'string') {
-    return { error: 'expectedUnitCostKes is required' };
+  if (expectedUnitCostKes !== undefined && expectedUnitCostKes !== null && typeof expectedUnitCostKes !== 'number' && typeof expectedUnitCostKes !== 'string') {
+    return { error: 'expectedUnitCostKes must be a number' };
   }
 
   return {
     draft: {
       name,
       imageUrl: typeof imageUrl === 'string' ? imageUrl : null,
-      expectedUnitCostKes: Number(expectedUnitCostKes),
+      // Absent means "leave it as it is" on an update, so a caller that
+      // predates the field never wipes a description someone wrote.
+      description: typeof description === 'string' ? description : description === null ? null : undefined,
+      // Absent: no cost given (setting a cost needs products.cost.manage and is checked by the route).
+      expectedUnitCostKes: expectedUnitCostKes === undefined || expectedUnitCostKes === null || expectedUnitCostKes === '' ? undefined : Number(expectedUnitCostKes),
       unitLabel: typeof unitLabel === 'string' ? unitLabel : 'unit',
       origin: typeof origin === 'string' ? origin : null,
       sourcingNote: typeof sourcingNote === 'string' ? sourcingNote : null,

@@ -13,9 +13,7 @@ vi.mock('@/services/analyticsRollupService', () => ({
   },
 }));
 
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({
-  scheduledJobRunRepository: { record: recordMock },
-}));
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
 
 import { GET } from '@/app/api/cron/rebuild-analytics-rollups/route';
 
@@ -84,7 +82,7 @@ describe('GET /api/cron/rebuild-analytics-rollups', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       traffic: { days: 3, visits: 450 },
       lifetime: { customerCount: 24 },
@@ -139,24 +137,21 @@ describe('GET /api/cron/rebuild-analytics-rollups', () => {
     );
   });
 
-  it('records a failed scheduled job run and rethrows when a rebuild throws', async () => {
+  it('records a partial scheduled job run and answers 500 when a rebuild throws', async () => {
     rebuildTrafficRangeMock.mockRejectedValue(new Error('Firestore unavailable'));
     rebuildCustomerLifetimeMock.mockResolvedValue({ customerCount: 0 });
-
-    await expect(
-      GET(
-        new Request('http://localhost/api/cron/rebuild-analytics-rollups', {
-          headers: { authorization: 'Bearer test-cron-secret' },
-        }),
-      ),
-    ).rejects.toThrow('Firestore unavailable');
+    const failed = await GET(
+      new Request('http://localhost/api/cron/rebuild-analytics-rollups', {
+        headers: { authorization: 'Bearer test-cron-secret' },
+      }),
+    );
+    expect(failed.status).toBe(500);
 
     expect(recordMock).toHaveBeenCalledWith(
       expect.objectContaining({
         businessId: 'snack-quest',
         jobName: 'rebuild-analytics-rollups',
-        status: 'failed',
-        resultSummary: null,
+        status: 'partial',
         error: 'Firestore unavailable',
       }),
     );

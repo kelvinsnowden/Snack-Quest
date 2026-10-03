@@ -15,10 +15,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ came
     return Response.json({ snapshots: snapshots.map(({ id, data }) => serializeCameraSnapshot(id, data)) });
   } catch (error) {
     if (error instanceof CameraNotFoundError) {
-      return Response.json({ error: error.message }, { status: 404 });
+      return Response.json({ error: 'not found' }, { status: 404 });
     }
     if (error instanceof PartnerDoesNotOwnMachineError) {
-      return Response.json({ error: error.message }, { status: 403 });
+      return Response.json({ error: 'not found' }, { status: 404 });
     }
     throw error;
   }

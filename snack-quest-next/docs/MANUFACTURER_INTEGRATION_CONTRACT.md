@@ -1,5 +1,12 @@
 # Manufacturer integration contract
 
+**Machine Integration Layer note:** the registry, onboarding,
+certification and the versioned external API that manufacturers now
+integrate through are described in `docs/MACHINE_INTEGRATION_LAYER.md`
+(architecture; §4.1 is the current "adding a manufacturer" procedure)
+and `docs/SNACK_QUEST_MACHINE_API_V1.md` (the specification we send
+manufacturers). The rules below for writing an adapter still hold.
+
 **Phase 4 note:** the commerce/inventory/operations work covered by
 `docs/VENDING_OS_ARCHITECTURE.md` §10–11, `docs/MACHINE_COMMERCE.md`,
 and `docs/VENDING_OPERATIONS_RUNBOOK.md` touched none of the

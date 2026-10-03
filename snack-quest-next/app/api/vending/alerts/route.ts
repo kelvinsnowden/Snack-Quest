@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { alertService } from '@/services/alertService';
 import { serializeAlert } from '@/lib/vending/serialize';
 import type { AlertSeverity, AlertType } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const ALERT_TYPES: AlertType[] = [
   'machine_offline',
@@ -15,23 +15,33 @@ const ALERT_TYPES: AlertType[] = [
   'expiry_risk',
   'subscription_issue',
   'settlement_failure',
+  'dispense_conflict',
+  'integration_issue',
+  'manufacturer_outage',
+  'job_failure',
+  'dispense_failures',
+  'dispense_timeout_rate',
+  'manufacturer_api_unavailable',
+  'integration_auth_failures',
+  'credential_expiring',
+  'credential_revoked',
+  'webhook_failures',
 ];
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 
 /**
- * § PART 6 — ALERT CENTER. Runs `evaluateAndSync` first, on every
- * call — the sweep is cheap and idempotent (it upserts/auto-resolves
- * against live state), so the Alert Center's own list is always at
- * most one page load stale, never a stored view that could drift
- * from what `machines`/`machineSlots`/etc. actually say right now.
+ * § PART 6 — ALERT CENTER. Lists open alerts as the last sweep left
+ * them. The sweep reads the whole fleet, so it runs on the schedule
+ * (vending-fast-recovery, every few minutes) and on "Check now"
+ * (`POST /api/vending/alerts/evaluate`), never on a read.
  */
 export async function GET(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'alerts.view')) {
+    return forbiddenForPermission('alerts.view');
   }
 
   const url = new URL(request.url);
@@ -41,7 +51,6 @@ export async function GET(request: Request): Promise<Response> {
   const type = typeParam && (ALERT_TYPES as string[]).includes(typeParam) ? (typeParam as AlertType) : undefined;
   const severity = severityParam && (ALERT_SEVERITIES as string[]).includes(severityParam) ? (severityParam as AlertSeverity) : undefined;
 
-  await alertService.evaluateAndSync(session.businessId);
-  const alerts = await alertService.listOpen(session.businessId, { type, severity, machineId });
-  return Response.json({ alerts: alerts.map(({ id, data }) => serializeAlert(id, data)) });
+  const [alerts, lastEvaluatedAt] = await Promise.all([alertService.listOpen(session.businessId, { type, severity, machineId }), alertService.lastEvaluatedAt(session.businessId)]);
+  return Response.json({ alerts: alerts.map(({ id, data }) => serializeAlert(id, data)), lastEvaluatedAt: lastEvaluatedAt ? lastEvaluatedAt.toISOString() : null });
 }

@@ -1,10 +1,17 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, ADMIN_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { machineService, MachineNotFoundError, PartnerDoesNotOwnMachineError, IllegalMachineStatusTransitionError } from '@/services/machineService';
-import { deriveConnectivityStatus } from '@/lib/vending/connectivity';
+import { machineLiveness, connectivityOf } from '@/lib/vending/machineStatus';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import type { Machine, MachineConnectivityStatus } from '@/types';
+
+/** The same liveness answer the fleet page and alerts use. */
+async function connectivityFor(businessId: string, machineId: string, machine: Machine): Promise<MachineConnectivityStatus> {
+  return connectivityOf(machineLiveness(machine, await machineIntegrationRepository.findByMachineId(businessId, machineId)));
+}
 import { serializeMachine } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineStatus } from '@/types';
+import { hasPermission, hasAnyPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_STATUSES: MachineStatus[] = ['provisioning', 'installing', 'testing', 'active', 'maintenance', 'offline', 'decommissioned'];
 
@@ -25,8 +32,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'machines.view')) {
+    return forbiddenForPermission('machines.view');
   }
 
   const { id } = await params;
@@ -36,14 +43,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!machine) {
       return Response.json({ error: `Machine ${id} not found` }, { status: 404 });
     }
-    const connectivityStatus = deriveConnectivityStatus(machine.lastSeenAt);
+    const connectivityStatus = await connectivityFor(session.businessId, id, machine);
     return Response.json({ machine: serializeMachine(id, machine, connectivityStatus) });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
     }
     if (error instanceof PartnerDoesNotOwnMachineError) {
-      return forbiddenResponse();
+      return forbiddenForPermission('machines.view');
     }
     throw error;
   }
@@ -62,8 +69,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasAnyPermission(session, ['machines.status.manage', 'machines.relocate'])) {
+    return forbiddenForPermission('machines.status.manage');
   }
 
   const { id } = await params;
@@ -84,6 +91,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
     return Response.json({ error: 'locationId must be a string or null' }, { status: 400 });
+  }
+  if (status !== undefined && !hasPermission(session, 'machines.status.manage')) {
+    return forbiddenForPermission('machines.status.manage');
+  }
+  // Retiring can't be undone, so it is its own permission.
+  if (status === 'decommissioned' && !hasPermission(session, 'machines.decommission')) {
+    return forbiddenForPermission('machines.decommission');
+  }
+  if (locationId !== undefined && !hasPermission(session, 'machines.relocate')) {
+    return forbiddenForPermission('machines.relocate');
   }
 
   try {
@@ -122,7 +139,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       after: after ? { status: after.status, locationId: after.locationId } : null,
       machineId: id,
     });
-    const connectivityStatus = deriveConnectivityStatus(after!.lastSeenAt);
+    const connectivityStatus = await connectivityFor(session.businessId, id, after!);
     return Response.json({ machine: serializeMachine(id, after!, connectivityStatus) });
   } catch (error) {
     if (error instanceof MachineNotFoundError) {

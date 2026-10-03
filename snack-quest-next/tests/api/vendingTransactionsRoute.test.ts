@@ -99,10 +99,19 @@ describe('GET /api/vending/transactions', () => {
     expect(response.status).toBe(401);
   });
 
-  it('403s a staff session outside admin/finance/warehouse', async () => {
-    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
+  it('403s anyone without sales.view', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue({ ...STAFF_SESSION, roles: ['admin'], effectivePermissions: ['machines.view'] });
     const response = await transactionsGet(getRequest());
     expect(response.status).toBe(403);
+    expect((await response.json()).permission).toBe('sales.view');
+    expect(listByBusinessMock).not.toHaveBeenCalled();
+  });
+
+  it('lets Support read machine sales — their template includes sales.view, for answering customers', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
+    listByBusinessMock.mockResolvedValue({ transactions: [], nextCursor: null });
+    expect((await transactionsGet(getRequest())).status).toBe(200);
+    expect(listByBusinessMock).toHaveBeenCalledWith('biz-1', expect.any(Object));
   });
 
   it('200s for finance, scoped to the session businessId', async () => {

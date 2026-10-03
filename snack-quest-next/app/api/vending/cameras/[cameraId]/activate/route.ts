@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { cameraService, CameraNotFoundError, CameraNotTestedError } from '@/services/cameraService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /** POST — the one and only path to `active` (§10 step 7). `ADMIN_ONLY`: activating changes what's actually live, the same "real consequence" bar `Test vend` uses for vending hardware. */
 export async function POST(request: Request, { params }: { params: Promise<{ cameraId: string }> }): Promise<Response> {
@@ -9,8 +9,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'cameras.manage')) {
+    return forbiddenForPermission('cameras.manage');
   }
 
   const { cameraId } = await params;

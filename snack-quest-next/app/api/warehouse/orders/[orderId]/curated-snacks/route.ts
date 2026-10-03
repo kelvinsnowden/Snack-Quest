@@ -1,14 +1,10 @@
-import {
-  hasStaffRole,
-  ADMIN_OR_WAREHOUSE,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { orderRepository } from '@/repositories/orderRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { validateGuaranteedPicks, MAX_STAFF_PICKS } from '@/lib/packages/guaranteedPicks';
 import { orderLines } from '@/types/checkoutLine';
 import { publishEvent } from '@/lib/events/eventBus';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * The rest of what went in each box, recorded by the shop
@@ -38,8 +34,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'warehouse_fulfilment.manage')) {
+    return forbiddenForPermission('warehouse_fulfilment.manage');
   }
 
   const { orderId } = await params;

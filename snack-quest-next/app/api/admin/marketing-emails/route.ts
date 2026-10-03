@@ -1,9 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { marketingEmailService, MarketingEmailValidationError } from '@/services/marketingEmailService';
 import { parseDraftBody, type DraftBody } from '@/lib/marketingEmails/parseDraftBody';
 import { serializeCampaign } from '@/lib/marketingEmails/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /** Lists this business's marketing email campaigns, newest first (§ Admin: Marketing Emails). */
 export async function GET(request: Request): Promise<Response> {
@@ -11,7 +11,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -26,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

@@ -4,6 +4,12 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { partnerService } from '@/services/partnerService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { hasPermission } from '@/lib/auth/permissions';
+import { machineRepository } from '@/repositories/machineRepository';
+
+/** A file download, not a page — so a plain link, not `next/link`. */
+const OWNERS_CSV = '/api/vending/partners/export';
 
 export const metadata: Metadata = { title: 'Machine Owners' };
 
@@ -16,15 +22,39 @@ export const metadata: Metadata = { title: 'Machine Owners' };
  */
 export default async function AdminVendingPartnersPage() {
   const session = await requireStaffSession();
-  const partners = await partnerService.listByBusiness(session.businessId);
+  const [partners, machines] = await Promise.all([partnerService.listByBusiness(session.businessId), machineRepository.listAllForBusiness(session.businessId)]);
+  const canSeeMoney = hasPermission(session, 'owner_finance.view');
+  const machineCount = new Map<string, number>();
+  for (const { data } of machines) {
+    if (data.ownerPartnerId) machineCount.set(data.ownerPartnerId, (machineCount.get(data.ownerPartnerId) ?? 0) + 1);
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Machine Owners</h1>
-        <p className="text-sm text-muted-foreground">
-          {partners.length} owner{partners.length === 1 ? '' : 's'} — wallet balances, settlements and withdrawals.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Machine Owners</h1>
+          <p className="text-sm text-muted-foreground">
+            {partners.length} owner{partners.length === 1 ? '' : 's'} — people and companies who own machines Snack Quest runs.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+        {hasPermission(session, 'owners.export') ? (
+          <Button asChild variant="outline">
+            <a href={OWNERS_CSV}>Download CSV</a>
+          </Button>
+        ) : null}
+        {canSeeMoney ? (
+          <Button asChild variant="outline">
+            <Link href="/admin/vending/settlements">Settlements to finalize</Link>
+          </Button>
+        ) : null}
+        {hasPermission(session, 'owners.manage') ? (
+          <Button asChild>
+            <Link href="/admin/vending/partners/new">Add owner</Link>
+          </Button>
+        ) : null}
+        </div>
       </div>
 
       <Card>
@@ -33,7 +63,7 @@ export default async function AdminVendingPartnersPage() {
         </CardHeader>
         <CardContent className="p-0">
           {partners.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">No machine owners recorded yet.</p>
+            <p className="p-6 text-sm text-muted-foreground">No machine owners yet. Machines without an owner belong to Snack Quest.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -41,8 +71,10 @@ export default async function AdminVendingPartnersPage() {
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="px-6 py-3 font-medium">Owner</th>
                     <th className="px-6 py-3 font-medium">Status</th>
-                    <th className="px-6 py-3 font-medium">Available balance</th>
-                    <th className="px-6 py-3 font-medium">Lifetime earned</th>
+                    <th className="px-6 py-3 font-medium">Machines</th>
+                    <th className="px-6 py-3 font-medium">Portal</th>
+                    {canSeeMoney ? <th className="px-6 py-3 font-medium">Available balance</th> : null}
+                    {canSeeMoney ? <th className="px-6 py-3 font-medium">Lifetime earned</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -54,10 +86,12 @@ export default async function AdminVendingPartnersPage() {
                         </Link>
                       </td>
                       <td className="px-6 py-3">
-                        <Badge variant={data.status === 'active' ? 'success' : 'outline'}>{data.status}</Badge>
+                        <Badge variant={data.status === 'active' ? 'success' : 'outline'}>{data.status === 'active' ? 'Active' : 'Suspended'}</Badge>
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground">KES {data.availableCashKes.toLocaleString('en-KE')}</td>
-                      <td className="px-6 py-3 text-muted-foreground">KES {data.lifetimeEarnedKes.toLocaleString('en-KE')}</td>
+                      <td className="px-6 py-3 tabular-nums text-muted-foreground">{machineCount.get(id) ?? 0}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{data.authUid ? 'Signed up' : data.contactEmail ? 'Invite not used yet' : 'No email'}</td>
+                      {canSeeMoney ? <td className="px-6 py-3 text-muted-foreground">KES {data.availableCashKes.toLocaleString('en-KE')}</td> : null}
+                      {canSeeMoney ? <td className="px-6 py-3 text-muted-foreground">KES {data.lifetimeEarnedKes.toLocaleString('en-KE')}</td> : null}
                     </tr>
                   ))}
                 </tbody>

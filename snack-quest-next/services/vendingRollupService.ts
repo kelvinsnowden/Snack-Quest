@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { unitCostFor } from '@/lib/finance/economics';
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
 import { machineInventoryMovementRepository } from '@/repositories/machineInventoryMovementRepository';
@@ -11,7 +12,7 @@ import { machineAssortmentRepository } from '@/repositories/machineAssortmentRep
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { dateKey, dayBounds } from '@/lib/analytics/dateKey';
-import type { MachineDailySummary, PartnerDailySummary, NetworkDailySummary } from '@/types';
+import { isCustomerSale, type MachineDailySummary, type PartnerDailySummary, type NetworkDailySummary } from '@/types';
 
 /**
  * `machineDailySummary`/`partnerDailySummary` rollups (§ ANALYTICS,
@@ -59,6 +60,8 @@ class VendingRollupService {
     let unitsSold = 0;
     let unpricedUnitsSold = 0;
     const byProduct: Record<string, { unitsSold: number; grossSalesKes: number; cogsKes: number; grossProfitKes: number; category: string | null }> = {};
+    /** Per product: cost already known from sales' frozen snapshots, and how many units still need the product's current cost (sales made before snapshots). */
+    const snapshotCost = new Map<string, { cogsKes: number; unpricedUnits: number; legacyUnits: number }>();
     /** Every dispensed sale's own `(productCatalogue, productId)`, deduped, resolved once after the stream ends rather than once per transaction. */
     const soldProducts = new Map<string, { productCatalogue: 'package' | 'snackItem'; productId: string }>();
 
@@ -68,6 +71,9 @@ class VendingRollupService {
       until: end,
       pageSize: TRANSACTION_PAGE_SIZE,
     })) {
+      if (!isCustomerSale(data)) {
+        continue; // a staff test vend: not a sale, not a transaction the owner had
+      }
       transactionCount += 1;
       if (data.status === 'dispensed') {
         dispensedCount += 1;
@@ -77,6 +83,16 @@ class VendingRollupService {
         product.unitsSold += 1;
         product.grossSalesKes += data.amountKes;
         byProduct[data.productId] = product;
+        // The sale's own frozen cost (§ HISTORICAL SNAPSHOTS), from the machine owner's side: what the stock cost whoever sold it.
+        const cost = snapshotCost.get(data.productId) ?? { cogsKes: 0, unpricedUnits: 0, legacyUnits: 0 };
+        if (data.economics) {
+          const unitCost = unitCostFor(data.economics, data.economics.ownershipType === 'snack_quest' ? 'snack_quest' : 'owner');
+          if (unitCost === null) cost.unpricedUnits += 1;
+          else cost.cogsKes += unitCost;
+        } else {
+          cost.legacyUnits += 1;
+        }
+        snapshotCost.set(data.productId, cost);
         soldProducts.set(data.productId, { productCatalogue: data.productCatalogue, productId: data.productId });
       } else if (data.status === 'paid_vend_failed') {
         paidVendFailedCount += 1;
@@ -102,12 +118,12 @@ class VendingRollupService {
 
     for (const [productId, { productCatalogue }] of soldProducts) {
       const product = byProduct[productId];
-      const unitCostKes = productCatalogue === 'snackItem' ? snackItemsById.get(productId)?.expectedUnitCostKes ?? null : null;
-      if (unitCostKes === null) {
-        unpricedUnitsSold += product.unitsSold;
-      } else {
-        product.cogsKes = product.unitsSold * unitCostKes;
-      }
+      const cost = snapshotCost.get(productId) ?? { cogsKes: 0, unpricedUnits: 0, legacyUnits: product.unitsSold };
+      // Sales before snapshots: the product's current cost — the only one there is.
+      const snack = productCatalogue === 'snackItem' ? snackItemsById.get(productId) : undefined;
+      const legacyUnitCostKes = snack && !snack.costPending ? snack.expectedUnitCostKes : null;
+      product.cogsKes = cost.cogsKes + (legacyUnitCostKes === null ? 0 : cost.legacyUnits * legacyUnitCostKes);
+      unpricedUnitsSold += cost.unpricedUnits + (legacyUnitCostKes === null ? cost.legacyUnits : 0);
       product.grossProfitKes = product.grossSalesKes - product.cogsKes;
       product.category = categoryByProductKey.get(`${productCatalogue}__${productId}`) ?? null;
     }

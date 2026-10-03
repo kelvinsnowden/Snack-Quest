@@ -1,33 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { locationService } from '@/services/locationService';
 import { serializeLocation } from '@/lib/vending/serialize';
 import type { Location } from '@/types';
-
-const VALID_LOCATION_TYPES: Location['locationType'][] = [
-  'university',
-  'hotel',
-  'office',
-  'hospital',
-  'mall',
-  'airport',
-  'transport_hub',
-  'bnb',
-  'corporate',
-  'other',
-];
-
-const VALID_CUSTOMER_TYPES: NonNullable<Location['customerType']>[] = [
-  'students',
-  'employees',
-  'travelers',
-  'patients_and_visitors',
-  'general_public',
-  'mixed',
-  'other',
-];
-
-const VALID_INDOOR_OUTDOOR: NonNullable<Location['indoorOutdoor']>[] = ['indoor', 'outdoor', 'mixed'];
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { VALID_LOCATION_TYPES, VALID_CUSTOMER_TYPES, VALID_INDOOR_OUTDOOR } from '@/lib/vending/locationOptions';
 
 /**
  * The location profile domain's own staff surface
@@ -41,8 +18,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'locations.view')) {
+    return forbiddenForPermission('locations.view');
   }
 
   const url = new URL(request.url);
@@ -70,8 +47,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'locations.manage')) {
+    return forbiddenForPermission('locations.manage');
   }
 
   let body: unknown;
@@ -135,5 +112,13 @@ export async function POST(request: Request): Promise<Response> {
     actor: session.uid,
   });
 
+  await recordAuditLog(request, {
+    businessId: session.businessId,
+    actorId: session.uid,
+    action: 'create_location',
+    entityType: 'location',
+    entityId: locationId,
+    after: { name, locationType, city },
+  });
   return Response.json({ locationId }, { status: 201 });
 }

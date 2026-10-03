@@ -6,9 +6,7 @@ vi.mock('@/services/notificationService', () => ({
   notificationService: { retrySweep: retrySweepMock },
 }));
 
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({
-  scheduledJobRunRepository: { record: recordMock },
-}));
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
 
 import { GET } from '@/app/api/cron/retry-notifications/route';
 
@@ -76,7 +74,7 @@ describe('GET /api/cron/retry-notifications', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, attempted: 3 });
+    expect(await response.json()).toMatchObject({ ok: true, attempted: 3 });
     expect(retrySweepMock).toHaveBeenCalledWith('snack-quest');
   });
 
@@ -100,23 +98,20 @@ describe('GET /api/cron/retry-notifications', () => {
     );
   });
 
-  it('records a failed scheduled job run and rethrows when the sweep itself throws', async () => {
+  it('records a failed scheduled job run and answers 500 when the sweep itself throws', async () => {
     retrySweepMock.mockRejectedValue(new Error('Firestore unavailable'));
-
-    await expect(
-      GET(
-        new Request('http://localhost/api/cron/retry-notifications', {
-          headers: { authorization: 'Bearer test-cron-secret' },
-        }),
-      ),
-    ).rejects.toThrow('Firestore unavailable');
+    const failed = await GET(
+      new Request('http://localhost/api/cron/retry-notifications', {
+        headers: { authorization: 'Bearer test-cron-secret' },
+      }),
+    );
+    expect(failed.status).toBe(500);
 
     expect(recordMock).toHaveBeenCalledWith(
       expect.objectContaining({
         businessId: 'snack-quest',
         jobName: 'retry-notifications',
         status: 'failed',
-        resultSummary: null,
         error: 'Firestore unavailable',
       }),
     );

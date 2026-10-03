@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { ShieldAlert } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { marketingEmailService } from '@/services/marketingEmailService';
 import { MarketingEmailForm } from '@/components/admin/MarketingEmailForm';
 import { Card } from '@/components/ui/card';
@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'New campaign' };
 export default async function NewMarketingEmailPage() {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return (
       <Card className="flex max-w-2xl flex-col items-center gap-3 p-10 text-center">
         <ShieldAlert className="size-8 text-warning" aria-hidden="true" />

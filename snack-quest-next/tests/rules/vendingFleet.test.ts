@@ -140,6 +140,30 @@ describe('machineSlots / machineTransactions / machineDailySummary security rule
   });
 });
 
+describe('machineFleetSummary security rules — staff only', () => {
+  const seedSummary = () =>
+    testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'machineFleetSummary', 'm-1'), { businessId: 'biz-1', machineId: 'm-1', revenue7dKes: 900 });
+    });
+
+  it("lets the business's admin read a machine's fleet row", async () => {
+    await seedSummary();
+    const ctx = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
+    await assertSucceeds(getDoc(doc(ctx.firestore(), 'machineFleetSummary', 'm-1')));
+  });
+
+  it("blocks the machine's own owner, another business's admin, and every client write", async () => {
+    await seedMachine('m-1', { businessId: 'biz-1', ownerPartnerId: 'partner-1', machineCode: 'SQ-M001' });
+    await seedSummary();
+    const owner = testEnv.authenticatedContext('partner-user-1', { roles: ['partner'], partnerId: 'partner-1' });
+    await assertFails(getDoc(doc(owner.firestore(), 'machineFleetSummary', 'm-1')));
+    const otherAdmin = testEnv.authenticatedContext('admin-2', { roles: ['admin'], businessId: 'biz-2' });
+    await assertFails(getDoc(doc(otherAdmin.firestore(), 'machineFleetSummary', 'm-1')));
+    const admin = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
+    await assertFails(setDoc(doc(admin.firestore(), 'machineFleetSummary', 'm-1'), { businessId: 'biz-1', machineId: 'm-1' }));
+  });
+});
+
 describe('partnerDailySummary / partners security rules — directly keyed by partnerId', () => {
   it("a partner reads their own portfolio rollup — the '27 machines, one read' document", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -176,6 +200,7 @@ describe('partnerDailySummary / partners security rules — directly keyed by pa
 
 describe('staff-only vending collections — no partner read at all', () => {
   const STAFF_ONLY_COLLECTIONS = [
+    'vendingRefunds',
     'machineInventoryMovements',
     'machineTelemetryEvents',
     'machineLocationHistory',
@@ -185,6 +210,7 @@ describe('staff-only vending collections — no partner read at all', () => {
     'deviceCredentials',
     'cameras',
     'cameraSnapshots',
+    'kioskScreenImages',
   ];
 
   for (const collectionName of STAFF_ONLY_COLLECTIONS) {

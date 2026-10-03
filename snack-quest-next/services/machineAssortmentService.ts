@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { machineAssortmentRepository } from '@/repositories/machineAssortmentRepository';
+import { priceBookService } from '@/services/priceBookService';
+import { effectiveSellingPriceKes } from '@/lib/vending/sellingPrice';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
@@ -12,6 +14,50 @@ export class ProductNotFoundError extends Error {
     super(`No ${productCatalogue} found with id ${productId}`);
     this.name = 'ProductNotFoundError';
   }
+}
+
+export class MerchandisingValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MerchandisingValidationError';
+  }
+}
+
+export const PROMOTIONAL_STATES: MachineAssortmentPromotionalState[] = ['none', 'featured', 'new', 'limited_time'];
+
+/**
+ * How one product looks on one machine's screen. Each field present is
+ * applied; `null` (or an empty string) clears a machine-specific value
+ * so the screen falls back to the product's own name, description or
+ * photo; an absent field is left alone.
+ */
+export interface MerchandisingPatch {
+  customerFacingName?: string | null;
+  customerFacingDescription?: string | null;
+  customerFacingImageUrl?: string | null;
+  category?: string | null;
+  displayOrder?: number;
+  promotionalState?: MachineAssortmentPromotionalState;
+}
+
+const MERCHANDISING_LIMITS = { customerFacingName: 60, customerFacingDescription: 160, category: 40 } as const;
+
+/** An uploaded image (https) or a file shipped with the site (`/…`). */
+function isAcceptableImageUrl(value: string): boolean {
+  if (value.startsWith('/') && !value.startsWith('//')) {
+    return true;
+  }
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export interface ScreenPresentationRow {
+  assortment: MachineAssortment;
+  /** The product's own values — what the screen falls back to when this machine has no override. */
+  product: { name: string; description: string | null; imageUrl: string | null; origin: string | null };
 }
 
 interface ResolvedProduct {
@@ -43,7 +89,9 @@ class MachineAssortmentService {
       if (!item) {
         throw new ProductNotFoundError('snackItem', productId);
       }
-      return { name: item.name, description: null, imageUrl: item.imageUrl, defaultPriceKes: item.expectedUnitCostKes };
+      // The suggested retail price, never the cost (a cost is not a price).
+      const prices = await priceBookService.currentPrices(businessId, 'snackItem', productId);
+      return { name: item.name, description: item.description ?? null, imageUrl: item.imageUrl, defaultPriceKes: prices.retailListKes ?? 0 };
     }
     const pkg = await packageRepository.findById(businessId, productId);
     if (!pkg) {
@@ -74,6 +122,9 @@ class MachineAssortmentService {
     effectiveTo?: Date | null;
     actor: string;
   }): Promise<void> {
+    if (input.customerFacingImageUrl && !isAcceptableImageUrl(input.customerFacingImageUrl.trim())) {
+      throw new MerchandisingValidationError('Upload the photo first — the address must be an https link.');
+    }
     const machine = await machineRepository.findById(input.businessId, input.machineId);
     if (!machine) {
       throw new MachineNotFoundError(input.machineId);
@@ -162,6 +213,60 @@ class MachineAssortmentService {
     await machineAssortmentRepository.upsert({ ...existing, visible });
   }
 
+  /** Validates and applies a `MerchandisingPatch` — see its own doc comment for the absent/null rules. */
+  async updateMerchandising(
+    businessId: string,
+    machineId: string,
+    productCatalogue: MachineAssortment['productCatalogue'],
+    productId: string,
+    patch: MerchandisingPatch,
+  ): Promise<void> {
+    const existing = await machineAssortmentRepository.findByProduct(businessId, machineId, productCatalogue, productId);
+    if (!existing) {
+      throw new Error(`Product ${productId} is not assorted to machine ${machineId}`);
+    }
+
+    const text = (field: keyof typeof MERCHANDISING_LIMITS, label: string): string | null | undefined => {
+      const value = patch[field];
+      if (value === undefined) return undefined;
+      const cleaned = value?.trim() || null;
+      if (cleaned && cleaned.length > MERCHANDISING_LIMITS[field]) {
+        throw new MerchandisingValidationError(`Keep the ${label} under ${MERCHANDISING_LIMITS[field]} characters so it fits on the screen.`);
+      }
+      return cleaned;
+    };
+
+    const next: MachineAssortment = { ...existing };
+    const name = text('customerFacingName', 'name');
+    if (name !== undefined) next.customerFacingName = name;
+    const description = text('customerFacingDescription', 'description');
+    if (description !== undefined) next.customerFacingDescription = description;
+    const category = text('category', 'category');
+    if (category !== undefined) next.category = category;
+
+    if (patch.customerFacingImageUrl !== undefined) {
+      const imageUrl = patch.customerFacingImageUrl?.trim() || null;
+      if (imageUrl && !isAcceptableImageUrl(imageUrl)) {
+        throw new MerchandisingValidationError('Upload the photo first — the address must be an https link.');
+      }
+      next.customerFacingImageUrl = imageUrl;
+    }
+    if (patch.displayOrder !== undefined) {
+      if (!Number.isInteger(patch.displayOrder) || patch.displayOrder < 0 || patch.displayOrder > 9999) {
+        throw new MerchandisingValidationError('Position must be a whole number from 0 to 9999.');
+      }
+      next.displayOrder = patch.displayOrder;
+    }
+    if (patch.promotionalState !== undefined) {
+      if (!PROMOTIONAL_STATES.includes(patch.promotionalState)) {
+        throw new MerchandisingValidationError(`Badge must be one of: ${PROMOTIONAL_STATES.join(', ')}.`);
+      }
+      next.promotionalState = patch.promotionalState;
+    }
+
+    await machineAssortmentRepository.upsert(next);
+  }
+
   async setPriceOverride(
     businessId: string,
     machineId: string,
@@ -171,6 +276,73 @@ class MachineAssortmentService {
     actor: string,
   ): Promise<void> {
     await machineAssortmentRepository.setPriceOverride(businessId, machineId, productCatalogue, productId, priceOverrideKes, actor);
+  }
+
+  /**
+   * "Copy range from…": makes this machine carry everything another
+   * machine carries. Each product is assorted here with the source's
+   * category and position; screen text stays this machine's own, slot
+   * links are left for whoever loads the slots, and price overrides are
+   * only copied when asked (the route requires `pricing.manage` for it).
+   * Products this machine already carries keep their own settings.
+   */
+  async copyRange(businessId: string, fromMachineId: string, toMachineId: string, options: { includePriceOverrides: boolean; actor: string }): Promise<{ added: number; alreadyCarried: number }> {
+    if (fromMachineId === toMachineId) {
+      throw new MerchandisingValidationError('Choose a different machine to copy from.');
+    }
+    const [source, target] = await Promise.all([machineRepository.findById(businessId, fromMachineId), machineRepository.findById(businessId, toMachineId)]);
+    if (!source) throw new MachineNotFoundError(fromMachineId);
+    if (!target) throw new MachineNotFoundError(toMachineId);
+    const [sourceRows, targetRows] = await Promise.all([machineAssortmentRepository.listByMachine(businessId, fromMachineId), machineAssortmentRepository.listByMachine(businessId, toMachineId)]);
+    const carried = new Set(targetRows.filter((row) => row.assorted).map((row) => `${row.productCatalogue}:${row.productId}`));
+    let added = 0;
+    let alreadyCarried = 0;
+    for (const row of sourceRows.filter((entry) => entry.assorted)) {
+      if (carried.has(`${row.productCatalogue}:${row.productId}`)) {
+        alreadyCarried += 1;
+        continue;
+      }
+      await this.assortProduct({ businessId, machineId: toMachineId, productId: row.productId, productCatalogue: row.productCatalogue, displayOrder: row.displayOrder, category: row.category, actor: options.actor });
+      if (options.includePriceOverrides && row.priceOverrideKes !== null) {
+        await this.setPriceOverride(businessId, toMachineId, row.productCatalogue, row.productId, row.priceOverrideKes, options.actor);
+      }
+      added += 1;
+    }
+    return { added, alreadyCarried };
+  }
+
+  /**
+   * Every assorted product on one machine with the product's own name,
+   * description and photo beside this machine's overrides — what the
+   * admin screen editor needs to show "what the customer sees" and what
+   * clearing an override would fall back to.
+   */
+  async listScreenPresentation(businessId: string, machineId: string): Promise<ScreenPresentationRow[]> {
+    const rows = (await machineAssortmentRepository.listByMachine(businessId, machineId)).filter((row) => row.assorted);
+    const snackItemIds = rows.filter((row) => row.productCatalogue === 'snackItem').map((row) => row.productId);
+    const packageRows = rows.filter((row) => row.productCatalogue === 'package');
+    const [snackItemsById, packages] = await Promise.all([
+      snackItemRepository.findManyById(snackItemIds),
+      Promise.all(packageRows.map((row) => packageRepository.findById(businessId, row.productId))),
+    ]);
+    const packagesById = new Map(packageRows.map((row, index) => [row.productId, packages[index]]));
+
+    return rows
+      .map((row) => {
+        if (row.productCatalogue === 'snackItem') {
+          const item = snackItemsById.get(row.productId);
+          return {
+            assortment: row,
+            product: { name: item?.name ?? row.productId, description: item?.description ?? null, imageUrl: item?.imageUrl ?? null, origin: item?.origin ?? null },
+          };
+        }
+        const pkg = packagesById.get(row.productId) ?? null;
+        return {
+          assortment: row,
+          product: { name: pkg?.name ?? row.productId, description: pkg?.description ?? null, imageUrl: pkg?.imageUrl ?? null, origin: null },
+        };
+      })
+      .sort((a, b) => a.assortment.displayOrder - b.assortment.displayOrder);
   }
 
   async listByMachine(businessId: string, machineId: string): Promise<MachineAssortment[]> {
@@ -225,10 +397,14 @@ class MachineAssortmentService {
 
     const snackItemIds = assorted.filter((row) => row.productCatalogue === 'snackItem').map((row) => row.productId);
     const packageRows = assorted.filter((row) => row.productCatalogue === 'package');
-    const [snackItemsById, packagesById] = await Promise.all([
+    const [snackItemsById, packagesById, retailPrices] = await Promise.all([
       snackItemRepository.findManyById(snackItemIds),
       Promise.all(packageRows.map((row) => packageRepository.findById(businessId, row.productId))).then(
         (results) => new Map(packageRows.map((row, index) => [row.productId, results[index]])),
+      ),
+      priceBookService.currentPricesMany(
+        businessId,
+        assorted.filter((row) => row.productCatalogue === 'snackItem' && !(row.slotCode && slotByCode.has(row.slotCode))).map((row) => ({ productCatalogue: 'snackItem' as const, productId: row.productId })),
       ),
     ]);
 
@@ -241,11 +417,15 @@ class MachineAssortmentService {
       let description = row.customerFacingDescription;
       let imageUrl = row.customerFacingImageUrl;
       let fallbackPriceKes = 0;
+      let origin: string | null = null;
       if (row.productCatalogue === 'snackItem') {
         const item = snackItemsById.get(row.productId);
         name = name ?? item?.name ?? row.productId;
+        description = description ?? item?.description ?? null;
         imageUrl = imageUrl ?? item?.imageUrl ?? null;
-        fallbackPriceKes = item?.expectedUnitCostKes ?? 0;
+        origin = item?.origin ?? null;
+        // Never the cost: a product not yet in a slot shows its suggested retail price, when one is set.
+        fallbackPriceKes = retailPrices.get(`snackItem__${row.productId}`)?.retailListKes ?? 0;
       } else {
         const pkg = packagesById.get(row.productId) ?? null;
         name = name ?? pkg?.name ?? row.productId;
@@ -254,7 +434,7 @@ class MachineAssortmentService {
         fallbackPriceKes = pkg?.priceKes ?? 0;
       }
 
-      const priceKes = row.priceOverrideKes ?? slot?.priceKes ?? fallbackPriceKes;
+      const priceKes = slot ? effectiveSellingPriceKes({ slotPriceKes: slot.priceKes, assortmentOverrideKes: row.priceOverrideKes }) : (row.priceOverrideKes ?? fallbackPriceKes);
 
       const notYetStarted = Boolean(row.effectiveFrom && row.effectiveFrom.toMillis() > now);
       const windowEnded = Boolean(row.effectiveTo && row.effectiveTo.toMillis() < now);
@@ -278,6 +458,7 @@ class MachineAssortmentService {
         name,
         description,
         imageUrl,
+        origin,
         category: row.category,
         priceKes,
         availabilityState,

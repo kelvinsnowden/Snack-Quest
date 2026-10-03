@@ -1,11 +1,7 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * A staff member's acknowledgment of an unmatched payment (§ Payment
@@ -20,8 +16,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'finance.reconciliation.resolve')) {
+    return forbiddenForPermission('finance.reconciliation.resolve');
   }
 
   let body: unknown;

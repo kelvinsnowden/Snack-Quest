@@ -21,7 +21,16 @@ import type { Timestamp } from 'firebase/firestore';
 export interface MachineSlot {
   businessId: string;
   machineId: string;
+  /** Snack Quest's own slot identifier — what transactions, inventory and the customer screen use. */
   slotCode: string;
+  /**
+   * The manufacturer's own name for this physical slot (`spiral_01`,
+   * `A1`, `motor-14`) — what their firmware, API and webhooks say.
+   * Translated to `slotCode` at the integration boundary
+   * (`lib/vending/slotMapping.ts`), never stored anywhere else. Null or
+   * absent means the manufacturer uses Snack Quest's slot code as-is.
+   */
+  manufacturerSlotId?: string | null;
   /** References `packages/{packageId}` or `snackItems/{snackItemId}` — whichever this business's catalogue uses for what this slot dispenses. Null for an empty, unassigned slot. */
   productId: string | null;
   productCatalogue: 'package' | 'snackItem' | null;
@@ -33,6 +42,36 @@ export interface MachineSlot {
   position: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /** When the stock ledger last changed `currentQuantity` (a sale, restock or adjustment). Absent until the first movement. */
+  stockChangedAt?: Timestamp | null;
+  /**
+   * Set when a vend on this slot ended in a jam, an unknown result or a
+   * sensor failure: the slot is switched off (`enabled: false`) so no
+   * one else pays for it until someone checks it and returns it to sale
+   * (`machineSlotService.releaseQuarantine`). Absent or null when clear.
+   * Only Snack Quest stops selling it; nothing is sent to the machine.
+   */
+  quarantine?: SlotQuarantine | null;
+}
+
+export interface SlotQuarantine {
+  reason: 'jam' | 'unknown' | 'sensor_failure';
+  /** The sale that tripped it, so whoever checks the slot can find the customer too. */
+  transactionId: string | null;
+  since: Timestamp;
+}
+
+/** `machineSlotPriceHistory/{entryId}` — every change to a slot's price, oldest first; written by `machineSlotService` whenever a price actually changes. */
+export interface MachineSlotPriceHistoryEntry {
+  businessId: string;
+  machineId: string;
+  slotCode: string;
+  /** What the slot held when the price changed — prices follow the slot, but the history is read per product. */
+  productId: string | null;
+  fromKes: number | null;
+  toKes: number;
+  changedBy: string;
+  createdAt: Timestamp;
 }
 
 export function machineSlotDocId(machineId: string, slotCode: string): string {

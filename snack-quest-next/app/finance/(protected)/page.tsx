@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { requireStaffSession } from '@/lib/auth/session';
+import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { withdrawalService } from '@/services/withdrawalService';
 import { userRepository } from '@/repositories/userRepository';
 import { Card } from '@/components/ui/card';
@@ -22,7 +22,7 @@ export default async function FinanceWithdrawalsPage({
 }: {
   searchParams: Promise<{ status?: string; cursor?: string }>;
 }) {
-  const session = await requireStaffSession();
+  const session = await requireWorkspacePage('finance.view');
   const { status, cursor } = await searchParams;
   const validStatus = STATUS_FILTERS.includes(status as WithdrawalStatus) ? (status as WithdrawalStatus) : undefined;
 

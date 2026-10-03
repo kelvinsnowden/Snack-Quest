@@ -1,6 +1,8 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
+import type { MachineOwnershipType } from './economics';
+import type { MachineDisplayProfile } from './kioskExperience';
 
 /**
  * `machines/{machineId}` — a physical Discovery Machine
@@ -50,23 +52,49 @@ export type MachineConnectivityStatus = 'online' | 'stale' | 'offline' | 'unknow
  */
 export interface Machine extends AuditFields {
   businessId: string;
-  /** Snack Quest's own human-readable identifier — "SQ-M001" — stable for the machine's whole life, unlike a serial a manufacturer might reuse. */
+  /**
+   * Snack Quest's own identifier — `SQ-MCH-000001` for every machine
+   * registered since the integration layer (generated, never taken
+   * from a manufacturer), `SQ-M001`-style for earlier ones. Stable for
+   * the machine's whole life and the only machine identifier the
+   * external Machine API ever exposes.
+   */
   machineCode: string;
   serialNumber: string;
   /**
-   * Which `VendingHardwareAdapter` this machine talks through
-   * (§ hardware abstraction) — `'mock'` until a real manufacturer
-   * integration exists. Never read to special-case behaviour outside
-   * the adapter layer; the whole point of the abstraction is that
-   * nothing above it needs to know.
+   * The registered adapter key (`lib/vending/adapterRegistry.ts`) this
+   * machine talks through — `'mock'`, `'shengma'`,
+   * `'snack_quest_gateway'`, … The field keeps its original persisted
+   * name; semantically it is *which adapter*, not the vendor's name
+   * (that is `manufacturerId` → `manufacturers/{id}.name`). Set from the
+   * machine's integration once one is configured — written in the same
+   * transaction as the integration's `adapterKey`, so the two are always
+   * equal and every adapter lookup resolves the same adapter
+   * (`machineIntegrationService.test.ts` holds that). Never read to
+   * special-case behaviour outside the adapter layer.
    */
-  manufacturer: 'mock' | 'shengma' | 'other';
+  manufacturer: string;
+  /** `manufacturers/{id}` — null for a machine registered before the manufacturer registry existed, until an integration is configured for it. Optional because documents written before this field existed don't carry it. */
+  manufacturerId?: string | null;
+  /** `machineModels/{id}` — same lifecycle as `manufacturerId`. */
+  modelId?: string | null;
   model: string;
   hardwareVersion: string | null;
   firmwareVersion: string | null;
   status: MachineStatus;
   /** Null until the machine is assigned to a partner-owned deployment (§ CORE ENTITIES 8) — Snack Quest's own machines have no partner. */
   ownerPartnerId: string | null;
+  /**
+   * Who owns the machine (§ OWNERSHIP). Missing on machines written before
+   * it existed: read it through `ownershipTypeOf`, never directly.
+   */
+  ownershipType?: MachineOwnershipType;
+  /**
+   * When the current owner took the machine over — absent or null means
+   * since registration. The owner portal shows nothing from before this,
+   * so a new owner never sees the previous owner's sales.
+   */
+  ownerSince?: Timestamp | null;
   /** The current location — see `machineLocationHistory` for the record of every location this machine has held and when. */
   locationId: string | null;
   latitude: number | null;
@@ -98,6 +126,8 @@ export interface Machine extends AuditFields {
    * manufacturer's line can ship with different sensors.
    */
   dispenseConfirmationStrategy: DispenseConfirmationStrategy | null;
+  /** The customer screen's size and orientation (§ DEVICE PROFILES). Absent until staff record it; the builder previews at a default size meanwhile. */
+  display?: MachineDisplayProfile | null;
 }
 
 /** Every status transition this machine may make, keyed by its current status — enforced by `machineService.updateStatus`, not left to the caller. */
@@ -110,3 +140,13 @@ export const MACHINE_STATUS_TRANSITIONS: Record<MachineStatus, MachineStatus[]> 
   offline: ['active', 'maintenance', 'decommissioned'],
   decommissioned: [],
 };
+
+/**
+ * The machine's ownership type. A machine stored before `ownershipType`
+ * existed is Snack Quest's when it has no owner and a third party's when it
+ * has one — what `ownerPartnerId` always meant.
+ */
+export function ownershipTypeOf(machine: Pick<Machine, 'ownershipType' | 'ownerPartnerId'>): MachineOwnershipType {
+  if (machine.ownershipType) return machine.ownershipType;
+  return machine.ownerPartnerId ? 'third_party' : 'snack_quest';
+}

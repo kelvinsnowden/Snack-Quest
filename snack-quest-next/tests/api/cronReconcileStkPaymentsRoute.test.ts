@@ -29,9 +29,7 @@ vi.mock('@/services/notificationService', () => ({
   notificationService: { notifyAdmin: notifyAdminMock },
 }));
 
-vi.mock('@/repositories/scheduledJobRunRepository', () => ({
-  scheduledJobRunRepository: { record: recordMock },
-}));
+vi.mock('@/repositories/scheduledJobRunRepository', async () => ({ scheduledJobRunRepository: (await import('../helpers/jobRunRepositoryMock')).jobRunRepositoryMock(recordMock) }));
 
 import { GET } from '@/app/api/cron/reconcile-stk-payments/route';
 
@@ -93,7 +91,7 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
     expect(response.status).toBe(200);
     expect(handlePaymentResultMock).toHaveBeenCalledWith(callbackResult);
     expect(notifyAdminMock).not.toHaveBeenCalled();
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       recovered: 0,
       recoveredSucceeded: 0,
@@ -202,23 +200,20 @@ describe('GET /api/cron/reconcile-stk-payments', () => {
     );
   });
 
-  it('records a failed scheduled job run and rethrows when the sweep itself throws', async () => {
+  it('records a partial scheduled job run and answers 500 when the sweep itself throws', async () => {
     reconcileStuckIntentsMock.mockRejectedValue(new Error('Firestore unavailable'));
-
-    await expect(
-      GET(
-        new Request('http://localhost/api/cron/reconcile-stk-payments', {
-          headers: { authorization: 'Bearer test-cron-secret' },
-        }),
-      ),
-    ).rejects.toThrow('Firestore unavailable');
+    const failed = await GET(
+      new Request('http://localhost/api/cron/reconcile-stk-payments', {
+        headers: { authorization: 'Bearer test-cron-secret' },
+      }),
+    );
+    expect(failed.status).toBe(500);
 
     expect(recordMock).toHaveBeenCalledWith(
       expect.objectContaining({
         businessId: 'snack-quest',
         jobName: 'reconcile-stk-payments',
-        status: 'failed',
-        resultSummary: null,
+        status: 'partial',
         error: 'Firestore unavailable',
       }),
     );

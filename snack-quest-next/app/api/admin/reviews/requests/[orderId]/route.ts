@@ -1,10 +1,6 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import { reviewService, ReviewNotFoundError } from '@/services/reviewService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * `POST /api/admin/reviews/requests/{orderId}` (§ Mission 2 — review
@@ -24,8 +20,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'content.manage')) {
+    return forbiddenForPermission('content.manage');
   }
 
   const { orderId } = await params;

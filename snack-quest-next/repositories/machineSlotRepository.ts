@@ -2,9 +2,10 @@ import 'server-only';
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
-import { machineSlotDocId, type MachineSlot } from '@/types';
+import { machineSlotDocId, type MachineSlot, type MachineSlotPriceHistoryEntry, type SlotQuarantine } from '@/types';
 
 const COLLECTION = 'machineSlots';
+const PRICE_HISTORY_COLLECTION = 'machineSlotPriceHistory';
 
 export type MachineSlotInput = Omit<MachineSlot, 'createdAt' | 'updatedAt'>;
 
@@ -72,6 +73,58 @@ class MachineSlotRepository {
     await ref.update({ enabled, updatedAt: FieldValue.serverTimestamp() });
   }
 
+  /** Applies a whole machine's manufacturer slot mapping in one batch — all or nothing, so a half-applied mapping can never be live. The caller verifies business ownership of every slot first. */
+  async setManufacturerSlotIds(machineId: string, mappings: { slotCode: string; manufacturerSlotId: string | null }[]): Promise<void> {
+    const batch = adminFirestore.batch();
+    for (const mapping of mappings) {
+      batch.update(adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, mapping.slotCode)), {
+        manufacturerSlotId: mapping.manufacturerSlotId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  /**
+   * Stops a slot selling after a bad vend. Idempotent: a slot already in
+   * quarantine keeps its first reason and time, so the record shows
+   * what tripped it first.
+   */
+  async quarantine(businessId: string, machineId: string, slotCode: string, reason: SlotQuarantine['reason'], transactionId: string | null): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode));
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineSlot | undefined;
+      if (!data || data.businessId !== businessId || data.quarantine) return false;
+      tx.update(ref, { enabled: false, quarantine: { reason, transactionId, since: FieldValue.serverTimestamp() }, updatedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+  }
+
+  /** Clears a quarantine and puts the slot back on sale. Returns the quarantine that was cleared, or null if there wasn't one. */
+  async releaseQuarantine(businessId: string, machineId: string, slotCode: string): Promise<SlotQuarantine | null> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode));
+    return adminFirestore.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const data = snapshot.data() as MachineSlot | undefined;
+      if (!data || data.businessId !== businessId || !data.quarantine) return null;
+      tx.update(ref, { enabled: true, quarantine: null, updatedAt: FieldValue.serverTimestamp() });
+      return data.quarantine;
+    });
+  }
+
+  async appendPriceHistory(entry: Omit<MachineSlotPriceHistoryEntry, 'createdAt'>): Promise<void> {
+    await adminFirestore.collection(PRICE_HISTORY_COLLECTION).add({ ...entry, createdAt: FieldValue.serverTimestamp() });
+  }
+
+  /** A machine's slot price changes, newest first — optionally only while a given product was in the slot. */
+  async listPriceHistory(businessId: string, machineId: string, productId?: string): Promise<MachineSlotPriceHistoryEntry[]> {
+    let query = adminFirestore.collection(PRICE_HISTORY_COLLECTION).where('businessId', '==', businessId).where('machineId', '==', machineId);
+    if (productId) query = query.where('productId', '==', productId);
+    const snapshot = await query.orderBy('createdAt', 'desc').limit(200).get();
+    return snapshot.docs.map((doc) => doc.data() as MachineSlotPriceHistoryEntry);
+  }
+
   /** Reads the slot inside a transaction — for `authorizeVend`/inventory movements, where the quantity read and the quantity written must be the same snapshot. */
   async getInTransaction(tx: Transaction, machineId: string, slotCode: string): Promise<MachineSlot | null> {
     const snapshot = await tx.get(adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode)));
@@ -81,6 +134,8 @@ class MachineSlotRepository {
   updateQuantityInTransaction(tx: Transaction, machineId: string, slotCode: string, newQuantity: number): void {
     tx.update(adminFirestore.collection(COLLECTION).doc(machineSlotDocId(machineId, slotCode)), {
       currentQuantity: newQuantity,
+      // When the ledger last changed this slot's stock — what an inventory report's age is compared against.
+      stockChangedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }

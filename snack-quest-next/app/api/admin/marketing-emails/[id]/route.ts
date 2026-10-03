@@ -1,5 +1,4 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import {
   marketingEmailService,
   MarketingEmailNotFoundError,
@@ -8,6 +7,7 @@ import {
 } from '@/services/marketingEmailService';
 import { parseDraftBody, type DraftBody } from '@/lib/marketingEmails/parseDraftBody';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 function errorResponse(error: unknown): Response {
   if (error instanceof MarketingEmailNotFoundError) {
@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -44,7 +44,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -83,7 +83,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.messages.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

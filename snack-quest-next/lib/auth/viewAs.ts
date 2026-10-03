@@ -1,5 +1,6 @@
 import type { Role } from '@/types';
 import type { StaffSession } from '@/services/staffAuthService';
+import { effectivePermissions } from './permissions';
 
 /**
  * A super admin looking at the product through somebody else's role
@@ -50,5 +51,8 @@ export function applyViewAs(session: StaffSession, viewAs: string | undefined): 
     roles: [viewAs],
     viewingAs: viewAs,
     actualRoles: session.roles,
+    // What that role can do by default — not the super admin's own grants.
+    template: null,
+    effectivePermissions: effectivePermissions({ roles: [viewAs] }),
   };
 }

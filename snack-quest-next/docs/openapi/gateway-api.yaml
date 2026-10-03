@@ -351,6 +351,10 @@ components:
         imageUrl:
           type: string
           nullable: true
+        origin:
+          type: string
+          nullable: true
+          description: Where the snack comes from, e.g. "Japan". Null for boxes and snacks without one.
         category:
           type: string
           nullable: true

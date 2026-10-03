@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
+  HardwareTimeoutError,
+  HardwareUnreachableError,
   UnrecognisedHardwarePayloadError,
+  type AdapterMachineEvent,
+  type ConnectionTestResult,
   type DispenseResultStatus,
+  type DispenseStatusReport,
+  type MachineInfoReport,
+  type ParsedWebhook,
+  type PaymentDeviceStatusReport,
   type VendAuthorizationResult,
   type VendResultReport,
   type VendingHardwareAdapter,
@@ -9,6 +17,9 @@ import {
   type VendingSlotReport,
   type VendingTelemetryReport,
 } from '../hardwareAdapter';
+
+/** How the simulated hardware responds to the next `authorizeVend` — the failure modes a real integration has to survive. */
+export type MockAuthorizeBehaviour = 'normal' | 'timeout' | 'unreachable';
 
 const DISPENSE_RESULT_STATUSES: DispenseResultStatus[] = [
   'success',
@@ -47,6 +58,11 @@ export class MockVendingAdapter implements VendingHardwareAdapter {
   private readonly slots = new Map<string, Map<string, { quantity: number; enabled: boolean; priceKes: number }>>();
   private readonly faults = new Map<string, string[]>();
   private readonly online = new Set<string>();
+  private readonly doorOpen = new Set<string>();
+  private readonly authorizeBehaviour = new Map<string, MockAuthorizeBehaviour>();
+  private readonly vends = new Map<string, { machineId: string; slotCode: string; state: DispenseStatusReport['state']; failureReason: string | null }>();
+  /** How many times the hardware was actually told to dispense — lets a test prove a retry never reached the machine twice. */
+  dispenseInstructionCount = 0;
 
   /** Implements every method on the interface — the reference full-capability adapter. */
   capabilities(): HardwareCapabilities {
@@ -76,11 +92,39 @@ export class MockVendingAdapter implements VendingHardwareAdapter {
     this.online.delete(machineId);
   }
 
+  /** Test helper — brings a machine back online without re-seeding its slots. */
+  setOnline(machineId: string): void {
+    this.online.add(machineId);
+  }
+
+  setDoorOpen(machineId: string, open: boolean): void {
+    if (open) {
+      this.doorOpen.add(machineId);
+    } else {
+      this.doorOpen.delete(machineId);
+    }
+  }
+
+  /** Test helper — makes subsequent `authorizeVend` calls for this machine time out or fail to connect. */
+  setAuthorizeBehaviour(machineId: string, behaviour: MockAuthorizeBehaviour): void {
+    this.authorizeBehaviour.set(machineId, behaviour);
+  }
+
+  /** Test helper — the machine finishing (or failing) a vend it accepted, surfaced through `getDispenseStatus`. */
+  completeVend(vendRef: string, state: DispenseStatusReport['state'], failureReason: string | null = null): void {
+    const vend = this.vends.get(vendRef);
+    if (!vend) {
+      throw new Error(`mock adapter: no vend ${vendRef}`);
+    }
+    vend.state = state;
+    vend.failureReason = failureReason;
+  }
+
   async getMachineStatus(machineId: string): Promise<VendingMachineStatusReport> {
     return {
       machineId,
       online: this.online.has(machineId),
-      doorOpen: false,
+      doorOpen: this.doorOpen.has(machineId),
       temperatureCelsius: 22,
       faults: this.faults.get(machineId) ?? [],
       reportedAt: new Date().toISOString(),
@@ -118,6 +162,18 @@ export class MockVendingAdapter implements VendingHardwareAdapter {
     const vendRef = `mock-vend-${randomUUID()}`;
     const slot = this.slots.get(machineId)?.get(slotCode);
 
+    const behaviour = this.authorizeBehaviour.get(machineId) ?? 'normal';
+    if (behaviour === 'unreachable') {
+      throw new HardwareUnreachableError('mock', 'connection refused');
+    }
+    if (behaviour === 'timeout') {
+      // A real timeout: the instruction went out and the answer never
+      // came back — the hopper may well have turned. Simulate exactly
+      // that ambiguity by counting it as a delivered instruction.
+      this.dispenseInstructionCount += 1;
+      throw new HardwareTimeoutError('mock', 'no acknowledgement within 10s');
+    }
+
     if (!this.online.has(machineId)) {
       return { vendRef, authorized: false, reason: 'machine offline' };
     }
@@ -136,7 +192,72 @@ export class MockVendingAdapter implements VendingHardwareAdapter {
     // cycle — the *inventory ledger* movement is still the caller's
     // job (`machineInventoryMovementService`), not this adapter's.
     slot.quantity -= 1;
-    return { vendRef, authorized: true, reason: null };
+    this.dispenseInstructionCount += 1;
+    this.vends.set(vendRef, { machineId, slotCode, state: 'pending', failureReason: null });
+    return { vendRef, authorized: true, reason: null, delivery: 'synchronous' };
+  }
+
+  async testConnection(machineId: string): Promise<ConnectionTestResult> {
+    return this.online.has(machineId)
+      ? { ok: true, detail: 'mock machine responded', latencyMs: 0, errorKind: null }
+      : { ok: false, detail: 'mock machine is offline', latencyMs: null, errorKind: 'connection' };
+  }
+
+  async getMachineInfo(machineId: string): Promise<MachineInfoReport> {
+    return {
+      manufacturerMachineId: `mock-${machineId}`,
+      serialNumber: null,
+      model: 'Mock Vendor',
+      firmwareVersion: 'mock-1.0',
+      controllerType: 'mock',
+      controllerVersion: '1.0',
+    };
+  }
+
+  async getDispenseStatus(machineId: string, vendRef: string): Promise<DispenseStatusReport> {
+    const vend = this.vends.get(vendRef);
+    if (!vend || vend.machineId !== machineId) {
+      return { vendRef, state: 'unknown', failureReason: 'machine has no record of this vend' };
+    }
+    return { vendRef, state: vend.state, failureReason: vend.failureReason };
+  }
+
+  async getDoorStatus(machineId: string): Promise<'open' | 'closed' | null> {
+    if (!this.online.has(machineId)) {
+      return null;
+    }
+    return this.doorOpen.has(machineId) ? 'open' : 'closed';
+  }
+
+  async getPaymentDeviceStatus(): Promise<PaymentDeviceStatusReport> {
+    return { present: true, ok: true, detail: 'mock card reader' };
+  }
+
+  /**
+   * The mock's own webhook format — a stand-in for "some manufacturer's
+   * webhook", used by the webhook-ingestion tests and the simulator:
+   * `{ deliveryId, events: [{ type, machineId, eventId, occurredAt?, slotId?, data? }] }`.
+   * `type` is already a Snack Quest event name here; a real adapter's
+   * job is the translation from the manufacturer's own vocabulary.
+   */
+  parseWebhook(rawPayload: unknown): ParsedWebhook {
+    const payload = asRecord(rawPayload, 'mock');
+    const deliveryId = requireString(payload, 'deliveryId', 'mock');
+    if (!Array.isArray(payload.events)) {
+      throw new UnrecognisedHardwarePayloadError('mock', 'missing "events" array');
+    }
+    const events: AdapterMachineEvent[] = payload.events.map((raw) => {
+      const event = asRecord(raw, 'mock');
+      return {
+        type: requireString(event, 'type', 'mock'),
+        manufacturerMachineId: requireString(event, 'machineId', 'mock'),
+        eventId: requireString(event, 'eventId', 'mock'),
+        occurredAt: typeof event.occurredAt === 'string' ? event.occurredAt : null,
+        manufacturerSlotId: typeof event.slotId === 'string' ? event.slotId : null,
+        data: typeof event.data === 'object' && event.data !== null ? (event.data as Record<string, unknown>) : {},
+      };
+    });
+    return { deliveryId, events };
   }
 
   receiveVendResult(rawPayload: unknown): VendResultReport {

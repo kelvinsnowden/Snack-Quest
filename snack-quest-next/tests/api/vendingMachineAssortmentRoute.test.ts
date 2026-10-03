@@ -9,6 +9,7 @@ const {
   setVisibleMock,
   setPriceOverrideMock,
   listPriceHistoryMock,
+  updateMerchandisingMock,
 } = vi.hoisted(() => ({
   verifyStaffSessionFromRequestMock: vi.fn(),
   listByMachineMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   setVisibleMock: vi.fn(),
   setPriceOverrideMock: vi.fn(),
   listPriceHistoryMock: vi.fn(),
+  updateMerchandisingMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/session', () => ({
@@ -35,6 +37,7 @@ vi.mock('@/services/machineAssortmentService', async () => {
       linkSlot: linkSlotMock,
       setVisible: setVisibleMock,
       setPriceOverride: setPriceOverrideMock,
+      updateMerchandising: updateMerchandisingMock,
     },
   };
 });
@@ -50,7 +53,7 @@ vi.mock('@/repositories/machineAssortmentRepository', async () => {
 import { GET as assortmentGet, POST as assortmentPost } from '@/app/api/vending/machines/[id]/assortment/route';
 import { PATCH as assortmentPatch, GET as priceHistoryGet } from '@/app/api/vending/machines/[id]/assortment/[productCatalogue]/[productId]/route';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
-import { ProductNotFoundError } from '@/services/machineAssortmentService';
+import { ProductNotFoundError, MerchandisingValidationError } from '@/services/machineAssortmentService';
 import { auditLogRepository } from '@/repositories/auditLogRepository';
 import { adminFirestore } from '@/lib/firebase/admin';
 
@@ -201,6 +204,52 @@ describe('PATCH /api/vending/machines/[id]/assortment/[productCatalogue]/[produc
     verifyStaffSessionFromRequestMock.mockResolvedValue(AGENT_SESSION);
     const response = await patch({ visible: true });
     expect(response.status).toBe(403);
+  });
+
+  it('refuses a price override from warehouse, and changes nothing else in that request', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(WAREHOUSE_SESSION);
+    const response = await patch({ visible: false, priceOverrideKes: 10 });
+    expect(response.status).toBe(403);
+    expect((await response.json()).permission).toBe('pricing.manage');
+    expect(setPriceOverrideMock).not.toHaveBeenCalled();
+    expect(setVisibleMock).not.toHaveBeenCalled();
+  });
+
+  it('applies how the product looks on this screen — null clears a machine-specific value', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(WAREHOUSE_SESSION);
+    listByMachineMock.mockResolvedValue([ASSORTMENT_ROW]);
+    const response = await patch({
+      customerFacingName: 'Honey Butter Chips',
+      customerFacingDescription: 'Sweet and salty.',
+      customerFacingImageUrl: null,
+      category: 'Chips',
+      displayOrder: 3,
+      promotionalState: 'new',
+    });
+    expect(response.status).toBe(200);
+    expect(updateMerchandisingMock).toHaveBeenCalledWith('biz-1', 'm-1', 'snackItem', 'sku-1', {
+      customerFacingName: 'Honey Butter Chips',
+      customerFacingDescription: 'Sweet and salty.',
+      customerFacingImageUrl: null,
+      category: 'Chips',
+      displayOrder: 3,
+      promotionalState: 'new',
+    });
+    expect(unassortProductMock).not.toHaveBeenCalled();
+    expect(setPriceOverrideMock).not.toHaveBeenCalled();
+  });
+
+  it('400s a wrongly typed screen field, and passes the service’s validation message through', async () => {
+    verifyStaffSessionFromRequestMock.mockResolvedValue(STAFF_SESSION);
+    expect((await patch({ customerFacingName: 42 })).status).toBe(400);
+    expect((await patch({ displayOrder: 'first' })).status).toBe(400);
+    expect(updateMerchandisingMock).not.toHaveBeenCalled();
+
+    listByMachineMock.mockResolvedValue([ASSORTMENT_ROW]);
+    updateMerchandisingMock.mockRejectedValue(new MerchandisingValidationError('Keep the description under 160 characters so it fits on the screen.'));
+    const response = await patch({ customerFacingDescription: 'x'.repeat(200) });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/under 160 characters/);
   });
 });
 

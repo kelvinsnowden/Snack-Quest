@@ -1,7 +1,7 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { orderService } from '@/services/orderService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * `PATCH /api/admin/orders/{orderId}/box` (§ correcting the box on an
@@ -23,7 +23,7 @@ export async function PATCH(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'orders.contents.edit')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

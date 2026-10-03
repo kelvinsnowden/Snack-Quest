@@ -9,13 +9,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { SerializedSnackItem } from '@/lib/recipes/serialize';
+import type { ProductPriceType } from '@/types/economics';
+import { PriceBookEditor } from '@/components/admin/vending/EconomicsControls';
+
+/** Mirrors `SNACK_DESCRIPTION_MAX` in `services/recipeService.ts` (a server-only module); the server enforces it. */
+const SNACK_DESCRIPTION_MAX = 160;
 
 interface DraftState {
   id: string | null;
   name: string;
   imageUrl: string | null;
+  description: string;
   expectedUnitCostKes: string;
   unitLabel: string;
   origin: string;
@@ -29,6 +36,7 @@ const EMPTY: DraftState = {
   id: null,
   name: '',
   imageUrl: null,
+  description: '',
   expectedUnitCostKes: '',
   unitLabel: 'bag',
   origin: '',
@@ -47,7 +55,23 @@ const EMPTY: DraftState = {
  * in a script they cannot read is not enough to pick the right bag off
  * a shelf.
  */
-export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
+export function SnackCatalogue({
+  items,
+  canSeeCost = true,
+  canEditCost = true,
+  canEdit = true,
+  priceAccess = { visible: false, editable: [] },
+}: {
+  items: SerializedSnackItem[];
+  /** `products.cost.view`: without it the list carries no costs and none is shown. */
+  canSeeCost?: boolean;
+  /** `products.cost.manage`: without it the form has no cost field and never sends one. */
+  canEditCost?: boolean;
+  /** `products.snacks.manage`. */
+  canEdit?: boolean;
+  /** Which price-book prices this person may see and change (§ PRICE BOOK). */
+  priceAccess?: { visible: boolean; editable: ProductPriceType[] };
+}) {
   const router = useRouter();
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,7 +83,8 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
       id: item.id,
       name: item.name,
       imageUrl: item.imageUrl,
-      expectedUnitCostKes: String(item.expectedUnitCostKes),
+      description: item.description ?? '',
+      expectedUnitCostKes: item.expectedUnitCostKes === null ? '' : String(item.expectedUnitCostKes),
       unitLabel: item.unitLabel,
       origin: item.origin ?? '',
       sourcingNote: item.sourcingNote ?? '',
@@ -98,7 +123,9 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
       const body = {
         name: draft.name,
         imageUrl: draft.imageUrl,
-        expectedUnitCostKes: Number(draft.expectedUnitCostKes),
+        description: draft.description,
+        // Sent only by someone who may set costs, and only when filled in; a blank cost stays unset.
+        ...(canEditCost && draft.expectedUnitCostKes.trim() !== '' ? { expectedUnitCostKes: Number(draft.expectedUnitCostKes) } : {}),
         unitLabel: draft.unitLabel,
         origin: draft.origin,
         sourcingNote: draft.sourcingNote,
@@ -197,17 +224,38 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
                 <p className="text-caption text-muted-foreground">Include size and flavour — this has to be enough to buy the right thing.</p>
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="snack-description">What customers read</Label>
+                <Textarea
+                  id="snack-description"
+                  value={draft.description}
+                  maxLength={SNACK_DESCRIPTION_MAX}
+                  rows={2}
+                  onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+                  placeholder="Light, crunchy prawn crackers — Japan's favourite after-school snack."
+                />
+                <p className="text-caption text-muted-foreground">
+                  Shown on the machine screen when someone taps the snack. One or two short sentences
+                  ({draft.description.length}/{SNACK_DESCRIPTION_MAX}).
+                </p>
+              </div>
+
               <div className="flex gap-3">
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="snack-cost">Expected cost (KES)</Label>
-                  <Input
-                    id="snack-cost"
-                    inputMode="numeric"
-                    value={draft.expectedUnitCostKes}
-                    onChange={(event) => setDraft({ ...draft, expectedUnitCostKes: event.target.value })}
-                    className="min-h-11 tabular-nums"
-                  />
-                </div>
+                {canEditCost ? (
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="snack-cost">Expected cost (KES)</Label>
+                    <Input
+                      id="snack-cost"
+                      inputMode="numeric"
+                      value={draft.expectedUnitCostKes}
+                      onChange={(event) => setDraft({ ...draft, expectedUnitCostKes: event.target.value })}
+                      className="min-h-11 tabular-nums"
+                    />
+                    <p className="text-caption text-muted-foreground">A change is kept in the price history; past sales keep the cost they were sold at.</p>
+                  </div>
+                ) : (
+                  <p className="flex-1 self-end text-caption text-muted-foreground">Costs are set by someone with cost access.</p>
+                )}
                 <div className="flex w-28 flex-col gap-1.5">
                   <Label htmlFor="snack-unit">Unit</Label>
                   <Input
@@ -298,12 +346,14 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
           </div>
         </Card>
       ) : (
-        <div>
-          <Button onClick={() => setDraft(EMPTY)} className="min-h-11">
-            <Plus className="size-4" aria-hidden="true" />
-            Add a snack
-          </Button>
-        </div>
+        canEdit ? (
+          <div>
+            <Button onClick={() => setDraft(EMPTY)} className="min-h-11">
+              <Plus className="size-4" aria-hidden="true" />
+              Add a snack
+            </Button>
+          </div>
+        ) : null
       )}
 
       {items.length === 0 ? (
@@ -333,14 +383,25 @@ export function SnackCatalogue({ items }: { items: SerializedSnackItem[] }) {
                     {!item.isActive ? <Badge variant="outline">inactive</Badge> : null}
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    KES <span className="tabular-nums">{item.expectedUnitCostKes.toLocaleString()}</span> per{' '}
+                    {canSeeCost ? (
+                      item.expectedUnitCostKes === null ? (
+                        <>Cost not set yet · per </>
+                      ) : (
+                        <>
+                          KES <span className="tabular-nums">{item.expectedUnitCostKes.toLocaleString()}</span> per{' '}
+                        </>
+                      )
+                    ) : (
+                      'Per '
+                    )}
                     {item.unitLabel}
                     {item.origin ? ` · ${item.origin}` : ''}
                   </p>
                   {item.sourcingNote ? (
                     <p className="truncate text-caption text-muted-foreground">{item.sourcingNote}</p>
                   ) : null}
-                  <div className="mt-1 flex gap-1">
+                  {priceAccess.visible ? <PriceBookEditor productCatalogue="snackItem" productId={item.id} editableTypes={priceAccess.editable} /> : null}
+                  <div className={canEdit ? 'mt-1 flex gap-1' : 'hidden'}>
                     <Button variant="ghost" size="sm" onClick={() => edit(item)} disabled={busy}>
                       <Pencil className="size-4" aria-hidden="true" />
                       <span className="sr-only">Edit</span>

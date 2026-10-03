@@ -1,10 +1,10 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_ONLY, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
-import { machineSubscriptionService, MachineAlreadyHasActiveSubscriptionError } from '@/services/machineSubscriptionService';
+import { machineSubscriptionService, MachineAlreadyHasActiveSubscriptionError, SubscriptionRefusedError } from '@/services/machineSubscriptionService';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { serializeMachineSubscription } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import type { MachineSubscriptionFrequency } from '@/types';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 const VALID_FREQUENCIES: MachineSubscriptionFrequency[] = ['weekly', 'monthly'];
 
@@ -21,8 +21,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.view')) {
+    return forbiddenForPermission('owner_finance.view');
   }
 
   const { id } = await params;
@@ -35,8 +35,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'owner_finance.subscriptions.manage')) {
+    return forbiddenForPermission('owner_finance.subscriptions.manage');
   }
 
   const { id } = await params;
@@ -48,7 +48,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { partnerId, planName, amountKes, frequency } = (body ?? {}) as Record<string, unknown>;
+  const { partnerId, planName, amountKes, frequency, startDate } = (body ?? {}) as Record<string, unknown>;
+  const start = typeof startDate === 'string' ? new Date(startDate) : undefined;
+  if (startDate !== undefined && startDate !== null && (!start || Number.isNaN(start.getTime()))) {
+    return Response.json({ error: 'startDate must be an ISO date' }, { status: 400 });
+  }
   if (typeof partnerId !== 'string' || !partnerId) {
     return Response.json({ error: 'partnerId is required' }, { status: 400 });
   }
@@ -70,6 +74,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       planName,
       amountKes,
       frequency: frequency as MachineSubscriptionFrequency,
+      startDate: start,
     });
     await recordAuditLog(request, {
       businessId: session.businessId,
@@ -84,6 +89,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     if (error instanceof MachineNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof SubscriptionRefusedError) {
+      return Response.json({ error: error.message }, { status: 400 });
     }
     if (error instanceof MachineAlreadyHasActiveSubscriptionError) {
       return Response.json({ error: error.message }, { status: 409 });

@@ -1,8 +1,3 @@
-import {
-  hasStaffRole,
-  ADMIN_ONLY,
-  forbiddenResponse,
-} from '@/lib/auth/requireStaffRole';
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
 import {
   purchaseOrderService,
@@ -10,6 +5,7 @@ import {
   InvalidPurchaseOrderTransitionError,
 } from '@/services/purchaseOrderService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 interface ReceiveBody {
   /** Real expiry (YYYY-MM-DD) read off the physical delivery, keyed by packageId — see `PurchaseOrderService.receivePurchaseOrder`'s doc comment. */
@@ -25,8 +21,8 @@ export async function POST(
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_ONLY)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'procurement.manage')) {
+    return forbiddenForPermission('procurement.manage');
   }
 
   const { purchaseOrderId } = await params;

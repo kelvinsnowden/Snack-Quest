@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { smsOptOutRepository } from '@/repositories/smsOptOutRepository';
 import { normalizeKenyanPhone, InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission } from '@/lib/auth/permissions';
 
 /**
  * Takes a number back off the opt-out register (§ Admin: SMS opt-outs).
@@ -24,7 +24,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ p
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.optouts.remove')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

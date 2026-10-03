@@ -1,6 +1,6 @@
-import { requireAdminSection } from '@/lib/auth/requireAdminSection';
+import { requireAdminPage } from '@/lib/auth/requireAdminSection';
 
 export default async function NotificationTemplatesSectionLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminSection('marketing');
+  await requireAdminPage('marketing', 'settings.notifications.manage');
   return children;
 }

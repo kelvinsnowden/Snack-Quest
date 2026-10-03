@@ -78,6 +78,14 @@ export const ADMIN_FINANCE_OR_WAREHOUSE: readonly Role[] = [
   'warehouse',
 ];
 
+/**
+ * Deciding what happens to a customer's money: resolving a vending sale
+ * under review and sending a refund. Admins and finance — not warehouse
+ * (who run the machines, not the money) and not support agents (who
+ * find the sale and hand it over).
+ */
+export const ADMIN_OR_FINANCE: readonly Role[] = ['admin', 'super_admin', 'finance'];
+
 export function forbiddenResponse(): Response {
   return Response.json({ error: 'forbidden' }, { status: 403 });
 }

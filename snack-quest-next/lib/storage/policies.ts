@@ -17,6 +17,8 @@ export const STORAGE_DIRECTORIES = [
   'orders',
   'documents',
   'reviews',
+  'kiosk',
+  'ads',
 ] as const;
 
 export type StorageDirectory = (typeof STORAGE_DIRECTORIES)[number];
@@ -66,6 +68,17 @@ export const STORAGE_DIRECTORY_POLICIES: Record<StorageDirectory, StorageDirecto
   // magic-byte checks every one of these types, so a renamed
   // executable claiming to be a JPEG is rejected before upload.
   reviews: { allowedMimeTypes: IMAGE_MIME_TYPES, maxSizeBytes: 6 * MB },
+  // Artwork for the customer machine screen (menu banner, idle screen).
+  // Still images only — a machine screen may sit on a slow link, and an
+  // animation belongs in a decision nobody has made yet. 4MB keeps the
+  // upload under Vercel's 4.5MB request-body cap, which is the real
+  // limit for anything sent through `POST /api/storage/upload`.
+  kiosk: { allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'], maxSizeBytes: 4 * MB },
+  // Idle-screen ad creatives (§ ADVERTISING). Written only by the creative
+  // upload route, which also checks the bytes and computes the checksum a
+  // machine verifies. 4MB for the same request-body reason as `kiosk`: a
+  // longer video needs a direct-to-storage upload that isn't built yet.
+  ads: { allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'], maxSizeBytes: 4 * MB },
 };
 
 /**

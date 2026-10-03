@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineCommandRepository, MachineCommandNotFoundError } from '@/repositories/machineCommandRepository';
 import { machineRepository, MachineNotFoundError } from '@/repositories/machineRepository';
 import { defaultVendingAdapterResolver, type VendingAdapterResolver } from '@/lib/vending/adapterRegistry';
@@ -70,13 +71,18 @@ class MachineCommandService {
       throw new CommandNotSupportedError(machine.manufacturer, input.commandType);
     }
 
+    const expiresAt = new Date(Date.now() + (input.ttlMs ?? DEFAULT_COMMAND_TTL_MS));
+    // The v1 poll skips its queries while nothing queued can still be live.
+    // Mark the queue *before* creating the command: a crash in between
+    // costs one wasted poll query, never an invisible command.
+    await machineIntegrationRepository.noteCommandQueued(input.machineId, expiresAt);
     const { id, commandRef } = await machineCommandRepository.create({
       businessId: input.businessId,
       machineId: input.machineId,
       commandType: input.commandType,
       payload: input.payload ?? null,
       requestedBy: input.requestedBy,
-      expiresAt: new Date(Date.now() + (input.ttlMs ?? DEFAULT_COMMAND_TTL_MS)),
+      expiresAt,
     });
 
     // Best-effort only — see CloudTransport's own doc comment. Polling

@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "test": "firebase emulators:exec --project demo-project \"vitest run\"",
     "test:rules": "firebase emulators:exec --project demo-project \"vitest run tests/rules\"",
+    "test:manufacturer-contract": "firebase emulators:exec --project demo-project \"vitest run tests/manufacturerContract tests/certification\"",
     "emulators": "firebase emulators:start --project demo-project",
     "emulators:exec": "firebase emulators:exec --project demo-project",
     "seed:business": "node scripts/seedBusiness.mjs",
@@ -28,7 +29,8 @@
     "migrate:creator-memberships": "node scripts/migrateCreatorProfilesToBusinessNested.mjs",
     "commission:flatten": "node scripts/setFlatCommission.mjs",
     "pricing:jumia-zones": "node scripts/applyJumiaZonePricing.mjs",
-    "backup:export-auth-users": "node scripts/exportAuthUsers.mjs"
+    "backup:export-auth-users": "node scripts/exportAuthUsers.mjs",
+    "audit:capabilities": "jiti scripts/audit/capabilityMatrix.ts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
@@ -51,6 +53,7 @@
     "next": "16.3.6",
     "nodemailer": "^9.0.5",
     "papaparse": "^5.5.4",
+    "qrcode-generator": "2.0.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.10.1",
@@ -73,6 +76,8 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "firebase-tools": "^15.25.0",

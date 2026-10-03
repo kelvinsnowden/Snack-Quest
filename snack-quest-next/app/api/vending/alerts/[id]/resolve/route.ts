@@ -1,8 +1,8 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { hasStaffRole, ADMIN_FINANCE_OR_WAREHOUSE, forbiddenResponse } from '@/lib/auth/requireStaffRole';
 import { alertService, AlertNotFoundError, AlertNotOpenError, ResolutionRequiredError } from '@/services/alertService';
 import { serializeAlert } from '@/lib/vending/serialize';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Resolves an open/acknowledged alert with a required note (§ PART 6
@@ -17,8 +17,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!hasStaffRole(session, ADMIN_FINANCE_OR_WAREHOUSE)) {
-    return forbiddenResponse();
+  if (!hasPermission(session, 'alerts.resolve')) {
+    return forbiddenForPermission('alerts.resolve');
   }
 
   let body: unknown;

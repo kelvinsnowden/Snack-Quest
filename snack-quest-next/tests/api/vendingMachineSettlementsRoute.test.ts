@@ -144,7 +144,7 @@ describe('POST /api/vending/machines/[id]/settlements', () => {
 
 describe('POST /api/vending/settlements/[id]/finalize', () => {
   function post() {
-    return finalizePost(new Request('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 'settle-1' }) });
+    return finalizePost(new Request('http://localhost/x', { method: 'POST', body: JSON.stringify({ expectedAmountKes: 1000 }) }), { params: Promise.resolve({ id: 'settle-1' }) });
   }
 
   it('403s a finance-only session — finalizing is the one write that moves money, ADMIN_ONLY', async () => {
@@ -165,7 +165,7 @@ describe('POST /api/vending/settlements/[id]/finalize', () => {
     finalizeMock.mockResolvedValue(undefined);
     const response = await post();
     expect(response.status).toBe(200);
-    expect(finalizeMock).toHaveBeenCalledWith('biz-1', 'settle-1', 'staff-1');
+    expect(finalizeMock).toHaveBeenCalledWith('biz-1', 'settle-1', 'staff-1', 1000);
 
     const { logs } = await auditLogRepository.listByBusiness('biz-1');
     expect(logs).toHaveLength(1);

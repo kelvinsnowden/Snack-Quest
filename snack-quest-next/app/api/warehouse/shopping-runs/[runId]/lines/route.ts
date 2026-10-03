@@ -4,6 +4,7 @@ import {
   ShoppingRunValidationError,
   ShoppingRunNotFoundError,
 } from '@/services/shoppingRunService';
+import { hasPermission, forbiddenForPermission } from '@/lib/auth/permissions';
 
 /**
  * Records what was actually bought for one snack on a run.
@@ -14,17 +15,14 @@ import {
  * The run document itself already carries who last touched it and what
  * every line says, which is the real record.
  */
-function canUseWarehouse(roles: string[]): boolean {
-  return roles.some((role) => role === 'warehouse' || role === 'admin' || role === 'super_admin');
-}
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ runId: string }> }): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!canUseWarehouse(session.roles)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!hasPermission(session, 'warehouse_fulfilment.manage')) {
+    return forbiddenForPermission('warehouse_fulfilment.manage');
   }
 
   let body: unknown;

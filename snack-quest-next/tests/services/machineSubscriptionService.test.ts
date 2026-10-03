@@ -2,11 +2,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   machineSubscriptionService,
   MachineAlreadyHasActiveSubscriptionError,
+  SubscriptionRefusedError,
 } from '@/services/machineSubscriptionService';
 import { machineSubscriptionRepository, IllegalSubscriptionTransitionError } from '@/repositories/machineSubscriptionRepository';
 import { machineService } from '@/services/machineService';
 import { partnerRepository } from '@/repositories/partnerRepository';
 import { adminFirestore } from '@/lib/firebase/admin';
+
+/** A subscription is charged to the machine's owner, so the machine is given to that owner first (as it would be in real use). */
+async function subscribeAsOwner(input: Parameters<typeof machineSubscriptionService.createSubscription>[0]) {
+  await adminFirestore.collection('machines').doc(input.machineId).update({ ownerPartnerId: input.partnerId });
+  return machineSubscriptionService.createSubscription(input);
+}
+
 
 const BUSINESS_ID = 'biz-subscription-test';
 
@@ -40,7 +48,7 @@ describe('MachineSubscriptionService.createSubscription', () => {
   it('creates an active subscription with a real, configurable amount', async () => {
     const machineId = await provisionMachine('SQ-SUB-1');
     const partnerId = await createPartner('Owner One');
-    const subscriptionId = await machineSubscriptionService.createSubscription({
+    const subscriptionId = await subscribeAsOwner({
       businessId: BUSINESS_ID,
       machineId,
       partnerId,
@@ -55,12 +63,23 @@ describe('MachineSubscriptionService.createSubscription', () => {
     expect(subscription?.arrearsKes).toBe(0);
   });
 
+  it('refuses a subscription for anyone but the machine’s owner, and a fractional amount', async () => {
+    const machineId = await provisionMachine('SQ-SUB-OWNER');
+    const owner = await createPartner('Owner');
+    const stranger = await createPartner('Stranger');
+    await adminFirestore.collection('machines').doc(machineId).update({ ownerPartnerId: owner });
+    await expect(machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId, partnerId: stranger, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' })).rejects.toBeInstanceOf(SubscriptionRefusedError);
+    await expect(machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId, partnerId: owner, planName: 'Standard', amountKes: 12.5, frequency: 'monthly' })).rejects.toThrow('whole number');
+    const unowned = await provisionMachine('SQ-SUB-UNOWNED');
+    await expect(machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId: unowned, partnerId: owner, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' })).rejects.toBeInstanceOf(SubscriptionRefusedError);
+  });
+
   it('refuses a second active subscription on the same machine', async () => {
     const machineId = await provisionMachine('SQ-SUB-2');
     const partnerId = await createPartner('Owner Two');
-    await machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' });
+    await subscribeAsOwner({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' });
     await expect(
-      machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' }),
+      subscribeAsOwner({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' }),
     ).rejects.toThrow(MachineAlreadyHasActiveSubscriptionError);
   });
 });
@@ -69,7 +88,7 @@ describe('MachineSubscriptionService.recordPeriodPayment', () => {
   it('marks the period paid and rolls the window forward, clearing arrears', async () => {
     const machineId = await provisionMachine('SQ-SUB-3');
     const partnerId = await createPartner('Owner Three');
-    const subscriptionId = await machineSubscriptionService.createSubscription({
+    const subscriptionId = await subscribeAsOwner({
       businessId: BUSINESS_ID,
       machineId,
       partnerId,
@@ -95,7 +114,7 @@ describe('MachineSubscriptionService.reconcileArrears', () => {
   it('opens a grace window on the first sweep past a missed period', async () => {
     const machineId = await provisionMachine('SQ-SUB-4');
     const partnerId = await createPartner('Owner Four');
-    const subscriptionId = await machineSubscriptionService.createSubscription({
+    const subscriptionId = await subscribeAsOwner({
       businessId: BUSINESS_ID,
       machineId,
       partnerId,
@@ -115,10 +134,31 @@ describe('MachineSubscriptionService.reconcileArrears', () => {
     expect(subscription?.arrearsKes).toBe(0);
   });
 
+  it('the daily reconcile-subscription-arrears job runs this sweep, under a lease, and records the run', async () => {
+    const { scheduledJobService } = await import('@/services/scheduledJobService');
+    const { loadJobBody } = await import('@/services/jobs/registry');
+    const machineId = await provisionMachine('SQ-SUB-JOB');
+    const partnerId = await createPartner('Owner Job');
+    const subscriptionId = await subscribeAsOwner({
+      businessId: BUSINESS_ID,
+      machineId,
+      partnerId,
+      planName: 'Standard',
+      amountKes: 5_000,
+      frequency: 'weekly',
+      startDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+    });
+    const body = await loadJobBody('reconcile-subscription-arrears');
+    const outcome = await scheduledJobService.run(BUSINESS_ID, 'reconcile-subscription-arrears', (job) => body(BUSINESS_ID, job, 'system:test'));
+    expect(outcome.runId).toBeTruthy();
+    expect(outcome.summary).toMatchObject({ enteredGrace: 1, movedToArrears: 0 });
+    expect((await machineSubscriptionRepository.findById(BUSINESS_ID, subscriptionId))?.graceUntil).not.toBeNull();
+  });
+
   it('moves to in_arrears and accrues the missed amount once grace has passed', async () => {
     const machineId = await provisionMachine('SQ-SUB-5');
     const partnerId = await createPartner('Owner Five');
-    const subscriptionId = await machineSubscriptionService.createSubscription({
+    const subscriptionId = await subscribeAsOwner({
       businessId: BUSINESS_ID,
       machineId,
       partnerId,
@@ -143,7 +183,7 @@ describe('MachineSubscriptionService.reconcileArrears', () => {
   it('never touches a subscription whose period was already paid', async () => {
     const machineId = await provisionMachine('SQ-SUB-6');
     const partnerId = await createPartner('Owner Six');
-    const subscriptionId = await machineSubscriptionService.createSubscription({
+    const subscriptionId = await subscribeAsOwner({
       businessId: BUSINESS_ID,
       machineId,
       partnerId,
@@ -164,7 +204,7 @@ describe('MachineSubscriptionService status transitions', () => {
   it('pause -> resume -> cancel, and refuses cancel -> active', async () => {
     const machineId = await provisionMachine('SQ-SUB-7');
     const partnerId = await createPartner('Owner Seven');
-    const subscriptionId = await machineSubscriptionService.createSubscription({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' });
+    const subscriptionId = await subscribeAsOwner({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 5_000, frequency: 'monthly' });
 
     await machineSubscriptionService.pauseSubscription(BUSINESS_ID, subscriptionId);
     expect((await machineSubscriptionRepository.findById(BUSINESS_ID, subscriptionId))?.status).toBe('paused');

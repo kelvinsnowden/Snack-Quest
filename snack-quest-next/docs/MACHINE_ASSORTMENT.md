@@ -199,9 +199,13 @@ decision a staff member actually makes:
   doesn't actually have (`ProductNotFoundError`, never silently
   invented).
 - `PATCH /api/vending/machines/{id}/assortment/{productCatalogue}/{productId}`
-  — the four mutations that exist without a full re-assort: unassort,
+  — the mutations that exist without a full re-assort: unassort,
   link/unlink a physical slot, hide/show on the customer screen, set
-  (or clear) a price override — same "apply whichever field was given"
+  (or clear) a price override, and how the product looks on this
+  machine's screen (`customerFacingName`, `customerFacingDescription`,
+  `customerFacingImageUrl`, `category`, `displayOrder`,
+  `promotionalState`; `null` clears a machine-specific value back to
+  the product's own) — same "apply whichever field was given"
   convention `.../slots` PATCH already uses.
 - `GET .../assortment/{productCatalogue}/{productId}` — the
   `priceOverrideKes` audit trail for one product on one machine.
@@ -211,6 +215,38 @@ reserve status (§ INVENTORY_ARCHITECTURE.md §4), and a "Assortment &
 inventory reserve" card on the machine detail admin page rendering
 both. See `docs/MACHINE_COMMERCE.md` §9 for the subscription/settlement/
 wallet API surface added alongside this.
+
+### Customer screen: product presentation and artwork
+
+What a customer sees on the machine's touchscreen
+(`components/kiosk/KioskScreen.tsx`) is edited in two places:
+
+- **The product itself**, once, for every machine: a snack's photo,
+  customer description (`SnackItem.description`, 160 characters) and
+  origin are kept in Admin → Snacks. The sellable catalog falls back to
+  these, and now also carries `origin` so the screen can say where a
+  snack comes from.
+- **One machine's screen** (Admin → Vending → a machine → *Edit
+  customer screen*, `app/admin/(protected)/vending/[machineId]/screen`):
+  per-product overrides through the PATCH above, validated by
+  `machineAssortmentService.updateMerchandising` (https or
+  site-relative image addresses only; name 60, description 160,
+  category 40 characters).
+
+Artwork for named parts of the screen is `kioskScreenImages`
+(`types/kioskScreenImage.ts`, `kioskScreenService`). Two placements:
+`menu_banner` (the rotating banner above the categories, designed at
+1080×400) and `attract` (the full idle screen, 1080×1920, shown after
+a minute without a touch — never while a payment is in flight). Each
+image belongs to the whole fleet (`machineId: null`) or one machine; a
+machine shows its own active images for a placement when it has any,
+otherwise the fleet's, and with none at all the screen draws its
+built-in brand design. Staff manage them in Admin → Vending → Machine
+Screen (`/api/vending/kiosk-screen/images`, staff-only, audited); the
+machine reads its resolved set from `GET /api/vending/machines/{id}/screen`
+with its own device credential, exactly like the catalog. Uploads go to
+the `kiosk` storage directory (JPG/PNG/WebP, 4MB — under Vercel's
+request-body cap).
 
 **Catalog Preview** (Phase 4,
 `app/admin/(protected)/vending/[machineId]/catalog-preview/page.tsx`)

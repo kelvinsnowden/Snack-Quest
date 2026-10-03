@@ -1,8 +1,9 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { discountCodeRepository } from '@/repositories/discountCodeRepository';
 import { normalizeDiscountCode, validateDiscountCodeInput } from '@/lib/checkout/discountCode';
+import { hasPermission } from '@/lib/auth/permissions';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 
 /**
  * Discount codes for staff to create and manage (§ discount codes).
@@ -17,7 +18,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.discounts.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -40,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.discounts.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -101,6 +102,15 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: result.reason }, { status: 409 });
   }
 
+  await recordAuditLog(request, {
+    businessId: getCurrentBusinessId(),
+    actorId: session.uid,
+    action: 'discount_code.create',
+    entityType: 'discountCode',
+    entityId: normalizeDiscountCode(code),
+    after: { kind, value, waivesDelivery: body.waivesDelivery === true, maxRedemptions, startsAt: startsAt?.toISOString() ?? null, expiresAt: expiresAt?.toISOString() ?? null, isActive: body.isActive !== false },
+  });
+
   return Response.json({ code: normalizeDiscountCode(code) }, { status: 201 });
 }
 
@@ -109,7 +119,7 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'marketing.discounts.manage')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -143,6 +153,19 @@ export async function PATCH(request: Request): Promise<Response> {
     },
     session.uid,
   );
+
+  await recordAuditLog(request, {
+    businessId: getCurrentBusinessId(),
+    actorId: session.uid,
+    action: 'discount_code.update',
+    entityType: 'discountCode',
+    entityId: existing.code,
+    before: { isActive: existing.isActive, note: existing.note ?? null },
+    after: {
+      isActive: body.isActive !== undefined ? body.isActive === true : existing.isActive,
+      note: typeof body.note === 'string' ? body.note.trim() || null : existing.note ?? null,
+    },
+  });
 
   return Response.json({ ok: true });
 }

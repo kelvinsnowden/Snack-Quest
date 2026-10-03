@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowLeft, ShieldAlert, Lock, LockOpen, MessageSquare } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
-import { isSuperAdmin } from '@/lib/auth/requireSuperAdmin';
+import { hasPermission } from '@/lib/auth/permissions';
 import { integrationSettingsService } from '@/services/integrationSettingsService';
 import { describeTextSmsConfig, missingTextSmsEnv, type TextSmsResolution } from '@/lib/integrations/sms/config';
 import { IntegrationCard } from '@/components/admin/IntegrationCard';
@@ -83,7 +83,7 @@ const NOT_YET_INTEGRATED = ['Google Maps', 'AI provider', 'Third-party analytics
 export default async function AdminIntegrationsPage() {
   const session = await requireStaffSession();
 
-  if (!isSuperAdmin(session)) {
+  if (!hasPermission(session, 'settings.integrations.manage')) {
     return (
       <div className="flex max-w-2xl flex-col gap-6">
         <Link href="/admin/settings" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
