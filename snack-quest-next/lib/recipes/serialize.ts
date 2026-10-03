@@ -1,3 +1,4 @@
+import type { Allergen, NetContent } from '@/lib/products/productDetails';
 import type { ShoppingRun, ShoppingRunLine, ShoppingRunStatus, SnackItem } from '@/types';
 
 /**
@@ -57,6 +58,11 @@ export interface SerializedSnackItem {
   isActive: boolean;
   /** Undefined on every snack predating the field — the catalogue treats that as "not opted in". */
   availableForPremiumSelection?: boolean;
+  brand: string | null;
+  barcode: string | null;
+  /** Null: not recorded. `[]`: the pack declares none. */
+  allergens: Allergen[] | null;
+  netContent: NetContent | null;
   /** Undefined means untracked, never zero (see `SnackItem.stockCount`). */
   stockCount?: number;
 }
@@ -74,6 +80,10 @@ export function serializeSnackItem(id: string, data: SnackItem, options: { showC
     sourcingNote: data.sourcingNote,
     isActive: data.isActive,
     availableForPremiumSelection: data.availableForPremiumSelection ?? false,
+    brand: data.brand ?? null,
+    barcode: data.barcode ?? null,
+    allergens: data.allergens ?? null,
+    netContent: data.netContent ?? null,
     // Preserved as absent rather than coerced to 0 — the two mean
     // different things and the form has to tell them apart.
     ...(data.stockCount === undefined ? {} : { stockCount: data.stockCount }),

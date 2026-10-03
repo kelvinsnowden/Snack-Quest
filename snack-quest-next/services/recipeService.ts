@@ -3,6 +3,7 @@ import 'server-only';
 import { FieldValue } from 'firebase-admin/firestore';
 
 import { snackItemRepository } from '@/repositories/snackItemRepository';
+import type { DetailsPatch } from '@/lib/products/productDetails';
 import { boxRecipeRepository } from '@/repositories/boxRecipeRepository';
 import { packageRepository } from '@/repositories/packageRepository';
 import type { BoxRecipeItem, SnackItem } from '@/types';
@@ -38,6 +39,8 @@ export interface SnackItemDraft {
   /** null = untracked, never zero. */
   stockCount?: number | null;
   isActive: boolean;
+  /** Brand, barcode, allergens, net content (§ PRODUCT DATA MODEL). Only the keys given change. */
+  details?: DetailsPatch;
 }
 
 /** A recipe with its snacks resolved — what every fulfilment screen actually renders. */
@@ -85,6 +88,7 @@ class RecipeService {
 
   async createSnackItem(businessId: string, draft: SnackItemDraft, actor: string): Promise<string> {
     const validated = this.validateSnackItem(draft);
+    await this.assertBarcodeFree(businessId, draft.details?.barcode, null);
     // A snack created without a cost gets a 0 placeholder marked pending — never read as a real cost.
     const cost = validated.expectedUnitCostKes === undefined ? { expectedUnitCostKes: 0, costPending: true } : { expectedUnitCostKes: validated.expectedUnitCostKes };
     return snackItemRepository.create({ businessId, ...validated, ...cost }, actor);
@@ -92,6 +96,7 @@ class RecipeService {
 
   async updateSnackItem(businessId: string, itemId: string, draft: SnackItemDraft, actor: string): Promise<void> {
     await this.getSnackItem(businessId, itemId);
+    await this.assertBarcodeFree(businessId, draft.details?.barcode, itemId);
     // The cost never changes here: it changes through the price book (`priceBookService.setPrice`), which keeps its history.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- deliberately dropped
     const { expectedUnitCostKes: _ignoredCost, ...validated } = this.validateSnackItem(draft);
@@ -267,6 +272,16 @@ class RecipeService {
    * "untracked", and untracked is stored as an absent field rather
    * than a null.
    */
+  /** A barcode identifies one snack: a second snack with the same one is refused, so a scan never matches two. */
+  private async assertBarcodeFree(businessId: string, barcode: string | null | undefined, selfId: string | null): Promise<void> {
+    if (!barcode) return;
+    const holders = await snackItemRepository.findIdsByBarcode(businessId, barcode);
+    const other = holders.find((id) => id !== selfId);
+    if (other) {
+      throw new RecipeValidationError(`Another snack already has barcode ${barcode}.`);
+    }
+  }
+
   private validateSnackItem(draft: SnackItemDraft): Omit<SnackItemDraft, 'stockCount'> & { stockCount?: number } {
     const name = (draft.name ?? '').trim();
     const unitLabel = (draft.unitLabel ?? '').trim() || 'unit';
@@ -298,6 +313,8 @@ class RecipeService {
       // Absent key rather than `undefined`, which Firestore rejects —
       // and absent is exactly what "untracked" is stored as.
       ...(typeof draft.stockCount === 'number' ? { stockCount: draft.stockCount } : {}),
+      // Absent keys stay absent; null clears a field to "not recorded".
+      ...(draft.details ?? {}),
     };
   }
 }

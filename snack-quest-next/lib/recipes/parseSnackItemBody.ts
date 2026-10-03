@@ -1,4 +1,5 @@
 import type { SnackItemDraft } from '@/services/recipeService';
+import { parseProductDetails } from '@/lib/products/productDetails';
 
 /**
  * Shape validation for the snack-item routes, in `lib` because a
@@ -18,6 +19,11 @@ export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | {
   }
   if (expectedUnitCostKes !== undefined && expectedUnitCostKes !== null && typeof expectedUnitCostKes !== 'number' && typeof expectedUnitCostKes !== 'string') {
     return { error: 'expectedUnitCostKes must be a number' };
+  }
+  // Brand, barcode, allergens, net content: absent keys stay absent, so an older caller never wipes them.
+  const parsedDetails = parseProductDetails((body ?? {}) as Record<string, unknown>);
+  if ('error' in parsedDetails) {
+    return { error: parsedDetails.error };
   }
 
   return {
@@ -44,6 +50,7 @@ export function parseSnackItemBody(body: unknown): { draft: SnackItemDraft } | {
         typeof stockCount === 'number' && Number.isFinite(stockCount) && stockCount >= 0
           ? Math.trunc(stockCount)
           : null,
+      details: parsedDetails.details,
     },
   };
 }

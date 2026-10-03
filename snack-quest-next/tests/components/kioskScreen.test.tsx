@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { Allergen, NetContent } from '@/lib/products/productDetails';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { KioskScreen } from '@/components/kiosk/KioskScreen';
@@ -27,7 +28,7 @@ const MACHINE_ID = 'machine-kiosk-1';
 const MACHINE_CODE = 'SQ-001';
 
 function catalogItem(
-  overrides: Partial<{ productId: string; name: string; slotCode: string; priceKes: number; availabilityState: ProductAvailabilityState; sellable: boolean; category: string | null; description: string | null; origin: string | null }> = {},
+  overrides: Partial<{ productId: string; name: string; slotCode: string; priceKes: number; availabilityState: ProductAvailabilityState; sellable: boolean; category: string | null; description: string | null; origin: string | null; brand: string | null; allergens: Allergen[] | null; netContent: NetContent | null }> = {},
 ) {
   return {
     productId: overrides.productId ?? 'sku-1',
@@ -37,6 +38,9 @@ function catalogItem(
     description: overrides.description ?? null,
     imageUrl: null,
     origin: overrides.origin ?? null,
+    brand: overrides.brand ?? null,
+    allergens: overrides.allergens === undefined ? null : overrides.allergens,
+    netContent: overrides.netContent ?? null,
     category: overrides.category ?? 'Korean Snacks',
     priceKes: overrides.priceKes ?? 250,
     availabilityState: overrides.availabilityState ?? 'available',
@@ -298,6 +302,32 @@ describe('KioskScreen — product sheet', () => {
     const order = screen.getByRole('region', { name: 'Your order' });
     expect(within(order).getByText('2 items')).toBeTruthy();
     expect(within(order).getAllByText('KES 500').length).toBeGreaterThan(0);
+  });
+
+  it('shows brand, size and the declared allergens; says nothing about allergens nobody recorded', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        catalogVersion: 'v1',
+        items: [
+          catalogItem({ productId: 'a', slotCode: 'A01', name: 'Shrimp Chips', brand: 'Calbee', netContent: { amount: 70, unit: 'g' }, allergens: ['crustaceans', 'gluten'] }),
+          catalogItem({ productId: 'b', slotCode: 'A02', name: 'Plain Rice Cracker', allergens: null }),
+        ],
+      }),
+    });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Shrimp Chips')).toBeTruthy());
+    fireEvent.click(screen.getByRole('heading', { name: 'Shrimp Chips' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Shrimp Chips' });
+    expect(within(sheet).getByText('Calbee · 70 g')).toBeTruthy();
+    expect(within(sheet).getByText('Contains crustaceans, gluten.')).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: /close/i }));
+
+    fireEvent.click(screen.getByRole('heading', { name: 'Plain Rice Cracker' }));
+    const other = await screen.findByRole('dialog', { name: 'Plain Rice Cracker' });
+    expect(within(other).queryByText(/allergens|Contains/)).toBeNull();
   });
 });
 

@@ -1,3 +1,4 @@
+import type { Allergen, NetContent } from '@/lib/products/productDetails';
 import type { Timestamp } from 'firebase/firestore';
 
 /**
@@ -108,6 +109,12 @@ export interface SellableCatalogItem {
   imageUrl: string | null;
   /** Where the snack comes from ("Japan", "Korea") — the snack catalogue's own `origin`; null for boxes and snacks without one. */
   origin: string | null;
+  /** The snack's brand from the pack; null for boxes and snacks without one. */
+  brand: string | null;
+  /** What the pack declares (§ PRODUCT DATA MODEL). Null: not recorded — the screen says nothing rather than implying "none". `[]`: declared none. */
+  allergens: Allergen[] | null;
+  /** Net weight or volume from the pack; null when not recorded. */
+  netContent: NetContent | null;
   category: string | null;
   priceKes: number;
   /**

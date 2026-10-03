@@ -19,6 +19,7 @@ import { PhoneKeypad } from './PhoneKeypad';
 import { readPairingFragment } from '@/lib/vending/kioskPairing';
 import { MONEY_IN_FLIGHT, RESULT_STATES, idleTimerRuns, kioskReducer, outcomeOf, type KioskState } from '@/lib/kiosk/runtimeMachine';
 import { cartKey, formatKes, formatPhoneNumber, isCompletePhoneNumber, PHONE_MAX_DIGITS } from './format';
+import { allergenLine, netContentLabel } from '@/lib/products/productDetails';
 
 /**
  * The customer-facing touchscreen experience for one physical machine
@@ -1248,6 +1249,23 @@ function CategoryChip({ label, active, onClick }: { label: string; active: boole
   );
 }
 
+/**
+ * Brand, size and allergens from the pack (§ PRODUCT DATA MODEL). Says
+ * nothing about allergens when none were recorded: silence is not "none".
+ */
+function ProductFacts({ item }: { item: SellableCatalogItem }) {
+  const size = netContentLabel(item.netContent);
+  const allergens = allergenLine(item.allergens);
+  const facts = [item.brand, size].filter(Boolean).join(' · ');
+  if (!facts && !allergens) return null;
+  return (
+    <div className="flex flex-col gap-1 text-small text-muted-foreground lg:text-body">
+      {facts ? <p>{facts}</p> : null}
+      {allergens ? <p className="font-medium text-foreground">{allergens}</p> : null}
+    </div>
+  );
+}
+
 function QuantityStepper({ label, quantity, onChange, size = 'md' }: { label: string; quantity: number; onChange: (delta: number) => void; size?: 'md' | 'lg' }) {
   const button = size === 'lg' ? 'size-14' : 'size-10';
   return (
@@ -1417,6 +1435,7 @@ function ProductSheet({
               {item.name}
             </h2>
             {item.description ? <p className="text-body text-muted-foreground lg:text-subtitle">{item.description}</p> : null}
+            <ProductFacts item={item} />
             <span className="text-card-title font-bold tabular-nums text-foreground">{formatKes(item.priceKes)}</span>
 
             <div className="mt-auto flex flex-col gap-4 pt-2">

@@ -418,8 +418,14 @@ class MachineAssortmentService {
       let imageUrl = row.customerFacingImageUrl;
       let fallbackPriceKes = 0;
       let origin: string | null = null;
+      let brand: string | null = null;
+      let allergens: SellableCatalogItem['allergens'] = null;
+      let netContent: SellableCatalogItem['netContent'] = null;
       if (row.productCatalogue === 'snackItem') {
         const item = snackItemsById.get(row.productId);
+        brand = item?.brand ?? null;
+        allergens = item?.allergens ?? null;
+        netContent = item?.netContent ?? null;
         name = name ?? item?.name ?? row.productId;
         description = description ?? item?.description ?? null;
         imageUrl = imageUrl ?? item?.imageUrl ?? null;
@@ -459,6 +465,9 @@ class MachineAssortmentService {
         description,
         imageUrl,
         origin,
+        brand,
+        allergens,
+        netContent,
         category: row.category,
         priceKes,
         availabilityState,
