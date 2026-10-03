@@ -79,7 +79,12 @@ class ProductService {
    * active, in stock. Never re-implemented at a call site, so both
    * paths reject the exact same way.
    */
-  async getCheckoutableProduct(businessId: string, productId: string): Promise<Package> {
+  /**
+   * `quantity` is how many boxes the customer wants. Stock is only read
+   * here, not held; the order transaction reserves it at payment and is
+   * what actually refuses an oversell.
+   */
+  async getCheckoutableProduct(businessId: string, productId: string, quantity = 1): Promise<Package> {
     const product = await packageRepository.findById(businessId, productId);
     if (!product) {
       throw new ProductNotFoundError(productId);
@@ -87,7 +92,7 @@ class ProductService {
     if (!product.isActive) {
       throw new ProductNotAvailableError(productId, 'inactive');
     }
-    if (product.stockCount !== undefined && product.stockCount <= 0) {
+    if (product.stockCount !== undefined && product.stockCount < Math.max(1, quantity)) {
       throw new ProductNotAvailableError(productId, 'out_of_stock');
     }
     return product;

@@ -3,6 +3,7 @@ import { webhookEventRepository } from '@/repositories/webhookEventRepository';
 import { businessRepository } from '@/repositories/businessRepository';
 import { conversationService } from '@/services/conversationService';
 import { productService } from '@/services/productService';
+import { parseCheckoutQuantity } from '@/lib/checkout/pricing';
 import { checkWebhookSecret } from '@/lib/webhooks/webhookSecret';
 import type { WhatsAppInboundMessage } from '@/lib/integrations/types';
 
@@ -146,10 +147,14 @@ async function handleCatalogOrder(
     return;
   }
 
-  const product = await productService.getCheckoutableProduct(businessId, firstItem.productRetailerId);
-  await conversationService.startFromCatalogSelection(businessId, inbound.fromPhone, {
-    id: firstItem.productRetailerId,
-    name: product.name,
-    priceKes: product.priceKes,
-  });
+  // The cart's own count for that item, when it is one this checkout
+  // accepts; anything else (a malformed or oversized cart line) is one box.
+  const quantity = parseCheckoutQuantity(firstItem.quantity) ?? 1;
+  const product = await productService.getCheckoutableProduct(businessId, firstItem.productRetailerId, quantity);
+  await conversationService.startFromCatalogSelection(
+    businessId,
+    inbound.fromPhone,
+    { id: firstItem.productRetailerId, name: product.name, priceKes: product.priceKes },
+    { quantity },
+  );
 }

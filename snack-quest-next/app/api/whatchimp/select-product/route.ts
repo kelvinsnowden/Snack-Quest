@@ -2,6 +2,7 @@ import { businessRepository } from '@/repositories/businessRepository';
 import { conversationService } from '@/services/conversationService';
 import { productService, ProductNotFoundError, ProductNotAvailableError } from '@/services/productService';
 import { verifyWhatchimpBridgeRequest } from '@/lib/webhooks/whatchimpBridgeAuth';
+import { MAX_CHECKOUT_QUANTITY, parseCheckoutQuantity } from '@/lib/checkout/pricing';
 import type { SelectProductRequest, SelectProductResponse } from '@/types/whatchimpBridge';
 
 /**
@@ -25,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { phoneNumberId, customerPhone, productId, referralCode, creatorAttributionId } =
+  const { phoneNumberId, customerPhone, productId, quantity, referralCode, creatorAttributionId } =
     (body ?? {}) as Partial<SelectProductRequest>;
 
   if (
@@ -42,6 +43,14 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const boxes = parseCheckoutQuantity(quantity);
+  if (boxes === null) {
+    return Response.json(
+      { error: `quantity must be a whole number from 1 to ${MAX_CHECKOUT_QUANTITY}` },
+      { status: 400 },
+    );
+  }
+
   const business = await businessRepository.findByWhatsappPhoneNumberId(phoneNumberId);
   if (!business) {
     return Response.json({ error: `no business owns WhatsApp number ${phoneNumberId}` }, { status: 404 });
@@ -50,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let product;
   try {
-    product = await productService.getCheckoutableProduct(businessId, productId);
+    product = await productService.getCheckoutableProduct(businessId, productId, boxes);
   } catch (error) {
     if (error instanceof ProductNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
@@ -66,7 +75,7 @@ export async function POST(request: Request): Promise<Response> {
       businessId,
       customerPhone,
       { id: productId, name: product.name, priceKes: product.priceKes },
-      { referralLinkId: creatorAttributionId ?? null, referralCode: referralCode ?? null },
+      { referralLinkId: creatorAttributionId ?? null, referralCode: referralCode ?? null, quantity: boxes },
     );
 
     const response: SelectProductResponse = {
@@ -75,6 +84,7 @@ export async function POST(request: Request): Promise<Response> {
       productId,
       productName: product.name,
       priceKes: product.priceKes,
+      quantity: boxes,
     };
     return Response.json(response);
   } catch (error) {

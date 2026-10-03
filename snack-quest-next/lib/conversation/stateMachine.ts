@@ -125,7 +125,7 @@ export function startConversationMessages(
  */
 export function bootstrapFromCatalogSelection(
   product: { id: string; name: string; priceKes: number },
-  attribution: { referralCode?: string | null } = {},
+  attribution: { referralCode?: string | null; quantity?: number } = {},
 ): { nextStep: ConversationStep; stateBlobPatch: Partial<ConversationStateBlob>; botReply: string } {
   return {
     nextStep: 'awaiting_customer_details',
@@ -133,6 +133,9 @@ export function bootstrapFromCatalogSelection(
       packageId: product.id,
       packageLabel: product.name,
       priceKes: product.priceKes,
+      // Always written, so a second catalog selection on a resumed
+      // conversation replaces the earlier count instead of inheriting it.
+      quantity: attribution.quantity ?? 1,
       // Pre-fills what `awaiting_referral_code` would otherwise ask
       // for later — the customer never has to type a code they
       // already gave Whatchimp. Still re-validated at freeze time by
@@ -307,12 +310,13 @@ export const PAYMENT_CONFIRMATION_REMINDER =
  */
 export function formatFinalOrderSummaryMessage(stateBlob: ConversationStateBlob): string {
   const isPickup = stateBlob.deliveryMethod === 'pickup';
-  const subtotalKes = stateBlob.priceKes ?? 0;
+  const quantity = stateBlob.quantity ?? 1;
+  const subtotalKes = (stateBlob.priceKes ?? 0) * quantity;
   const discountKes = stateBlob.discountKes ?? 0;
   const deliveryFeeKes = stateBlob.deliveryFeeKes ?? 0;
   const totalKes = subtotalKes - discountKes + deliveryFeeKes;
 
-  const lines = [`${stateBlob.packageLabel}: KES ${subtotalKes}`];
+  const lines = [`${stateBlob.packageLabel}${quantity > 1 ? ` × ${quantity}` : ''}: KES ${subtotalKes}`];
   if (discountKes) {
     lines.push(`Discount: -KES ${discountKes}`);
   }
@@ -363,6 +367,9 @@ export function transition(
           packageId: match.id,
           packageLabel: match.name,
           priceKes: match.priceKes,
+          // A box chosen by text is one box, even on a conversation
+          // that earlier came from a catalog selection with more.
+          quantity: 1,
         },
         botReply: CUSTOMER_DETAILS_PROMPT,
       };

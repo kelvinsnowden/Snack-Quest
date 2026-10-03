@@ -1,6 +1,7 @@
 import { businessRepository } from '@/repositories/businessRepository';
 import { conversationService } from '@/services/conversationService';
 import { productService, ProductNotFoundError, ProductNotAvailableError } from '@/services/productService';
+import { MAX_CHECKOUT_QUANTITY, parseCheckoutQuantity } from '@/lib/checkout/pricing';
 import type { CheckoutStartRequest, CheckoutStartResponse } from '@/types/checkout';
 
 /**
@@ -49,9 +50,10 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  if (quantity !== undefined && quantity !== 1) {
+  const boxes = parseCheckoutQuantity(quantity);
+  if (boxes === null) {
     return Response.json(
-      { error: 'this catalog only supports a single unit per checkout — quantity must be 1' },
+      { error: `quantity must be a whole number from 1 to ${MAX_CHECKOUT_QUANTITY}` },
       { status: 400 },
     );
   }
@@ -64,7 +66,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let product;
   try {
-    product = await productService.getCheckoutableProduct(businessId, productId);
+    product = await productService.getCheckoutableProduct(businessId, productId, boxes);
   } catch (error) {
     if (error instanceof ProductNotFoundError) {
       return Response.json({ error: error.message }, { status: 404 });
@@ -83,6 +85,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         referralLinkId: creatorAttributionId ?? null,
         referralCode: referralCode ?? null,
+        quantity: boxes,
       },
     );
 

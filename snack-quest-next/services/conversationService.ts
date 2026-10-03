@@ -225,6 +225,12 @@ export interface StartOptions {
   attributionSnapshot?: Record<string, unknown> | null;
   /** A text referral/discount code, pre-supplied by the caller (§ startFromCatalogSelection) — never applied to `Conversation` itself, only pre-fills `stateBlob.referralCode` for the existing `awaiting_referral_code` freeze-time re-validation to check. */
   referralCode?: string | null;
+  /**
+   * Boxes to buy, already checked by the caller to be a whole number
+   * from 1 to `MAX_CHECKOUT_QUANTITY` that the stock can cover. Lands in
+   * `stateBlob.quantity`, never on `Conversation` itself. Absent means one.
+   */
+  quantity?: number;
 }
 
 export interface ConversationTurnResult {
@@ -685,6 +691,7 @@ class ConversationService {
 
     const { nextStep, stateBlobPatch, botReply } = bootstrapFromCatalogSelection(product, {
       referralCode: options.referralCode,
+      quantity: options.quantity,
     });
     await conversationRepository.updateStep(conversationId, nextStep, stateBlobPatch);
     await this.reply(businessId, conversationId, phoneNumber, botReply);
@@ -2349,6 +2356,7 @@ class ConversationService {
         packageId: stateBlob.packageId ?? '',
         packageLabel: stateBlob.packageLabel ?? '',
         priceKes: stateBlob.priceKes ?? 0,
+        quantity: stateBlob.quantity ?? 1,
         customerName: stateBlob.customerName ?? '',
         county: stateBlob.county ?? '',
         referralCode: stateBlob.referralCode,
@@ -2439,7 +2447,7 @@ class ConversationService {
     const lines = [
       'Door delivery needs price confirmation:',
       `Customer: ${stateBlob.customerName ?? 'unknown'} (${phoneNumber})`,
-      `Box: ${stateBlob.packageLabel ?? 'unknown'} — KES ${stateBlob.priceKes ?? 0}`,
+      `Box: ${stateBlob.packageLabel ?? 'unknown'}${(stateBlob.quantity ?? 1) > 1 ? ` × ${stateBlob.quantity}` : ''} — KES ${(stateBlob.priceKes ?? 0) * (stateBlob.quantity ?? 1)}`,
       `County: ${stateBlob.county ?? 'unknown'}`,
       `Address: ${stateBlob.addressText ?? ''}`,
       `Estate: ${stateBlob.estate ?? ''}`,
@@ -2555,6 +2563,7 @@ class ConversationService {
 
     const { nextStep, stateBlobPatch } = bootstrapFromCatalogSelection(product, {
       referralCode: options.referralCode,
+      quantity: options.quantity,
     });
     await conversationRepository.updateStep(conversationId, nextStep, stateBlobPatch);
 
@@ -2720,7 +2729,7 @@ class ConversationService {
     await conversationRepository.updateStep(conversationId, 'awaiting_customer_payment_confirmation', patch);
 
     const mergedStateBlob = { ...conversation.stateBlob, ...patch };
-    const subtotalKes = mergedStateBlob.priceKes ?? 0;
+    const subtotalKes = (mergedStateBlob.priceKes ?? 0) * (mergedStateBlob.quantity ?? 1);
     const deliveryFeeKes = mergedStateBlob.deliveryFeeKes ?? 0;
     const totalKes = subtotalKes - discountKes + deliveryFeeKes;
 
@@ -2753,7 +2762,9 @@ class ConversationService {
         status: 'not_ready',
         priceKes: conversation.stateBlob.priceKes ?? 0,
         deliveryFeeKes: conversation.stateBlob.deliveryFeeKes ?? 0,
-        totalKes: (conversation.stateBlob.priceKes ?? 0) + (conversation.stateBlob.deliveryFeeKes ?? 0),
+        totalKes:
+          (conversation.stateBlob.priceKes ?? 0) * (conversation.stateBlob.quantity ?? 1) +
+          (conversation.stateBlob.deliveryFeeKes ?? 0),
       };
     }
 
@@ -2781,7 +2792,7 @@ class ConversationService {
         status: 'price_changed',
         priceKes: currentPriceKes,
         deliveryFeeKes: currentDeliveryFeeKes,
-        totalKes: currentPriceKes - (stateBlob.discountKes ?? 0) + currentDeliveryFeeKes,
+        totalKes: currentPriceKes * (stateBlob.quantity ?? 1) - (stateBlob.discountKes ?? 0) + currentDeliveryFeeKes,
       };
     }
 
@@ -2795,6 +2806,7 @@ class ConversationService {
         packageId: stateBlob.packageId ?? '',
         packageLabel: stateBlob.packageLabel ?? '',
         priceKes: stateBlob.priceKes ?? 0,
+        quantity: stateBlob.quantity ?? 1,
         customerName: stateBlob.customerName ?? '',
         county: stateBlob.county ?? '',
         referralCode: stateBlob.referralCode,

@@ -302,20 +302,28 @@ describe('POST /api/checkout/start', () => {
     expect(conversation?.status).not.toBe('awaiting_payment'); // never charges from /checkout/start
   });
 
-  it('rejects a quantity other than 1 — no multi-item cart exists in this codebase', async () => {
+  it('carries a quantity from 1 to 20 into the conversation, and refuses anything else', async () => {
+    mockProviders();
     const packageId = await packageRepository.create(
       { businessId: BUSINESS_ID, name: 'Starter Box', description: 'd', priceKes: 2500, isActive: true, imageUrl: null },
       'system',
     );
     const response = await checkoutStartRoute(
-      startRequest({
-        phoneNumberId: PHONE_NUMBER_ID,
-        customerPhone: CUSTOMER_PHONE,
-        productId: packageId,
-        quantity: 2,
-      }),
+      startRequest({ phoneNumberId: PHONE_NUMBER_ID, customerPhone: CUSTOMER_PHONE, productId: packageId, quantity: 2 }),
     );
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CheckoutStartResponse;
+    const conversation = await conversationRepository.findById(body.checkoutSessionId);
+    expect(conversation?.stateBlob.quantity).toBe(2);
+    expect(conversation?.stateBlob.priceKes).toBe(2500); // still the unit price
+
+    for (const quantity of [0, 21, 1.5, '2']) {
+      const refused = await checkoutStartRoute(
+        startRequest({ phoneNumberId: PHONE_NUMBER_ID, customerPhone: CUSTOMER_PHONE, productId: packageId, quantity: quantity as number }),
+      );
+      expect(refused.status, `quantity ${JSON.stringify(quantity)}`).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toMatch(/quantity must be a whole number/);
+    }
   });
 });
 
@@ -439,7 +447,7 @@ describe('inbound webhook catalogOrder handling (secondary catalog checkout entr
     await seedBusiness();
   });
 
-  function catalogOrderWebhookPayload(productRetailerId: string, messageId: string) {
+  function catalogOrderWebhookPayload(productRetailerId: string, messageId: string, quantity: unknown = 1) {
     return {
       entry: [
         {
@@ -455,7 +463,7 @@ describe('inbound webhook catalogOrder handling (secondary catalog checkout entr
                     type: 'order',
                     order: {
                       catalog_id: 'catalog-1',
-                      product_items: [{ product_retailer_id: productRetailerId, quantity: 1 }],
+                      product_items: [{ product_retailer_id: productRetailerId, quantity }],
                     },
                   },
                 ],
@@ -487,6 +495,32 @@ describe('inbound webhook catalogOrder handling (secondary catalog checkout entr
     expect(conversation?.conversation.currentStep).toBe('awaiting_customer_details');
     expect(conversation?.conversation.stateBlob.packageId).toBe(packageId);
     expect(conversation?.conversation.stateBlob.priceKes).toBe(2500);
+    expect(conversation?.conversation.stateBlob.quantity).toBe(1);
+  });
+
+  it("uses the cart's own count for the item, and one box when that count is not one this checkout accepts", async () => {
+    mockProviders();
+    const packageId = await packageRepository.create(
+      { businessId: BUSINESS_ID, name: 'Starter Box', description: 'd', priceKes: 2500, isActive: true, imageUrl: null },
+      'system',
+    );
+    const send = (messageId: string, quantity: unknown) =>
+      whatchimpWebhookRoute(
+        new Request('http://localhost/api/webhooks/whatchimp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(catalogOrderWebhookPayload(packageId, messageId, quantity)),
+        }),
+      );
+
+    expect((await send('wamid.cart-qty-4', 4)).status).toBe(200);
+    let conversation = await conversationRepository.findActiveByPhoneNumber(BUSINESS_ID, CUSTOMER_PHONE);
+    expect(conversation?.conversation.stateBlob.quantity).toBe(4);
+
+    // A second cart on the same conversation replaces the count rather than keeping it.
+    expect((await send('wamid.cart-qty-99', 99)).status).toBe(200);
+    conversation = await conversationRepository.findActiveByPhoneNumber(BUSINESS_ID, CUSTOMER_PHONE);
+    expect(conversation?.conversation.stateBlob.quantity).toBe(1);
   });
 
   it('marks the webhook event failed (does not crash) when the catalog order references an unavailable product', async () => {
