@@ -39,10 +39,19 @@ import {
 type Version = { versionNumber: number; note: string; rolledBackFrom: number | null; publishedBy: string; publishedAt: string | null };
 type PreviewMachine = { id: string; code: string; widthPx: number; heightPx: number; profileSet: boolean };
 type Result = { ok: boolean; text: string } | null;
+/** An owner editing their own machines' design (§ OWNER SCREEN DESIGN): saves and submits a proposal instead of publishing. */
+type OwnerMode = { status: 'draft' | 'submitted' | 'declined' | 'accepted' | null; reviewNote: string | null };
 
 const selectClass = 'min-h-10 w-full rounded-md border border-border bg-surface px-2 text-sm';
 const BADGE_NAME: Record<KioskBadgeState, string> = { featured: 'Featured', new: 'New', limited_time: 'Limited time' };
 const TONE_LABEL = { primary: 'Main button colour', secondary: 'Second accent', highlight: 'Highlight' } as const;
+const OWNER_STATUS_TEXT = {
+  none: 'Your machines show the Snack Quest design. Change anything here and send it to make it yours.',
+  draft: 'Saved, not sent yet.',
+  submitted: 'Sent — Snack Quest is reviewing it.',
+  declined: 'Snack Quest sent this back. Change it and send it again.',
+  accepted: 'Accepted and live on your machines.',
+} as const;
 const COPY_LABEL = { bannerEyebrow: 'Banner small line', bannerHeadline: 'Banner headline', attractHeadline: 'Idle-screen headline', attractCallToAction: '“Tap to start” button' } as const;
 
 async function send(url: string, method: 'PUT' | 'POST' | 'DELETE', body?: unknown): Promise<Record<string, unknown>> {
@@ -93,6 +102,10 @@ function newSection(type: KioskSectionType, existing: KioskSection[]): KioskSect
  * sets it or inherits it. Checks run as you type, with the same rules the
  * server applies on publish; the preview shows the saved draft on a real
  * machine's screen at its own size.
+ *
+ * With `owner`, it is an owner's editor for their own machines: idle and
+ * advertising settings are left out (they are Snack Quest's), and instead
+ * of publishing the owner saves a proposal and sends it for review.
  */
 export function KioskDesigner({
   scope,
@@ -104,6 +117,7 @@ export function KioskDesigner({
   previewMachines,
   canDesign,
   canPublish,
+  owner,
 }: {
   scope: KioskLayerScope;
   scopeId: string;
@@ -114,6 +128,7 @@ export function KioskDesigner({
   previewMachines: PreviewMachine[];
   canDesign: boolean;
   canPublish: boolean;
+  owner?: OwnerMode;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<KioskExperiencePatch>(initialDraft);
@@ -125,7 +140,7 @@ export function KioskDesigner({
   const [previewIdle, setPreviewIdle] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
 
-  const base = `/api/vending/kiosk/layers/${scope}/${encodeURIComponent(scopeId)}`;
+  const base = owner ? '/api/vending/partners/me/screen-design' : `/api/vending/kiosk/layers/${scope}/${encodeURIComponent(scopeId)}`;
   const dirty = JSON.stringify(draft) !== savedDraft;
   const readOnly = !canDesign;
 
@@ -259,6 +274,14 @@ export function KioskDesigner({
       setBusy(null);
     }
   }
+
+  const saveProposal = (submit: boolean) =>
+    run(submit ? 'submit' : 'save', async () => {
+      await send(base, 'PUT', { patch: draft, submit });
+      setSavedDraft(JSON.stringify(draft));
+      setPreviewKey((key) => key + 1);
+      return submit ? 'Sent to Snack Quest. Your machines change once it’s accepted.' : 'Saved. Nothing changes on your machines until you send it and it’s accepted.';
+    });
 
   const saveDraft = () =>
     run('save', async () => {
@@ -529,10 +552,11 @@ export function KioskDesigner({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Idle screen and wording</CardTitle>
+            <CardTitle className="text-base">{owner ? 'Wording' : 'Idle screen and wording'}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            {owner ? null : (
+              <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm">
                 <span className="flex items-center justify-between gap-2 font-medium">
                   Go idle after (seconds) <Origin overridden={draft.idle?.timeoutSeconds !== undefined} onReset={() => setGroupField('idle', 'timeoutSeconds', undefined)} disabled={readOnly} />
@@ -558,7 +582,8 @@ export function KioskDesigner({
                   Play scheduled ads on the idle screen
                 </label>
               </div>
-            </div>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               {(Object.keys(COPY_LABEL) as (keyof typeof COPY_LABEL)[]).map((key) => (
                 <label key={key} className="flex flex-col gap-1 text-sm">
@@ -662,6 +687,31 @@ export function KioskDesigner({
       </div>
 
       <div className="flex flex-col gap-6 xl:sticky xl:top-4 xl:self-start">
+        {owner ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Save and send</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {OWNER_STATUS_TEXT[owner.status ?? 'none']} {dirty ? 'You have unsaved changes.' : ''}
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {owner.status === 'declined' && owner.reviewNote ? (
+                <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <span className="font-medium">Snack Quest’s note:</span> {owner.reviewNote}
+                </p>
+              ) : null}
+              <Button variant="outline" onClick={() => saveProposal(false)} loading={busy === 'save'} disabled={Boolean(busy) || !dirty || parseProblems.length > 0}>
+                Save
+              </Button>
+              <Button onClick={() => saveProposal(true)} loading={busy === 'submit'} disabled={Boolean(busy) || parseProblems.length > 0 || check.errors.length > 0 || (!dirty && owner.status === 'submitted')}>
+                Send to Snack Quest
+              </Button>
+              <p className="text-caption text-muted-foreground">Snack Quest checks every design before it goes on a machine. The idle screen and ads stay as Snack Quest sets them.</p>
+              <Message result={result} />
+            </CardContent>
+          </Card>
+        ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Save and publish</CardTitle>
@@ -696,6 +746,7 @@ export function KioskDesigner({
             <Message result={result} />
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-col gap-3">
@@ -723,18 +774,19 @@ export function KioskDesigner({
                   <iframe
                     key={`${previewId}-${previewIdle}-${previewKey}`}
                     title={`Preview of ${previewMachine.code}`}
-                    src={`/kiosk-preview/${previewMachine.id}?scope=${scope}&scopeId=${encodeURIComponent(scopeId)}${previewIdle ? '&idle=1' : ''}`}
+                    src={owner ? `/partner-screen-preview/${previewMachine.id}${previewIdle ? '?idle=1' : ''}` : `/kiosk-preview/${previewMachine.id}?scope=${scope}&scopeId=${encodeURIComponent(scopeId)}${previewIdle ? '&idle=1' : ''}`}
                     style={{ width: frameWidth, height: frameHeight, transform: `scale(${scale})`, transformOrigin: 'top left', border: 0 }}
                   />
                 </div>
-                <p className="mt-2 text-caption text-muted-foreground">Shows the saved draft{dirty ? ' — save to see your latest changes' : ''}. Payments are off in the preview.</p>
+                <p className="mt-2 text-caption text-muted-foreground">Shows {owner ? 'your saved design' : 'the saved draft'}{dirty ? ' — save to see your latest changes' : ''}. Payments are off in the preview.</p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">No machine uses this layer yet, so there is nothing to preview on.</p>
+              <p className="text-sm text-muted-foreground">{owner ? 'You have no machines yet, so there is nothing to preview on.' : 'No machine uses this layer yet, so there is nothing to preview on.'}</p>
             )}
           </CardContent>
         </Card>
 
+        {owner ? null : (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Version history</CardTitle>
@@ -765,6 +817,7 @@ export function KioskDesigner({
             )}
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   );

@@ -76,7 +76,7 @@ const TARGETED: RouteCase[] = [
   { name: 'location expenses', load: me('locations/[locationId]/expenses'), method: 'PUT', params: (b) => ({ locationId: b.locationB }), body: { rentKes: 1, electricityKes: 1, otherKes: 1 } },
 ];
 
-const LISTS: RouteCase[] = ['dashboard', 'alerts', 'activity', 'sales-trend', 'top-products', 'settlements', 'subscriptions', 'wallet', 'withdrawals'].map((path) => ({ name: path, load: me(path), method: 'GET' as const, params: NONE }));
+const LISTS: RouteCase[] = ['dashboard', 'alerts', 'activity', 'sales-trend', 'top-products', 'settlements', 'subscriptions', 'wallet', 'withdrawals', 'screen-design'].map((path) => ({ name: path, load: me(path), method: 'GET' as const, params: NONE }));
 
 const STAFF_ONLY: RouteCase[] = [
   { name: 'staff: partner wallet', load: () => import('@/app/api/vending/partners/[partnerId]/wallet/route'), method: 'GET', params: (b) => ({ partnerId: b.ownerB }) },

@@ -643,6 +643,10 @@ service cloud.firestore {
     match /maintenanceCosts/{costId} {
       allow read, write: if false;
     }
+    // § OWNER SCREEN DESIGN — owners' proposals, server-side only.
+    match /kioskOwnerProposals/{proposalId} {
+      allow read, write: if false;
+    }
     match /cameras/{cameraId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

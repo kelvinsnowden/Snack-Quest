@@ -242,3 +242,31 @@ export interface ResolvedKioskExperience {
   version: string;
   sources: { scope: KioskLayerScope; scopeId: string; versionNumber: number; draft: boolean }[];
 }
+
+/** The parts of a screen design an owner may propose for their own machines. Idle and advertising settings stay Snack Quest's. */
+export const OWNER_EDITABLE_KIOSK_KEYS = ['theme', 'browseSections', 'badges', 'productCard', 'copy', 'language', 'translations'] as const;
+export type OwnerEditableKioskKey = (typeof OWNER_EDITABLE_KIOSK_KEYS)[number];
+
+export type KioskOwnerProposalStatus = 'draft' | 'submitted' | 'declined' | 'accepted';
+
+/**
+ * `kioskOwnerProposals/{businessId}_{partnerId}` — an owner's proposed
+ * design for their own machines. It goes live only when Snack Quest staff
+ * with `kiosk.publish` accept it, which publishes it on the owner's layer.
+ */
+export interface KioskOwnerProposal {
+  businessId: string;
+  partnerId: string;
+  /** Only owner-editable keys. */
+  patch: KioskExperiencePatch;
+  status: KioskOwnerProposalStatus;
+  updatedAt: Timestamp;
+  updatedBy: string;
+  submittedAt: Timestamp | null;
+  reviewedAt: Timestamp | null;
+  reviewedBy: string | null;
+  /** Why it was declined, or the note it was published with. */
+  reviewNote: string | null;
+  /** The owner layer version it became, once accepted. */
+  publishedVersionNumber: number | null;
+}
