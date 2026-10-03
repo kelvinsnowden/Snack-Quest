@@ -1,4 +1,5 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { recordAuditLog } from '@/lib/audit/recordAuditLog';
 import { staffWith } from '@/lib/ads/routeHelpers';
 import { AD_LIMITS, directUploadPrefix } from '@/services/advertisingService';
 import { AD_MEDIA_TYPES } from '@/types/advertising';
@@ -23,8 +24,9 @@ const SAFE_NAME = /^[A-Za-z0-9._-]{1,120}$/;
  * `…/creatives/finalize`, which re-checks the stored file, and then only
  * after review.
  *
- * Storage's own completion callback carries no staff session; the
- * library verifies its signature, and nothing is recorded on it.
+ * Each token issued is audited. Storage's own completion callback
+ * carries no staff session; the library verifies its signature, and
+ * nothing is recorded on it.
  */
 export async function POST(request: Request): Promise<Response> {
   let body: HandleUploadBody;
@@ -35,10 +37,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   let businessId: string | null = null;
+  let actorId: string | null = null;
   if (body.type === 'blob.generate-client-token') {
     const session = await staffWith(request, ['advertising.manage']);
     if (session instanceof Response) return session;
     businessId = session.businessId;
+    actorId = session.uid;
   }
 
   try {
@@ -61,6 +65,10 @@ export async function POST(request: Request): Promise<Response> {
       // Nothing is recorded here: the creative is written by `finalize`, after the stored file has been checked.
       onUploadCompleted: async () => {},
     });
+    // Who started which upload, so a file that is never finalized can be traced.
+    if (businessId && actorId && body.type === 'blob.generate-client-token') {
+      await recordAuditLog(request, { businessId, actorId, action: 'ad_creative.direct_upload_started', entityType: 'adCreativeUpload', entityId: body.payload.pathname, after: { pathname: body.payload.pathname } });
+    }
     return Response.json(result);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'Could not start the upload.' }, { status: 400 });

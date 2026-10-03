@@ -21,7 +21,8 @@ export function OwnerProposalReview({ partnerId, ownerName, updatedAtMillis }: {
     setBusy(action);
     setError(null);
     try {
-      const response = await fetch(`/api/vending/kiosk/owner-proposals/${encodeURIComponent(partnerId)}/${action}`, {
+      const url = action === 'accept' ? `/api/vending/kiosk/owner-proposals/${encodeURIComponent(partnerId)}/accept` : `/api/vending/kiosk/owner-proposals/${encodeURIComponent(partnerId)}/decline`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note, seenUpdatedAtMillis: updatedAtMillis }),
