@@ -142,6 +142,27 @@ export interface KioskCopy {
   attractCallToAction: string;
 }
 
+/** Languages a machine screen can show (§ KIOSK LANGUAGES). Staff write the design's wording in English; other languages translate it. */
+export const KIOSK_LOCALES = ['en', 'sw'] as const;
+export type KioskLocale = (typeof KIOSK_LOCALES)[number];
+/** Each language named in itself, as the switch on the screen shows it. */
+export const KIOSK_LOCALE_LABEL: Record<KioskLocale, string> = { en: 'English', sw: 'Kiswahili' };
+
+export interface KioskLanguageOptions {
+  /** What customers can switch between. One language: no switch is shown. */
+  available: KioskLocale[];
+  /** What a new customer sees; the screen returns to it when a session ends. */
+  default: KioskLocale;
+}
+
+/** The design's own wording in another language. Anything missing shows in English. */
+export interface KioskTranslation {
+  copy?: Partial<KioskCopy>;
+  badges?: Partial<Record<KioskBadgeState, string>>;
+  /** By section id: a message strip's `text`, a featured row's `title`. */
+  sections?: Record<string, { text?: string; title?: string }>;
+}
+
 export interface KioskExperienceConfig {
   theme: KioskTheme;
   browseSections: KioskSection[];
@@ -149,6 +170,8 @@ export interface KioskExperienceConfig {
   productCard: KioskProductCardOptions;
   idle: KioskIdleOptions;
   copy: KioskCopy;
+  language: KioskLanguageOptions;
+  translations: Partial<Record<KioskLocale, KioskTranslation>>;
 }
 
 /** What one layer sets. Absent keys inherit; `browseSections`, when present, replaces the inherited list whole. */
@@ -159,6 +182,9 @@ export interface KioskExperiencePatch {
   productCard?: Partial<KioskProductCardOptions>;
   idle?: Partial<KioskIdleOptions>;
   copy?: Partial<KioskCopy>;
+  language?: Partial<KioskLanguageOptions>;
+  /** Merged per language and field over the inherited translations. */
+  translations?: Partial<Record<KioskLocale, KioskTranslation>>;
 }
 
 /** `kioskLayers/{businessId}_{scope}_{scopeId}`. The draft is editable; what machines show comes only from published versions. */

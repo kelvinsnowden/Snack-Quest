@@ -4,9 +4,11 @@ import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState
 import { AlertTriangle, ArrowLeft, Check, CircleSlash, Loader2, MapPin, Minus, Plus, RotateCcw, Search, Smartphone, WifiOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { KioskExperienceConfig, KioskScreenContent, KioskScreenContentImage, KioskSection, SellableCatalogItem } from '@/types';
-import { DEFAULT_KIOSK_EXPERIENCE, checkKioskExperience, kioskThemeStyle, mergeKioskExperience, parseKioskPatch } from '@/lib/kiosk/experienceConfig';
-import { ProductCard, ProductImage, STATE_LABEL, type ProductCardOptions } from './ProductCard';
+import { KIOSK_LOCALE_LABEL, type KioskExperienceConfig, type KioskLocale, type KioskScreenContent, type KioskScreenContentImage, type KioskSection, type SellableCatalogItem } from '@/types';
+import { DEFAULT_KIOSK_EXPERIENCE, checkKioskExperience, kioskThemeStyle, localizeExperience, mergeKioskExperience, parseKioskPatch } from '@/lib/kiosk/experienceConfig';
+import { kioskText, type KioskText } from '@/lib/kiosk/kioskText';
+import { KioskTextProvider, useKioskText } from './kioskTextContext';
+import { ProductCard, ProductImage, STATE_TEXT, type ProductCardOptions } from './ProductCard';
 import { AttractScreen, MenuBanner } from './ScreenArtwork';
 import { AdPlayer, type AdEvent } from './AdPlayer';
 import { ServiceCodePrompt, ServiceScreen } from './ServiceMode';
@@ -19,7 +21,7 @@ import { PhoneKeypad } from './PhoneKeypad';
 import { readPairingFragment } from '@/lib/vending/kioskPairing';
 import { MONEY_IN_FLIGHT, RESULT_STATES, idleTimerRuns, kioskReducer, outcomeOf, type KioskState } from '@/lib/kiosk/runtimeMachine';
 import { cartKey, formatKes, formatPhoneNumber, isCompletePhoneNumber, PHONE_MAX_DIGITS } from './format';
-import { allergenLine, netContentLabel } from '@/lib/products/productDetails';
+import { netContentLabel } from '@/lib/products/productDetails';
 
 /**
  * The customer-facing touchscreen experience for one physical machine
@@ -212,6 +214,12 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
   const [searchTerm, setSearchTerm] = useState('');
   const [detailItem, setDetailItem] = useState<SellableCatalogItem | null>(null);
   const [cart, setCart] = useState<Map<string, CartLine>>(new Map());
+  // § KIOSK LANGUAGES: a customer's choice lasts for their session; null means the design's starting language.
+  const [chosenLocale, setChosenLocale] = useState<KioskLocale | null>(null);
+  const locale: KioskLocale = chosenLocale && experience.language.available.includes(chosenLocale) ? chosenLocale : experience.language.default;
+  const text = useMemo(() => kioskText(locale), [locale]);
+  const { t } = text;
+  const shown = useMemo(() => localizeExperience(experience, locale), [experience, locale]);
 
   const [phoneDigits, setPhoneDigits] = useState('');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -510,14 +518,17 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
       .slice(0, 4);
   }, [catalog, detailItem]);
 
-  const cardOptions = useMemo<ProductCardOptions>(() => ({ ...experience.productCard, badges: experience.badges }), [experience]);
+  const cardOptions = useMemo<ProductCardOptions>(() => ({ ...shown.productCard, badges: shown.badges }), [shown]);
   const themeStyle = useMemo(() => kioskThemeStyle(experience), [experience]);
   /** Every screen state renders inside the design's tokens; `contents` keeps the wrapper out of layout while its custom properties still inherit. */
   const themed = (node: React.ReactNode) => (
-    <div className={`contents ${experience.theme.motion === 'reduced' ? 'kiosk-reduced-motion' : ''}`} style={{ ...(themeStyle as React.CSSProperties), fontFamily: experience.theme.font === 'system' ? 'system-ui, sans-serif' : undefined }} data-kiosk-design="">
-      {node}
-    </div>
+    <KioskTextProvider value={text}>
+      <div lang={locale} className={`contents ${experience.theme.motion === 'reduced' ? 'kiosk-reduced-motion' : ''}`} style={{ ...(themeStyle as React.CSSProperties), fontFamily: experience.theme.font === 'system' ? 'system-ui, sans-serif' : undefined }} data-kiosk-design="">
+        {node}
+      </div>
+    </KioskTextProvider>
   );
+  const languageSwitch = experience.language.available.length > 1 ? <LanguageSwitch available={experience.language.available} current={locale} onChange={setChosenLocale} /> : null;
 
   const cartLines = useMemo(() => Array.from(cart.values()), [cart]);
   const cartCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
@@ -576,6 +587,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     setCartTransactions([]);
     setStatuses({});
     setFailureReasons({});
+    setChosenLocale(null);
     fetchCatalog();
   }
 
@@ -620,7 +632,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     const auth = authRef.current;
     if (!isCompletePhoneNumber(phoneDigits) || cartLines.length === 0 || !auth) return;
     if (preview) {
-      setCheckoutError('This is a preview — payments are switched off.');
+      setCheckoutError(t('previewNoPayments'));
       return;
     }
     setSubmitting(true);
@@ -640,7 +652,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
       const body = (await res.json()) as { transactions?: { id: string; slotId: string }[]; error?: string };
       if (!res.ok || !body.transactions) {
         // § FAILURE SCENARIO — an item in the order went out of stock or was removed from assortment between browsing and checkout: the server re-validates every slot itself, so a stale order line can never actually complete a charge for something no longer sellable.
-        setCheckoutError(body.error ?? 'Could not start payment. Some items may no longer be available — go back to the menu to check your order.');
+        setCheckoutError(body.error ?? t('couldNotStartPayment'));
         fetchCatalog();
         return;
       }
@@ -653,7 +665,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
       count('payment_requested');
       dispatch({ type: 'PAYMENT_REQUESTED' });
     } catch {
-      setCheckoutError('Could not reach Snack Quest. Check the connection and try again — nothing has been charged.');
+      setCheckoutError(t('couldNotReach'));
     } finally {
       setSubmitting(false);
     }
@@ -703,16 +715,17 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
         });
         setFailureReasons((prev) => {
           const next = { ...prev };
-          for (const t of cartTransactions) if (!next[t.id]) next[t.id] = 'This is taking longer than expected. Please contact support if you were charged.';
+          for (const unit of cartTransactions) if (!next[unit.id]) next[unit.id] = t('takingLonger');
           return next;
         });
         clearInterval(interval);
       }
     }, PAYMENT_POLL_MS);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t` only words a timeout message; re-running on a language switch would restart the payment poll.
   }, [cartTransactions]);
 
-  const result = useMemo(() => (cartTransactions.length > 0 ? describeResult(cartTransactions, statuses, failureReasons) : null), [cartTransactions, statuses, failureReasons]);
+  const result = useMemo(() => (cartTransactions.length > 0 ? describeResult(cartTransactions, statuses, failureReasons, text) : null), [cartTransactions, statuses, failureReasons, text]);
 
   // The payment cleared once any unit has moved past waiting for it.
   const paymentCleared = cartTransactions.some((t) => statuses[t.id] && !['pending', 'paid', 'payment_failed'].includes(statuses[t.id]));
@@ -841,7 +854,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
   }
 
   if (attract) {
-    const idleScreen = <AttractScreen headline={experience.copy.attractHeadline} callToAction={experience.copy.attractCallToAction} images={screen.attract} items={catalog?.items ?? []} onStart={startFromIdle} />;
+    const idleScreen = <AttractScreen headline={shown.copy.attractHeadline} callToAction={shown.copy.attractCallToAction} images={screen.attract} items={catalog?.items ?? []} onStart={startFromIdle} />;
     // § ATTRACT MODE: ads only where the design allows them and only verified files; otherwise the normal idle screen.
     if (experience.idle.adsEnabled && !preview && ads.campaigns.length > 0 && Object.keys(adMedia).length > 0) {
       return themed(<AdPlayer playlist={ads} media={adMedia} rotationKey={`sq_kiosk_ad_rotation_${machineId}`} onEvent={recordAdEvent} onTap={startFromIdle} fallback={idleScreen} />);
@@ -870,7 +883,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
           }}
           className="h-14 px-10"
         >
-          Back to menu
+          {t('backToMenu')}
         </Button>
       </main>
     );
@@ -879,9 +892,9 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
   if (view === 'paying') {
     const anyDispensing = cartTransactions.some((t) => statuses[t.id] && !['pending', 'paid'].includes(statuses[t.id]));
     const steps = [
-      { label: 'Request sent', done: true },
-      { label: 'Enter your PIN', done: anyDispensing },
-      { label: 'Collect your snacks', done: false },
+      { label: t('stepRequestSent'), done: true },
+      { label: t('stepEnterPin'), done: anyDispensing },
+      { label: t('stepCollect'), done: false },
     ];
     const currentStep = anyDispensing ? 2 : 1;
     return themed(
@@ -894,16 +907,23 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
         </div>
 
         <div role="status" className="flex max-w-2xl flex-col gap-4 text-center">
-          <h1 className="font-display text-section-title leading-tight text-foreground lg:text-page-title">{anyDispensing ? 'Payment received' : 'Check your phone'}</h1>
+          <h1 className="font-display text-section-title leading-tight text-foreground lg:text-page-title">{anyDispensing ? t('paymentReceived') : t('checkYourPhone')}</h1>
           <p className="text-subtitle text-muted-foreground">
-            {anyDispensing ? (
-              'Your snacks are on their way down — collect them from the tray below.'
-            ) : (
-              <>
-                Enter your M-Pesa PIN on <span className="font-semibold text-foreground tabular-nums">{formatPhoneNumber(phoneDigits)}</span> to pay{' '}
-                <span className="font-semibold text-foreground">{formatKes(cartTotalKes)}</span> for your whole order.
-              </>
-            )}
+            {anyDispensing
+              ? t('onTheirWay')
+              : text.parts('enterPinPrompt').map((part, index) =>
+                  'text' in part ? (
+                    <Fragment key={index}>{part.text}</Fragment>
+                  ) : part.slot === 'phone' ? (
+                    <span key={index} className="font-semibold text-foreground tabular-nums">
+                      {formatPhoneNumber(phoneDigits)}
+                    </span>
+                  ) : (
+                    <span key={index} className="font-semibold text-foreground">
+                      {formatKes(cartTotalKes)}
+                    </span>
+                  ),
+                )}
           </p>
         </div>
 
@@ -919,14 +939,14 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                 </span>
                 <span className={`text-small ${isCurrent ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
                   {step.label}
-                  {isCurrent ? <span className="sr-only"> (now)</span> : null}
+                  {isCurrent ? <span className="sr-only">{t('stepNow')}</span> : null}
                 </span>
               </li>
             );
           })}
         </ol>
 
-        <section aria-label="Order progress" className="flex w-full max-w-2xl flex-col gap-4 rounded-xl bg-surface p-6 shadow-sm">
+        <section aria-label={t('orderProgress')} className="flex w-full max-w-2xl flex-col gap-4 rounded-xl bg-surface p-6 shadow-sm">
           {cartLines.map((line) => {
             const units = transactionsByLineKey.get(cartKey(line.item)) ?? [];
             const doneCount = units.filter((t) => statuses[t.id] && SUCCESS_STATUSES.includes(statuses[t.id])).length;
@@ -939,20 +959,20 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                 </div>
                 <p className="flex-1 text-body text-foreground">
                   {line.item.name} &times; {line.quantity}
-                  {line.quantity > 1 && doneCount > 0 ? <span className="text-muted-foreground"> ({doneCount}/{line.quantity} done)</span> : null}
+                  {line.quantity > 1 && doneCount > 0 ? <span className="text-muted-foreground">{t('lineDone', { done: doneCount, total: line.quantity })}</span> : null}
                 </p>
                 {state === 'done' ? (
-                  <Check className="size-6 text-success" aria-label="Dispensed" />
+                  <Check className="size-6 text-success" aria-label={t('dispensed')} />
                 ) : state === 'failed' ? (
-                  <CircleSlash className="size-6 text-danger" aria-label="Problem" />
+                  <CircleSlash className="size-6 text-danger" aria-label={t('problem')} />
                 ) : (
-                  <Loader2 className="size-6 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="Waiting" />
+                  <Loader2 className="size-6 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label={t('waiting')} />
                 )}
               </div>
             );
           })}
           <div className="flex items-center justify-between border-t border-border pt-4">
-            <span className="text-body text-muted-foreground">{cartTransactions.length > 1 ? `${cartTransactionsDone} of ${cartTransactions.length} items done` : 'Total'}</span>
+            <span className="text-body text-muted-foreground">{cartTransactions.length > 1 ? t('itemsDone', { done: cartTransactionsDone, total: cartTransactions.length }) : t('total')}</span>
             <span className="text-card-title font-bold tabular-nums text-foreground">{formatKes(cartTotalKes)}</span>
           </div>
         </section>
@@ -965,16 +985,17 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     return themed(
       <div className="flex h-dvh flex-col bg-background">
         <KioskTopBar machineCode={machineCode} offline={offline} onServiceGesture={serviceGesture}>
+          {languageSwitch}
           <Button variant="outline" size="lg" onClick={() => dispatch({ type: 'BACK' })} className="h-12 rounded-full" disabled={submitting}>
             <ArrowLeft aria-hidden="true" />
-            Back to menu
+            {t('backToMenu')}
           </Button>
         </KioskTopBar>
         <main className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
           <div className="mx-auto my-auto grid w-full max-w-3xl gap-6 lg:gap-8 landscape:lg:max-w-5xl landscape:lg:grid-cols-[1fr_1.15fr]">
             <section aria-labelledby="order-heading" className="flex flex-col gap-6 rounded-xl bg-surface p-6 shadow-sm lg:p-8">
               <h2 id="order-heading" className="text-card-title font-semibold text-foreground">
-                Your order
+                {t('yourOrder')}
               </h2>
               <ul className="flex flex-col gap-4">
                 {cartLines.map((line) => (
@@ -990,7 +1011,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                 ))}
               </ul>
               <div className="mt-auto flex items-baseline justify-between border-t border-border pt-4">
-                <span className="text-subtitle font-semibold text-foreground">Total</span>
+                <span className="text-subtitle font-semibold text-foreground">{t('total')}</span>
                 <span className="text-section-title font-bold tabular-nums text-foreground">{formatKes(cartTotalKes)}</span>
               </div>
             </section>
@@ -998,13 +1019,13 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
             <section aria-labelledby="pay-heading" className="flex flex-col gap-6 rounded-xl bg-surface p-6 shadow-sm lg:p-8">
               <div className="flex flex-col gap-2">
                 <h2 id="pay-heading" className="text-card-title font-semibold text-foreground">
-                  Pay with M-Pesa
+                  {t('payWithMpesa')}
                 </h2>
-                <p className="text-body text-muted-foreground">Enter the phone number that should get the payment request.</p>
+                <p className="text-body text-muted-foreground">{t('enterPhone')}</p>
               </div>
               <div className="flex flex-col gap-2">
                 <label htmlFor="mpesa-number" className="text-small font-medium text-foreground">
-                  M-Pesa number
+                  {t('mpesaNumber')}
                 </label>
                 <input
                   id="mpesa-number"
@@ -1025,9 +1046,9 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
               ) : null}
               <Button size="lg" onClick={submitPhoneAndPay} loading={submitting} disabled={!phoneReady} className="h-16 text-subtitle">
                 <Smartphone aria-hidden="true" />
-                Send payment request
+                {t('sendPaymentRequest')}
               </Button>
-              <p className="text-small text-muted-foreground">One M-Pesa prompt covers your whole order. Nothing is charged until you enter your PIN on your phone.</p>
+              <p className="text-small text-muted-foreground">{t('onePrompt')}</p>
             </section>
           </div>
         </main>
@@ -1036,19 +1057,20 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
     );
   }
 
-  const heading = searchTerm.trim() ? `Results for “${searchTerm.trim()}”` : (category ?? 'All snacks');
+  const heading = searchTerm.trim() ? t('resultsFor', { term: searchTerm.trim() }) : (category ?? t('allSnacks'));
 
   return themed(
     <div className="flex h-dvh flex-col bg-background">
       <KioskTopBar machineCode={machineCode} offline={offline} onServiceGesture={serviceGesture}>
         <div className="relative min-w-0 flex-1 sm:w-72 sm:flex-none">
           <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input aria-label="Search snacks" placeholder="Search snacks" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="h-12 rounded-full bg-surface pl-11 text-body" />
+          <Input aria-label={t('searchSnacks')} placeholder={t('searchSnacks')} value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="h-12 rounded-full bg-surface pl-11 text-body" />
         </div>
+        {languageSwitch}
       </KioskTopBar>
 
       <main className="flex-1 overflow-y-auto">
-        {experience.browseSections
+        {shown.browseSections
           .filter((section) => section.visible)
           .map((section) => {
             switch (section.type) {
@@ -1056,7 +1078,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                 return (
                   <Fragment key={section.id}>
                     <div className="px-4 pt-4 sm:px-6 lg:px-8">
-                      <MenuBanner images={screen.menu_banner} origins={origins} eyebrow={experience.copy.bannerEyebrow} headline={experience.copy.bannerHeadline} />
+                      <MenuBanner images={screen.menu_banner} origins={origins} eyebrow={shown.copy.bannerEyebrow} headline={shown.copy.bannerHeadline} />
                     </div>
 
                   </Fragment>
@@ -1079,10 +1101,10 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                 return (
                   <Fragment key={section.id}>
                     {catalog && categories.length > 0 ? (
-                      <nav aria-label="Categories" className="sticky top-0 z-10 bg-background/95 py-4 backdrop-blur-sm">
+                      <nav aria-label={t('categories')} className="sticky top-0 z-10 bg-background/95 py-4 backdrop-blur-sm">
                         <ul className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8">
                           <li>
-                            <CategoryChip label="All" active={category === null} onClick={() => setCategory(null)} />
+                            <CategoryChip label={t('allCategories')} active={category === null} onClick={() => setCategory(null)} />
                           </li>
                           {categories.map((cat) => (
                             <li key={cat}>
@@ -1108,13 +1130,13 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                               {heading}
                             </h2>
                             <p className="text-small text-muted-foreground">
-                              {visibleItems.length} {visibleItems.length === 1 ? 'snack' : 'snacks'}
+                              {text.count('snackCount', visibleItems.length)}
                             </p>
                           </div>
                           {visibleItems.length === 0 ? (
                             <div className="flex flex-col items-center gap-4 rounded-xl bg-surface px-6 py-16 text-center">
-                              <p className="text-subtitle font-semibold text-foreground">No snacks match that.</p>
-                              <p className="text-body text-muted-foreground">Try another word, or look through every snack.</p>
+                              <p className="text-subtitle font-semibold text-foreground">{t('noMatchTitle')}</p>
+                              <p className="text-body text-muted-foreground">{t('noMatchBody')}</p>
                               <Button
                                 variant="outline"
                                 size="lg"
@@ -1123,7 +1145,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                                   setCategory(null);
                                 }}
                               >
-                                Show all snacks
+                                {t('showAllSnacks')}
                               </Button>
                             </div>
                           ) : (
@@ -1144,11 +1166,11 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
                       ) : catalogError ? (
                         <div className="flex flex-col items-center gap-3 rounded-xl bg-surface px-6 py-16 text-center">
                           <WifiOff className="size-10 text-muted-foreground" aria-hidden="true" />
-                          <p className="text-subtitle font-semibold text-foreground">The menu isn&apos;t available right now.</p>
-                          <p className="text-body text-muted-foreground">This machine can&apos;t reach Snack Quest. It will try again on its own.</p>
+                          <p className="text-subtitle font-semibold text-foreground">{t('menuUnavailableTitle')}</p>
+                          <p className="text-body text-muted-foreground">{t('menuUnavailableBody')}</p>
                         </div>
                       ) : (
-                        <div aria-label="Loading the menu" role="status" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-6 xl:grid-cols-4">
+                        <div aria-label={t('loadingMenu')} role="status" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-6 xl:grid-cols-4">
                           {Array.from({ length: 6 }).map((_, index) => (
                             <div key={index} className="flex flex-col gap-3 rounded-lg bg-surface p-3 shadow-sm lg:p-4">
                               <div className="aspect-square animate-pulse rounded-md bg-border/50 motion-reduce:animate-none" />
@@ -1195,6 +1217,7 @@ export function KioskScreen({ machineId, machineCode, idleTimeoutMs: idleTimeout
 }
 
 function KioskTopBar({ machineCode, offline, onServiceGesture, children }: { machineCode: string; offline: boolean; onServiceGesture?: () => void; children?: React.ReactNode }) {
+  const { t } = useKioskText();
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelHold = () => {
     if (holdRef.current) clearTimeout(holdRef.current);
@@ -1220,13 +1243,13 @@ function KioskTopBar({ machineCode, offline, onServiceGesture, children }: { mac
       />
       <div className="hidden flex-col sm:flex">
         <span className="text-body font-bold text-foreground lg:text-subtitle">Snack Quest</span>
-        <span className="text-caption text-muted-foreground">Machine {machineCode}</span>
+        <span className="text-caption text-muted-foreground">{t('machineCode', { code: machineCode })}</span>
       </div>
       <div className="hidden flex-1 sm:block" />
       {offline ? (
         <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-2 text-small font-medium text-danger">
           <WifiOff className="size-4" aria-hidden="true" />
-          Offline — showing the last menu
+          {t('offlineLastMenu')}
         </span>
       ) : null}
       {children}
@@ -1254,8 +1277,9 @@ function CategoryChip({ label, active, onClick }: { label: string; active: boole
  * nothing about allergens when none were recorded: silence is not "none".
  */
 function ProductFacts({ item }: { item: SellableCatalogItem }) {
+  const { allergens: allergenText } = useKioskText();
   const size = netContentLabel(item.netContent);
-  const allergens = allergenLine(item.allergens);
+  const allergens = allergenText(item.allergens);
   const facts = [item.brand, size].filter(Boolean).join(' · ');
   if (!facts && !allergens) return null;
   return (
@@ -1267,13 +1291,14 @@ function ProductFacts({ item }: { item: SellableCatalogItem }) {
 }
 
 function QuantityStepper({ label, quantity, onChange, size = 'md' }: { label: string; quantity: number; onChange: (delta: number) => void; size?: 'md' | 'lg' }) {
+  const { t } = useKioskText();
   const button = size === 'lg' ? 'size-14' : 'size-10';
   return (
     <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => onChange(-1)}
-        aria-label={`Remove one ${label}`}
+        aria-label={t('removeOne', { name: label })}
         className={`flex ${button} items-center justify-center rounded-full bg-surface text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-border/50`}
       >
         <Minus className="size-4" aria-hidden="true" />
@@ -1282,7 +1307,7 @@ function QuantityStepper({ label, quantity, onChange, size = 'md' }: { label: st
       <button
         type="button"
         onClick={() => onChange(1)}
-        aria-label={`Add one more ${label}`}
+        aria-label={t('addOneMore', { name: label })}
         className={`flex ${button} items-center justify-center rounded-full bg-surface text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-border/50`}
       >
         <Plus className="size-4" aria-hidden="true" />
@@ -1313,16 +1338,23 @@ function OrderBar({
   onClear: () => void;
   onPay: () => void;
 }) {
+  const { t, count: counted, parts } = useKioskText();
   return (
-    <section aria-label="Your order" className="border-t border-border bg-surface px-4 py-4 shadow-lg sm:px-6 lg:px-8 lg:py-6">
+    <section aria-label={t('yourOrder')} className="border-t border-border bg-surface px-4 py-4 shadow-lg sm:px-6 lg:px-8 lg:py-6">
       {lines.length === 0 ? (
         <p className="flex items-center justify-center gap-2 py-2 text-body text-muted-foreground">
-          Tap
-          <span className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-hidden="true">
-            <Plus className="size-4" />
-          </span>
-          <span className="sr-only">the plus button</span>
-          on a snack to start your order.
+          {parts('emptyOrder').map((part, index) =>
+            'text' in part ? (
+              <Fragment key={index}>{part.text.trim()}</Fragment>
+            ) : (
+              <Fragment key={index}>
+                <span className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-hidden="true">
+                  <Plus className="size-4" />
+                </span>
+                <span className="sr-only">{t('plusButton')}</span>
+              </Fragment>
+            ),
+          )}
         </p>
       ) : (
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
@@ -1340,7 +1372,7 @@ function OrderBar({
                 <button
                   type="button"
                   onClick={() => onRemove(line.item)}
-                  aria-label={`Remove ${line.item.name} from cart`}
+                  aria-label={t('removeLine', { name: line.item.name })}
                   className="flex size-10 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-danger focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <X className="size-5" aria-hidden="true" />
@@ -1354,16 +1386,18 @@ function OrderBar({
               onClick={onClear}
               className="h-12 shrink-0 rounded-full px-3 text-small font-medium text-muted-foreground outline-none hover:bg-border/40 focus-visible:ring-2 focus-visible:ring-primary sm:px-4"
             >
-              Clear<span className="hidden sm:inline"> order</span>
+              {t('clear')}
+              <span className="hidden sm:inline"> {t('clearOrderWord')}</span>
             </button>
             <div className="ml-auto flex flex-col items-end xl:ml-0">
               <span className="text-caption text-muted-foreground">
-                {count} {count === 1 ? 'item' : 'items'}
+                {counted('itemCount', count)}
               </span>
               <span className="whitespace-nowrap text-subtitle font-bold tabular-nums text-foreground sm:text-card-title">{formatKes(totalKes)}</span>
             </div>
             <Button size="lg" onClick={onPay} className="h-14 shrink-0 px-5 text-body sm:px-8 sm:text-subtitle">
-              Pay<span className="hidden sm:inline"> with M-Pesa</span>
+              {t('pay')}
+              <span className="hidden sm:inline"> {t('withMpesa')}</span>
             </Button>
           </div>
         </div>
@@ -1388,9 +1422,11 @@ function ProductSheet({
   onAdd: (quantity: number) => void;
   onOpenSuggestion: (item: SellableCatalogItem) => void;
 }) {
+  const { t } = useKioskText();
   const [quantity, setQuantity] = useState(1);
   const closeRef = useRef<HTMLButtonElement>(null);
   const purchasable = item.availabilityState === 'available';
+  const stateKey = STATE_TEXT[item.availabilityState];
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -1414,7 +1450,7 @@ function ProductSheet({
           ref={closeRef}
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('close')}
           className="absolute right-4 top-4 z-10 flex size-12 items-center justify-center rounded-full bg-background text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <X className="size-6" aria-hidden="true" />
@@ -1428,7 +1464,7 @@ function ProductSheet({
             {item.origin ? (
               <span className="flex w-fit items-center gap-1.5 rounded-full bg-kiosk-highlight px-3 py-1.5 text-small font-semibold text-kiosk-highlight-foreground">
                 <MapPin className="size-4" aria-hidden="true" />
-                From {item.origin}
+                {t('fromOrigin', { origin: item.origin })}
               </span>
             ) : null}
             <h2 id="product-sheet-title" className="pr-12 text-card-title font-bold leading-tight text-foreground text-balance lg:text-section-title">
@@ -1442,17 +1478,17 @@ function ProductSheet({
               {purchasable ? (
                 <>
                   <div className="flex items-center justify-between rounded-lg bg-background p-2 pl-4">
-                    <span className="text-body text-muted-foreground">{quantityInCart > 0 ? `${quantityInCart} already in your order` : 'How many?'}</span>
+                    <span className="text-body text-muted-foreground">{quantityInCart > 0 ? t('alreadyInOrder', { n: quantityInCart }) : t('howMany')}</span>
                     <QuantityStepper label={item.name} quantity={quantity} size="lg" onChange={(delta) => setQuantity((q) => Math.max(1, Math.min(9, q + delta)))} />
                   </div>
                   <Button size="lg" onClick={() => onAdd(quantity)} className="h-16 text-subtitle">
-                    Add to order · {formatKes(item.priceKes * quantity)}
+                    {t('addToOrder', { price: formatKes(item.priceKes * quantity) })}
                   </Button>
                 </>
               ) : (
                 <p className="flex items-center gap-2 rounded-lg bg-background px-4 py-4 text-body font-medium text-muted-foreground">
                   <CircleSlash className="size-5" aria-hidden="true" />
-                  {STATE_LABEL[item.availabilityState]} — try another snack.
+                  {t('unavailableTryAnother', { state: stateKey ? t(stateKey) : '' })}
                 </p>
               )}
             </div>
@@ -1461,7 +1497,7 @@ function ProductSheet({
 
         {suggestions.length > 0 ? (
           <div className="flex flex-col gap-4 border-t border-border pt-6">
-            <h3 className="text-subtitle font-semibold text-foreground">You might also like</h3>
+            <h3 className="text-subtitle font-semibold text-foreground">{t('youMightAlsoLike')}</h3>
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {suggestions.map((suggestion) => (
                 <li key={cartKey(suggestion)}>
@@ -1482,6 +1518,27 @@ function ProductSheet({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** The screen's languages, each named in itself. The choice lasts until the order ends or the screen goes idle. */
+function LanguageSwitch({ available, current, onChange }: { available: KioskLocale[]; current: KioskLocale; onChange: (locale: KioskLocale) => void }) {
+  const { t } = useKioskText();
+  return (
+    <div role="group" aria-label={t('language')} className="flex shrink-0 rounded-full bg-surface p-1 shadow-sm">
+      {available.map((locale) => (
+        <button
+          key={locale}
+          type="button"
+          lang={locale}
+          aria-pressed={locale === current}
+          onClick={() => onChange(locale)}
+          className={`h-10 rounded-full px-4 text-small font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary ${locale === current ? 'bg-foreground text-background' : 'text-foreground'}`}
+        >
+          {KIOSK_LOCALE_LABEL[locale]}
+        </button>
+      ))}
     </div>
   );
 }
@@ -1545,6 +1602,7 @@ function describeResult(
   cartTransactions: CartTransaction[],
   statuses: Record<string, TransactionStatus>,
   failureReasons: Record<string, string | null>,
+  { t }: KioskText,
 ): { tone: ResultTone; title: string; body: string } {
   const total = cartTransactions.length;
   const statusOf = (t: CartTransaction) => statuses[t.id];
@@ -1555,27 +1613,27 @@ function describeResult(
   const representativeReason = failedOrReview.map((t) => failureReasons[t.id]).find(Boolean) ?? null;
 
   if (paymentFailed === total) {
-    return { tone: 'danger', title: 'Payment was not completed', body: failureReasons[cartTransactions[0].id] ?? 'Please try again.' };
+    return { tone: 'danger', title: t('resultPaymentFailed'), body: failureReasons[cartTransactions[0].id] ?? t('resultTryAgain') };
   }
   if (refunded === total) {
-    return { tone: 'neutral', title: 'Your payment was refunded', body: 'Nothing from this order was dispensed.' };
+    return { tone: 'neutral', title: t('resultRefundedTitle'), body: t('resultRefundedBody') };
   }
   if (dispensed === total) {
     return {
       tone: 'success',
-      title: total > 1 ? 'All done — enjoy your snacks!' : 'Enjoy your snack!',
-      body: total > 1 ? 'Collect them from the tray below.' : 'Collect it from the tray below.',
+      title: total > 1 ? t('resultAllDone') : t('resultEnjoyOne'),
+      body: total > 1 ? t('resultCollectThem') : t('resultCollectIt'),
     };
   }
   if (dispensed > 0) {
     return {
       tone: 'warning',
-      title: `${dispensed} of ${total} items dispensed`,
-      body: `${failedOrReview.length} had an issue${representativeReason ? `: ${representativeReason}` : '.'} If you were charged for those, support will follow up.`,
+      title: t('resultPartialTitle', { dispensed, total }),
+      body: [t('resultPartialBody', { failed: failedOrReview.length }), representativeReason].filter(Boolean).join(' '),
     };
   }
   if (cartTransactions.some((t) => statusOf(t) === 'manual_review')) {
-    return { tone: 'warning', title: 'We’re checking on your order', body: representativeReason ?? 'If you were charged, support will follow up.' };
+    return { tone: 'warning', title: t('resultChecking'), body: representativeReason ?? t('resultChargedFollowUp') };
   }
-  return { tone: 'danger', title: 'We couldn’t dispense your order', body: representativeReason ?? 'Please contact support for a refund.' };
+  return { tone: 'danger', title: t('resultCouldNotDispense'), body: representativeReason ?? t('resultContactRefund') };
 }

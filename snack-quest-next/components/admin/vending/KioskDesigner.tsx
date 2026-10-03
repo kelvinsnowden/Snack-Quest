@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   KIOSK_LIMITS,
+  KIOSK_TRANSLATABLE_LOCALES,
   KioskConfigValidationError,
   checkKioskExperience,
   mergeKioskExperience,
@@ -18,6 +19,8 @@ import {
   KIOSK_BADGE_TONES,
   KIOSK_FONTS,
   KIOSK_FONT_LABEL,
+  KIOSK_LOCALES,
+  KIOSK_LOCALE_LABEL,
   KIOSK_RADII,
   KIOSK_SECTION_LABEL,
   KIOSK_SECTION_TYPES,
@@ -27,6 +30,7 @@ import {
   type KioskExperienceConfig,
   type KioskExperiencePatch,
   type KioskLayerScope,
+  type KioskLocale,
   type KioskSection,
   type KioskSectionType,
   type KioskThemeColorKey,
@@ -187,6 +191,39 @@ export function KioskDesigner({
       else badges[state] = badge;
       if (Object.keys(badges).length === 0) delete next.badges;
       else next.badges = badges as KioskExperiencePatch['badges'];
+    });
+  }
+
+  function setLanguage(key: 'available' | 'default', value: KioskLocale[] | KioskLocale | undefined) {
+    update((next) => {
+      const language = { ...(next.language ?? {}) } as Record<string, unknown>;
+      if (value === undefined) delete language[key];
+      else language[key] = value;
+      if (Object.keys(language).length === 0) delete next.language;
+      else next.language = language as KioskExperiencePatch['language'];
+    });
+  }
+
+  /** Sets one translated phrase; an empty one is removed (it then shows in English). */
+  function setTranslation(locale: KioskLocale, path: ['copy' | 'badges', string] | ['sections', string, 'text' | 'title'], value: string) {
+    update((next) => {
+      const translations = structuredClone(next.translations ?? {}) as Record<string, Record<string, Record<string, unknown>>>;
+      const translation = translations[locale] ?? {};
+      const group = { ...((translation[path[0]] as Record<string, unknown>) ?? {}) };
+      if (path[0] === 'sections') {
+        const entry = { ...((group[path[1]] as Record<string, string>) ?? {}) };
+        if (value.trim()) entry[path[2]] = value;
+        else delete entry[path[2]];
+        if (Object.keys(entry).length === 0) delete group[path[1]];
+        else group[path[1]] = entry;
+      } else if (value.trim()) group[path[1]] = value;
+      else delete group[path[1]];
+      if (Object.keys(group).length === 0) delete translation[path[0]];
+      else translation[path[0]] = group;
+      if (Object.keys(translation).length === 0) delete translations[locale];
+      else translations[locale] = translation;
+      if (Object.keys(translations).length === 0) delete next.translations;
+      else next.translations = translations as KioskExperiencePatch['translations'];
     });
   }
 
@@ -532,6 +569,94 @@ export function KioskDesigner({
                 </label>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Languages</CardTitle>
+            <p className="text-sm text-muted-foreground">With more than one, customers get a language switch at the top of the screen. It goes back to the starting language when their order ends.</p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-end gap-6">
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center gap-2 font-medium">
+                  Offered <Origin overridden={draft.language?.available !== undefined} onReset={() => setLanguage('available', undefined)} disabled={readOnly} />
+                </span>
+                <div className="flex gap-4">
+                  {KIOSK_LOCALES.map((locale) => (
+                    <label key={locale} className="flex min-h-10 items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={effective.language.available.includes(locale)}
+                        disabled={readOnly}
+                        onChange={(event) =>
+                          setLanguage(
+                            'available',
+                            event.target.checked ? KIOSK_LOCALES.filter((entry) => entry === locale || effective.language.available.includes(entry)) : effective.language.available.filter((entry) => entry !== locale),
+                          )
+                        }
+                      />
+                      {KIOSK_LOCALE_LABEL[locale]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center gap-2 font-medium">
+                  Starting language <Origin overridden={draft.language?.default !== undefined} onReset={() => setLanguage('default', undefined)} disabled={readOnly} />
+                </span>
+                <select className="min-h-10 rounded-md border border-border bg-surface px-2" value={effective.language.default} disabled={readOnly} onChange={(event) => setLanguage('default', event.target.value as KioskLocale)}>
+                  {effective.language.available.map((locale) => (
+                    <option key={locale} value={locale}>
+                      {KIOSK_LOCALE_LABEL[locale]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {KIOSK_TRANSLATABLE_LOCALES.filter((locale) => effective.language.available.includes(locale)).map((locale) => {
+              const translation = effective.translations[locale] ?? {};
+              return (
+                <fieldset key={locale} className="flex flex-col gap-3 rounded-md border border-border p-3">
+                  <legend className="px-1 text-sm font-medium">Wording in {KIOSK_LOCALE_LABEL[locale]}</legend>
+                  <p className="text-caption text-muted-foreground">Blank shows the English. The screen’s own buttons and messages are already translated.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(Object.keys(COPY_LABEL) as (keyof typeof COPY_LABEL)[]).map((key) => (
+                      <label key={key} className="flex flex-col gap-1 text-sm">
+                        <span className="font-medium">{COPY_LABEL[key]}</span>
+                        <Input maxLength={KIOSK_LIMITS.copyMax[key]} placeholder={effective.copy[key]} value={translation.copy?.[key] ?? ''} disabled={readOnly} onChange={(event) => setTranslation(locale, ['copy', key], event.target.value)} className="min-h-10" />
+                      </label>
+                    ))}
+                    {KIOSK_BADGE_STATES.filter((state) => effective.badges[state].visible).map((state) => (
+                      <label key={state} className="flex flex-col gap-1 text-sm">
+                        <span className="font-medium">“{effective.badges[state].label}” badge</span>
+                        <Input maxLength={KIOSK_LIMITS.badgeLabelMax} placeholder={effective.badges[state].label} value={translation.badges?.[state] ?? ''} disabled={readOnly} onChange={(event) => setTranslation(locale, ['badges', state], event.target.value)} className="min-h-10" />
+                      </label>
+                    ))}
+                    {effective.browseSections
+                      .filter((section) => section.visible && (section.type === 'promo_message' || section.type === 'featured_products'))
+                      .map((section) => {
+                        const field = section.type === 'promo_message' ? 'text' : 'title';
+                        const english = (section.type === 'promo_message' ? section.props.text : section.props.title) ?? '';
+                        return (
+                          <label key={section.id} className="flex flex-col gap-1 text-sm">
+                            <span className="font-medium">{section.type === 'promo_message' ? 'Message strip' : 'Featured row title'}</span>
+                            <Input
+                              maxLength={field === 'text' ? KIOSK_LIMITS.promoTextMax : KIOSK_LIMITS.sectionTitleMax}
+                              placeholder={english}
+                              value={translation.sections?.[section.id]?.[field] ?? ''}
+                              disabled={readOnly}
+                              onChange={(event) => setTranslation(locale, ['sections', section.id, field], event.target.value)}
+                              className="min-h-10"
+                            />
+                          </label>
+                        );
+                      })}
+                  </div>
+                </fieldset>
+              );
+            })}
           </CardContent>
         </Card>
       </div>

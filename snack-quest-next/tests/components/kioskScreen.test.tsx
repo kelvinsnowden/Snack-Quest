@@ -331,6 +331,41 @@ describe('KioskScreen — product sheet', () => {
   });
 });
 
+describe('KioskScreen — languages', () => {
+  it('switches to Kiswahili for the customer, uses the design’s translations, and returns to the starting language when the screen goes idle', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    const { DEFAULT_KIOSK_EXPERIENCE } = await import('@/lib/kiosk/experienceConfig');
+    const experience = { ...DEFAULT_KIOSK_EXPERIENCE, language: { available: ['en', 'sw'], default: 'en' }, translations: { sw: { copy: { bannerHeadline: 'Ladha ya dunia' } } } };
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/catalog')) return { ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) };
+      if (url.includes('/content')) return { ok: true, status: 200, json: async () => ({ packageVersion: 'p1', screen: { menu_banner: [], attract: [] }, experience: { config: experience } }) };
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} idleTimeoutMs={300} />);
+    const switcher = await screen.findByRole('group', { name: 'Language' });
+    expect(screen.getByPlaceholderText('Search snacks')).toBeTruthy();
+    fireEvent.click(within(switcher).getByRole('button', { name: 'Kiswahili' }));
+
+    expect(screen.getByPlaceholderText('Tafuta vitafunio')).toBeTruthy();
+    expect(screen.getByText('Ladha ya dunia')).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Lugha' })).toBeTruthy();
+
+    // Idle: the next customer starts in the starting language.
+    const start = await screen.findByRole('button', { name: 'Tap to start your order' }, { timeout: 3000 });
+    fireEvent.click(start);
+    await waitFor(() => expect(screen.getByPlaceholderText('Search snacks')).toBeTruthy());
+  });
+
+  it('shows no language switch when the design offers one language', async () => {
+    window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ catalogVersion: 'v1', items: [catalogItem()] }) });
+    render(<KioskScreen machineId={MACHINE_ID} machineCode={MACHINE_CODE} />);
+    await waitFor(() => expect(screen.getByText('Korean Spicy Snack')).toBeTruthy());
+    expect(screen.queryByRole('group', { name: 'Language' })).toBeNull();
+  });
+});
+
 describe('KioskScreen — staff-chosen artwork', () => {
   it('shows the menu banner images staff chose, fetched with the device credential', async () => {
     window.localStorage.setItem(`sq_kiosk_secret_${MACHINE_ID}`, 'secret');

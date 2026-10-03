@@ -2,6 +2,8 @@ import {
   KIOSK_BADGE_STATES,
   KIOSK_BADGE_TONES,
   KIOSK_FONTS,
+  KIOSK_LOCALES,
+  KIOSK_LOCALE_LABEL,
   KIOSK_MOTION,
   KIOSK_RADII,
   KIOSK_SECTION_TYPES,
@@ -10,7 +12,9 @@ import {
   KIOSK_THEME_COLOR_LABEL,
   type KioskExperienceConfig,
   type KioskExperiencePatch,
+  type KioskLocale,
   type KioskSection,
+  type KioskTranslation,
   type KioskThemeColorKey,
 } from '@/types/kioskExperience';
 
@@ -59,7 +63,12 @@ export const DEFAULT_KIOSK_EXPERIENCE: KioskExperienceConfig = {
     attractHeadline: 'Snacks from around the world, right here.',
     attractCallToAction: 'Tap to start',
   },
+  language: { available: ['en'], default: 'en' },
+  translations: {},
 };
+
+/** Languages wording can be translated into: every screen language except English, which the design is written in. */
+export const KIOSK_TRANSLATABLE_LOCALES = KIOSK_LOCALES.filter((locale) => locale !== 'en');
 
 export const KIOSK_LIMITS = {
   idleSecondsMin: 20,
@@ -280,8 +289,151 @@ export function parseKioskPatch(input: unknown): KioskExperiencePatch {
     }
   }
 
+  if (input.language !== undefined) {
+    if (!isRecord(input.language)) {
+      problems.push('Languages must be an object.');
+    } else {
+      const language: NonNullable<KioskExperiencePatch['language']> = {};
+      if (input.language.available !== undefined) {
+        const list = input.language.available;
+        if (!Array.isArray(list) || list.length === 0 || !list.every((entry) => (KIOSK_LOCALES as readonly string[]).includes(entry as string))) {
+          problems.push(`Choose at least one screen language from: ${KIOSK_LOCALES.map((locale) => KIOSK_LOCALE_LABEL[locale]).join(', ')}.`);
+        } else {
+          language.available = KIOSK_LOCALES.filter((locale) => (list as string[]).includes(locale));
+        }
+      }
+      const fallback = oneOf(input.language.default, KIOSK_LOCALES, 'The starting language', problems);
+      if (fallback) language.default = fallback;
+      if (language.available && language.default && !language.available.includes(language.default)) {
+        problems.push('The starting language must be one of the languages offered.');
+      }
+      patch.language = language;
+    }
+  }
+
+  if (input.translations !== undefined) {
+    if (!isRecord(input.translations)) {
+      problems.push('Translations must be an object.');
+    } else {
+      const translations: NonNullable<KioskExperiencePatch['translations']> = {};
+      for (const [locale, value] of Object.entries(input.translations)) {
+        if (!(KIOSK_TRANSLATABLE_LOCALES as readonly string[]).includes(locale)) {
+          problems.push(`Translations can only be for ${KIOSK_TRANSLATABLE_LOCALES.map((entry) => KIOSK_LOCALE_LABEL[entry]).join(', ')}; the design itself is written in English.`);
+          continue;
+        }
+        if (!isRecord(value)) {
+          problems.push(`The ${KIOSK_LOCALE_LABEL[locale as KioskLocale]} translation must be an object.`);
+          continue;
+        }
+        translations[locale as KioskLocale] = parseTranslation(value, KIOSK_LOCALE_LABEL[locale as KioskLocale], problems);
+      }
+      patch.translations = translations;
+    }
+  }
+
   if (problems.length > 0) throw new KioskConfigValidationError(problems);
   return patch;
+}
+
+const COPY_LABELS = { bannerEyebrow: 'The banner’s small line', bannerHeadline: 'The banner headline', attractHeadline: 'The idle-screen headline', attractCallToAction: 'The “tap to start” button' } as const;
+
+function parseTranslation(value: Record<string, unknown>, language: string, problems: string[]): KioskTranslation {
+  const translation: KioskTranslation = {};
+  if (value.copy !== undefined) {
+    if (!isRecord(value.copy)) {
+      problems.push(`${language}: screen wording must be an object.`);
+    } else {
+      const copy: NonNullable<KioskTranslation['copy']> = {};
+      for (const key of Object.keys(COPY_LABELS) as (keyof typeof COPY_LABELS)[]) {
+        const text_ = text(value.copy[key], KIOSK_LIMITS.copyMax[key], `${language}: ${COPY_LABELS[key].toLowerCase()}`, problems);
+        if (text_) copy[key] = text_;
+      }
+      translation.copy = copy;
+    }
+  }
+  if (value.badges !== undefined) {
+    if (!isRecord(value.badges)) {
+      problems.push(`${language}: badges must be an object.`);
+    } else {
+      const badges: NonNullable<KioskTranslation['badges']> = {};
+      for (const state of KIOSK_BADGE_STATES) {
+        const label = text(value.badges[state], KIOSK_LIMITS.badgeLabelMax, `${language}: the ${state.replace('_', ' ')} badge’s label`, problems);
+        if (label) badges[state] = label;
+      }
+      translation.badges = badges;
+    }
+  }
+  if (value.sections !== undefined) {
+    if (!isRecord(value.sections)) {
+      problems.push(`${language}: section wording must be an object.`);
+    } else {
+      const sections: NonNullable<KioskTranslation['sections']> = {};
+      for (const [id, entry] of Object.entries(value.sections)) {
+        if (!SECTION_ID.test(id) || !isRecord(entry)) {
+          problems.push(`${language}: “${id}” is not a section.`);
+          continue;
+        }
+        const sectionText = text(entry.text, KIOSK_LIMITS.promoTextMax, `${language}: a message strip`, problems);
+        const title = text(entry.title, KIOSK_LIMITS.sectionTitleMax, `${language}: a row title`, problems);
+        if (sectionText || title) sections[id] = { ...(sectionText ? { text: sectionText } : {}), ...(title ? { title } : {}) };
+      }
+      translation.sections = sections;
+    }
+  }
+  return translation;
+}
+
+function mergeTranslation(base: KioskTranslation | undefined, patch: KioskTranslation | undefined): KioskTranslation {
+  const sections: Record<string, { text?: string; title?: string }> = { ...(base?.sections ?? {}) };
+  for (const [id, entry] of Object.entries(patch?.sections ?? {})) sections[id] = { ...(sections[id] ?? {}), ...entry };
+  return {
+    copy: { ...(base?.copy ?? {}), ...(patch?.copy ?? {}) },
+    badges: { ...(base?.badges ?? {}), ...(patch?.badges ?? {}) },
+    sections,
+  };
+}
+
+/**
+ * The design as a customer reading `locale` sees it: the design's wording
+ * replaced by its translation wherever one exists, English everywhere else.
+ * English, and any language without a translation, returns the design as is.
+ */
+export function localizeExperience(config: KioskExperienceConfig, locale: KioskLocale): KioskExperienceConfig {
+  const translation = locale === 'en' ? undefined : config.translations[locale];
+  if (!translation) return config;
+  return {
+    ...config,
+    copy: { ...config.copy, ...(translation.copy ?? {}) },
+    badges: {
+      featured: { ...config.badges.featured, ...(translation.badges?.featured ? { label: translation.badges.featured } : {}) },
+      new: { ...config.badges.new, ...(translation.badges?.new ? { label: translation.badges.new } : {}) },
+      limited_time: { ...config.badges.limited_time, ...(translation.badges?.limited_time ? { label: translation.badges.limited_time } : {}) },
+    },
+    browseSections: config.browseSections.map((section) => {
+      const words = translation.sections?.[section.id];
+      if (!words) return section;
+      return { ...section, props: { ...section.props, ...(words.text && section.props.text !== undefined ? { text: words.text } : {}), ...(words.title && section.type === 'featured_products' ? { title: words.title } : {}) } };
+    }),
+  };
+}
+
+/** The design's visible wording a language has no translation for, by name. */
+export function untranslatedWording(config: KioskExperienceConfig, locale: KioskLocale): string[] {
+  if (locale === 'en') return [];
+  const translation = config.translations[locale] ?? {};
+  const missing: string[] = [];
+  for (const key of Object.keys(COPY_LABELS) as (keyof typeof COPY_LABELS)[]) {
+    if (!translation.copy?.[key]) missing.push(COPY_LABELS[key].toLowerCase());
+  }
+  for (const state of KIOSK_BADGE_STATES) {
+    if (config.badges[state].visible && !translation.badges?.[state]) missing.push(`the ${state.replace('_', ' ')} badge`);
+  }
+  for (const section of config.browseSections) {
+    if (!section.visible) continue;
+    if (section.type === 'promo_message' && !translation.sections?.[section.id]?.text) missing.push('a message strip');
+    if (section.type === 'featured_products' && !translation.sections?.[section.id]?.title) missing.push('a featured row’s title');
+  }
+  return missing;
 }
 
 /** Layers applied in order over the defaults. Objects merge key by key; the section list is replaced whole by the most specific layer that sets one. */
@@ -304,6 +456,10 @@ export function mergeKioskExperience(base: KioskExperienceConfig, ...patches: Ki
       productCard: { ...config.productCard, ...(patch.productCard ?? {}) },
       idle: { ...config.idle, ...(patch.idle ?? {}) },
       copy: { ...config.copy, ...(patch.copy ?? {}) },
+      language: { ...config.language, ...(patch.language ?? {}) },
+      translations: Object.fromEntries(
+        KIOSK_TRANSLATABLE_LOCALES.filter((locale) => config.translations[locale] || patch.translations?.[locale]).map((locale) => [locale, mergeTranslation(config.translations[locale], patch.translations?.[locale])]),
+      ),
     };
   }
   return config;
@@ -378,6 +534,12 @@ export function checkKioskExperience(config: KioskExperienceConfig): KioskConfig
     }
   }
   if (!config.idle.adsEnabled) warnings.push('Advertising is off on the idle screen for these machines; booked campaigns won’t play here.');
+  if (config.language.available.length === 0) errors.push('The screen needs at least one language.');
+  else if (!config.language.available.includes(config.language.default)) errors.push(`The starting language (${KIOSK_LOCALE_LABEL[config.language.default]}) isn’t one of the languages offered.`);
+  for (const locale of config.language.available) {
+    const missing = untranslatedWording(config, locale);
+    if (missing.length > 0) warnings.push(`${KIOSK_LOCALE_LABEL[locale]}: ${missing.length} piece${missing.length === 1 ? '' : 's'} of wording ha${missing.length === 1 ? 's' : 've'} no translation and will show in English (${missing.join(', ')}).`);
+  }
   return { errors, warnings };
 }
 

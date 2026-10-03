@@ -110,3 +110,40 @@ describe('helpers', () => {
     expect(style['--sq-radius-lg']).toBe('6px');
   });
 });
+
+describe('screen languages', () => {
+  it('starts English-only, refuses unknown languages and an English "translation", and keeps the start language among those offered', async () => {
+    const { DEFAULT_KIOSK_EXPERIENCE: base, parseKioskPatch: parse, KioskConfigValidationError: InvalidConfig } = await import('@/lib/kiosk/experienceConfig');
+    expect(base.language).toEqual({ available: ['en'], default: 'en' });
+    expect(parse({ language: { available: ['sw', 'en'], default: 'sw' } })).toEqual({ language: { available: ['en', 'sw'], default: 'sw' } });
+    expect(() => parse({ language: { available: ['fr'] } })).toThrow(InvalidConfig);
+    expect(() => parse({ language: { available: ['en'], default: 'sw' } })).toThrow(InvalidConfig);
+    expect(() => parse({ translations: { en: { copy: { bannerHeadline: 'x' } } } })).toThrow(InvalidConfig);
+    expect(() => parse({ translations: { sw: { copy: { bannerHeadline: 'x'.repeat(41) } } } })).toThrow(InvalidConfig);
+  });
+
+  it('merges translations per field across layers and shows Swahili where translated, English elsewhere', async () => {
+    const { DEFAULT_KIOSK_EXPERIENCE: base, mergeKioskExperience: merge, localizeExperience, checkKioskExperience: check } = await import('@/lib/kiosk/experienceConfig');
+    const config = merge(
+      base,
+      { language: { available: ['en', 'sw'] }, translations: { sw: { copy: { bannerHeadline: 'Ladha ya dunia' } } }, browseSections: [...base.browseSections, { id: 'promo', type: 'promo_message', visible: true, props: { text: 'Two for 300', tone: 'highlight' } }] },
+      { translations: { sw: { copy: { attractCallToAction: 'Gusa uanze' }, sections: { promo: { text: 'Mbili kwa 300' } } } } },
+    );
+    const sw = localizeExperience(config, 'sw');
+    expect(sw.copy.bannerHeadline).toBe('Ladha ya dunia');
+    expect(sw.copy.attractCallToAction).toBe('Gusa uanze');
+    expect(sw.copy.bannerEyebrow).toBe(base.copy.bannerEyebrow);
+    expect(sw.browseSections.find((section) => section.id === 'promo')?.props.text).toBe('Mbili kwa 300');
+    expect(localizeExperience(config, 'en')).toBe(config);
+
+    const result = check(config);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((warning) => warning.startsWith('Kiswahili: '))).toBe(true);
+  });
+
+  it('blocks publishing a start language that isn’t offered', async () => {
+    const { DEFAULT_KIOSK_EXPERIENCE: base, mergeKioskExperience: merge, checkKioskExperience: check } = await import('@/lib/kiosk/experienceConfig');
+    const config = merge(base, { language: { available: ['sw'] } });
+    expect(check(config).errors.some((error) => /starting language/.test(error))).toBe(true);
+  });
+});
