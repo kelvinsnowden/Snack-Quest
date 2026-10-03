@@ -373,6 +373,7 @@ export default async function AdvertisingPage({
                   id,
                   name: data.name,
                 }))}
+                businessId={session.businessId}
               />
             </div>
           ) : null}

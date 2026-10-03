@@ -35,6 +35,10 @@ export const AD_MEDIA_TYPES = {
   'video/webm': 'video',
 } as const;
 export type AdMimeType = keyof typeof AD_MEDIA_TYPES;
+/** Largest ad file that can go through our own upload route (Vercel caps a request body at 4.5 MB). */
+export const AD_IN_BAND_MAX_BYTES = 4 * 1024 * 1024;
+/** Largest ad video uploaded straight to storage and checked afterwards (§ AD SECURITY — direct upload). */
+export const AD_DIRECT_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 export type AdMediaKind = (typeof AD_MEDIA_TYPES)[AdMimeType];
 
 export const AD_CREATIVE_STATUSES = ['pending_review', 'approved', 'rejected'] as const;
