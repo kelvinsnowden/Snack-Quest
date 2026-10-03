@@ -1,6 +1,7 @@
 import { paymentService } from '@/services/paymentService';
 import { conversationService } from '@/services/conversationService';
 import { machineTransactionService } from '@/services/machineTransactionService';
+import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { verifyDarajaWebhookRequest } from '@/lib/webhooks/verifyDarajaWebhookRequest';
 
@@ -23,7 +24,7 @@ import { verifyDarajaWebhookRequest } from '@/lib/webhooks/verifyDarajaWebhookRe
  * always sends Safaricom to this business's one registered
  * `CallBackURL` — there is no second URL to give a vending push
  * instead, since Safaricom was never told one exists. So this route
- * gains one branch, checked first: does this callback's
+ * gains one branch, checked after the order checkout's own: does this callback's
  * `checkoutRequestId` belong to a `machineTransactions` record? If
  * so, `machineTransactionService.handleMpesaCallback` owns it
  * completely and the e-commerce path below never runs. If not — the
@@ -68,7 +69,17 @@ export async function POST(
     // itself and reacts to it exactly as it always has.
   }
 
-  if (callback) {
+  /*
+   * A website or WhatsApp order's payment is recognised first, by its
+   * own payment attempt, and goes straight to the order path without
+   * touching vending at all. Before this, every callback ran the
+   * vending lookup first, so when that lookup failed (its index was not
+   * yet deployed) every customer's paid order was lost with it — the
+   * callback errored before the order code ever ran.
+   */
+  const ownedByOrderCheckout = callback ? (await paymentIntentRepository.findByCheckoutRequestId(callback.checkoutRequestId)) !== null : false;
+
+  if (callback && !ownedByOrderCheckout) {
     // Not wrapped in a try/catch: a throw here means we *did*
     // recognise this as parseable and are actively deciding what to
     // do with it, so a real failure must surface as one, never as a

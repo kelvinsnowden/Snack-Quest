@@ -60,6 +60,9 @@ beforeEach(async () => {
   await adminFirestore.recursiveDelete(adminFirestore.collection('webhookEvents'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('conversations'));
   await adminFirestore.recursiveDelete(adminFirestore.collection('orders'));
+  await adminFirestore.recursiveDelete(adminFirestore.collection('conversationCheckoutSnapshots'));
+  // The checkout behind the default stuck intent — manual completion refuses a payment with none.
+  await adminFirestore.collection('conversationCheckoutSnapshots').doc('snapshot-1').set({ businessId: BUSINESS_ID, conversationId: 'conv-1', status: 'ready', packageLabel: 'Deluxe Box', totalKes: 2500 });
   // The default: one conversation whose current checkout is the one
   // `seedStuckIntent` creates. Tests about stale attempts re-point it.
   await seedConversation('snapshot-1');
@@ -895,5 +898,55 @@ describe('PaymentService.completeManually', () => {
     expect(outcome.settled).toBe(false);
     const intent = await paymentIntentRepository.findById(intentId);
     expect(intent?.status).toBe('processing');
+  });
+
+  it('settles an intent the overnight check marked expired — Safaricom never answered, but the money did arrive', async () => {
+    const { intentId } = await seedStuckIntent();
+    await paymentIntentRepository.updateStatus(intentId, 'expired');
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: 'UJ2QT8PLKW',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(true);
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('succeeded');
+  });
+
+  it('refuses a payment whose checkout already became an order, so it is never recorded twice', async () => {
+    const { intentId } = await seedStuckIntent();
+    await adminFirestore.collection('conversationCheckoutSnapshots').doc('snapshot-1').update({ status: 'completed' });
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: 'UJ2QT8PLKW',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(false);
+    expect(outcome.reason).toMatch(/already became an order/);
+    expect((await paymentIntentRepository.findById(intentId))?.status).toBe('processing');
+  });
+
+  it('refuses a payment whose checkout no longer exists', async () => {
+    const { intentId } = await seedStuckIntent({ snapshotId: 'snapshot-gone' });
+
+    const outcome = await paymentService.completeManually({
+      businessId: BUSINESS_ID,
+      intentId,
+      mpesaReceiptNumber: 'UJ2QT8PLKW',
+      recordedByUid: 'admin-1',
+      recordedByName: 'Kelvin',
+      note: null,
+    });
+
+    expect(outcome.settled).toBe(false);
   });
 });

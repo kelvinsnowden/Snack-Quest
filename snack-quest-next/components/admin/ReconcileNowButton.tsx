@@ -5,66 +5,13 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { CompleteManuallyForm } from '@/components/admin/CompleteManuallyForm';
 
 interface Outcome {
   intentId: string;
   checkoutRequestId: string;
   outcome: string;
   reviewReason?: string;
-}
-
-/**
- * The other half of `needsManualReview`: Daraja confirmed the payment
- * succeeded, but the query carries no receipt, so completing the order
- * needs a human to type in the M-Pesa receipt read off the statement or
- * the confirmation SMS (§ payment reconciliation: complete manually).
- * Never guesses or reuses a number from anywhere else on the page.
- */
-function CompleteManuallyForm({ intentId, onDone }: { intentId: string; onDone: () => void }) {
-  const [receipt, setReceipt] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit() {
-    if (!receipt.trim()) {
-      setError('Enter the M-Pesa receipt number first.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/admin/payments/${intentId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mpesaReceiptNumber: receipt.trim() }),
-      });
-      const data = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) {
-        throw new Error(data?.error ?? `The check failed (HTTP ${response.status}).`);
-      }
-      onDone();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not complete this payment.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mt-2 flex flex-wrap items-start gap-2">
-      <Input
-        value={receipt}
-        onChange={(event) => setReceipt(event.target.value)}
-        placeholder="M-Pesa receipt, e.g. QGH7XXXXXX"
-        className="max-w-56"
-      />
-      <Button onClick={submit} loading={busy} size="sm" variant="outline">
-        Mark as paid
-      </Button>
-      {error ? <span className="text-caption text-danger">{error}</span> : null}
-    </div>
-  );
 }
 
 /**
@@ -149,7 +96,8 @@ export function ReconcileNowButton() {
                 {outcome.reviewReason ? (
                   <span className="text-caption text-muted-foreground">{outcome.reviewReason}</span>
                 ) : null}
-                {outcome.outcome === 'needsManualReview' ? (
+                {/* `skipped` = Safaricom already confirmed it on an earlier check; it still needs the receipt. */}
+                {outcome.outcome === 'needsManualReview' || outcome.outcome === 'skipped' ? (
                   completedIntentIds.has(outcome.intentId) ? (
                     <p className="mt-2 flex items-center gap-2 text-sm text-success">
                       <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
