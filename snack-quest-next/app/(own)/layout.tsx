@@ -6,12 +6,15 @@ import { PageViewTracker } from '@/components/marketing/analytics/PageViewTracke
  * exactly: its own route group, own navigation, no shop header and no
  * ad pixels tuned for snack-purchase optimisation, which would
  * degrade on traffic that isn't shopping for snacks at all.
+ *
+ * White by design: `theme-own-light` pins the page's palette (see
+ * globals.css), whatever the visitor's own theme.
  */
 export const dynamic = 'force-dynamic';
 
 export default function OwnLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-full flex-col bg-black">
+    <div className="theme-own-light flex min-h-full flex-col bg-background text-foreground">
       <PageViewTracker />
       <a
         href="#main-content"

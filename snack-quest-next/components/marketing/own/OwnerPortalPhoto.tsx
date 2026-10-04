@@ -10,7 +10,8 @@ import { OWNER_PORTAL_PHOTO_SRC } from './ownPhotos';
  */
 export function OwnerPortalPhoto({ className }: { className?: string }) {
   return (
-    <div className={`relative aspect-[2/3] w-full overflow-hidden rounded-2xl border border-white/10 ${className ?? ''}`}>
+    // The screenshot is a dark UI on black: framed as a screen on the white page rather than left as a black rectangle.
+    <div className={`relative aspect-[2/3] w-full overflow-hidden rounded-3xl bg-own-panel p-2 shadow-[var(--sq-shadow-lg)] sm:p-3 ${className ?? ''}`}>
       <Image
         src={OWNER_PORTAL_PHOTO_SRC}
         alt="The Snack Quest Owner Portal dashboard, showing machines, sales, inventory, locations and cameras."

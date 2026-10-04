@@ -15,7 +15,7 @@ const { verifyStaffSessionFromRequestMock } = vi.hoisted(() => ({ verifyStaffSes
 vi.mock('@/lib/auth/session', () => ({ verifyStaffSessionFromRequest: verifyStaffSessionFromRequestMock }));
 vi.mock('@/lib/audit/recordAuditLog', () => ({ recordAuditLog: vi.fn() }));
 
-import { GET as getPrices, POST as setPrice } from '@/app/api/admin/products/[productCatalogue]/[productId]/prices/route';
+import { GET as getPrices, POST as setPrice } from '@/app/api/admin/price-book/[productCatalogue]/[productId]/prices/route';
 import { GET as listSnacks, POST as createSnack } from '@/app/api/admin/snack-items/route';
 import { PATCH as updateSnack } from '@/app/api/admin/snack-items/[id]/route';
 import { GET as getPnl } from '@/app/api/vending/machines/[id]/pnl/route';

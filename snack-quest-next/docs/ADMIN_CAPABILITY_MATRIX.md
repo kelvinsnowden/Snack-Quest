@@ -187,13 +187,18 @@ Route methods: **398**.
 |---|---|---|---|---|---|---|---|
 | `GET /api/admin/premium-snacks` | staff session | `products.view` | Admin; Machine operations; Warehouse; Marketing; Product manager | n/a | `snackItemRepository.listForStaffPacking` | c/admin/StaffSnackPicker.tsx | Complete |
 
+## `/api/admin/price-book`
+
+| Method | Auth | Permission | Roles | Audit | Backend | UI | Status |
+|---|---|---|---|---|---|---|---|
+| `GET /api/admin/price-book/[productCatalogue]/[productId]/prices` | staff session | `(chosen at run time)`, `products.view`, `products.cost.view`, `products.wholesale.view` | Admin; Machine operations; Warehouse; Finance; Marketing; Product manager | n/a | `priceBookService.currentPrices` | c/admin/vending/EconomicsControls.tsx | Complete |
+| `POST /api/admin/price-book/[productCatalogue]/[productId]/prices` | staff session | `(chosen at run time)` | Super admin only | yes | `priceBookService.setPrice` | c/admin/vending/EconomicsControls.tsx | Complete |
+
 ## `/api/admin/products`
 
 | Method | Auth | Permission | Roles | Audit | Backend | UI | Status |
 |---|---|---|---|---|---|---|---|
 | `PATCH /api/admin/products/[packageId]` | staff session | `products.manage` | Admin; Product manager | yes | `packageRepository.findById` | c/admin/ProductActiveToggle.tsx +1 | Complete |
-| `GET /api/admin/products/[productCatalogue]/[productId]/prices` | staff session | `(chosen at run time)`, `products.view`, `products.cost.view`, `products.wholesale.view` | Admin; Machine operations; Warehouse; Finance; Marketing; Product manager | n/a | `priceBookService.currentPrices` | c/admin/vending/EconomicsControls.tsx | Complete |
-| `POST /api/admin/products/[productCatalogue]/[productId]/prices` | staff session | `(chosen at run time)` | Super admin only | yes | `priceBookService.setPrice` | c/admin/vending/EconomicsControls.tsx | Complete |
 | `POST /api/admin/products` | staff session | `products.manage` | Admin; Product manager | yes | `productService.createProduct` | c/admin/ProductForm.tsx | Complete |
 
 ## `/api/admin/purchase-orders`

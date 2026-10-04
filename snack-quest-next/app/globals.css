@@ -164,7 +164,37 @@
   --sq-info-foreground: #ffffff;
 }
 
+/*
+ * `.theme-own-light` — the machine-owner page (`/own`) is white by product
+ * decision: always, whatever the visitor's theme. Same scoped-palette
+ * mechanism as `.theme-partner-dark`, in the other direction: the page
+ * consumes only semantic tokens, so pinning these values on its wrapper
+ * is what makes it white. `--own-accent-ink` is the brand orange darkened
+ * until small text on white passes 4.5:1 (#ff7a00 is 2.8:1);
+ * `--own-panel` frames the two photos that were shot on black.
+ */
+.theme-own-light {
+  color-scheme: light;
+  --sq-background: #ffffff;
+  --sq-foreground: #16140f;
+  --sq-surface: #f6f4ef;
+  --sq-surface-raised: #efece5;
+  --sq-border: #e6e2d9;
+  --sq-muted: #5e5a52;
+  --sq-muted-foreground: #5e5a52;
+  --sq-primary: var(--sq-primitive-orange);
+  --sq-primary-foreground: #ffffff;
+  --sq-secondary: var(--sq-primitive-purple);
+  --sq-secondary-foreground: #ffffff;
+  --sq-shadow-md: 0 12px 32px -12px rgb(22 20 15 / 0.18);
+  --sq-shadow-lg: 0 30px 70px -28px rgb(22 20 15 / 0.32);
+  --own-accent-ink: #c25700;
+  --own-panel: #121110;
+}
+
 @theme inline {
+  --color-own-accent-ink: var(--own-accent-ink, #c25700);
+  --color-own-panel: var(--own-panel, #121110);
   --color-background: var(--sq-background);
   --color-foreground: var(--sq-foreground);
   --color-surface: var(--sq-surface);

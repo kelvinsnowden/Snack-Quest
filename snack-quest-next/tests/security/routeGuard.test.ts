@@ -60,7 +60,7 @@ describe('route guard', () => {
   });
 
   it('every staff write on the screen, advertising and economics surfaces is audited', () => {
-    const surfaces = /^\/api\/vending\/(kiosk|advertising)|^\/api\/vending\/machines\/\[id\]\/(economics|display|service-codes|slots\/remove)|^\/api\/admin\/products\/.*\/prices/;
+    const surfaces = /^\/api\/vending\/(kiosk|advertising)|^\/api\/vending\/machines\/\[id\]\/(economics|display|service-codes|slots\/remove)|^\/api\/admin\/price-book\//;
     const unaudited = routes.filter((route) => surfaces.test(route.path) && route.method !== 'GET' && route.auth.includes('staff') && !route.audited).map(key);
     expect(unaudited).toEqual([]);
   });

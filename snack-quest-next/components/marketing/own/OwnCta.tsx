@@ -35,14 +35,14 @@ export function OwnCta({
       }}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-full font-semibold tracking-tight transition-all duration-300',
-        'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none',
+        'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
         size === 'sm' && 'px-4 py-2 text-sm',
         size === 'md' && 'px-6 py-3 text-base',
         size === 'lg' && 'px-8 py-4 text-lg',
         variant === 'primary' &&
-          'from-primary to-home-orange-glow focus-visible:ring-primary bg-gradient-to-br text-white shadow-[0_18px_50px_-14px_rgb(255_122_0/0.6)] hover:-translate-y-0.5 hover:shadow-[0_26px_60px_-14px_rgb(255_122_0/0.75)] active:translate-y-0',
+          'bg-primary text-primary-foreground focus-visible:ring-primary shadow-[0_14px_34px_-14px_rgb(255_122_0/0.7)] hover:-translate-y-0.5 hover:bg-own-accent-ink hover:shadow-[0_20px_44px_-16px_rgb(194_87_0/0.7)] active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
         variant === 'ghost' &&
-          'border border-white/25 bg-white/5 text-white hover:bg-white/15 focus-visible:ring-white/60',
+          'border border-border bg-background text-foreground hover:bg-surface focus-visible:ring-primary',
         className,
       )}
     >
