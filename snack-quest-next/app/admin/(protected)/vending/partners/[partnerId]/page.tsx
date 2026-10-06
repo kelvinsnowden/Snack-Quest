@@ -153,7 +153,6 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-2 pr-4 font-medium">Machine</th>
                     <th className="py-2 pr-4 font-medium">Status</th>
-                    <th className="py-2 pr-4 font-medium">Owner’s share</th>
                     <th className="py-2 pr-4 font-medium">Dates</th>
                     <th className="py-2 pr-4 font-medium">Document</th>
                     <th className="py-2 pr-4 font-medium">Terms</th>
@@ -171,7 +170,6 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
                       <td className="py-3 pr-4">
                         <Badge variant={data.status === 'active' ? 'success' : 'outline'}>{data.status === 'terminated' ? 'Ended' : data.status === 'active' ? 'Active' : 'Draft'}</Badge>
                       </td>
-                      <td className="py-3 pr-4 tabular-nums text-foreground">{data.revenueSharePartnerPct === null ? <span className="text-muted-foreground">Not set</span> : `${data.revenueSharePartnerPct}%`}</td>
                       <td className="py-3 pr-4 text-muted-foreground">
                         {data.effectiveFrom ? agreementDay.format(data.effectiveFrom.toDate()) : '—'} – {data.effectiveTo ? agreementDay.format(data.effectiveTo.toDate()) : data.status === 'active' ? 'now' : '—'}
                       </td>

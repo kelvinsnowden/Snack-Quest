@@ -86,8 +86,6 @@ export default async function MachineEconomicsPage({ params, searchParams }: { p
               <>
                 <dt className="text-muted-foreground">Owner pays for stock at</dt>
                 <dd>{TERM_LABEL.ownerCostBasis[profile.terms.ownerCostBasis]}</dd>
-                <dt className="text-muted-foreground">Settlement</dt>
-                <dd>{TERM_LABEL.settlementModel[profile.terms.settlementModel]}</dd>
                 <dt className="text-muted-foreground">Owner’s advertising share</dt>
                 <dd>{profile.terms.adRevenueSharePartnerPct}%</dd>
               </>

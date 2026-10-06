@@ -13,7 +13,6 @@ import {
   MAINTENANCE_RESPONSIBILITIES,
   OWNER_COST_BASES,
   PRODUCT_PRICE_TYPE_LABEL,
-  SETTLEMENT_MODELS,
   type CommercialTerms,
   type MachineOwnershipType,
   type ProductPriceType,
@@ -43,7 +42,6 @@ const selectClass = 'min-h-10 w-full rounded-md border border-border bg-surface 
 const LABELS = {
   inventoryOwner: { snack_quest: 'Snack Quest owns the stock', machine_owner: 'The owner buys the stock' },
   ownerCostBasis: { landed_cost: 'At Snack Quest’s cost', wholesale_price: 'At the owner wholesale price' },
-  settlementModel: { owner_keeps_margin: 'Owner keeps the margin', revenue_share: 'Revenue share' },
   maintenanceResponsibility: { snack_quest: 'Snack Quest', owner: 'The owner' },
 } as const;
 
@@ -142,14 +140,6 @@ export function AgreementTermsEditor({ partnerId, agreementId, terms }: { partne
         <select className={selectClass} value={draft.ownerCostBasis} onChange={(event) => setDraft({ ...draft, ownerCostBasis: event.target.value as CommercialTerms['ownerCostBasis'] })}>
           {OWNER_COST_BASES.map((value) => (
             <option key={value} value={value}>{LABELS.ownerCostBasis[value]}</option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-caption text-muted-foreground">Settlement</span>
-        <select className={selectClass} value={draft.settlementModel} onChange={(event) => setDraft({ ...draft, settlementModel: event.target.value as CommercialTerms['settlementModel'] })}>
-          {SETTLEMENT_MODELS.map((value) => (
-            <option key={value} value={value}>{LABELS.settlementModel[value]}</option>
           ))}
         </select>
       </label>

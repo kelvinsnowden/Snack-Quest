@@ -175,7 +175,7 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
                 ) : (
                   <span className="font-semibold">Snack Quest</span>
                 )}
-                {activeAgreement ? ` · agreement active${activeAgreement.data.revenueSharePartnerPct !== null ? ` (${activeAgreement.data.revenueSharePartnerPct}% to owner)` : ''}` : machine.ownerPartnerId ? ' · no active agreement' : ''}
+                {activeAgreement ? ' · agreement active' : machine.ownerPartnerId ? ' · no active agreement' : ''}
               </p>
               {hasPermission(session, 'owners.manage') ? (
                 <MachineOwnerControl

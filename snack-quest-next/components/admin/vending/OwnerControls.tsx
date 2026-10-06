@@ -320,7 +320,6 @@ export function NewAgreementForm({
 }) {
   const router = useRouter();
   const [machineId, setMachineId] = useState('');
-  const [pct, setPct] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [documentRef, setDocumentRef] = useState('');
   const [costNote, setCostNote] = useState('');
@@ -332,17 +331,12 @@ export function NewAgreementForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (pct.trim() !== '' && !Number.isFinite(Number(pct))) {
-      setResult({ ok: false, text: 'Owner’s share must be a number.' });
-      return;
-    }
     setBusy(true);
     setResult(null);
     try {
       await send(`/api/vending/partners/${partnerId}/agreements`, 'POST', {
         machineId,
         status: startNow ? 'active' : 'draft',
-        revenueSharePartnerPct: pct.trim() === '' ? null : Number(pct),
         effectiveFrom: effectiveFrom
           ? new Date(`${effectiveFrom}T00:00:00+03:00`).toISOString()
           : null,
@@ -357,7 +351,6 @@ export function NewAgreementForm({
           : 'Draft agreement recorded.',
       });
       setMachineId('');
-      setPct('');
       setEffectiveFrom('');
       setDocumentRef('');
       setCostNote('');
@@ -407,16 +400,6 @@ export function NewAgreementForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="agr-pct">Owner’s share of net sales (%)</Label>
-          <Input
-            id="agr-pct"
-            inputMode="decimal"
-            value={pct}
-            onChange={(event) => setPct(event.target.value)}
-            placeholder="Leave blank until agreed"
-          />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="agr-from">Starts on</Label>

@@ -95,7 +95,6 @@ function Breakdown({ figures, adjustmentKes = 0, adjustmentReason = null }: { fi
       {figures.outcomeConflictCount > 0 ? (
         <p className="flex items-start gap-2 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{figures.outcomeConflictCount} sale(s) have conflicting outcomes. This can’t be finalized until they’re resolved under Sales to review.</p>
       ) : null}
-      {figures.partnerShareKes !== null ? <p className="text-xs text-muted-foreground">For reference, the agreement’s revenue share on these sales would be {kes(figures.partnerShareKes)}. The amount credited is worked out as above.</p> : null}
       {credited < 0 ? <p className="text-danger">This settlement would take money from the owner’s balance.</p> : null}
     </div>
   );
