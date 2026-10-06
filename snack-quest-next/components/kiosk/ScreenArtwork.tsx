@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { KioskScreenContentImage, SellableCatalogItem } from '@/types';
 import { ProductImage } from './ProductCard';
+import { useKioskText } from './kioskTextContext';
 
 const BANNER_ROTATE_MS = 6_000;
 const ATTRACT_ROTATE_MS = 8_000;
@@ -44,10 +45,11 @@ function Slides({ images, index }: { images: KioskScreenContentImage[]; index: n
  */
 export function MenuBanner({ images, origins, eyebrow = 'Explore. Taste. Enjoy.', headline = 'Taste the world' }: { images: KioskScreenContentImage[]; origins: string[]; eyebrow?: string; headline?: string }) {
   const [index, setIndex] = useRotation(images.length, BANNER_ROTATE_MS);
+  const { t } = useKioskText();
 
   if (images.length > 0) {
     return (
-      <section aria-label="Promotions" className="relative">
+      <section aria-label={t('promotions')} className="relative">
         <div className="relative aspect-[27/10] w-full overflow-hidden rounded-xl bg-kiosk-stage">
           <Slides images={images} index={index} />
         </div>
@@ -58,7 +60,7 @@ export function MenuBanner({ images, origins, eyebrow = 'Explore. Taste. Enjoy.'
                 key={image.imageUrl + i}
                 type="button"
                 onClick={() => setIndex(i)}
-                aria-label={`Show promotion ${i + 1} of ${images.length}`}
+                aria-label={t('showPromotion', { i: i + 1, n: images.length })}
                 aria-current={i === index}
                 className="flex h-6 items-center outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
@@ -73,12 +75,12 @@ export function MenuBanner({ images, origins, eyebrow = 'Explore. Taste. Enjoy.'
 
   const places = origins.slice(0, 4);
   return (
-    <section aria-label="Welcome" className="relative flex aspect-[27/10] w-full items-center overflow-hidden rounded-xl bg-kiosk-stage px-6 sm:px-10">
+    <section aria-label={t('welcome')} className="relative flex aspect-[27/10] w-full items-center overflow-hidden rounded-xl bg-kiosk-stage px-6 sm:px-10">
       <div className="relative z-10 flex max-w-[62%] flex-col gap-2 sm:gap-3">
         <p className="text-caption font-semibold uppercase tracking-wider text-kiosk-highlight sm:text-small">{eyebrow}</p>
         <h2 className="font-display text-card-title leading-none text-kiosk-stage-foreground text-balance sm:text-section-title lg:text-page-title">{headline}</h2>
         <p className="text-small text-kiosk-stage-foreground/80 sm:text-body">
-          {places.length > 0 ? `Snacks from ${places.join(', ')}${origins.length > places.length ? ' and more' : ''}.` : 'Snacks from around the world.'} Pay with M-Pesa.
+          {places.length > 0 ? t(origins.length > places.length ? 'snacksFromAndMore' : 'snacksFrom', { places: places.join(', ') }) : t('snacksFromWorld')} {t('payWithMpesaShort')}
         </p>
       </div>
       {/* eslint-disable-next-line @next/next/no-img-element -- the brand mark, a fixed public asset. */}
@@ -107,11 +109,12 @@ export function AttractScreen({
   callToAction?: string;
 }) {
   const [index] = useRotation(images.length, ATTRACT_ROTATE_MS);
+  const { t } = useKioskText();
   const showcase = items.filter((item) => item.imageUrl && item.availabilityState === 'available').slice(0, 6);
 
   return (
     <main className="relative flex h-dvh w-full flex-col overflow-hidden bg-kiosk-stage text-kiosk-stage-foreground">
-      <button type="button" onClick={onStart} className="absolute inset-0 z-20 outline-none" aria-label={callToAction === 'Tap to start' ? 'Tap to start your order' : `${callToAction} — tap to start your order`} />
+      <button type="button" onClick={onStart} className="absolute inset-0 z-20 outline-none" aria-label={callToAction === t('tapToStart') ? t('tapToStartOrder') : t('ctaTapToStartOrder', { cta: callToAction })} />
       {images.length > 0 ? (
         <Slides images={images} index={index} />
       ) : (

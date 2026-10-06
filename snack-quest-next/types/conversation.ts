@@ -63,7 +63,13 @@ export interface PickupStationCandidate {
 export interface ConversationStateBlob {
   packageId?: string;
   packageLabel?: string;
+  /** Unit price. The subtotal is `priceKes × quantity`, worked out server-side. */
   priceKes?: number;
+  /**
+   * Boxes on a WhatsApp order. Absent on every conversation started by
+   * text, and on any conversation from before quantities existed: both mean one.
+   */
+  quantity?: number;
   customerName?: string;
   county?: string;
   deliveryMethod?: DeliveryMethod;

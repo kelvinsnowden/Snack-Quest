@@ -76,8 +76,10 @@ export const STORAGE_DIRECTORY_POLICIES: Record<StorageDirectory, StorageDirecto
   kiosk: { allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'], maxSizeBytes: 4 * MB },
   // Idle-screen ad creatives (§ ADVERTISING). Written only by the creative
   // upload route, which also checks the bytes and computes the checksum a
-  // machine verifies. 4MB for the same request-body reason as `kiosk`: a
-  // longer video needs a direct-to-storage upload that isn't built yet.
+  // machine verifies. 4MB for the same request-body reason as `kiosk`. A
+  // bigger video goes straight to storage under a scoped token
+  // (`/api/vending/advertising/creatives/direct-upload`, staff only,
+  // videos only, 50MB) and is re-read and checked by `…/finalize`.
   ads: { allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'], maxSizeBytes: 4 * MB },
 };
 

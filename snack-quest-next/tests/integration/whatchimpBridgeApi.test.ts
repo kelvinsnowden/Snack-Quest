@@ -216,10 +216,12 @@ describe('POST /api/whatchimp/select-product', () => {
       productId: packageId,
       productName: 'Starter Box',
       priceKes: 2600,
+      quantity: 1,
     });
 
     const conversation = await conversationRepository.findById(body.checkoutSessionId);
     expect(conversation?.stateBlob.priceKes).toBe(2600);
+    expect(conversation?.stateBlob.quantity).toBe(1);
     expect(conversation?.status).not.toBe('awaiting_payment');
 
     // The whole point of the Bridge API: no gateway call happened.
@@ -388,6 +390,102 @@ describe('WhatChimp Bridge API — full checkout journey (pickup)', () => {
     expect(referralBody.valid).toBe(true);
     expect(referralBody.discountKes).toBe(200);
     expect(referralBody.totalKes).toBe(2650); // 2600 - 200 + 250
+  });
+
+  it('buys three boxes: prices, charges and orders three, and takes three from stock', async () => {
+    mockProviders();
+    const stocked = await packageRepository.create(
+      { businessId: BUSINESS_ID, name: 'Stocked Box', description: 'd', priceKes: 2600, isActive: true, imageUrl: null, stockCount: 5 },
+      'system',
+    );
+
+    const selectResponse = await selectProductRoute(
+      jsonRequest('/api/whatchimp/select-product', { phoneNumberId: PHONE_NUMBER_ID, customerPhone: CUSTOMER_PHONE, productId: stocked, quantity: 3 }),
+    );
+    expect(selectResponse.status).toBe(200);
+    const selectBody = (await selectResponse.json()) as SelectProductResponse;
+    expect(selectBody.priceKes).toBe(2600);
+    expect(selectBody.quantity).toBe(3);
+    const { checkoutSessionId } = selectBody;
+
+    const stations = await pickupStationRepository.search(BUSINESS_ID, 'CBD');
+    await quoteDeliveryRoute(
+      jsonRequest('/api/whatchimp/quote-delivery', {
+        checkoutSessionId,
+        customerName: 'Jane Doe',
+        county: 'Nairobi',
+        deliveryMethod: 'pickup',
+        pickupStationId: stations[0].id,
+      }),
+    );
+
+    const referralBody = (await (
+      await applyReferralRoute(jsonRequest('/api/whatchimp/apply-referral', { checkoutSessionId, referralCode: null }))
+    ).json()) as ApplyReferralResponse;
+    expect(referralBody.subtotalKes).toBe(7800);
+    expect(referralBody.totalKes).toBe(8050); // 3 × 2600 + 250 delivery
+
+    const checkoutBody = (await (
+      await checkoutRoute(jsonRequest('/api/whatchimp/checkout', { checkoutSessionId }))
+    ).json()) as WhatchimpCheckoutResponse;
+    expect(checkoutBody.status).toBe('stk_sent');
+    expect(checkoutBody.totalKes).toBe(8050);
+
+    const snapshots = await adminFirestore.collection('conversationCheckoutSnapshots').where('conversationId', '==', checkoutSessionId).get();
+    expect(snapshots.docs[0].data().quantity).toBe(3);
+
+    const intents = await adminFirestore.collection('paymentIntents').get();
+    const attempts = await intents.docs[0].ref.collection('attempts').get();
+    const callback = await paymentService.processCallback(BUSINESS_ID, {
+      Body: {
+        stkCallback: {
+          MerchantRequestID: `merchant-${SHORTCODE}`,
+          CheckoutRequestID: attempts.docs[0].data().checkoutRequestId as string,
+          ResultCode: 0,
+          ResultDesc: 'The service request is processed successfully.',
+          CallbackMetadata: {
+            Item: [
+              { Name: 'Amount', Value: 8050 },
+              { Name: 'MpesaReceiptNumber', Value: 'BRIDGE3BOX' },
+              { Name: 'TransactionDate', Value: 20240115120000 },
+              { Name: 'PhoneNumber', Value: Number(CUSTOMER_PHONE) },
+            ],
+          },
+        },
+      },
+    });
+    expect(callback.status).toBe('succeeded');
+    await conversationService.handlePaymentResult(callback);
+
+    const status = (await (
+      await orderStatusRoute(getRequest(`/api/whatchimp/order-status?checkoutSessionId=${checkoutSessionId}`))
+    ).json()) as OrderStatusResponse;
+    expect(status.paymentStatus).toBe('succeeded');
+    const items = await adminFirestore.collection('orders').doc(status.orderId as string).collection('items').get();
+    expect(items.docs.map((doc) => doc.data().quantity)).toEqual([3]);
+    expect((await packageRepository.findById(BUSINESS_ID, stocked))?.stockCount).toBe(2);
+  });
+
+  it('refuses a quantity that is not a whole number from 1 to 20, and one the stock cannot cover', async () => {
+    mockProviders();
+    const stocked = await packageRepository.create(
+      { businessId: BUSINESS_ID, name: 'Two Left', description: 'd', priceKes: 2600, isActive: true, imageUrl: null, stockCount: 2 },
+      'system',
+    );
+    for (const quantity of [0, -1, 2.5, 21, '3']) {
+      const response = await selectProductRoute(
+        jsonRequest('/api/whatchimp/select-product', { phoneNumberId: PHONE_NUMBER_ID, customerPhone: CUSTOMER_PHONE, productId: stocked, quantity }),
+      );
+      expect(response.status, `quantity ${JSON.stringify(quantity)}`).toBe(400);
+    }
+    const tooMany = await selectProductRoute(
+      jsonRequest('/api/whatchimp/select-product', { phoneNumberId: PHONE_NUMBER_ID, customerPhone: CUSTOMER_PHONE, productId: stocked, quantity: 3 }),
+    );
+    expect(tooMany.status).toBe(409);
+    const exact = await selectProductRoute(
+      jsonRequest('/api/whatchimp/select-product', { phoneNumberId: PHONE_NUMBER_ID, customerPhone: CUSTOMER_PHONE, productId: stocked, quantity: 2 }),
+    );
+    expect(exact.status).toBe(200);
   });
 
   it('escalates a Nairobi door-delivery order to a human agent, silently', async () => {

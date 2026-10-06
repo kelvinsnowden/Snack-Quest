@@ -27,6 +27,14 @@ Snack Quest now treats who owns a machine, who owns its stock, and on what terms
 | OS8 | Kiosk runtime state machine, staged content sync, verified offline ad cache, ad playback, persisted outbox, service mode, screen reports and activity | `8b6b2e9` |
 | OS9 | Access explainer and "What can this person do?", per-role invariants | `50b62e2` |
 | OS10 | Per-method route guard, capability matrix generator, record checks, dashboard panel, final gate | `72ecb88` and the final commit |
+| Follow-up 1 | WhatsApp checkout for more than one box (ported from `codex/public-checkout`; the rest of that branch is superseded by `/checkout`) | `5a1b384` |
+| Follow-up 2 | Maintenance: owner and staff problem reports, a cost ledger, maintenance in the machine P&L | `9932f53` |
+| Follow-up 3 | Snack brand, barcode, allergens and net content, shown on the machine screen | `195b57c` |
+| Follow-up 4 | Machine screen in English and Kiswahili, with a customer language switch | `419694b` |
+| Follow-up 5 | Owners propose their machines' screen design; staff accept to publish | `e56df24` |
+| Follow-up 6 | Ad videos up to 50 MB, uploaded straight to storage and checked after | `b400a30` |
+| Payment fix | M-Pesa confirmations for orders handled before the vending lookup; stuck payments listed on Reconciliation with a receipt form | `614eb3f` |
+| Follow-up 7 | Machine deals (landed, installation and sale per machine) and the combined Income view in Finance | this commit |
 
 ## 2. Architecture
 
@@ -120,7 +128,8 @@ Advertising revenue per campaign and month:
   - badge wording, tone and visibility;
   - product-card options;
   - idle timeout and the ads on/off switch;
-  - screen wording.
+  - screen wording;
+  - languages offered (English, Kiswahili), the starting language, and translations of the layer's own wording.
 - **Publish rules.** One rule set (`lib/kiosk/experienceConfig.ts`) runs in the builder, on the server and on the kiosk.
   - Publishing is blocked if the product grid is missing or body text contrast is below 4.5:1.
   - Button and badge labels below 3:1 only warn. The current brand orange with white text is 2.6:1, and changing brand colours is a brand decision.
@@ -128,6 +137,8 @@ Advertising revenue per campaign and month:
 - **Version history.** Versions are immutable. A rollback publishes an old version's config as a new version.
 - **Preview.** The builder previews the real kiosk renderer, in an iframe at the machine's recorded screen size, with payments off.
 - **Read cost.** Resolving a design reads one cached index document plus cached immutable versions. That is roughly zero reads per poll in steady state.
+- **Languages.** The screen's own words (buttons, states, payment messages) come from `lib/kiosk/kioskText.ts` in English and Kiswahili. With more than one language offered, customers get a switch at the top; it resets to the starting language when an order ends. A phrase without a translation shows in English, and the checks warn about it.
+- **Owners' designs** (`kioskOwnerProposals`). An owner edits colours, menu, badges, product tiles, wording and languages for their own machines in the Owner Portal and sends it for review; idle and ad settings stay Snack Quest's. A proposal is checked like a publish before it can be sent. Staff with `kiosk.publish` accept it (published on the owner layer, keeping staff's idle and ad settings there) or send it back with a reason. Owners preview only on their own machines.
 
 ### Content sync
 
@@ -141,9 +152,10 @@ A file whose checksum doesn't match is never played or cached, and is counted (`
 
 ### Advertising
 
-- **Creatives.** Uploaded only through `POST /api/vending/advertising/creatives`.
+- **Creatives.** Uploaded through `POST /api/vending/advertising/creatives` (up to 4 MB), or, for videos up to 50 MB, straight to storage and then `…/creatives/finalize`.
   - Only JPEG, PNG, WebP, MP4 and WebM are accepted, and the bytes must match the declared type. HTML, SVG and scripts are refused.
-  - Files are limited to 4 MB, and the SHA-256 is computed from the bytes.
+  - The SHA-256 is always computed by the server from the stored bytes.
+  - Direct uploads: the token (`…/creatives/direct-upload`) goes only to staff with `advertising.manage`, only for videos, only into that business's ad folder, with a random suffix. Finalize asks storage for the file's real path, type and size, re-reads the bytes, and deletes a file that fails.
   - A creative waits for review: approve, or reject with a reason; an approved creative can be pulled later.
   - The general upload route refuses the `ads` directory.
 - **Campaigns.**
@@ -212,14 +224,14 @@ A file whose checksum doesn't match is never played or cached, and is counted (`
 
 ## 6. Capability matrix
 
-`npm run audit:capabilities` regenerates `docs/ADMIN_CAPABILITY_MATRIX.md` from the code: 375 route methods and 144 admin page and layout gates.
+`npm run audit:capabilities` regenerates `docs/ADMIN_CAPABILITY_MATRIX.md` from the code: 392 route methods and 146 admin page and layout gates.
 
 | Status | Methods |
 |---|---:|
-| Complete (guarded, has a UI caller, writes audited) | 192 |
-| System interface (machine, owner, cron, webhook, customer, public) | 106 |
+| Complete (guarded, has a UI caller, writes audited) | 203 |
+| System interface (machine, owner, cron, webhook, customer, public) | 111 |
 | Works, unaudited (staff writes the service records itself, or none) | 30 |
-| Read API (pages read the service directly) | 29 |
+| Read API (pages read the service directly) | 30 |
 | No UI caller found | 18 |
 
 Most "No UI caller" rows are UI code that builds the path in pieces (`${base}/publish`, `/restock/${id}/${action}`), which the static match can't see. The matrix says so; check a row before treating it as missing.
@@ -235,7 +247,16 @@ Most "No UI caller" rows are UI code that builds the path in pieces (`${base}/pu
 | Who sees landed cost | Staff with `products.cost.view`; owners never, unless the agreement allows | The brief |
 | Flat-monthly ad billing | Billed for a calendar month with at least one completed play | Ties billing to delivery |
 | Ad revenue split across machines | By share of completed plays (machine-days for per-machine-day billing) | The only delivery measure held |
-| Ad file size | 4 MB | Vercel's request-body limit for uploads through the app |
+| Ad file size | 4 MB through the app; videos up to 50 MB uploaded straight to storage | Vercel's request-body limit; 50 MB matches the review-video ceiling and keeps machine downloads reasonable |
+| Maintenance in the P&L | Snack Quest's spend is the sum of costs recorded as paid by Snack Quest. In an owner's view, owner-paid costs show; if the agreement makes the owner responsible for maintenance and none are recorded, it shows as not recorded rather than 0 | Nothing is estimated; only recorded costs count |
+| Who can record maintenance costs | Finance and machine operations (`maintenance.costs.record`); warehouse can log and move requests but not record money | Money entries stay with roles that already handle money |
+| Owners' screen designs | Need acceptance by staff with `kiosk.publish`; idle and ad settings are not the owner's | An owner's screen is still a Snack Quest screen; ads are Snack Quest revenue |
+| Kiswahili wording | Written for this build | Needs review by a native speaker before customers see it |
+| Combined income | Profit before overheads, only where a cost is recorded; revenue without a cost is shown beside it, never counted as profit. Owners' machine sales are excluded; only Snack Quest's income from those machines counts | Nothing estimated; owners' money is theirs |
+| Machine sale profit | Sale price (and any installation charged on top) less landed cost (purchase, freight, duty and clearing, transport to site) and installation cost (installation, branding, other setup); recognised on the sale date. Shown only once landed cost is recorded and installation is recorded or marked "none" | The costs that make up a machine, with nothing assumed |
+| Machines Snack Quest keeps | Their landed and installation cost is shown as money invested, not taken off a period's income, and not depreciated | Depreciation is an accounting policy for your accountant to set |
+| Foreign-currency machine costs | Entered in KES as actually paid; the original amount goes in the description | No exchange rate is guessed |
+| Barcodes | Must be a valid GTIN (8, 12, 13 or 14 digits) and unique among snacks | One barcode, one snack, so a scan can't be ambiguous |
 
 ## 8. Not built, and known limits
 
@@ -243,18 +264,19 @@ Most "No UI caller" rows are UI code that builds the path in pieces (`${base}/pu
 
 - Paying owners' ad share through settlements. The share is computed and shown, but not paid out; when to pay it is a business decision.
 - Payment fee configuration, so fees appear as "not recorded" in every P&L.
-- Maintenance cost recording.
-- Brief part 27's extra product fields: brand, barcode, allergens, weight.
 - New badge types beyond featured, new and limited time. Their wording, colour and visibility are configurable.
-- Screen-language (locale) switching on the kiosk.
-- Owner-portal maintenance requests.
-- Owners editing their own screen designs.
-- Ad videos over 4 MB, which need a direct-to-storage upload.
+- Languages beyond English and Kiswahili. Snack names and descriptions are not translated; only the screen's own words and each design's wording are.
+- Barcode scanning at the machine. Barcodes are stored and checked, not yet read by any device.
+- The rest of `codex/public-checkout`. Only multi-box WhatsApp checkout was ported; the branch's own checkout page is superseded by `/checkout` on main.
+- Depreciation of machines Snack Quest keeps, and instalment payments on machine sales (a sale is recorded at its agreed price on its date).
+- Overheads (salaries, rent, marketing) in the Income view; it shows profit before overheads.
 - The server does not decode video. Video length is declared by staff, and machines report the real play time.
 
 **Known limits**
 
 - Record checks read the most recent 5,000 records per check and say so when cut short.
+- The machine P&L (and so the Income view) sorts a machine as Snack Quest's or an owner's by its ownership today. A machine sold to an owner part-way through a period has that whole period's sales counted the owner's way. Each sale does freeze its own ownership, so this can be split per sale later.
+- A direct ad upload that is never finalized leaves an unreferenced file in storage. It plays nowhere and is safe to sweep, but nothing sweeps it yet.
 - Report batch documents carry `expireAt`. A Firestore TTL policy on that field has to be enabled in the Firebase console; it can't be set from this repo.
 - `tests/api/rateLimitDistributed.test.ts` › "a high-volume key is spread over several counter documents" failed once in a full run and passed 3/3 in isolation. It is probabilistic: random shard choice under load. It predates this work and was not changed.
 
@@ -267,7 +289,7 @@ Run on the emulator in this container, after the final changes:
 | `tsc --noEmit` | clean |
 | `eslint` | 0 errors, 2 warnings (pre-existing, in tests) |
 | `next build` | succeeds |
-| Full test suite (`vitest run`, Firestore and Auth emulators) | 398 of 398 test files passed; 4,277 tests passed, 1 skipped (4,278). Run against the emulators, so this is not evidence of production readiness. One earlier full run had 1 failure in `rateLimitDistributed` › "high-volume key spread over shards", a probabilistic test that passed 3 of 3 times when run alone and passed in this run. |
+| Full test suite (`vitest run`, Firestore and Auth emulators) | 411 of 411 test files passed; 4,380 tests passed, 1 skipped (4,381), after machine deals and the Income view. Run against the emulators, so this is not evidence of production readiness. |
 | Capability matrix | regenerated from the code |
 
 New test files in this work include:
@@ -286,6 +308,7 @@ New test files in this work include:
 - kiosk runtime service and routes;
 - RBAC templates;
 - route guard;
-- record checks.
+- record checks;
+- follow-ups: multi-box WhatsApp checkout, maintenance service and routes, product details and barcode uniqueness, kiosk text in two languages, owner screen design service and routes, direct ad video upload (owner isolation sweep extended to the new owner routes).
 
 Emulator tests prove the logic and the access rules. They do not prove behaviour on real machines, real payment rails, real storage or under real load.

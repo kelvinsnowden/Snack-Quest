@@ -8,6 +8,8 @@ import { machineEconomicProfileService } from '@/services/machineEconomicProfile
 import { buildMachinePlaylist, nairobiClock, type MachinePlaylist } from '@/lib/ads/playlist';
 import {
   AD_BILLING_MODELS,
+  AD_DIRECT_VIDEO_MAX_BYTES,
+  AD_IN_BAND_MAX_BYTES,
   AD_MEDIA_TYPES,
   AD_PLAYBACK_EVENT_TYPES,
   type AdBillingModel,
@@ -42,7 +44,9 @@ export class AdStateError extends Error {
 export { AdNotFoundError };
 
 export const AD_LIMITS = {
-  maxBytes: 4 * 1024 * 1024,
+  maxBytes: AD_IN_BAND_MAX_BYTES,
+  /** Videos uploaded straight to storage (§ AD SECURITY — direct upload). Above `maxBytes`, which is what a request through our own server can carry. */
+  maxDirectVideoBytes: AD_DIRECT_VIDEO_MAX_BYTES,
   imageSecondsMin: 3,
   imageSecondsMax: 30,
   videoSecondsMin: 1,
@@ -67,6 +71,11 @@ export function resetAdvertisingCache(): void {
 }
 
 /** The first bytes of each allowed container. A file whose bytes don't match its declared type is refused — so a script renamed `.mp4` never reaches a machine. */
+/** Where a business's directly uploaded ad videos must land. The upload token only allows this folder. */
+export function directUploadPrefix(businessId: string): string {
+  return `ads/${businessId}/`;
+}
+
 function bytesMatch(mimeType: AdMimeType, data: Buffer): boolean {
   switch (mimeType) {
     case 'image/jpeg':
@@ -207,18 +216,23 @@ class AdvertisingService {
     const seconds = Number(input.durationSeconds);
     const [min, max] = mediaKind === 'image' ? [AD_LIMITS.imageSecondsMin, AD_LIMITS.imageSecondsMax] : [AD_LIMITS.videoSecondsMin, AD_LIMITS.videoSecondsMax];
     if (!Number.isInteger(seconds) || seconds < min || seconds > max) throw new AdValidationError(`${mediaKind === 'image' ? 'An image shows' : 'A video runs'} for ${min} to ${max} seconds.`);
+    const name = cleanText(input.name, 'Name', AD_LIMITS.nameMax)!;
     const sha256 = createHash('sha256').update(input.data).digest('hex');
     const uploaded = await storageService.uploadFile({ businessId: input.businessId, directory: 'ads', filename: input.filename, data: input.data, contentType: mimeType });
+    return this.recordCreative({ businessId: input.businessId, advertiserId: input.advertiserId, name, mimeType, mediaUrl: uploaded.url, bytes: input.data.byteLength, sha256, durationSeconds: seconds, actor: input.actor });
+  }
+
+  private async recordCreative(input: { businessId: string; advertiserId: string; name: string; mimeType: AdMimeType; mediaUrl: string; bytes: number; sha256: string; durationSeconds: number; actor: string }) {
     const creative = {
       businessId: input.businessId,
       advertiserId: input.advertiserId,
-      name: cleanText(input.name, 'Name', AD_LIMITS.nameMax)!,
-      mimeType,
-      mediaKind,
-      mediaUrl: uploaded.url,
-      bytes: input.data.byteLength,
-      sha256,
-      durationSeconds: seconds,
+      name: input.name,
+      mimeType: input.mimeType,
+      mediaKind: AD_MEDIA_TYPES[input.mimeType],
+      mediaUrl: input.mediaUrl,
+      bytes: input.bytes,
+      sha256: input.sha256,
+      durationSeconds: input.durationSeconds,
       status: 'pending_review' as const,
       reviewedBy: null,
       reviewNote: null,
@@ -226,6 +240,67 @@ class AdvertisingService {
     };
     const id = await advertisingRepository.createCreative({ ...creative, reviewedAt: null });
     return { id, creative };
+  }
+
+  /**
+   * Records a video the browser uploaded straight to storage (one too big
+   * to pass through our own server). Nothing the browser says about the
+   * file is trusted: storage is asked for its real path, type and size,
+   * the path must be this business's ad folder, and the bytes are read
+   * back here to check they are the video they claim to be and to compute
+   * the checksum a machine verifies. A file that fails is deleted. Like
+   * any creative it then waits for review.
+   */
+  async finalizeDirectVideo(input: { businessId: string; advertiserId: string; name: unknown; url: unknown; durationSeconds: unknown; actor: string }) {
+    const advertiser = await advertisingRepository.findAdvertiser(input.businessId, input.advertiserId);
+    if (!advertiser) throw new AdNotFoundError('Advertiser', input.advertiserId);
+    const name = cleanText(input.name, 'Name', AD_LIMITS.nameMax)!;
+    const seconds = Number(input.durationSeconds);
+    if (!Number.isInteger(seconds) || seconds < AD_LIMITS.videoSecondsMin || seconds > AD_LIMITS.videoSecondsMax) throw new AdValidationError(`A video runs for ${AD_LIMITS.videoSecondsMin} to ${AD_LIMITS.videoSecondsMax} seconds.`);
+    if (typeof input.url !== 'string' || !/^https:\/\//.test(input.url)) throw new AdValidationError('Upload the video first.');
+
+    let stored;
+    try {
+      stored = await storageService.describeFile(input.url);
+    } catch {
+      throw new AdValidationError('That upload wasn’t found. Upload the video again.');
+    }
+    // Only this business's ad folder. Anything else is not ours to record — or to delete.
+    if (!stored.pathname.startsWith(`${directUploadPrefix(input.businessId)}`) || stored.pathname.includes('..')) throw new AdValidationError('That upload wasn’t found. Upload the video again.');
+    if (await advertisingRepository.creativeExistsForMediaUrl(input.businessId, stored.url)) throw new AdStateError('That video is already recorded as a creative.');
+
+    const reject = async (message: string): Promise<never> => {
+      await storageService.deleteFile(stored.url).catch(() => undefined);
+      throw new AdValidationError(message);
+    };
+    const mimeType = stored.contentType as AdMimeType;
+    if (AD_MEDIA_TYPES[mimeType] !== 'video') return reject('Only MP4 or WebM videos can be uploaded this way.');
+    if (stored.size <= 0) return reject('The file is empty.');
+    if (stored.size > AD_LIMITS.maxDirectVideoBytes) return reject(`Keep ad videos under ${AD_LIMITS.maxDirectVideoBytes / (1024 * 1024)} MB.`);
+
+    const hash = createHash('sha256');
+    let bytes = 0;
+    let head = Buffer.alloc(0);
+    try {
+      const reader = (await storageService.openFile(stored.url)).getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > AD_LIMITS.maxDirectVideoBytes) {
+          await reader.cancel();
+          return reject(`Keep ad videos under ${AD_LIMITS.maxDirectVideoBytes / (1024 * 1024)} MB.`);
+        }
+        if (head.length < 16) head = Buffer.concat([head, Buffer.from(value.subarray(0, 16 - head.length))]);
+        hash.update(value);
+      }
+    } catch (error) {
+      if (error instanceof AdValidationError) throw error;
+      throw new AdValidationError('The uploaded video couldn’t be read back. Try again.');
+    }
+    if (bytes !== stored.size) return reject('The upload is incomplete. Upload the video again.');
+    if (!bytesMatch(mimeType, head)) return reject('The file’s contents don’t match its type. It may be damaged or mislabelled.');
+    return this.recordCreative({ businessId: input.businessId, advertiserId: input.advertiserId, name, mimeType, mediaUrl: stored.url, bytes, sha256: hash.digest('hex'), durationSeconds: seconds, actor: input.actor });
   }
 
   /** Approve or reject. Rejecting needs a reason; an approved creative can be pulled (rejected) later, which stops it on every machine at the next sync. */

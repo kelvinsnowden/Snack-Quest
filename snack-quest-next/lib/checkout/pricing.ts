@@ -26,6 +26,17 @@
  */
 export const MAX_CHECKOUT_QUANTITY = 20;
 
+/**
+ * A requested box count: a whole number from 1 to `MAX_CHECKOUT_QUANTITY`,
+ * or `null` when it is anything else. `undefined` means one, the count
+ * every WhatsApp caller sent before quantities existed.
+ */
+export function parseCheckoutQuantity(value: unknown): number | null {
+  if (value === undefined) return 1;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > MAX_CHECKOUT_QUANTITY) return null;
+  return value;
+}
+
 export interface CheckoutPricingInputs {
   unitPriceKes: number;
   quantity: number;

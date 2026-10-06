@@ -5,6 +5,7 @@ import { paymentIntentRepository } from '@/repositories/paymentIntentRepository'
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { orderRepository } from '@/repositories/orderRepository';
 import { webhookEventRepository } from '@/repositories/webhookEventRepository';
+import { conversationCheckoutSnapshotRepository } from '@/repositories/conversationCheckoutSnapshotRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { publishEvent } from '@/lib/events/eventBus';
 import type { StkPushResult } from '@/lib/integrations/types';
@@ -286,7 +287,8 @@ class PaymentService {
    * push was ever attempted against, and refuses anything but
    * `'pending'`. This one settles an intent that *did* get a real STK
    * attempt — it has a live `attempts` entry a `'pending'` intent
-   * never has — and requires `'processing'`, so the two can never be
+   * never has — and requires `'processing'` (or `'expired'`, which the
+   * sweep sets only when Safaricom never answered), so the two can never be
    * used on each other's intents by accident.
    *
    * Never fabricates a receipt: the caller must already have one, read
@@ -313,7 +315,13 @@ class PaymentService {
     if (intent.businessId !== input.businessId) {
       return { settled: false, reason: 'Payment intent not found' };
     }
-    if (intent.status !== 'processing') {
+    /*
+     * `'expired'` too: the reconciliation sweep sets it only when
+     * Safaricom never gave a definite answer — which is exactly when the
+     * money may still have arrived. Refusing those left a paid customer
+     * with no way into Admin (§ payment reconciliation: stuck payments).
+     */
+    if (intent.status !== 'processing' && intent.status !== 'expired') {
       return {
         settled: false,
         reason: `This payment is already ${intent.status} — it cannot be completed manually.`,
@@ -322,6 +330,14 @@ class PaymentService {
     const mpesaReceiptNumber = input.mpesaReceiptNumber.trim();
     if (!mpesaReceiptNumber) {
       return { settled: false, reason: 'An M-Pesa receipt number is required.' };
+    }
+    // A checkout that already became an order must not be marked paid a second time.
+    const snapshot = await conversationCheckoutSnapshotRepository.findById(intent.conversationCheckoutSnapshotId);
+    if (!snapshot) {
+      return { settled: false, reason: 'The checkout behind this payment no longer exists, so there is nothing to turn into an order.' };
+    }
+    if (snapshot.status === 'completed') {
+      return { settled: false, reason: 'This checkout already became an order. Check Orders before recording the payment again.' };
     }
 
     const manualPayment: Omit<ManualPaymentRecord, 'recordedAt'> = {
@@ -335,7 +351,7 @@ class PaymentService {
     const { settled } = await paymentIntentRepository.recordManualPayment(
       input.intentId,
       manualPayment,
-      'processing',
+      intent.status,
     );
     if (!settled) {
       // Lost the race against the real callback finally arriving, or

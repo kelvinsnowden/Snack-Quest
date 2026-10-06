@@ -149,6 +149,11 @@ export default async function MachineEconomicsPage({ params, searchParams }: { p
                 <p className="text-muted-foreground tabular-nums">
                   Wholesale margin {kes(pnl.snackQuestIncome.wholesaleMarginKes)} · subscription {kes(pnl.snackQuestIncome.subscriptionKes)} · advertising {kes(pnl.snackQuestIncome.adShareKes)} = {kes(pnl.snackQuestIncome.totalKes)}
                 </p>
+                {pnl.snackQuestIncome.maintenanceKes > 0 ? (
+                  <p className="text-muted-foreground tabular-nums">
+                    Less maintenance Snack Quest paid for {kes(pnl.snackQuestIncome.maintenanceKes)} = {kes(pnl.snackQuestIncome.afterMaintenanceKes)}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <ul className="text-caption text-muted-foreground">

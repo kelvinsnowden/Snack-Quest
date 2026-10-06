@@ -17,7 +17,7 @@ export interface CheckoutStartRequest {
   customerPhone: string;
   /** The Snack Quest OS package id — the same identifier synced to the Product Catalog as its retailer_id (§ product identifier consistency). */
   productId: string;
-  /** Always 1 today — no multi-item cart exists in this codebase. */
+  /** Boxes of this one product, 1 to `MAX_CHECKOUT_QUANTITY`. Absent means one. */
   quantity?: number;
   referralCode?: string | null;
   /** Maps to StartOptions.referralLinkId when the click came from a creator's own link. */

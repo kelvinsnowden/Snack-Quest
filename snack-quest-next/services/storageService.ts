@@ -182,6 +182,18 @@ class StorageService {
     }
   }
 
+  /** What storage itself says about an object — its real pathname, type and size, never what a caller claims. Throws when it isn't in this store. */
+  async describeFile(url: string): Promise<UploadedFile> {
+    return this.gateway.getMetadata(url);
+  }
+
+  /** The object's bytes as a stream, for checks too big to hold in memory at once (e.g. a direct-uploaded video). */
+  async openFile(url: string): Promise<ReadableStream<Uint8Array>> {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok || !response.body) throw new StorageUploadError(`Couldn’t read the stored file (HTTP ${response.status}).`);
+    return response.body;
+  }
+
   /** Confirms/retrieves the public URL for an already-uploaded object — a real Vercel Blob lookup, never a guessed/templated hostname. */
   async generatePublicUrl(urlOrPathname: string): Promise<string> {
     const metadata = await this.gateway.getMetadata(urlOrPathname);

@@ -4,12 +4,29 @@ import { ChevronRight } from 'lucide-react';
 import { requireAdminPage } from '@/lib/auth/requireAdminSection';
 import { hasPermission } from '@/lib/auth/permissions';
 import { kioskExperienceService } from '@/services/kioskExperienceService';
+import { kioskOwnerDesignService } from '@/services/kioskOwnerDesignService';
 import { partnerRepository } from '@/repositories/partnerRepository';
 import { locationRepository } from '@/repositories/locationRepository';
 import { machineRepository } from '@/repositories/machineRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KioskLayerPicker } from '@/components/admin/vending/KioskLayerPicker';
-import { KIOSK_LAYER_SCOPE_LABEL } from '@/types';
+import { OwnerProposalReview } from '@/components/admin/vending/OwnerProposalReview';
+import { KIOSK_LAYER_SCOPE_LABEL, OWNER_EDITABLE_KIOSK_KEYS, type KioskExperiencePatch } from '@/types';
+
+const PART_LABEL: Record<(typeof OWNER_EDITABLE_KIOSK_KEYS)[number], string> = {
+  theme: 'colours and style',
+  browseSections: 'menu layout',
+  badges: 'badges',
+  productCard: 'product tiles',
+  copy: 'wording',
+  language: 'languages',
+  translations: 'translations',
+};
+
+function changedParts(patch: KioskExperiencePatch): string {
+  const parts = OWNER_EDITABLE_KIOSK_KEYS.filter((key) => patch[key] !== undefined).map((key) => PART_LABEL[key]);
+  return parts.length > 0 ? `Changes ${parts.join(', ')}` : 'Back to the Snack Quest design';
+}
 
 export const metadata: Metadata = { title: 'Screen design' };
 
@@ -20,12 +37,14 @@ export const metadata: Metadata = { title: 'Screen design' };
  */
 export default async function KioskDesignPage() {
   const session = await requireAdminPage('vending', 'kiosk.view');
-  const [layers, partners, locations, machines] = await Promise.all([
+  const [layers, partners, locations, machines, proposals] = await Promise.all([
     kioskExperienceService.listLayers(session.businessId),
     partnerRepository.listByBusiness(session.businessId),
     locationRepository.listByBusiness(session.businessId),
     machineRepository.listAllForBusiness(session.businessId),
+    kioskOwnerDesignService.listSubmitted(session.businessId),
   ]);
+  const canPublish = hasPermission(session, 'kiosk.publish');
   const name = (scope: string, scopeId: string) =>
     scope === 'global'
       ? 'Every machine'
@@ -49,6 +68,39 @@ export default async function KioskDesignPage() {
           .
         </p>
       </div>
+
+      {proposals.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Owners’ designs to review</CardTitle>
+            <p className="text-sm text-muted-foreground">Owners can propose colours, menu, badges and wording for their own machines. Nothing changes on a machine until it’s accepted here.</p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y divide-border">
+              {proposals.map((proposal) => {
+                const ownerName = partners.find((p) => p.id === proposal.partnerId)?.data.name ?? proposal.partnerId;
+                const previewOn = machines.find(({ data }) => data.ownerPartnerId === proposal.partnerId && data.status !== 'decommissioned');
+                return (
+                  <li key={proposal.partnerId} className="flex flex-col gap-3 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        <span className="block text-sm font-medium">{ownerName}</span>
+                        <span className="text-caption text-muted-foreground">{changedParts(proposal.patch)}</span>
+                      </span>
+                      {previewOn ? (
+                        <Link href={`/kiosk-preview/${previewOn.id}?proposal=${encodeURIComponent(proposal.partnerId)}`} target="_blank" className="text-sm text-primary hover:underline">
+                          Preview on {previewOn.data.machineCode}
+                        </Link>
+                      ) : null}
+                    </div>
+                    {canPublish ? <OwnerProposalReview partnerId={proposal.partnerId} ownerName={ownerName} updatedAtMillis={proposal.updatedAt.toMillis()} /> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

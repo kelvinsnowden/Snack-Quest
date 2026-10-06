@@ -270,6 +270,54 @@ class KioskExperienceService {
     return result;
   }
 
+  /** What a layer inherits from the layers above it: their published configs, composed over the defaults. */
+  async inheritedConfig(businessId: string, scope: KioskLayerScope, scopeId: string): Promise<KioskExperienceConfig> {
+    await this.assertScope(businessId, scope, scopeId);
+    const ancestors = await this.ancestorsFor(businessId, scope, scopeId);
+    return this.compose(ancestors, await this.publishedPatches(businessId, ancestors)).config;
+  }
+
+  /** A layer's live (published) patch, or `{}` when nothing is published. */
+  async livePatch(businessId: string, scope: KioskLayerScope, scopeId: string): Promise<KioskExperiencePatch> {
+    const layer = await kioskLayerRepository.get(businessId, scope, scopeId);
+    if (!layer?.publishedVersionId) return {};
+    const versions = await kioskLayerRepository.getVersions(businessId, [layer.publishedVersionId]);
+    return versions.get(layer.publishedVersionId)?.config ?? {};
+  }
+
+  /**
+   * Publishes `config` on a layer as a new version (checked like any
+   * publish), and folds it into the layer's draft: the keys in `replaces`
+   * take the published values, the rest of the draft is left as staff
+   * left it.
+   */
+  async publishPatch(businessId: string, scope: KioskLayerScope, scopeId: string, config: KioskExperiencePatch, note: string, actor: string, replaces: readonly (keyof KioskExperiencePatch)[]) {
+    await this.assertScope(businessId, scope, scopeId);
+    const parsed = parseKioskPatch(config);
+    // A layer nobody has designed yet starts with an empty draft, so there is something to publish onto.
+    if (!(await kioskLayerRepository.get(businessId, scope, scopeId))) await kioskLayerRepository.saveDraft(businessId, scope, scopeId, {}, actor);
+    const result = await this.publishConfig(businessId, scope, scopeId, parsed, note.trim().slice(0, 200) || 'Published', null, actor);
+    const layer = await kioskLayerRepository.get(businessId, scope, scopeId);
+    const draft: KioskExperiencePatch = { ...(layer?.draft ?? {}) };
+    for (const key of replaces) {
+      if (parsed[key] === undefined) delete draft[key];
+      else (draft as Record<string, unknown>)[key] = parsed[key];
+    }
+    await kioskLayerRepository.saveDraft(businessId, scope, scopeId, draft, actor);
+    return result;
+  }
+
+  /** The screen as `machineId` would show it with `override` in place of that layer's published config. */
+  async previewForMachineWith(businessId: string, machineId: string, override: { scope: KioskLayerScope; scopeId: string; patch: KioskExperiencePatch }) {
+    const machine = await machineRepository.findById(businessId, machineId);
+    if (!machine) throw new MachineNotFoundError(machineId);
+    const chain = chainFor(machine, machineId);
+    if (!chain.some((layer) => layer.scope === override.scope && layer.scopeId === override.scopeId)) {
+      throw new KioskScopeError('That machine doesn’t use this layer, so it can’t preview it.');
+    }
+    return this.compose(chain, await this.publishedPatches(businessId, chain), override);
+  }
+
   async withdraw(businessId: string, scope: KioskLayerScope, scopeId: string): Promise<void> {
     await this.assertScope(businessId, scope, scopeId);
     await kioskLayerRepository.withdraw(businessId, scope, scopeId);

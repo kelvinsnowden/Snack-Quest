@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { hasPermission } from '@/lib/auth/permissions';
 import { machineService } from '@/services/machineService';
 import { machineSlotService } from '@/services/machineSlotService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
@@ -227,6 +228,20 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         </Link>
         <span className="text-muted-foreground"> Ownership, owner terms, P&amp;L and the stock ledger.</span>
       </p>
+      <p className="text-sm">
+        <Link href={`/admin/vending/maintenance?machineId=${machineId}`} className="font-medium text-primary hover:underline">
+          Maintenance →
+        </Link>
+        <span className="text-muted-foreground"> Problems reported on this machine and what fixing them cost.</span>
+      </p>
+      {hasPermission(session, 'machines.deals.view') ? (
+        <p className="text-sm">
+          <Link href={`/finance/machine-deals/${machineId}`} className="font-medium text-primary hover:underline">
+            Machine cost and sale →
+          </Link>
+          <span className="text-muted-foreground"> What this machine cost to land and install, and what it sold for.</span>
+        </p>
+      ) : null}
 
       <Card>
         <CardHeader>

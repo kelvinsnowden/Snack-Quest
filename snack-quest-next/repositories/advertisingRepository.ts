@@ -68,6 +68,12 @@ class AdvertisingRepository {
   }
 
   // Creatives
+  /** Whether a creative already points at this stored file — a direct upload is recorded once. */
+  async creativeExistsForMediaUrl(businessId: string, mediaUrl: string): Promise<boolean> {
+    const snapshot = await adminFirestore.collection(CREATIVES).where('businessId', '==', businessId).where('mediaUrl', '==', mediaUrl).limit(1).get();
+    return !snapshot.empty;
+  }
+
   async createCreative(input: Omit<AdCreative, 'createdAt' | 'updatedAt' | 'reviewedAt'> & { reviewedAt: null }): Promise<string> {
     const now = FieldValue.serverTimestamp();
     return (await adminFirestore.collection(CREATIVES).add({ ...input, createdAt: now, updatedAt: now })).id;

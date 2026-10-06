@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Eye, EyeOff, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   KIOSK_LIMITS,
+  KIOSK_TRANSLATABLE_LOCALES,
   KioskConfigValidationError,
   checkKioskExperience,
   mergeKioskExperience,
@@ -18,6 +19,8 @@ import {
   KIOSK_BADGE_TONES,
   KIOSK_FONTS,
   KIOSK_FONT_LABEL,
+  KIOSK_LOCALES,
+  KIOSK_LOCALE_LABEL,
   KIOSK_RADII,
   KIOSK_SECTION_LABEL,
   KIOSK_SECTION_TYPES,
@@ -27,6 +30,7 @@ import {
   type KioskExperienceConfig,
   type KioskExperiencePatch,
   type KioskLayerScope,
+  type KioskLocale,
   type KioskSection,
   type KioskSectionType,
   type KioskThemeColorKey,
@@ -35,10 +39,19 @@ import {
 type Version = { versionNumber: number; note: string; rolledBackFrom: number | null; publishedBy: string; publishedAt: string | null };
 type PreviewMachine = { id: string; code: string; widthPx: number; heightPx: number; profileSet: boolean };
 type Result = { ok: boolean; text: string } | null;
+/** An owner editing their own machines' design (§ OWNER SCREEN DESIGN): saves and submits a proposal instead of publishing. */
+type OwnerMode = { status: 'draft' | 'submitted' | 'declined' | 'accepted' | null; reviewNote: string | null };
 
 const selectClass = 'min-h-10 w-full rounded-md border border-border bg-surface px-2 text-sm';
 const BADGE_NAME: Record<KioskBadgeState, string> = { featured: 'Featured', new: 'New', limited_time: 'Limited time' };
 const TONE_LABEL = { primary: 'Main button colour', secondary: 'Second accent', highlight: 'Highlight' } as const;
+const OWNER_STATUS_TEXT = {
+  none: 'Your machines show the Snack Quest design. Change anything here and send it to make it yours.',
+  draft: 'Saved, not sent yet.',
+  submitted: 'Sent — Snack Quest is reviewing it.',
+  declined: 'Snack Quest sent this back. Change it and send it again.',
+  accepted: 'Accepted and live on your machines.',
+} as const;
 const COPY_LABEL = { bannerEyebrow: 'Banner small line', bannerHeadline: 'Banner headline', attractHeadline: 'Idle-screen headline', attractCallToAction: '“Tap to start” button' } as const;
 
 async function send(url: string, method: 'PUT' | 'POST' | 'DELETE', body?: unknown): Promise<Record<string, unknown>> {
@@ -89,6 +102,10 @@ function newSection(type: KioskSectionType, existing: KioskSection[]): KioskSect
  * sets it or inherits it. Checks run as you type, with the same rules the
  * server applies on publish; the preview shows the saved draft on a real
  * machine's screen at its own size.
+ *
+ * With `owner`, it is an owner's editor for their own machines: idle and
+ * advertising settings are left out (they are Snack Quest's), and instead
+ * of publishing the owner saves a proposal and sends it for review.
  */
 export function KioskDesigner({
   scope,
@@ -100,6 +117,7 @@ export function KioskDesigner({
   previewMachines,
   canDesign,
   canPublish,
+  owner,
 }: {
   scope: KioskLayerScope;
   scopeId: string;
@@ -110,6 +128,7 @@ export function KioskDesigner({
   previewMachines: PreviewMachine[];
   canDesign: boolean;
   canPublish: boolean;
+  owner?: OwnerMode;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<KioskExperiencePatch>(initialDraft);
@@ -121,7 +140,7 @@ export function KioskDesigner({
   const [previewIdle, setPreviewIdle] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
 
-  const base = `/api/vending/kiosk/layers/${scope}/${encodeURIComponent(scopeId)}`;
+  const base = owner ? '/api/vending/partners/me/screen-design' : `/api/vending/kiosk/layers/${scope}/${encodeURIComponent(scopeId)}`;
   const dirty = JSON.stringify(draft) !== savedDraft;
   const readOnly = !canDesign;
 
@@ -190,6 +209,39 @@ export function KioskDesigner({
     });
   }
 
+  function setLanguage(key: 'available' | 'default', value: KioskLocale[] | KioskLocale | undefined) {
+    update((next) => {
+      const language = { ...(next.language ?? {}) } as Record<string, unknown>;
+      if (value === undefined) delete language[key];
+      else language[key] = value;
+      if (Object.keys(language).length === 0) delete next.language;
+      else next.language = language as KioskExperiencePatch['language'];
+    });
+  }
+
+  /** Sets one translated phrase; an empty one is removed (it then shows in English). */
+  function setTranslation(locale: KioskLocale, path: ['copy' | 'badges', string] | ['sections', string, 'text' | 'title'], value: string) {
+    update((next) => {
+      const translations = structuredClone(next.translations ?? {}) as Record<string, Record<string, Record<string, unknown>>>;
+      const translation = translations[locale] ?? {};
+      const group = { ...((translation[path[0]] as Record<string, unknown>) ?? {}) };
+      if (path[0] === 'sections') {
+        const entry = { ...((group[path[1]] as Record<string, string>) ?? {}) };
+        if (value.trim()) entry[path[2]] = value;
+        else delete entry[path[2]];
+        if (Object.keys(entry).length === 0) delete group[path[1]];
+        else group[path[1]] = entry;
+      } else if (value.trim()) group[path[1]] = value;
+      else delete group[path[1]];
+      if (Object.keys(group).length === 0) delete translation[path[0]];
+      else translation[path[0]] = group;
+      if (Object.keys(translation).length === 0) delete translations[locale];
+      else translations[locale] = translation;
+      if (Object.keys(translations).length === 0) delete next.translations;
+      else next.translations = translations as KioskExperiencePatch['translations'];
+    });
+  }
+
   function setSections(list: KioskSection[] | undefined) {
     update((next) => {
       if (list === undefined) delete next.browseSections;
@@ -222,6 +274,14 @@ export function KioskDesigner({
       setBusy(null);
     }
   }
+
+  const saveProposal = (submit: boolean) =>
+    run(submit ? 'submit' : 'save', async () => {
+      await send(base, 'PUT', { patch: draft, submit });
+      setSavedDraft(JSON.stringify(draft));
+      setPreviewKey((key) => key + 1);
+      return submit ? 'Sent to Snack Quest. Your machines change once it’s accepted.' : 'Saved. Nothing changes on your machines until you send it and it’s accepted.';
+    });
 
   const saveDraft = () =>
     run('save', async () => {
@@ -261,10 +321,20 @@ export function KioskDesigner({
   const previewMachine = previewMachines.find((machine) => machine.id === previewId);
   const frameWidth = previewMachine?.widthPx ?? 1080;
   const frameHeight = previewMachine?.heightPx ?? 1920;
-  const scale = Math.min(360 / frameWidth, 640 / frameHeight);
+  // The preview is at most 360px wide, and narrower when its card is (on a phone).
+  const [previewSpace, setPreviewSpace] = useState(360);
+  const measurePreview = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const update = () => setPreviewSpace(Math.min(360, node.clientWidth || 360));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const scale = Math.min(previewSpace / frameWidth, 640 / frameHeight);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
@@ -492,10 +562,11 @@ export function KioskDesigner({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Idle screen and wording</CardTitle>
+            <CardTitle className="text-base">{owner ? 'Wording' : 'Idle screen and wording'}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            {owner ? null : (
+              <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm">
                 <span className="flex items-center justify-between gap-2 font-medium">
                   Go idle after (seconds) <Origin overridden={draft.idle?.timeoutSeconds !== undefined} onReset={() => setGroupField('idle', 'timeoutSeconds', undefined)} disabled={readOnly} />
@@ -521,7 +592,8 @@ export function KioskDesigner({
                   Play scheduled ads on the idle screen
                 </label>
               </div>
-            </div>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               {(Object.keys(COPY_LABEL) as (keyof typeof COPY_LABEL)[]).map((key) => (
                 <label key={key} className="flex flex-col gap-1 text-sm">
@@ -534,9 +606,122 @@ export function KioskDesigner({
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Languages</CardTitle>
+            <p className="text-sm text-muted-foreground">With more than one, customers get a language switch at the top of the screen. It goes back to the starting language when their order ends.</p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-end gap-6">
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center gap-2 font-medium">
+                  Offered <Origin overridden={draft.language?.available !== undefined} onReset={() => setLanguage('available', undefined)} disabled={readOnly} />
+                </span>
+                <div className="flex gap-4">
+                  {KIOSK_LOCALES.map((locale) => (
+                    <label key={locale} className="flex min-h-10 items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={effective.language.available.includes(locale)}
+                        disabled={readOnly}
+                        onChange={(event) =>
+                          setLanguage(
+                            'available',
+                            event.target.checked ? KIOSK_LOCALES.filter((entry) => entry === locale || effective.language.available.includes(entry)) : effective.language.available.filter((entry) => entry !== locale),
+                          )
+                        }
+                      />
+                      {KIOSK_LOCALE_LABEL[locale]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center gap-2 font-medium">
+                  Starting language <Origin overridden={draft.language?.default !== undefined} onReset={() => setLanguage('default', undefined)} disabled={readOnly} />
+                </span>
+                <select className="min-h-10 rounded-md border border-border bg-surface px-2" value={effective.language.default} disabled={readOnly} onChange={(event) => setLanguage('default', event.target.value as KioskLocale)}>
+                  {effective.language.available.map((locale) => (
+                    <option key={locale} value={locale}>
+                      {KIOSK_LOCALE_LABEL[locale]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {KIOSK_TRANSLATABLE_LOCALES.filter((locale) => effective.language.available.includes(locale)).map((locale) => {
+              const translation = effective.translations[locale] ?? {};
+              return (
+                <fieldset key={locale} className="flex flex-col gap-3 rounded-md border border-border p-3">
+                  <legend className="px-1 text-sm font-medium">Wording in {KIOSK_LOCALE_LABEL[locale]}</legend>
+                  <p className="text-caption text-muted-foreground">Blank shows the English. The screen’s own buttons and messages are already translated.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(Object.keys(COPY_LABEL) as (keyof typeof COPY_LABEL)[]).map((key) => (
+                      <label key={key} className="flex flex-col gap-1 text-sm">
+                        <span className="font-medium">{COPY_LABEL[key]}</span>
+                        <Input maxLength={KIOSK_LIMITS.copyMax[key]} placeholder={effective.copy[key]} value={translation.copy?.[key] ?? ''} disabled={readOnly} onChange={(event) => setTranslation(locale, ['copy', key], event.target.value)} className="min-h-10" />
+                      </label>
+                    ))}
+                    {KIOSK_BADGE_STATES.filter((state) => effective.badges[state].visible).map((state) => (
+                      <label key={state} className="flex flex-col gap-1 text-sm">
+                        <span className="font-medium">“{effective.badges[state].label}” badge</span>
+                        <Input maxLength={KIOSK_LIMITS.badgeLabelMax} placeholder={effective.badges[state].label} value={translation.badges?.[state] ?? ''} disabled={readOnly} onChange={(event) => setTranslation(locale, ['badges', state], event.target.value)} className="min-h-10" />
+                      </label>
+                    ))}
+                    {effective.browseSections
+                      .filter((section) => section.visible && (section.type === 'promo_message' || section.type === 'featured_products'))
+                      .map((section) => {
+                        const field = section.type === 'promo_message' ? 'text' : 'title';
+                        const english = (section.type === 'promo_message' ? section.props.text : section.props.title) ?? '';
+                        return (
+                          <label key={section.id} className="flex flex-col gap-1 text-sm">
+                            <span className="font-medium">{section.type === 'promo_message' ? 'Message strip' : 'Featured row title'}</span>
+                            <Input
+                              maxLength={field === 'text' ? KIOSK_LIMITS.promoTextMax : KIOSK_LIMITS.sectionTitleMax}
+                              placeholder={english}
+                              value={translation.sections?.[section.id]?.[field] ?? ''}
+                              disabled={readOnly}
+                              onChange={(event) => setTranslation(locale, ['sections', section.id, field], event.target.value)}
+                              className="min-h-10"
+                            />
+                          </label>
+                        );
+                      })}
+                  </div>
+                </fieldset>
+              );
+            })}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex flex-col gap-6 xl:sticky xl:top-4 xl:self-start">
+        {owner ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Save and send</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {OWNER_STATUS_TEXT[owner.status ?? 'none']} {dirty ? 'You have unsaved changes.' : ''}
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {owner.status === 'declined' && owner.reviewNote ? (
+                <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <span className="font-medium">Snack Quest’s note:</span> {owner.reviewNote}
+                </p>
+              ) : null}
+              <Button variant="outline" onClick={() => saveProposal(false)} loading={busy === 'save'} disabled={Boolean(busy) || !dirty || parseProblems.length > 0}>
+                Save
+              </Button>
+              <Button onClick={() => saveProposal(true)} loading={busy === 'submit'} disabled={Boolean(busy) || parseProblems.length > 0 || check.errors.length > 0 || (!dirty && owner.status === 'submitted')}>
+                Send to Snack Quest
+              </Button>
+              <p className="text-caption text-muted-foreground">Snack Quest checks every design before it goes on a machine. The idle screen and ads stay as Snack Quest sets them.</p>
+              <Message result={result} />
+            </CardContent>
+          </Card>
+        ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Save and publish</CardTitle>
@@ -571,6 +756,7 @@ export function KioskDesigner({
             <Message result={result} />
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-col gap-3">
@@ -593,23 +779,24 @@ export function KioskDesigner({
           </CardHeader>
           <CardContent>
             {previewMachine ? (
-              <>
+              <div ref={measurePreview}>
                 <div className="mx-auto overflow-hidden rounded-lg border border-border bg-background" style={{ width: frameWidth * scale, height: frameHeight * scale }}>
                   <iframe
                     key={`${previewId}-${previewIdle}-${previewKey}`}
                     title={`Preview of ${previewMachine.code}`}
-                    src={`/kiosk-preview/${previewMachine.id}?scope=${scope}&scopeId=${encodeURIComponent(scopeId)}${previewIdle ? '&idle=1' : ''}`}
+                    src={owner ? `/partner-screen-preview/${previewMachine.id}${previewIdle ? '?idle=1' : ''}` : `/kiosk-preview/${previewMachine.id}?scope=${scope}&scopeId=${encodeURIComponent(scopeId)}${previewIdle ? '&idle=1' : ''}`}
                     style={{ width: frameWidth, height: frameHeight, transform: `scale(${scale})`, transformOrigin: 'top left', border: 0 }}
                   />
                 </div>
-                <p className="mt-2 text-caption text-muted-foreground">Shows the saved draft{dirty ? ' — save to see your latest changes' : ''}. Payments are off in the preview.</p>
-              </>
+                <p className="mt-2 text-caption text-muted-foreground">Shows {owner ? 'your saved design' : 'the saved draft'}{dirty ? ' — save to see your latest changes' : ''}. Payments are off in the preview.</p>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No machine uses this layer yet, so there is nothing to preview on.</p>
+              <p className="text-sm text-muted-foreground">{owner ? 'You have no machines yet, so there is nothing to preview on.' : 'No machine uses this layer yet, so there is nothing to preview on.'}</p>
             )}
           </CardContent>
         </Card>
 
+        {owner ? null : (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Version history</CardTitle>
@@ -640,6 +827,7 @@ export function KioskDesigner({
             )}
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   );

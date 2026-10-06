@@ -53,6 +53,12 @@ class SnackItemRepository {
    * is waiting on. Missing ids are simply absent from the map — a
    * deleted snack still referenced by an old recipe must not throw.
    */
+  /** Snacks in the business carrying this barcode — normally none or one. */
+  async findIdsByBarcode(businessId: string, barcode: string): Promise<string[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).where('barcode', '==', barcode).limit(5).get();
+    return snapshot.docs.map((doc) => doc.id);
+  }
+
   async findManyById(itemIds: string[]): Promise<Map<string, SnackItem>> {
     const unique = Array.from(new Set(itemIds));
     if (unique.length === 0) {

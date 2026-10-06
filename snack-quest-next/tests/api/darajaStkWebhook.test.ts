@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { processCallbackMock, handlePaymentResultMock, verifyDarajaWebhookRequestMock, verifyCallbackMock, handleMpesaCallbackMock } = vi.hoisted(() => ({
+const { processCallbackMock, handlePaymentResultMock, verifyDarajaWebhookRequestMock, verifyCallbackMock, handleMpesaCallbackMock, findByCheckoutRequestIdMock } = vi.hoisted(() => ({
   processCallbackMock: vi.fn(),
   handlePaymentResultMock: vi.fn(),
   verifyDarajaWebhookRequestMock: vi.fn(),
   verifyCallbackMock: vi.fn(),
   handleMpesaCallbackMock: vi.fn(),
+  findByCheckoutRequestIdMock: vi.fn(),
 }));
 
 vi.mock('@/services/paymentService', () => ({
@@ -26,6 +27,10 @@ vi.mock('@/lib/integrations/daraja/darajaGateway', () => ({
 
 vi.mock('@/services/machineTransactionService', () => ({
   machineTransactionService: { handleMpesaCallback: handleMpesaCallbackMock },
+}));
+
+vi.mock('@/repositories/paymentIntentRepository', () => ({
+  paymentIntentRepository: { findByCheckoutRequestId: findByCheckoutRequestIdMock },
 }));
 
 import { POST as stkRoute } from '@/app/api/webhooks/daraja/[businessId]/route';
@@ -67,6 +72,8 @@ const PARSED_CALLBACK = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // By default the callback is not an order checkout's, so the vending branch is consulted.
+  findByCheckoutRequestIdMock.mockResolvedValue(null);
 });
 
 describe('POST /api/webhooks/daraja/[businessId]', () => {
@@ -135,5 +142,33 @@ describe('POST /api/webhooks/daraja/[businessId]', () => {
 
     await expect(stkRoute(request('biz-1', payload), { params: Promise.resolve({ businessId: 'biz-1' }) })).rejects.toThrow('Firestore is down');
     expect(processCallbackMock).not.toHaveBeenCalled();
+  });
+
+  it('an order checkout’s payment goes straight to the order path and never touches vending', async () => {
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
+    verifyCallbackMock.mockReturnValue(PARSED_CALLBACK);
+    findByCheckoutRequestIdMock.mockResolvedValue({ intentId: 'intent-1', attemptId: 'attempt-1' });
+    processCallbackMock.mockResolvedValue({ status: 'succeeded' });
+
+    const response = await stkRoute(request('biz-1', { Body: {} }), { params: Promise.resolve({ businessId: 'biz-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(handleMpesaCallbackMock).not.toHaveBeenCalled();
+    expect(processCallbackMock).toHaveBeenCalledWith('biz-1', { Body: {} });
+    expect(handlePaymentResultMock).toHaveBeenCalledWith({ status: 'succeeded' });
+  });
+
+  it('a broken vending lookup can no longer lose a paid order (2 Oct incident: missing index)', async () => {
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
+    verifyCallbackMock.mockReturnValue(PARSED_CALLBACK);
+    findByCheckoutRequestIdMock.mockResolvedValue({ intentId: 'intent-1', attemptId: 'attempt-1' });
+    handleMpesaCallbackMock.mockRejectedValue(new Error('9 FAILED_PRECONDITION: The query requires an index.'));
+    processCallbackMock.mockResolvedValue({ status: 'succeeded' });
+
+    const response = await stkRoute(request('biz-1', { Body: {} }), { params: Promise.resolve({ businessId: 'biz-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(processCallbackMock).toHaveBeenCalledTimes(1);
+    expect(handlePaymentResultMock).toHaveBeenCalledTimes(1);
   });
 });

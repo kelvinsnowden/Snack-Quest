@@ -3,13 +3,16 @@
 import { MapPin, Plus } from 'lucide-react';
 import type { KioskBadgeState, KioskBadgeStyle, KioskProductCardOptions, ProductAvailabilityState, SellableCatalogItem } from '@/types';
 import { PROMO_LABEL, formatKes } from './format';
+import { useKioskText } from './kioskTextContext';
+import type { KioskTextKey } from '@/lib/kiosk/kioskText';
 
-export const STATE_LABEL: Record<ProductAvailabilityState, string> = {
-  available: '',
-  sold_out: 'Sold out',
-  unavailable: 'Unavailable',
-  coming_soon: 'Coming soon',
-  hidden: '',
+/** The words for why a product can't be bought, by state; null where nothing is shown. */
+export const STATE_TEXT: Record<ProductAvailabilityState, KioskTextKey | null> = {
+  available: null,
+  sold_out: 'stateSoldOut',
+  unavailable: 'stateUnavailable',
+  coming_soon: 'stateComingSoon',
+  hidden: null,
 };
 
 /**
@@ -66,6 +69,8 @@ export function ProductCard({
   onQuickAdd: () => void;
   options?: ProductCardOptions;
 }) {
+  const { t } = useKioskText();
+  const stateKey = STATE_TEXT[item.availabilityState];
   const purchasable = item.availabilityState === 'available';
   const showOrigin = options?.showOrigin ?? true;
   const showBadges = options?.showBadges ?? true;
@@ -76,7 +81,7 @@ export function ProductCard({
         <div className={`relative aspect-square w-full overflow-hidden rounded-md bg-background p-4 ${purchasable ? '' : 'grayscale'}`}>
           <ProductImage item={item} className={purchasable ? '' : 'opacity-50'} />
           {!purchasable ? (
-            <span className="absolute inset-x-3 bottom-3 rounded-full bg-foreground/85 py-1.5 text-center text-small font-semibold text-background">{STATE_LABEL[item.availabilityState]}</span>
+            <span className="absolute inset-x-3 bottom-3 rounded-full bg-foreground/85 py-1.5 text-center text-small font-semibold text-background">{stateKey ? t(stateKey) : ''}</span>
           ) : null}
         </div>
         <div className="flex flex-col gap-1 px-1">
@@ -96,7 +101,7 @@ export function ProductCard({
           <button
             type="button"
             onClick={quickAdd ? onQuickAdd : onOpen}
-            aria-label={quickAdd ? `Add ${item.name} to cart` : `Choose how many ${item.name} to add`}
+            aria-label={quickAdd ? t('addToOrderAria', { name: item.name }) : t('chooseHowManyAria', { name: item.name })}
             className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform duration-150 ease-out outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:scale-95 motion-reduce:transition-none lg:size-14"
           >
             <Plus className="size-6" aria-hidden="true" />
@@ -110,7 +115,7 @@ export function ProductCard({
       {quantityInCart > 0 ? (
         <span className="absolute right-5 top-5 flex size-8 items-center justify-center rounded-full bg-foreground text-small font-bold text-background shadow-sm lg:right-6 lg:top-6">
           {quantityInCart}
-          <span className="sr-only"> in your order</span>
+          <span className="sr-only">{t('inYourOrder')}</span>
         </span>
       ) : null}
     </article>

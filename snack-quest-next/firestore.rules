@@ -635,6 +635,25 @@ service cloud.firestore {
     match /kioskDeviceStates/{machineId} {
       allow read, write: if false;
     }
+    // § MAINTENANCE — requests and the cost ledger are read and written only
+    // through the server, which scopes an owner to their own machines.
+    match /maintenanceRequests/{requestId} {
+      allow read, write: if false;
+    }
+    match /maintenanceCosts/{costId} {
+      allow read, write: if false;
+    }
+    // § OWNER SCREEN DESIGN — owners' proposals, server-side only.
+    match /kioskOwnerProposals/{proposalId} {
+      allow read, write: if false;
+    }
+    // § MACHINE DEALS — machine costs and sales, server-side only.
+    match /machineCostLines/{lineId} {
+      allow read, write: if false;
+    }
+    match /machineDeals/{machineId} {
+      allow read, write: if false;
+    }
     match /cameras/{cameraId} {
       allow read: if isTenantAdmin(resource.data.businessId);
       allow write: if false;

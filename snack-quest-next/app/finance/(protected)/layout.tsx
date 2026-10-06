@@ -49,7 +49,12 @@ export default async function FinanceLayout({ children }: { children: React.Reac
   }
 
   const business = await businessRepository.findById(session.businessId);
-  const navItems = hasPermission(session, 'sales.view') ? [...NAV_ITEMS, { href: '/finance/machine-sales', label: 'Machine sales' }] : NAV_ITEMS;
+  const navItems = [
+    { href: '/finance/income', label: 'Income' },
+    ...NAV_ITEMS,
+    ...(hasPermission(session, 'sales.view') ? [{ href: '/finance/machine-sales', label: 'Machine sales' }] : []),
+    ...(hasPermission(session, 'machines.deals.view') ? [{ href: '/finance/machine-deals', label: 'Machine deals' }] : []),
+  ];
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">

@@ -1,3 +1,4 @@
+import type { Allergen, NetContent } from '@/lib/products/productDetails';
 import type { AuditFields } from './common';
 
 /**
@@ -69,4 +70,12 @@ export interface SnackItem extends AuditFields {
    * hidden from the picker and refused server-side.
    */
   stockCount?: number;
+  /** As printed on the pack. Absent or null: not recorded. */
+  brand?: string | null;
+  /** The GTIN under the stripes (EAN-8, UPC-A, EAN-13 or GTIN-14), check digit verified; unique within the business. */
+  barcode?: string | null;
+  /** What the pack declares. Absent or null: not recorded. `[]`: the pack declares none. */
+  allergens?: Allergen[] | null;
+  /** Net weight or volume from the pack. */
+  netContent?: NetContent | null;
 }

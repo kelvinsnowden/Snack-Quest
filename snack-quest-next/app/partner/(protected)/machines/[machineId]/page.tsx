@@ -20,6 +20,9 @@ import { machineInventoryReserveService } from '@/services/machineInventoryReser
 import { locationService } from '@/services/locationService';
 import { LocationExpensesForm } from '@/components/partner/LocationExpensesForm';
 import { RestockRequestButton } from '@/components/partner/RestockRequestButton';
+import { MaintenanceRequestForm, WithdrawRequestButton } from '@/components/partner/MaintenanceRequestForm';
+import { maintenanceService } from '@/services/maintenanceService';
+import { MAINTENANCE_COST_CATEGORY_LABEL, MAINTENANCE_REQUEST_CATEGORY_LABEL, MAINTENANCE_REQUEST_STATUS_LABEL } from '@/types/maintenance';
 import { DailySalesBarChart } from '@/components/partner/DailySalesBarChart';
 import { StockLevelBar } from '@/components/partner/StockLevelBar';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
@@ -70,7 +73,7 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
     throw error;
   }
 
-  const [reserve, fullLocation, inventory, health, salesTrend, topProducts, recentActivity, cameras] = await Promise.all([
+  const [reserve, fullLocation, inventory, health, salesTrend, topProducts, recentActivity, cameras, maintenance] = await Promise.all([
     machineInventoryReserveService.getReserveStatus(session.businessId, machineId),
     detail.location ? locationService.findById(session.businessId, detail.location.id) : Promise.resolve(null),
     ownerPortalService.getMachineInventory(session.businessId, session.partnerId, machineId),
@@ -79,6 +82,7 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
     ownerPortalService.getTopProducts(session.businessId, session.partnerId, 30, machineId, 5),
     ownerPortalService.getRecentActivity(session.businessId, session.partnerId, 10, machineId),
     ownerPortalService.listCamerasForMachine(session.businessId, session.partnerId, machineId),
+    maintenanceService.forOwnerMachine(session.businessId, session.partnerId, machineId),
   ]);
 
   const [today, sevenDay, thirtyDay, ninetyDay] = OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => detail.performanceByWindow[days]);
@@ -424,6 +428,62 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
     </div>
   );
 
+  const maintenancePanel = (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Report a problem</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MaintenanceRequestForm machineId={machineId} />
+        </CardContent>
+      </Card>
+
+      <div>
+        <h2 className="mb-3 text-lg font-semibold text-foreground">Your reports</h2>
+        {maintenance.requests.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nothing reported on this machine.</p>
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-4">
+              {maintenance.requests.map(({ id, data }) => (
+                <div key={id} className="flex flex-col gap-1 border-b border-border pb-4 text-sm last:border-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={data.status === 'resolved' ? 'success' : data.status === 'cancelled' ? 'outline' : 'warning'}>{MAINTENANCE_REQUEST_STATUS_LABEL[data.status]}</Badge>
+                    <span className="font-medium text-foreground">{MAINTENANCE_REQUEST_CATEGORY_LABEL[data.category]}</span>
+                    <span className="text-xs text-muted-foreground">{relativeTime(data.createdAt.toDate().toISOString())}</span>
+                  </div>
+                  <p className="text-foreground">{data.description}</p>
+                  {data.status === 'scheduled' && data.scheduledFor ? <p className="text-muted-foreground">Visit planned for {data.scheduledFor}.</p> : null}
+                  {data.resolution ? <p className="text-muted-foreground">{data.resolution}</p> : null}
+                  {data.partnerId === session.partnerId && (data.status === 'open' || data.status === 'acknowledged') ? <WithdrawRequestButton requestId={id} /> : null}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {maintenance.costs.length > 0 ? (
+        <div>
+          <h2 className="mb-3 text-lg font-semibold text-foreground">Maintenance you paid for</h2>
+          <Card>
+            <CardContent className="flex flex-col gap-2 p-4 text-sm">
+              {maintenance.costs.map(({ id, data }) => (
+                <div key={id} className="flex items-start justify-between gap-3">
+                  <span>
+                    <span className="text-muted-foreground tabular-nums">{data.occurredOn}</span> · {MAINTENANCE_COST_CATEGORY_LABEL[data.category]}: {data.description}
+                  </span>
+                  <span className="shrink-0 font-medium tabular-nums">KES {data.amountKes.toLocaleString('en-KE')}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <Link href="/partner/machines" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
@@ -457,8 +517,9 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
           { value: 'inventory', label: 'Inventory' },
           { value: 'sales', label: 'Sales' },
           { value: 'health', label: 'Health' },
+          { value: 'maintenance', label: 'Maintenance' },
         ]}
-        panels={{ overview: overviewPanel, inventory: inventoryPanel, sales: salesPanel, health: healthPanel }}
+        panels={{ overview: overviewPanel, inventory: inventoryPanel, sales: salesPanel, health: healthPanel, maintenance: maintenancePanel }}
       />
     </div>
   );

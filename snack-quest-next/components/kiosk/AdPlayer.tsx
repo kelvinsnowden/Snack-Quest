@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_ROTATION, nextAd, type MachinePlaylist, type PlaylistCampaign, type PlaylistCreative, type RotationState } from '@/lib/ads/playlist';
 import type { AdPlaybackEventType } from '@/types/advertising';
+import { useKioskText } from './kioskTextContext';
 
 export interface AdEvent {
   campaignId: string;
@@ -57,6 +58,7 @@ export function AdPlayer({
     }),
     [playlist, media],
   );
+  const { t } = useKioskText();
   const [current, setCurrent] = useState<{ campaign: PlaylistCampaign; creative: PlaylistCreative; startedAt: number } | null>(null);
   const [tick, setTick] = useState(0);
   const rotationRef = useRef<RotationState | null>(null);
@@ -139,10 +141,10 @@ export function AdPlayer({
       ) : (
         <video key={src} src={src} autoPlay muted playsInline className="absolute inset-0 size-full object-cover" onEnded={() => finish('completed')} onError={() => finish('failed', 'video could not play')} />
       )}
-      <span className="absolute left-4 top-4 z-10 rounded-full bg-foreground/60 px-3 py-1 text-caption font-semibold text-background">Ad</span>
-      <button type="button" onClick={handleTap} className="absolute inset-0 z-20 outline-none" aria-label="Tap to start your order" />
+      <span className="absolute left-4 top-4 z-10 rounded-full bg-foreground/60 px-3 py-1 text-caption font-semibold text-background">{t('adLabel')}</span>
+      <button type="button" onClick={handleTap} className="absolute inset-0 z-20 outline-none" aria-label={t('tapToStartOrder')} />
       <div className="pointer-events-none relative z-10 mt-auto flex justify-center pb-16">
-        <span className="rounded-full bg-kiosk-highlight px-10 py-5 text-subtitle font-bold text-kiosk-highlight-foreground shadow-lg">Tap to start</span>
+        <span className="rounded-full bg-kiosk-highlight px-10 py-5 text-subtitle font-bold text-kiosk-highlight-foreground shadow-lg">{t('tapToStart')}</span>
       </div>
     </main>
   );

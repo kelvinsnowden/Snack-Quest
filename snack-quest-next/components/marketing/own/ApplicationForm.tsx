@@ -273,27 +273,27 @@ export function ApplicationForm() {
       {/* Progress */}
       <div className="mb-8 flex items-center gap-3">
         {canGoBack ? (
-          <button type="button" onClick={goBack} aria-label="Back" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white">
+          <button type="button" onClick={goBack} aria-label="Back" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-surface hover:text-foreground">
             <ArrowLeft className="size-4" aria-hidden="true" />
           </button>
         ) : (
           <span className="size-9 shrink-0" aria-hidden="true" />
         )}
         <div className="flex-1">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised">
             <span
-              className="from-primary to-home-orange-glow block h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ease-out"
+              className="block h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
               style={{ width: `${(progress / TOTAL_STEPS) * 100}%` }}
             />
           </div>
         </div>
-        <span className="shrink-0 text-xs font-semibold tabular-nums text-white/50">
+        <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
           {progress} / {TOTAL_STEPS}
         </span>
       </div>
 
       <div key={step} className="animate-own-step-in flex flex-1 flex-col">
-        {line ? <p className="text-primary mb-3 text-sm font-medium">{line}</p> : null}
+        {line ? <p className="mb-3 text-sm font-medium text-own-accent-ink">{line}</p> : null}
 
         {step === 'name' ? <NameStep answers={answers} setAnswers={setAnswers} onNext={next} /> : null}
         {step === 'greeting' ? <GreetingStep onNext={next} /> : null}
@@ -327,9 +327,9 @@ export function ApplicationForm() {
 
 /* ── Shared primitives ──────────────────────────────────────────── */
 
-const HEADLINE_CLASS = 'font-display text-2xl leading-tight text-white uppercase sm:text-3xl';
+const HEADLINE_CLASS = 'font-display text-2xl leading-tight text-foreground uppercase sm:text-3xl';
 const FIELD_CLASS =
-  'w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 py-4 text-lg text-white placeholder:text-white/40 transition-colors focus:border-primary/70 focus:bg-white/10 focus:outline-none';
+  'w-full rounded-xl border border-border bg-background px-4 py-4 text-lg text-foreground placeholder:text-muted-foreground/70 transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none';
 
 function ChoiceCard({
   label,
@@ -348,17 +348,17 @@ function ChoiceCard({
       onClick={onClick}
       className={cn(
         'flex w-full items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-left transition-all duration-200',
-        selected ? 'border-primary bg-primary/15 scale-[1.01]' : 'border-white/15 bg-white/[0.04] hover:bg-white/[0.08]',
+        selected ? 'border-primary bg-primary/10 scale-[1.01]' : 'border-border bg-background hover:bg-surface',
       )}
     >
       <span>
-        <span className="block text-base font-semibold text-white sm:text-lg">{label}</span>
-        {description ? <span className="mt-0.5 block text-sm text-white/55">{description}</span> : null}
+        <span className="block text-base font-semibold text-foreground sm:text-lg">{label}</span>
+        {description ? <span className="mt-0.5 block text-sm text-muted-foreground">{description}</span> : null}
       </span>
       <span
         className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors',
-          selected ? 'border-primary bg-primary text-white' : 'border-white/25 text-transparent',
+          selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-transparent',
         )}
         aria-hidden="true"
       >
@@ -374,7 +374,7 @@ function ContinueButton({ onClick, disabled, label = 'Continue' }: { onClick: ()
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="from-primary to-home-orange-glow mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br px-8 py-4 text-base font-bold tracking-wide text-white uppercase shadow-[0_18px_50px_-14px_rgb(255_122_0/0.6)] transition-all hover:-translate-y-0.5 disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-40 sm:text-lg"
+      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-8 py-4 text-base font-bold tracking-wide text-primary-foreground uppercase shadow-[0_14px_34px_-14px_rgb(255_122_0/0.7)] transition-all hover:-translate-y-0.5 hover:bg-own-accent-ink motion-reduce:transition-none motion-reduce:hover:translate-y-0 disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-40 sm:text-lg"
     >
       {label}
       <ArrowRight className="size-5" aria-hidden="true" />
@@ -431,7 +431,7 @@ function GreetingStep({ onNext }: { onNext: () => void }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
       <h3 className={HEADLINE_CLASS}>Thank you for showing interest.</h3>
-      <p className="text-base text-white/70 sm:text-lg">Let’s see if the Discovery Machine model could be a fit for you.</p>
+      <p className="text-base text-muted-foreground sm:text-lg">Let’s see if the Discovery Machine model could be a fit for you.</p>
       <ContinueButton onClick={onNext} />
     </div>
   );
@@ -446,7 +446,7 @@ function CapitalStep({ selected, onSelect }: { selected: CapitalRange | null; on
           <ChoiceCard key={option.value} label={option.label} selected={selected === option.value} onClick={() => onSelect(option.value)} />
         ))}
       </div>
-      <p className="text-sm text-white/45">No commitment. We’re simply understanding your starting point.</p>
+      <p className="text-sm text-muted-foreground">No commitment. We’re simply understanding your starting point.</p>
     </div>
   );
 }
@@ -455,11 +455,11 @@ function LocationAccessStep({ selected, onSelect }: { selected: LocationAccess |
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
       <div>
-        <span className="bg-primary/15 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tracking-[0.14em] uppercase">
+        <span className="bg-primary/10 text-own-accent-ink mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tracking-[0.14em] uppercase">
           <MapPin className="size-3.5" aria-hidden="true" />
           Location matters
         </span>
-        <p className="mb-1 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">Now the important question</p>
+        <p className="mb-1 text-xs font-bold tracking-[0.18em] text-muted-foreground uppercase">Now the important question</p>
         <h3 className={HEADLINE_CLASS}>Do you already have access to a strong location?</h3>
       </div>
       <div className="flex flex-col gap-2.5">
@@ -509,11 +509,11 @@ function LocationTypeStep({
               onClick={() => onToggle(option.value)}
               className={cn(
                 'flex flex-col items-center gap-2 rounded-2xl border px-3 py-5 text-center transition-all duration-200',
-                checked ? 'border-primary bg-primary/15 scale-[1.02]' : 'border-white/15 bg-white/[0.04] hover:bg-white/[0.08]',
+                checked ? 'border-primary bg-primary/10 scale-[1.02]' : 'border-border bg-background hover:bg-surface',
               )}
             >
-              <Icon className={cn('size-6', checked ? 'text-primary' : 'text-white/60')} aria-hidden="true" />
-              <span className="text-sm font-semibold text-white">{option.label}</span>
+              <Icon className={cn('size-6', checked ? 'text-own-accent-ink' : 'text-muted-foreground')} aria-hidden="true" />
+              <span className="text-sm font-semibold text-foreground">{option.label}</span>
             </button>
           );
         })}
@@ -526,7 +526,7 @@ function LocationTypeStep({
 function InterestStep({ selected, onSelect }: { selected: OwnerProfile | null; onSelect: (value: OwnerProfile) => void }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-6">
-      <p className="mb-1 text-xs font-bold tracking-[0.18em] text-white/45 uppercase">The opportunity</p>
+      <p className="mb-1 text-xs font-bold tracking-[0.18em] text-muted-foreground uppercase">The opportunity</p>
       <h3 className={cn(HEADLINE_CLASS, '-mt-4')}>What are you looking to build?</h3>
       <div className="flex flex-col gap-2.5">
         {OWNER_PROFILES.map((option) => (
@@ -580,12 +580,12 @@ function ContactStep({
     >
       <div>
         <h3 className={HEADLINE_CLASS}>Where should we send the next step?</h3>
-        <p className="mt-2 text-base text-white/70">Ready? Let’s see whether there’s a fit.</p>
+        <p className="mt-2 text-base text-muted-foreground">Ready? Let’s see whether there’s a fit.</p>
       </div>
 
       <div className="flex flex-col gap-4">
         <div>
-          <label className="mb-2 block text-sm font-medium text-white/85" htmlFor="own-whatsapp">
+          <label className="mb-2 block text-sm font-medium text-foreground" htmlFor="own-whatsapp">
             WhatsApp number
           </label>
           <input
@@ -601,8 +601,8 @@ function ContactStep({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-medium text-white/85" htmlFor="own-email">
-            Email <span className="font-normal text-white/50">(optional)</span>
+          <label className="mb-2 block text-sm font-medium text-foreground" htmlFor="own-email">
+            Email <span className="font-normal text-muted-foreground">(optional)</span>
           </label>
           <input
             id="own-email"
@@ -624,7 +624,7 @@ function ContactStep({
 
       <ContinueButton onClick={onSubmit} disabled={!answers.whatsapp.trim() || submitting} label={submitting ? 'Checking…' : 'Check my fit'} />
       {submitting ? (
-        <span className="mx-auto -mt-3 flex items-center gap-2 text-sm text-white/50">
+        <span className="mx-auto -mt-3 flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         </span>
       ) : null}
@@ -644,11 +644,11 @@ function SuccessState({ answers }: { answers: Answers }) {
 
   return (
     <div ref={ref} tabIndex={-1} className="flex min-h-[420px] flex-col items-center justify-center gap-6 text-center outline-none">
-      <span className="bg-primary/15 text-primary flex size-16 items-center justify-center rounded-full">
+      <span className="bg-primary/10 text-own-accent-ink flex size-16 items-center justify-center rounded-full">
         <Check className="size-8" strokeWidth={3} aria-hidden="true" />
       </span>
-      <h3 className="font-display text-3xl text-white uppercase sm:text-4xl">Application received.</h3>
-      <p className="max-w-md text-base leading-relaxed text-white/75">
+      <h3 className="font-display text-3xl text-foreground uppercase sm:text-4xl">Application received.</h3>
+      <p className="max-w-md text-base leading-relaxed text-muted-foreground">
         We’ve got the basics. Our team will review your capital + location profile and contact you about the next step.
       </p>
 
@@ -673,9 +673,9 @@ function SuccessState({ answers }: { answers: Answers }) {
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-      <p className="text-[10px] font-bold tracking-[0.18em] text-white/40 uppercase">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    <div className="rounded-xl bg-surface px-4 py-3">
+      <p className="text-[10px] font-bold tracking-[0.18em] text-muted-foreground uppercase">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }

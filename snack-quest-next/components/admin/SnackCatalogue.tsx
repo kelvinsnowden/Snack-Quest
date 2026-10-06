@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import type { SerializedSnackItem } from '@/lib/recipes/serialize';
 import type { ProductPriceType } from '@/types/economics';
 import { PriceBookEditor } from '@/components/admin/vending/EconomicsControls';
+import { ALLERGENS, ALLERGEN_LABEL, type Allergen, type NetContentUnit } from '@/lib/products/productDetails';
 
 /** Mirrors `SNACK_DESCRIPTION_MAX` in `services/recipeService.ts` (a server-only module); the server enforces it. */
 const SNACK_DESCRIPTION_MAX = 160;
@@ -30,6 +31,13 @@ interface DraftState {
   isActive: boolean;
   availableForPremiumSelection: boolean;
   stockCount: string;
+  brand: string;
+  barcode: string;
+  /** False: allergens not recorded. True with none ticked: the pack declares none. */
+  allergensRecorded: boolean;
+  allergens: Allergen[];
+  netAmount: string;
+  netUnit: NetContentUnit;
 }
 
 const EMPTY: DraftState = {
@@ -44,6 +52,12 @@ const EMPTY: DraftState = {
   isActive: true,
   availableForPremiumSelection: false,
   stockCount: '',
+  brand: '',
+  barcode: '',
+  allergensRecorded: false,
+  allergens: [],
+  netAmount: '',
+  netUnit: 'g',
 };
 
 /**
@@ -91,6 +105,12 @@ export function SnackCatalogue({
       isActive: item.isActive,
       availableForPremiumSelection: item.availableForPremiumSelection ?? false,
       stockCount: item.stockCount === undefined ? '' : String(item.stockCount),
+      brand: item.brand ?? '',
+      barcode: item.barcode ?? '',
+      allergensRecorded: item.allergens !== null,
+      allergens: item.allergens ?? [],
+      netAmount: item.netContent ? String(item.netContent.amount) : '',
+      netUnit: item.netContent?.unit ?? 'g',
     });
     setError(null);
   }
@@ -134,6 +154,10 @@ export function SnackCatalogue({
         // Blank means untracked, which is not the same as zero — see
         // `SnackItem.stockCount`. Null clears it back to untracked.
         stockCount: draft.stockCount.trim() === '' ? null : Number(draft.stockCount),
+        brand: draft.brand,
+        barcode: draft.barcode,
+        allergens: draft.allergensRecorded ? draft.allergens : null,
+        netContent: draft.netAmount.trim() === '' ? null : { amount: Number(draft.netAmount), unit: draft.netUnit },
       };
       const response = await fetch(draft.id ? `/api/admin/snack-items/${draft.id}` : '/api/admin/snack-items', {
         method: draft.id ? 'PATCH' : 'POST',
@@ -290,6 +314,52 @@ export function SnackCatalogue({
                   />
                 </div>
               </div>
+
+              <fieldset className="flex flex-col gap-3 rounded-md border border-border p-3">
+                <legend className="px-1 text-sm font-medium text-foreground">From the pack</legend>
+                <div className="flex flex-wrap gap-3">
+                  <div className="flex min-w-40 flex-1 flex-col gap-1.5">
+                    <Label htmlFor="snack-brand">Brand</Label>
+                    <Input id="snack-brand" value={draft.brand} maxLength={80} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} placeholder="Calbee" className="min-h-11" />
+                  </div>
+                  <div className="flex min-w-40 flex-1 flex-col gap-1.5">
+                    <Label htmlFor="snack-barcode">Barcode</Label>
+                    <Input id="snack-barcode" value={draft.barcode} inputMode="numeric" onChange={(event) => setDraft({ ...draft, barcode: event.target.value })} placeholder="The digits under the stripes" className="min-h-11" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="snack-net">Net content</Label>
+                    <div className="flex gap-2">
+                      <Input id="snack-net" type="number" min={0} step="0.1" inputMode="decimal" value={draft.netAmount} onChange={(event) => setDraft({ ...draft, netAmount: event.target.value })} className="min-h-11 w-24" />
+                      <select aria-label="Unit" value={draft.netUnit} onChange={(event) => setDraft({ ...draft, netUnit: event.target.value as NetContentUnit })} className="min-h-11 rounded-md border border-border bg-surface px-2 text-sm">
+                        <option value="g">g</option>
+                        <option value="ml">ml</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input type="checkbox" className="size-4" checked={draft.allergensRecorded} onChange={(event) => setDraft({ ...draft, allergensRecorded: event.target.checked, allergens: event.target.checked ? draft.allergens : [] })} />
+                  I’ve checked the allergens on the pack
+                </label>
+                {draft.allergensRecorded ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-caption text-muted-foreground">Tick what the pack says it contains. None ticked means the pack declares none, and the machine screen says so.</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                      {ALLERGENS.map((key) => (
+                        <label key={key} className="flex items-center gap-2 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            className="size-4"
+                            checked={draft.allergens.includes(key)}
+                            onChange={(event) => setDraft({ ...draft, allergens: event.target.checked ? [...draft.allergens, key] : draft.allergens.filter((entry) => entry !== key) })}
+                          />
+                          {ALLERGEN_LABEL[key]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </fieldset>
 
               <label className="flex items-center gap-2 text-sm text-foreground">
                 <input

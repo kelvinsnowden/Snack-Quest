@@ -16,6 +16,8 @@ export interface SelectProductRequest {
   phoneNumberId: string;
   customerPhone: string;
   productId: string;
+  /** Boxes of this one product, 1 to `MAX_CHECKOUT_QUANTITY`. Absent means one. */
+  quantity?: number;
   referralCode?: string | null;
   creatorAttributionId?: string | null;
 }
@@ -25,7 +27,10 @@ export interface SelectProductResponse {
   nextStep: string;
   productId: string;
   productName: string;
+  /** Unit price. */
   priceKes: number;
+  /** Boxes on the order, as accepted. */
+  quantity: number;
 }
 
 export interface QuoteDeliveryRequest {

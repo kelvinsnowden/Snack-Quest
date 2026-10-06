@@ -47,6 +47,7 @@ import {
   UserCog,
   Users,
   Warehouse,
+  Wrench,
 } from 'lucide-react';
 
 /**
@@ -137,6 +138,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: '/admin/vending/kiosk-design', label: 'Screen Design', shortLabel: 'Design', icon: Palette, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/advertising', label: 'Advertising', shortLabel: 'Ads', icon: Tv, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/restock', label: 'Restock Command Center', shortLabel: 'Restock', icon: PackageSearch, section: 'vending', group: 'Vending' },
+  { href: '/admin/vending/maintenance', label: 'Maintenance', icon: Wrench, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/partners', label: 'Machine Owners', shortLabel: 'Owners', icon: Banknote, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/intelligence', label: 'Network Intelligence', shortLabel: 'Intelligence', icon: BarChart3, section: 'vending', group: 'Vending' },
   { href: '/admin/vending/locations', label: 'Locations', icon: Building2, section: 'vending', group: 'Vending' },
@@ -197,6 +199,7 @@ export const NAV_PERMISSION: Record<string, PermissionKey> = {
   '/admin/vending/kiosk-design': 'kiosk.view',
   '/admin/vending/advertising': 'advertising.view',
   '/admin/vending/restock': 'restock.view',
+  '/admin/vending/maintenance': 'maintenance.view',
   '/admin/vending/partners': 'owners.view',
   '/admin/vending/locations': 'locations.view',
   '/admin/vending/intelligence': 'analytics.vending.view',

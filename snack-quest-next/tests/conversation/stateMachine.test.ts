@@ -52,6 +52,7 @@ describe('transition: awaiting_package_selection', () => {
       packageId: 'box-3500',
       packageLabel: 'Deluxe Box',
       priceKes: 3500,
+      quantity: 1,
     });
   });
 
@@ -345,6 +346,22 @@ describe('formatFinalOrderSummaryMessage', () => {
     expect(message).toContain('Delivery: KES 350');
     expect(message).toContain('Total: KES 3850');
     expect(message).toContain('To continue, reply PAY whenever you are ready to receive the M-Pesa payment prompt.');
+  });
+
+  it('shows the box count and prices every box', () => {
+    const message = formatFinalOrderSummaryMessage({
+      packageLabel: 'Deluxe Box',
+      priceKes: 3500,
+      quantity: 3,
+      customerName: 'Jane Doe',
+      county: 'Nairobi',
+      deliveryMethod: 'pickup',
+      pickupStationName: 'G4S Kasarani Station',
+      deliveryFeeKes: 350,
+      discountKes: 200,
+    });
+    expect(message).toContain('Deluxe Box × 3: KES 10500');
+    expect(message).toContain('Total: KES 10650'); // 3 × 3500 − 200 + 350
   });
 
   it('labels the fee "Delivery" and closes with the door-delivery PAY copy', () => {

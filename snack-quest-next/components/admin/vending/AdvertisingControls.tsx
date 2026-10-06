@@ -2,11 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { upload } from '@vercel/blob/client';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   AD_BILLING_LABEL,
+  AD_DIRECT_VIDEO_MAX_BYTES,
+  AD_IN_BAND_MAX_BYTES,
   AD_BILLING_MODELS,
   type AdBillingModel,
   type AdCampaignStatus,
@@ -179,10 +182,13 @@ export function AdvertiserForm() {
 /** Uploads a creative for review (`advertising.manage`). The server checks the file and computes its checksum. */
 export function CreativeUploadForm({
   advertisers,
+  businessId,
 }: {
   advertisers: { id: string; name: string }[];
+  businessId: string;
 }) {
   const { busy, result, run } = useAction();
+  const [progress, setProgress] = useState<number | null>(null);
   const [advertiserId, setAdvertiserId] = useState(advertisers[0]?.id ?? '');
   const [name, setName] = useState('');
   const [seconds, setSeconds] = useState('8');
@@ -195,12 +201,33 @@ export function CreativeUploadForm({
         event.preventDefault();
         if (!file) return;
         void run('upload', async () => {
-          const form = new FormData();
-          form.set('file', file);
-          form.set('advertiserId', advertiserId);
-          form.set('name', name);
-          form.set('durationSeconds', seconds);
-          await send('/api/vending/advertising/creatives', 'POST', form);
+          const isVideo = file.type === 'video/mp4' || file.type === 'video/webm';
+          if (file.size > (isVideo ? AD_DIRECT_VIDEO_MAX_BYTES : AD_IN_BAND_MAX_BYTES)) {
+            throw new Error(isVideo ? `Keep ad videos under ${AD_DIRECT_VIDEO_MAX_BYTES / (1024 * 1024)} MB.` : `Keep ad images under ${AD_IN_BAND_MAX_BYTES / (1024 * 1024)} MB.`);
+          }
+          if (isVideo && file.size > AD_IN_BAND_MAX_BYTES) {
+            // Too big to pass through our server: upload straight to storage, then have the server check and record it.
+            setProgress(0);
+            try {
+              const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, '-').slice(-100) || 'video';
+              const blob = await upload(`ads/${businessId}/${safeName}`, file, {
+                access: 'public',
+                contentType: file.type,
+                handleUploadUrl: '/api/vending/advertising/creatives/direct-upload',
+                onUploadProgress: ({ percentage }) => setProgress(percentage),
+              });
+              await send('/api/vending/advertising/creatives/finalize', 'POST', { advertiserId, name, url: blob.url, durationSeconds: Number(seconds) });
+            } finally {
+              setProgress(null);
+            }
+          } else {
+            const form = new FormData();
+            form.set('file', file);
+            form.set('advertiserId', advertiserId);
+            form.set('name', name);
+            form.set('durationSeconds', seconds);
+            await send('/api/vending/advertising/creatives', 'POST', form);
+          }
           setName('');
           setFile(null);
           setInputKey((key) => key + 1);
@@ -241,7 +268,7 @@ export function CreativeUploadForm({
           className="min-h-10 text-sm"
         />
         <span className="text-caption text-muted-foreground">
-          JPG, PNG, WebP, MP4 or WebM, under 4 MB.
+          JPG, PNG or WebP under 4 MB; MP4 or WebM under 50 MB.
         </span>
       </label>
       <label className="flex flex-col gap-1 text-sm">
@@ -264,6 +291,11 @@ export function CreativeUploadForm({
         >
           Upload for review
         </Button>
+        {progress !== null ? (
+          <p role="status" className="mt-2 text-sm text-muted-foreground tabular-nums">
+            Uploading video… {Math.round(progress)}%
+          </p>
+        ) : null}
       </div>
       <div className="sm:col-span-2">
         <Message result={result} />

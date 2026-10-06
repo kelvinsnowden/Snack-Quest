@@ -206,7 +206,7 @@ export function PriceBookEditor({ productCatalogue, productId, editableTypes }: 
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
-  const url = `/api/admin/products/${productCatalogue}/${productId}/prices`;
+  const url = `/api/admin/price-book/${productCatalogue}/${productId}/prices`;
 
   async function load() {
     const response = await fetch(url, { cache: 'no-store' });

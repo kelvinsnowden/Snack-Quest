@@ -18,21 +18,21 @@ export function FaqAccordion({ items }: { items: readonly { q: string; a: string
       {items.map((item, index) => {
         const open = openIndex === index;
         return (
-          <div key={item.q} className="rounded-2xl border border-white/10 bg-white/[0.04]">
+          <div key={item.q} className={`rounded-2xl border transition-colors ${open ? 'border-primary/40 bg-surface' : 'border-border bg-background'}`}>
             <button
               type="button"
               onClick={() => setOpenIndex(open ? null : index)}
               aria-expanded={open}
-              className="flex w-full items-center justify-between gap-3 p-5 text-left sm:p-6"
+              className="flex w-full items-center justify-between gap-3 rounded-2xl p-5 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:p-6"
             >
-              <span className="text-base font-bold text-white sm:text-lg">{item.q}</span>
+              <span className="text-base font-bold text-foreground sm:text-lg">{item.q}</span>
               <ChevronDown
-                className={`size-5 shrink-0 text-white/50 transition-transform ${open ? 'rotate-180' : ''}`}
+                className={`size-5 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180 text-own-accent-ink' : ''}`}
                 aria-hidden="true"
               />
             </button>
             {open ? (
-              <p className="px-5 pb-5 text-sm leading-relaxed text-white/65 sm:px-6 sm:pb-6 sm:text-base">{item.a}</p>
+              <p className="px-5 pb-5 text-sm leading-relaxed text-muted-foreground sm:px-6 sm:pb-6 sm:text-base">{item.a}</p>
             ) : null}
           </div>
         );

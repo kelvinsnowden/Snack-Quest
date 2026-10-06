@@ -17,6 +17,7 @@ import {
   Tag,
   Wallet,
   Coins,
+  Palette,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp/orderLink';
@@ -59,6 +60,7 @@ const SIDE_NAV = [
   { href: '/partner/locations', label: 'Locations', icon: MapPin },
   { href: '/partner/products', label: 'Products', icon: Tag },
   { href: '/partner/cameras', label: 'Cameras', icon: Camera },
+  { href: '/partner/screen-design', label: 'Screen design', icon: Palette },
   { href: '/partner/reports', label: 'Reports', icon: FileText },
   { href: '/partner/payouts', label: 'Payouts', icon: Wallet },
   { href: '/partner/subscription', label: 'Subscription', icon: ReceiptText },

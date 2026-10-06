@@ -3,24 +3,27 @@ import { hasPermission, type PermissionHolder } from '@/lib/auth/permissions';
 import { reconciliationChecksService } from '@/services/reconciliationChecksService';
 import { advertisingService } from '@/services/advertisingService';
 import { kioskExperienceService } from '@/services/kioskExperienceService';
+import { maintenanceService } from '@/services/maintenanceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
  * The machine network at a glance on the admin home (§ ADMIN DASHBOARD):
- * record checks, screen designs and advertising. Each line appears only
+ * record checks, maintenance, screen designs and advertising. Each line appears only
  * for people whose permissions cover it; with none, the panel is absent.
  */
 export async function MachineNetworkPanel({ session }: { session: PermissionHolder & { businessId: string } }) {
   const canChecks = hasPermission(session, 'sales.view');
   const canAds = hasPermission(session, 'advertising.view');
   const canDesigns = hasPermission(session, 'kiosk.view');
-  if (!canChecks && !canAds && !canDesigns) return null;
+  const canMaintenance = hasPermission(session, 'maintenance.view');
+  if (!canChecks && !canAds && !canDesigns && !canMaintenance) return null;
 
-  const [checks, campaigns, creatives, layers] = await Promise.all([
+  const [checks, campaigns, creatives, layers, openMaintenance] = await Promise.all([
     canChecks ? reconciliationChecksService.run(session.businessId) : Promise.resolve(null),
     canAds ? advertisingService.listCampaigns(session.businessId) : Promise.resolve(null),
     canAds ? advertisingService.listCreatives(session.businessId) : Promise.resolve(null),
     canDesigns ? kioskExperienceService.listLayers(session.businessId) : Promise.resolve(null),
+    canMaintenance ? maintenanceService.countOpenRequests(session.businessId) : Promise.resolve(null),
   ]);
   const failing = checks?.filter((check) => check.status !== 'ok') ?? [];
   const silentScreens = checks?.find((check) => check.key === 'screens_not_reporting')?.count ?? 0;
@@ -28,6 +31,7 @@ export async function MachineNetworkPanel({ session }: { session: PermissionHold
   const rows: { label: string; value: string; href: string; attention: boolean }[] = [];
   if (checks) rows.push({ label: 'Record checks', value: failing.length === 0 ? 'All pass' : `${failing.length} need a look`, href: '/admin/vending/reconciliation/checks', attention: failing.length > 0 });
   if (checks) rows.push({ label: 'Screens silent over an hour', value: String(silentScreens), href: '/admin/vending/reconciliation/checks', attention: silentScreens > 0 });
+  if (openMaintenance !== null) rows.push({ label: 'Maintenance problems waiting', value: String(openMaintenance), href: '/admin/vending/maintenance', attention: openMaintenance > 0 });
   if (campaigns) rows.push({ label: 'Ad campaigns running', value: String(campaigns.filter(({ data }) => data.status === 'active').length), href: '/admin/vending/advertising', attention: false });
   if (creatives) {
     const pending = creatives.filter(({ data }) => data.status === 'pending_review').length;

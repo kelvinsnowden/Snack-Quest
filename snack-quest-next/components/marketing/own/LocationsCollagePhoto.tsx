@@ -10,7 +10,8 @@ import { LOCATIONS_COLLAGE_PHOTO_SRC } from './ownPhotos';
  */
 export function LocationsCollagePhoto() {
   return (
-    <div className="relative mx-auto aspect-[2/3] w-full max-w-sm overflow-hidden rounded-2xl lg:mx-0 lg:max-w-none">
+    // Shot on black: framed as a dark panel on the white page.
+    <div className="relative mx-auto aspect-[2/3] w-full max-w-sm overflow-hidden rounded-3xl bg-own-panel shadow-[var(--sq-shadow-lg)] lg:mx-0 lg:max-w-none">
       <Image
         src={LOCATIONS_COLLAGE_PHOTO_SRC}
         alt="Snack Quest Discovery Machines placed in a mall, an office, a hotel, a university, a hospital, an apartment lobby, a private school and a transport hub."
