@@ -72,7 +72,9 @@ describe('checkKioskExperience', () => {
   it('the defaults publish, with honest warnings about the brand orange', () => {
     const check = checkKioskExperience(DEFAULT_KIOSK_EXPERIENCE);
     expect(check.errors).toEqual([]);
-    expect(check.warnings.join(' ')).toMatch(/Text on main buttons/);
+    expect(check.warnings.join(' ')).toMatch(/Text on main buttons is \d/);
+    // The label already names its ground — not “Text on main buttons on main buttons”.
+    expect(check.warnings.join(' ')).not.toMatch(/on main buttons on/);
   });
 
   it('a menu without the product grid can’t publish', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Eye, EyeOff, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -321,10 +321,20 @@ export function KioskDesigner({
   const previewMachine = previewMachines.find((machine) => machine.id === previewId);
   const frameWidth = previewMachine?.widthPx ?? 1080;
   const frameHeight = previewMachine?.heightPx ?? 1920;
-  const scale = Math.min(360 / frameWidth, 640 / frameHeight);
+  // The preview is at most 360px wide, and narrower when its card is (on a phone).
+  const [previewSpace, setPreviewSpace] = useState(360);
+  const measurePreview = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const update = () => setPreviewSpace(Math.min(360, node.clientWidth || 360));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const scale = Math.min(previewSpace / frameWidth, 640 / frameHeight);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
@@ -769,7 +779,7 @@ export function KioskDesigner({
           </CardHeader>
           <CardContent>
             {previewMachine ? (
-              <>
+              <div ref={measurePreview}>
                 <div className="mx-auto overflow-hidden rounded-lg border border-border bg-background" style={{ width: frameWidth * scale, height: frameHeight * scale }}>
                   <iframe
                     key={`${previewId}-${previewIdle}-${previewKey}`}
@@ -779,7 +789,7 @@ export function KioskDesigner({
                   />
                 </div>
                 <p className="mt-2 text-caption text-muted-foreground">Shows {owner ? 'your saved design' : 'the saved draft'}{dirty ? ' — save to see your latest changes' : ''}. Payments are off in the preview.</p>
-              </>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">{owner ? 'You have no machines yet, so there is nothing to preview on.' : 'No machine uses this layer yet, so there is nothing to preview on.'}</p>
             )}

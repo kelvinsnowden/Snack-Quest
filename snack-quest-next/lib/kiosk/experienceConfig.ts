@@ -500,6 +500,11 @@ const LABEL_PAIRS: [KioskThemeColorKey, KioskThemeColorKey][] = [
   ['highlightForeground', 'highlight'],
 ];
 
+/** “Main text on page background” — but “Text on main buttons” alone, since that label already names its ground. */
+function pairLabel(text: KioskThemeColorKey, ground: KioskThemeColorKey): string {
+  return text === `${ground}Foreground` ? KIOSK_THEME_COLOR_LABEL[text] : `${KIOSK_THEME_COLOR_LABEL[text]} on ${KIOSK_THEME_COLOR_LABEL[ground].toLowerCase()}`;
+}
+
 /**
  * Whether a complete, merged config is fit for a customer screen. Body
  * text below 4.5:1 blocks publishing — a customer must be able to read
@@ -524,13 +529,13 @@ export function checkKioskExperience(config: KioskExperienceConfig): KioskConfig
   for (const [text, ground] of TEXT_PAIRS) {
     const ratio = contrastRatio(config.theme.colors[text], config.theme.colors[ground]);
     if (ratio < KIOSK_LIMITS.textContrastMin) {
-      errors.push(`${KIOSK_THEME_COLOR_LABEL[text]} on ${KIOSK_THEME_COLOR_LABEL[ground].toLowerCase()} is ${ratio.toFixed(1)}:1; it needs at least ${KIOSK_LIMITS.textContrastMin}:1 to be readable.`);
+      errors.push(`${pairLabel(text, ground)} is ${ratio.toFixed(1)}:1; it needs at least ${KIOSK_LIMITS.textContrastMin}:1 to be readable.`);
     }
   }
   for (const [text, ground] of LABEL_PAIRS) {
     const ratio = contrastRatio(config.theme.colors[text], config.theme.colors[ground]);
     if (ratio < KIOSK_LIMITS.largeTextContrastMin) {
-      warnings.push(`${KIOSK_THEME_COLOR_LABEL[text]} on ${KIOSK_THEME_COLOR_LABEL[ground].toLowerCase()} is ${ratio.toFixed(1)}:1, below the ${KIOSK_LIMITS.largeTextContrastMin}:1 recommended for large labels.`);
+      warnings.push(`${pairLabel(text, ground)} is ${ratio.toFixed(1)}:1, below the ${KIOSK_LIMITS.largeTextContrastMin}:1 recommended for large labels.`);
     }
   }
   if (!config.idle.adsEnabled) warnings.push('Advertising is off on the idle screen for these machines; booked campaigns won’t play here.');
