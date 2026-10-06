@@ -27,7 +27,6 @@ import { MachinePhoto } from '@/components/marketing/own/MachinePhoto';
 import { OwnerPortalPhoto } from '@/components/marketing/own/OwnerPortalPhoto';
 import { LocationsCollagePhoto } from '@/components/marketing/own/LocationsCollagePhoto';
 import { FaqAccordion } from '@/components/marketing/own/FaqAccordion';
-import { RestockingVideo } from '@/components/marketing/own/RestockingVideo';
 
 const TITLE = 'Own a Snack Quest Discovery Machine | Machine Ownership';
 const DESCRIPTION =
@@ -237,30 +236,6 @@ export default function OwnPage() {
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">{item.body}</p>
             </div>
           ))}
-        </div>
-
-        <div id="restocking" className="mt-12 grid scroll-mt-20 gap-10 sm:mt-16 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-16">
-          <RestockingVideo className="mx-auto w-full max-w-[300px] sm:max-w-[340px] lg:mx-0 lg:justify-self-center" />
-          <div>
-            <span className={`mb-4 flex size-10 items-center justify-center rounded-xl ${ACCENT.green}`}>
-              <Truck className="size-5" aria-hidden="true" />
-            </span>
-            <h3 className="font-display text-[clamp(1.5rem,4.5vw,2.25rem)] leading-tight text-foreground uppercase">
-              We keep it <Hl>full</Hl>.
-            </h3>
-            <ul className="mt-6 flex flex-col gap-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
-              {[
-                'Snack Quest restocks the machine — you don’t carry boxes.',
-                'Each refill is planned from what your machine actually sells, so the fast movers don’t run out.',
-                'Every item loaded is recorded, and you see stock levels in your owner portal.',
-              ].map((line) => (
-                <li key={line} className="flex gap-3">
-                  <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
 
         <EmphasisCard icon={Boxes}>
