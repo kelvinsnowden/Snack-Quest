@@ -68,6 +68,7 @@ function defaultRebuildRange(now = new Date()): { weekBefore: string; yesterday:
 export default async function AdminOperationsPage() {
   const session = await requireStaffSession();
   const snapshot = await operationsService.getSnapshot(session.businessId);
+  const nothingHasRun = snapshot.jobHealth.length > 0 && snapshot.jobHealth.every((job) => job.state === 'never_run');
   const canRunJobs = hasPermission(session, 'ops.jobs.run');
   const { weekBefore, yesterday } = defaultRebuildRange();
 
@@ -316,9 +317,14 @@ export default async function AdminOperationsPage() {
       <Section
         title="Scheduled jobs"
         description="Health of every recovery, reconciliation and rollup job, from its own run records. A job that has never run here shows as never run — nothing is assumed."
-        count={snapshot.jobHealth.filter((job) => job.state === 'failing' || job.state === 'abandoned' || job.state === 'overdue').length}
+        count={nothingHasRun ? snapshot.jobHealth.length : snapshot.jobHealth.filter((job) => job.state === 'failing' || job.state === 'abandoned' || job.state === 'overdue').length}
       >
         <div className="flex flex-col gap-6">
+          {nothingHasRun ? (
+            <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-foreground">
+              <span className="font-medium">No scheduled job has ever run here.</span> The daily jobs are started by Vercel Cron, which needs <code className="font-mono">CRON_SECRET</code> set in the Vercel project. The 5-minute recovery is started by the GitHub workflow, which needs the <code className="font-mono">CRON_SECRET</code> and <code className="font-mono">SNACK_QUEST_BASE_URL</code> repository secrets. Until they run, stuck payments, unfinished vends and owed refunds aren’t picked up automatically. Use “Run now” to check a job works.
+            </p>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead className="border-b border-border text-left text-caption text-muted-foreground uppercase">

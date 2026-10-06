@@ -107,6 +107,29 @@ describe('RestockCommandCenterService.getAtRiskSlots', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('surfaces an empty slot on a selling machine that has never sold — a new machine — filled to capacity', async () => {
+    const skuId = await createSnackItem('Brand New Machine Product');
+    const { machineId } = await machineService.provisionDevice({
+      businessId: BUSINESS_ID,
+      machineCode: `SQ-CMD-NEW-${Date.now()}`,
+      serialNumber: 'SN-4',
+      manufacturer: 'mock',
+      model: 'test',
+      actor: 'staff-1',
+    });
+    await activateMachine(machineId);
+    const adapter = new MockVendingAdapter();
+    const slots = new MachineSlotService(() => adapter);
+    adapter.seedSlot(machineId, 'A01', { quantity: 0 });
+    await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: skuId, productCatalogue: 'snackItem', priceKes: 250, capacity: 12, position: 1 });
+    await adminFirestore.collection('machineSlots').doc(`${machineId}__A01`).update({ currentQuantity: 0 });
+    await machineAssortmentService.assortProduct({ businessId: BUSINESS_ID, machineId, productId: skuId, productCatalogue: 'snackItem', actor: 'staff-1' });
+    await machineAssortmentService.linkSlot(BUSINESS_ID, machineId, 'snackItem', skuId, 'A01');
+
+    const rows = await restockCommandCenterService.getAtRiskSlots(BUSINESS_ID);
+    expect(rows).toEqual([expect.objectContaining({ machineId, slotCode: 'A01', currentQuantity: 0, daysOfStockRemaining: 0, recommendedQuantity: 12 })]);
+  });
+
   it('never surfaces a slot on a machine that is not active yet, however low its stock', async () => {
     const skuId = await createSnackItem('Not Live Yet');
     const { machineId } = await machineService.provisionDevice({

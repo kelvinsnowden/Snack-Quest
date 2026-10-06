@@ -11,6 +11,14 @@ import { MachineRegistrationWizard } from '@/components/admin/vending/MachineReg
 
 export const metadata: Metadata = { title: 'Register a machine' };
 
+/** The connection, named for the person registering a machine rather than for the code behind it. */
+const WIZARD_LABEL: Record<string, string> = {
+  snack_quest_gateway: 'Snack Quest machine software — M109E machines, or a maker that builds to our API',
+  mock: 'Test machine (simulator, never real sales)',
+  shengma: 'Shengma (not connected yet)',
+  reference_http: 'Template for a new maker connection (testing only)',
+};
+
 /** What each connection can honestly do today, in words an operator can act on. Registering never makes a machine sell; these only set expectations. */
 function manufacturerNote(entry: AdapterRegistration): string {
   if (entry.environment === 'sandbox_only') return entry.maturity === 'reference' ? 'A template for building a manufacturer connection. Testing only — it can never take real payments.' : 'Simulated machine for testing. It can never take real payments.';
@@ -39,7 +47,7 @@ export default async function RegisterMachinePage() {
       <Card className="max-w-3xl">
         <CardContent className="p-6">
           <MachineRegistrationWizard
-            manufacturers={listAdapterRegistrations().map((entry) => ({ key: entry.key, label: entry.label, note: manufacturerNote(entry) }))}
+            manufacturers={listAdapterRegistrations().map((entry) => ({ key: entry.key, label: WIZARD_LABEL[entry.key] ?? entry.label, note: manufacturerNote(entry) }))}
             owners={owners.filter(({ data }) => data.status === 'active').map(({ id, data }) => ({ id, name: data.name })).sort((a, b) => a.name.localeCompare(b.name))}
             locations={locations.map(({ id, data }) => ({ id, name: data.name })).sort((a, b) => a.name.localeCompare(b.name))}
             canSetOwner={canSetOwner}

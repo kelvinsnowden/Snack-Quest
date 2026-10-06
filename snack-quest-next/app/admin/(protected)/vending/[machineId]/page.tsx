@@ -20,7 +20,7 @@ import { cameraService } from '@/services/cameraService';
 import { serializeRestockTask, serializeCamera } from '@/lib/vending/serialize';
 import { machineLiveness, connectivityOf, LIVENESS_REASON_LABEL } from '@/lib/vending/machineStatus';
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
-import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
+import { defaultVendingAdapterResolver, findAdapterRegistration, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
 import { HardwareAuthenticationError, HardwareTimeoutError, HardwareUnreachableError, ProtocolNotConfiguredError } from '@/lib/vending/hardwareAdapter';
 import { ALL_HARDWARE_CAPABILITIES, HARDWARE_CAPABILITY_LABELS, hasCapability, classifyCapabilityStatus, type CapabilityStatus } from '@/lib/vending/protocol/capabilities';
 import { machineIntegrationService } from '@/services/machineIntegrationService';
@@ -175,7 +175,7 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
         <div>
           <h1 className="text-2xl font-semibold text-foreground">{machine.machineCode}</h1>
           <p className="text-sm text-muted-foreground">
-            {machine.model} · adapter {machine.manufacturer} · Serial {machine.serialNumber}
+            {machine.model} · {findAdapterRegistration(machine.manufacturer)?.direction === 'inbound' ? 'connects through Snack Quest machine software' : `adapter ${machine.manufacturer}`} · Serial {machine.serialNumber}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -317,7 +317,14 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
                   <DetailStat label="Temperature" value={diagnostics.live.status.temperatureCelsius !== null ? `${diagnostics.live.status.temperatureCelsius}°C` : '—'} />
                 </div>
               ) : (
-                <p className="text-sm text-warning">Live read unavailable — {diagnostics.live.reason}</p>
+                findAdapterRegistration(machine.manufacturer)?.direction === 'inbound' ? (
+                  <p className="text-sm text-muted-foreground">This machine reports to Snack Quest itself, so there is nothing to read from it live. Its latest heartbeat, status and vends are under Integration above.</p>
+                ) : (
+                  <details className="text-sm text-warning">
+                    <summary className="cursor-pointer">Can’t read this machine live.</summary>
+                    <p className="mt-1 text-caption text-muted-foreground">{diagnostics.live.reason}</p>
+                  </details>
+                )
               )}
 
               <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 sm:grid-cols-4">

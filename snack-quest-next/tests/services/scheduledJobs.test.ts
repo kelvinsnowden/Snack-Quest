@@ -121,6 +121,14 @@ describe('health', () => {
     expect(alerts.size).toBe(1);
   });
 
+  it('a daily job that never ran, while other jobs have run for days, is overdue — it was never scheduled', async () => {
+    await adminFirestore.collection('scheduledJobRuns').add({ businessId: BUSINESS_ID, jobName: 'reconcile-vending-transactions', status: 'succeeded', startedAt: Timestamp.fromMillis(Date.now() - 3 * 24 * HOUR), finishedAt: Timestamp.fromMillis(Date.now() - 3 * 24 * HOUR), durationMs: 5, resultSummary: {}, errors: [], error: null });
+    await adminFirestore.collection('scheduledJobRuns').add({ businessId: BUSINESS_ID, jobName: 'reconcile-vending-transactions', status: 'succeeded', startedAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), finishedAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), durationMs: 5, resultSummary: {}, errors: [], error: null });
+    const health = await scheduledJobService.health(BUSINESS_ID);
+    expect(health.find((job) => job.jobName === 'rebuild-vending-rollups')).toMatchObject({ state: 'overdue', lastError: expect.stringMatching(/never run/) });
+    expect(health.find((job) => job.jobName === 'reconcile-vending-transactions')?.state).toBe('ok');
+  });
+
   it('a failed job raises one job_failure alert, cleared by the next good run', async () => {
     await scheduledJobService.run(BUSINESS_ID, 'reconcile-stk-payments', async (job) => {
       await job.step('reconcile', async () => { throw new Error('daraja down'); });

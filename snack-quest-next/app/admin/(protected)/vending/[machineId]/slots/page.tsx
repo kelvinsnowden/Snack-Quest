@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SlotEditor } from '@/components/admin/vending/SlotEditor';
 import { StockLedgerCheck } from '@/components/admin/vending/StockLedgerCheck';
 import { RemoveStockForm } from '@/components/admin/vending/EconomicsControls';
+import { FillMachineButton } from '@/components/admin/vending/FillMachineButton';
+import { restockTaskService } from '@/services/restockTaskService';
 
 export const metadata: Metadata = { title: 'Slots' };
 
@@ -21,13 +23,20 @@ export default async function MachineSlotsPage({ params }: { params: Promise<{ m
   const { machineId } = await params;
   const machine = await machineService.findById(session.businessId, machineId);
   if (!machine) notFound();
-  const [slots, health, products, machines] = await Promise.all([
+  const canPlanRestock = hasPermission(session, 'restock.plan');
+  const [slots, health, products, machines, openRestocks] = await Promise.all([
     machineSlotService.listByMachine(session.businessId, machineId),
     machineSlotService.slotHealth(session.businessId, machineId),
     listProductOptions(session.businessId),
     machineRepository.listAllForBusiness(session.businessId),
+    canPlanRestock ? restockTaskService.listOpenByMachine(session.businessId, machineId) : Promise.resolve([]),
   ]);
   const paused = slots.filter((slot) => slot.quarantine).length;
+  // Slots that sell something and have room — what "fill this machine" would load.
+  const toFill = slots
+    .filter((slot) => slot.productId && slot.enabled && slot.capacity > slot.currentQuantity)
+    .map((slot) => ({ slotId: slot.slotCode, productId: slot.productId as string, quantityNeeded: slot.capacity - slot.currentQuantity }));
+  const unitsToFill = toFill.reduce((sum, item) => sum + item.quantityNeeded, 0);
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
@@ -47,6 +56,24 @@ export default async function MachineSlotsPage({ params }: { params: Promise<{ m
           </a>
         ) : null}
       </div>
+      {canPlanRestock && toFill.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Fill this machine</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {openRestocks.length > 0
+                ? `A restock is already under way for this machine. Finish it on the machine page before starting another.`
+                : `${toFill.length} slot${toFill.length === 1 ? '' : 's'} can take ${unitsToFill} more item${unitsToFill === 1 ? '' : 's'}. This creates one restock to fill every slot to capacity — approve, pick, dispatch and receive it on the machine page, as with any restock.`}
+            </p>
+          </CardHeader>
+          {openRestocks.length === 0 ? (
+            <CardContent>
+              <FillMachineButton machineId={machineId} items={toFill} />
+            </CardContent>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card>
         <CardContent className="p-4 sm:p-6">
           <SlotEditor

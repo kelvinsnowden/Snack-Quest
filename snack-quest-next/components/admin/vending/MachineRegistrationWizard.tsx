@@ -115,7 +115,7 @@ export function MachineRegistrationWizard({
       {step === 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reg-manufacturer">Made by</Label>
+            <Label htmlFor="reg-manufacturer">How it connects</Label>
             <select id="reg-manufacturer" value={values.manufacturer} onChange={set('manufacturer')} className={field}>
               <option value="">Choose…</option>
               {manufacturers.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
@@ -169,7 +169,7 @@ export function MachineRegistrationWizard({
       {step === 2 ? (
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
           {[
-            ['Made by', chosen?.label ?? values.manufacturer],
+            ['Connects through', chosen?.label ?? values.manufacturer],
             ['Model', values.model],
             ['Serial number', values.serialNumber],
             ['Machine code', values.machineCode.trim() || 'Next SQ-MCH number'],

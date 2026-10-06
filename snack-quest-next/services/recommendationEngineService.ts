@@ -43,7 +43,8 @@ export interface RestockNeed {
  * recommended quantity live, without either writing a recommendation
  * doc for a page view or maintaining a second copy of this formula
  * that could quietly drift from the one that actually creates
- * recommendations. Returns `null` for a slot that isn't actually at
+ * recommendations. An empty slot is always at risk: fill it to
+ * capacity. Otherwise returns `null` for a slot that isn't actually at
  * risk (no measured velocity, or already holding
  * `TARGET_DAYS_OF_STOCK`+ days, or nothing left to send within
  * capacity) — never a zero-value result papering over "not at risk."
@@ -51,6 +52,12 @@ export interface RestockNeed {
 export function computeRestockNeed(slot: Pick<SlotPerformance, 'slotCode' | 'productId' | 'currentQuantity' | 'capacity' | 'velocityPerDay'>): RestockNeed | null {
   const { velocityPerDay } = slot;
   if (velocityPerDay <= 0) {
+    // An empty slot has run out whatever its history. A new machine has no
+    // history at all, so without this it would never be flagged — and its
+    // empty slots would never get a restock button.
+    if (slot.currentQuantity <= 0 && slot.capacity > 0) {
+      return { slotCode: slot.slotCode, productId: slot.productId, velocityPerDay: 0, currentQuantity: 0, capacity: slot.capacity, daysOfStockRemaining: 0, recommendedQuantity: slot.capacity };
+    }
     return null;
   }
   const daysOfStockRemaining = slot.currentQuantity / velocityPerDay;

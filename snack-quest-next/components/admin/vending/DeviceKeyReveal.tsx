@@ -64,6 +64,8 @@ export function DeviceKeyReveal({ machineCode, secret, onDone }: { machineCode: 
         <div className="flex min-w-0 flex-1 flex-col gap-3 text-sm">
           <p className="text-foreground">
             <span className="font-medium">To pair the screen:</span> on {machineCode}’s screen, open the camera and point it at this code, then open the link. The screen saves the key and starts up.
+            <br />
+            <span className="text-muted-foreground">No camera on the screen? Open <code className="font-mono">{origin ? `${origin.replace(/^https?:\/\//, '')}/machine/${machineCode}` : `/machine/${machineCode}`}</code> in its browser and type the key where it asks for the device secret.</span>
           </p>
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Key</span>

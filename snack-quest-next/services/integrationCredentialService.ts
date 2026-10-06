@@ -46,6 +46,12 @@ export type IntegrationCredentialSummary = Omit<IntegrationCredential, 'secretEn
   secretHint: string;
 };
 
+/** `technical_review` → `Technical review`, as the onboarding stages are labelled on screen. */
+function stageName(stage: string): string {
+  const words = stage.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /**
  * Issuing and revoking manufacturer credentials (§ AUTHENTICATION,
  * § MANUFACTURER ONBOARDING: "Credentials → Test Environment →
@@ -81,10 +87,10 @@ class IntegrationCredentialService {
     }
     const stageIndex = MANUFACTURER_ONBOARDING_STAGES.indexOf(manufacturer.onboardingStage);
     if (input.environment === 'sandbox' && stageIndex < MANUFACTURER_ONBOARDING_STAGES.indexOf('credentials')) {
-      throw new CredentialIssuanceError(`Sandbox credentials are issued from the "credentials" onboarding stage; ${manufacturer.name} is at "${manufacturer.onboardingStage}"`);
+      throw new CredentialIssuanceError(`Sandbox keys can be issued once ${manufacturer.name} reaches the Credentials stage. It is at ${stageName(manufacturer.onboardingStage)} — advance it under Onboarding first.`);
     }
     if (input.environment === 'production' && manufacturer.onboardingStage !== 'production') {
-      throw new CredentialIssuanceError(`Production credentials require the "production" onboarding stage; ${manufacturer.name} is at "${manufacturer.onboardingStage}"`);
+      throw new CredentialIssuanceError(`Production keys can be issued once ${manufacturer.name} reaches the Production stage, after its model is certified. It is at ${stageName(manufacturer.onboardingStage)}.`);
     }
     if (input.environment !== 'sandbox' && input.environment !== 'production') {
       throw new CredentialIssuanceError('environment must be sandbox or production');
