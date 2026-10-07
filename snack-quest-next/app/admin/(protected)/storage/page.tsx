@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { FileText, FolderOpen } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { hasPermission } from '@/lib/auth/permissions';
 import { storageService } from '@/services/storageService';
 import {
   STORAGE_DIRECTORIES,
@@ -67,7 +68,16 @@ export default async function AdminStoragePage({
             Blob storage.
           </p>
         </div>
-        <StorageUploadButton directory={directory} />
+        <div className="flex flex-wrap gap-2">
+          {directory === 'snacks' && hasPermission(session, 'products.view') ? (
+            <Button asChild variant="outline">
+              <a href="/api/admin/snack-items/catalog" download>
+                Download all
+              </a>
+            </Button>
+          ) : null}
+          <StorageUploadButton directory={directory} />
+        </div>
       </div>
 
       <Card className="flex flex-wrap gap-2 p-4">

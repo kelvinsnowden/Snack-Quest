@@ -4,6 +4,7 @@ import { hasPermission } from '@/lib/auth/permissions';
 import { recipeService } from '@/services/recipeService';
 import { serializeSnackItem } from '@/lib/recipes/serialize';
 import { SnackCatalogue } from '@/components/admin/SnackCatalogue';
+import { Button } from '@/components/ui/button';
 
 export const metadata: Metadata = { title: 'Snacks' };
 
@@ -14,12 +15,19 @@ export default async function AdminSnackItemsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Snacks</h1>
-        <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-          The snacks you buy, with a photo and details each. Box recipes are built from these, so a correction here is
-          a correction everywhere.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Snacks</h1>
+          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
+            The snacks you buy, with a photo and details each. Box recipes are built from these, so a correction here is
+            a correction everywhere.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <a href="/api/admin/snack-items/catalog" download>
+            Download catalog
+          </a>
+        </Button>
       </div>
 
       <SnackCatalogue
