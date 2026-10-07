@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StorageObjectActions } from '@/components/admin/StorageObjectActions';
 import { StorageUploadButton } from '@/components/admin/StorageUploadButton';
+import { StorageDownloadAllButton } from '@/components/admin/StorageDownloadAllButton';
 
 export const metadata: Metadata = { title: 'Storage' };
 
@@ -72,7 +73,10 @@ export default async function AdminStoragePage({
             Blob storage.
           </p>
         </div>
-        <StorageUploadButton directory={directory} />
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          {objects.length > 0 ? <StorageDownloadAllButton directory={directory} /> : null}
+          <StorageUploadButton directory={directory} />
+        </div>
       </div>
 
       <Card className="flex flex-wrap gap-2 p-4">

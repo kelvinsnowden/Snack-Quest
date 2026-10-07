@@ -47,6 +47,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cookie": "^2.0.1",
+    "fflate": "^0.8.2",
     "firebase": "^12.17.0",
     "firebase-admin": "^14.2.0",
     "lucide-react": "^1.28.0",
