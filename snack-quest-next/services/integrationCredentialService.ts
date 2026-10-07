@@ -90,7 +90,7 @@ class IntegrationCredentialService {
       throw new CredentialIssuanceError(`Sandbox keys can be issued once ${manufacturer.name} reaches the Credentials stage. It is at ${stageName(manufacturer.onboardingStage)} — advance it under Onboarding first.`);
     }
     if (input.environment === 'production' && manufacturer.onboardingStage !== 'production') {
-      throw new CredentialIssuanceError(`Production keys can be issued once ${manufacturer.name} reaches the Production stage, after its model is certified. It is at ${stageName(manufacturer.onboardingStage)}.`);
+      throw new CredentialIssuanceError(`Production keys are issued only once ${manufacturer.name} is in production, after its model is certified. It is at ${stageName(manufacturer.onboardingStage)}.`);
     }
     if (input.environment !== 'sandbox' && input.environment !== 'production') {
       throw new CredentialIssuanceError('environment must be sandbox or production');
