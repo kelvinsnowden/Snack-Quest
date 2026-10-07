@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { Download, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { StorageDirectory } from '@/lib/storage/policies';
 
@@ -32,9 +32,23 @@ export function StorageObjectActions({ url, directory }: { url: string; director
     }
   }
 
+  // `?download=1` is Vercel Blob's own switch for serving a file as an
+  // attachment (it is what the SDK's `downloadUrl` is). The `download`
+  // attribute alone does nothing here: browsers ignore it cross-origin,
+  // so an image would just open in the tab instead of saving.
+  const downloadUrl = new URL(url);
+  downloadUrl.searchParams.set('download', '1');
+
   return (
-    <Button type="button" variant="ghost" size="sm" onClick={onDelete} loading={deleting} aria-label="Delete file">
-      <Trash2 className="size-4" aria-hidden="true" />
-    </Button>
+    <div className="flex shrink-0 items-center">
+      <Button asChild variant="ghost" size="sm" aria-label="Download file">
+        <a href={downloadUrl.toString()} download>
+          <Download className="size-4" aria-hidden="true" />
+        </a>
+      </Button>
+      <Button type="button" variant="ghost" size="sm" onClick={onDelete} loading={deleting} aria-label="Delete file">
+        <Trash2 className="size-4" aria-hidden="true" />
+      </Button>
+    </div>
   );
 }

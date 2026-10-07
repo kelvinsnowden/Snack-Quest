@@ -31,16 +31,37 @@ const DAY_MS = 86_400_000;
  */
 class ReconciliationChecksService {
   async run(businessId: string, now = new Date()): Promise<ReconciliationCheck[]> {
-    const results = await Promise.all([
-      this.priceProjection(businessId),
-      this.salesWithoutSnapshot(businessId, now),
-      this.wholesaleAgainstTransfers(businessId, now),
-      this.productsWithoutCost(businessId),
-      this.settlementsWithEstimatedCosts(businessId),
-      this.adRevenueNotComputed(businessId, now),
-      this.screensNotReporting(businessId, now),
+    // Each check settles on its own. These run on the Admin dashboard
+    // too, so one check throwing (a missing index, a timeout) used to
+    // take the whole dashboard down with "This page could not load"
+    // instead of showing that one check as failed.
+    return Promise.all([
+      this.settle('price_projection', 'Current prices match the price history', this.priceProjection(businessId)),
+      this.settle('sales_without_snapshot', 'Sales carry the costs of their own day', this.salesWithoutSnapshot(businessId, now)),
+      this.settle('wholesale_vs_transfers', 'Owner stock purchases match the stock delivered to them', this.wholesaleAgainstTransfers(businessId, now)),
+      this.settle('products_without_cost', 'Every snack has a cost', this.productsWithoutCost(businessId)),
+      this.settle('settlements_estimated_costs', 'Settlements used each sale’s own cost', this.settlementsWithEstimatedCosts(businessId)),
+      this.settle('ad_revenue_not_computed', 'Advertising revenue worked out for last month', this.adRevenueNotComputed(businessId, now)),
+      this.settle('screens_not_reporting', 'Machine screens are reporting', this.screensNotReporting(businessId, now)),
     ]);
-    return results;
+  }
+
+  /** A check that threw reads as failed — it could not confirm anything, so it never reads as ok. */
+  private async settle(key: string, label: string, check: Promise<ReconciliationCheck>): Promise<ReconciliationCheck> {
+    try {
+      return await check;
+    } catch (error) {
+      console.error(`reconciliation check ${key} failed to run`, error);
+      return {
+        key,
+        label,
+        status: 'fail',
+        count: 0,
+        detail: 'This check could not run. The reason is in the server log.',
+        href: null,
+        partial: true,
+      };
+    }
   }
 
   /** The "current price" projection must match the one open history entry for every product and price type. */
@@ -79,7 +100,7 @@ class ReconciliationChecksService {
   /** Sales from the last 30 days without frozen economics are costed at today's prices, not the price on the day. */
   async salesWithoutSnapshot(businessId: string, now: Date): Promise<ReconciliationCheck> {
     const since = Timestamp.fromMillis(now.getTime() - 30 * DAY_MS);
-    const snapshot = await adminFirestore.collection('machineTransactions').where('businessId', '==', businessId).where('status', '==', 'dispensed').where('createdAt', '>=', since).limit(LIMIT).get();
+    const snapshot = await adminFirestore.collection('machineTransactions').where('businessId', '==', businessId).where('status', '==', 'dispensed').where('createdAt', '>=', since).orderBy('createdAt', 'desc').limit(LIMIT).get();
     const missing = snapshot.docs.filter((doc) => !(doc.data() as MachineTransaction).economics).length;
     return {
       key: 'sales_without_snapshot',

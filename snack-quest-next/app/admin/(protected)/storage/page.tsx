@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StorageObjectActions } from '@/components/admin/StorageObjectActions';
 import { StorageUploadButton } from '@/components/admin/StorageUploadButton';
+import { StorageDownloadAllButton } from '@/components/admin/StorageDownloadAllButton';
 
 export const metadata: Metadata = { title: 'Storage' };
 
@@ -49,11 +50,16 @@ export default async function AdminStoragePage({
     ? (rawDirectory as StorageDirectory)
     : 'snacks';
 
-  const { objects, cursor: nextCursor } = await storageService.listFiles(
-    session.businessId,
-    directory,
-    { cursor },
-  );
+  const { objects, cursor: nextCursor } = await storageService
+    .listFiles(session.businessId, directory, { cursor })
+    // A cursor Blob no longer accepts (an old bookmarked "Load more"
+    // link, or one mangled in the URL) starts the list over rather than
+    // failing the whole page.
+    .catch((error: unknown) => {
+      if (!cursor) throw error;
+      console.error('admin storage: cursor rejected, listing from the start', error);
+      return storageService.listFiles(session.businessId, directory);
+    });
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,7 +73,10 @@ export default async function AdminStoragePage({
             Blob storage.
           </p>
         </div>
-        <StorageUploadButton directory={directory} />
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          {objects.length > 0 ? <StorageDownloadAllButton directory={directory} /> : null}
+          <StorageUploadButton directory={directory} />
+        </div>
       </div>
 
       <Card className="flex flex-wrap gap-2 p-4">
@@ -136,7 +145,10 @@ export default async function AdminStoragePage({
         <div className="flex justify-center">
           <Button asChild variant="outline">
             <Link
-              href={`/admin/storage?directory=${directory}&cursor=${nextCursor}`}
+              // Encoded: a Blob cursor can contain `+`, `/` and `=`, and
+              // an unencoded `+` comes back as a space — which Blob then
+              // rejects as "The continuation token provided is incorrect".
+              href={{ pathname: '/admin/storage', query: { directory, cursor: nextCursor } }}
             >
               Load more
             </Link>
