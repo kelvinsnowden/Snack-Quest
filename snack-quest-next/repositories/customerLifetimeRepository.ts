@@ -73,6 +73,10 @@ class CustomerLifetimeRepository {
   async aggregateLifetime(
     businessId: string,
   ): Promise<{ customerCount: number; totalRevenueKes: number }> {
+    // A filtered `sum()` needs a composite index on the filter field
+    // plus the summed one — (businessId, totalRevenueKes) in
+    // firestore.indexes.json. The emulator never asks for it; production
+    // fails the whole Analytics page without it.
     const snapshot = await adminFirestore
       .collection(COLLECTION)
       .where('businessId', '==', businessId)
