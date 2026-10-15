@@ -32,6 +32,12 @@ class MachineOwnerInterestRepository {
     return doc ? { id: doc.id } : null;
   }
 
+  /** Newest first, for copying applications into the leads CRM (§ vending leads CRM). */
+  async listRecent(limit: number): Promise<{ id: string; data: MachineOwnerInterest }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).orderBy('createdAt', 'desc').limit(limit).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineOwnerInterest }));
+  }
+
   /** How many submissions came from one origin recently — the counter behind the rate limit. */
   async countSince(submitterHash: string, since: Date): Promise<number> {
     const snapshot = await adminFirestore
