@@ -16,6 +16,7 @@ import {
 } from '@/types/machineOwnerInterest';
 import { normalizeKenyanPhone, InvalidPhoneNumberError } from '@/lib/checkout/phone';
 import { isAcceptableEmailInput } from '@/lib/checkout/email';
+import { vendingLeadService } from '@/services/vendingLeadService';
 
 export class MachineOwnerInterestValidationError extends Error {
   constructor(message: string) {
@@ -158,6 +159,8 @@ class MachineOwnerInterestService {
     };
 
     const interestId = await machineOwnerInterestRepository.create(record);
+    // Into the leads CRM too, so it is worked alongside Meta leads. Never throws.
+    await vendingLeadService.mirrorOwnApplication(interestId, record);
     return { interestId, duplicate: false };
   }
 
