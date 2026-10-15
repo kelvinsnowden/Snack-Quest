@@ -313,6 +313,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /*
+     * vendingLeads: the vending leads CRM — Meta lead-form leads from
+     * the Google Sheet plus copies of `/own` applications. Same
+     * profile as `machineOwnerInterests`, same unconditional deny; the
+     * Admin SDK behind `/api/leads/sheet` and the admin pages is the
+     * only reader and writer.
+     */
+    match /vendingLeads/{leadId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // inventoryMovements: the stock-adjustment audit trail (§ Admin:
     // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
     // is the sole writer, always inside the same transaction as the
