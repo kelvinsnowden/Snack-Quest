@@ -13,7 +13,6 @@ import { FunnelChart } from '@/components/admin/FunnelChart';
 import { TrafficChart } from '@/components/admin/TrafficChart';
 import { MarketingSpendForm } from '@/components/admin/MarketingSpendForm';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
-import { ComplimentaryBoxesNote } from '@/components/admin/ComplimentaryBoxesNote';
 import { formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 import { resolveTrafficRange, type TrafficRangeKey } from '@/lib/analytics/trafficRange';
@@ -99,7 +98,6 @@ export default async function AdminAnalyticsPage({
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Analytics</h1>
-        <p className="hidden sm:block mt-1 text-sm text-muted-foreground">Revenue, conversion, and acquisition, computed from real orders and conversations.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -123,12 +121,6 @@ export default async function AdminAnalyticsPage({
           trend={computePeriodTrend(revenue.averageOrderValueKes, previousAverageOrderValueKes, 'vs previous 30 days')}
         />
       </div>
-
-      <ComplimentaryBoxesNote
-        orderCount={revenue.complimentary.orderCount}
-        goodsAtListKes={revenue.complimentary.goodsAtListKes}
-        days={30}
-      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -175,13 +167,6 @@ export default async function AdminAnalyticsPage({
 
       <div>
         <h2 className="text-lg font-semibold tracking-tight text-foreground">Margin</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Real cost from recorded shopping trips, not a guess — see{' '}
-          <a href="/finance/fulfillment" className="text-primary hover:underline">
-            Finance → Fulfillment
-          </a>{' '}
-          for the full ledger.
-        </p>
       </div>
 
       <Card>
@@ -204,21 +189,11 @@ export default async function AdminAnalyticsPage({
               <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{margin.costCoveragePct.toFixed(0)}%</p>
             </div>
           </div>
-          {margin.uncosted.orderCount > 0 ? (
-            <p className="text-caption text-muted-foreground">
-              {margin.uncosted.orderCount} order{margin.uncosted.orderCount === 1 ? '' : 's'} worth{' '}
-              {formatKes(margin.uncosted.revenueKes)} in this window have no shopping trip recorded against them yet
-              — their margin isn&apos;t counted above until one is.
-            </p>
-          ) : null}
         </CardContent>
       </Card>
 
       <div>
         <h2 className="text-lg font-semibold tracking-tight text-foreground">Website traffic</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Real visits to the public site, tracked by a first-party beacon — not a third-party service.
-        </p>
       </div>
 
       <Card className="p-4">
@@ -338,45 +313,17 @@ export default async function AdminAnalyticsPage({
       ) : (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No visits recorded yet — this fills in as people browse the site.
+            No visits yet.
           </CardContent>
         </Card>
       )}
 
-      {/*
-        First, and full width, because it is the only funnel that
-        describes the journey almost every visitor takes. The
-        conversation funnel below it measures WhatsApp threads, which
-        is a different path and was the only one on this page — the
-        website's own drop-off had to be read out of server logs.
-      */}
       <Card>
         <CardHeader>
           <CardTitle>Website funnel (last {webFunnel.days} days)</CardTitle>
         </CardHeader>
         <CardContent>
           <FunnelChart stages={webFunnel.stages} />
-          <div className="mt-5 flex flex-col gap-2 border-t border-border pt-4">
-            <p className="text-caption text-muted-foreground">
-              “Saw their delivery total” counts quotes served, so one customer changing their
-              delivery choice produces several. Those{' '}
-              <span className="font-semibold text-foreground tabular-nums">
-                {webFunnel.stages[2]?.count.toLocaleString('en-KE') ?? 0}
-              </span>{' '}
-              quotes came from{' '}
-              <span className="font-semibold text-foreground tabular-nums">
-                {webFunnel.quotedVisitors.toLocaleString('en-KE')}
-              </span>{' '}
-              {webFunnel.quotedVisitors === 1 ? 'person' : 'people'}.
-            </p>
-            <p className="text-caption text-muted-foreground">
-              <span className="font-semibold text-foreground tabular-nums">
-                {webFunnel.whatsappOrdersStarted.toLocaleString('en-KE')}
-              </span>{' '}
-              order{webFunnel.whatsappOrdersStarted === 1 ? '' : 's'} started on WhatsApp instead.
-              Those leave the site, so whether they closed is only known from the thread.
-            </p>
-          </div>
         </CardContent>
       </Card>
 
@@ -387,7 +334,6 @@ export default async function AdminAnalyticsPage({
           </CardHeader>
           <CardContent>
             <FunnelChart stages={funnel} />
-            <p className="mt-4 text-caption text-muted-foreground">Based on the {funnel[0]?.count ?? 0} most recent conversations.</p>
           </CardContent>
         </Card>
 
@@ -410,10 +356,6 @@ export default async function AdminAnalyticsPage({
                 <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{abandonment.abandonmentRatePct.toFixed(0)}%</p>
               </div>
             </div>
-            <p className="text-caption text-muted-foreground">
-              A customer who received the M-Pesa prompt but never completed it — the number a fix like naming the
-              M-Pesa recipient on checkout is meant to move.
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -454,10 +396,6 @@ export default async function AdminAnalyticsPage({
                 </div>
               </div>
             ) : null}
-            <p className="text-caption text-muted-foreground">
-              There&apos;s no ad-spend integration — enter what {month} actually cost to compute a real CAC, per
-              platform if you want the split below.
-            </p>
             <MarketingSpendForm
               month={month}
               initialAmountKes={cac.spendKes}
@@ -566,9 +504,6 @@ export default async function AdminAnalyticsPage({
 
       <div>
         <h2 className="text-lg font-semibold tracking-tight text-foreground">Customers</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Real revenue per customer to date — not a predictive model, just what&apos;s actually happened so far.
-        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

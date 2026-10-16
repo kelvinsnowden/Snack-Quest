@@ -19,10 +19,8 @@ import { ADMIN_SECTIONS, visibleAdminSections, type AdminSection } from '@/lib/a
 import { orderRepository } from '@/repositories/orderRepository';
 import { conversationRepository } from '@/repositories/conversationRepository';
 import { staffRepository } from '@/repositories/staffRepository';
-import { businessRepository } from '@/repositories/businessRepository';
 import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
 import { OrderStatusBadge } from '@/components/admin/OrderStatusBadge';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { RevenueChart } from '@/components/admin/RevenueChart';
@@ -35,11 +33,11 @@ import { MachineNetworkPanel } from '@/components/admin/MachineNetworkPanel';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
-const QUICK_LINKS: { href: string; label: string; description: string; icon: typeof ClipboardList; section: AdminSection }[] = [
-  { href: '/admin/orders', label: 'Orders', description: 'Every order, oldest to newest', icon: ClipboardList, section: 'orders' },
-  { href: '/admin/products', label: 'Products', description: 'Manage boxes and pricing', icon: Package, section: 'orders' },
-  { href: '/admin/deliveries', label: 'Deliveries', description: 'Track every shipment', icon: Truck, section: 'orders' },
-  { href: '/admin/withdrawals', label: 'Withdrawals', description: 'Creator payout requests', icon: Banknote, section: 'finance' },
+const QUICK_LINKS: { href: string; label: string; icon: typeof ClipboardList; section: AdminSection }[] = [
+  { href: '/admin/orders', label: 'Orders', icon: ClipboardList, section: 'orders' },
+  { href: '/admin/products', label: 'Products', icon: Package, section: 'orders' },
+  { href: '/admin/deliveries', label: 'Deliveries', icon: Truck, section: 'orders' },
+  { href: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote, section: 'finance' },
 ];
 
 /** First letter of each of up to two words — the same "no photo, still recognisable" treatment initials-avatars use everywhere. */
@@ -93,9 +91,8 @@ export default async function AdminDashboardPage({
   const canSeeOrders = hasPermission(session, 'orders.view');
   const canSeeConversations = hasPermission(session, 'support.conversations.handle');
   const canSeeTraffic = hasAnyPermission(session, ['finance.view', 'customers.view']);
-  const [business, totalOrders, agentQueueCount, staff, revenue, recentOrders, delivery, traffic] =
+  const [totalOrders, agentQueueCount, staff, revenue, recentOrders, delivery, traffic] =
     await Promise.all([
-      businessRepository.findById(session.businessId),
       canSeeOrders ? orderRepository.countByBusiness(session.businessId) : Promise.resolve(null),
       canSeeConversations
         ? conversationRepository.countByStatus(
@@ -115,7 +112,6 @@ export default async function AdminDashboardPage({
     revenue.previousPeriod.totalRevenueKes,
     'vs previous 30 days',
   ) : undefined;
-  const revenueDeltaKes = revenue ? revenue.totalRevenueKes - revenue.previousPeriod.totalRevenueKes : 0;
 
   const STATUS_COLOR: Record<string, string> = {
     delivered: 'var(--color-success)',
@@ -159,9 +155,6 @@ export default async function AdminDashboardPage({
         <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">
           {interpolate(dict.dashboard.welcome, { name: session.displayName.split(' ')[0] })}
         </h1>
-        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
-          {interpolate(dict.dashboard.subtitle, { business: business?.name ?? 'Snack Quest' })}
-        </p>
       </div>
 
       <MachineNetworkPanel session={session} />
@@ -203,33 +196,6 @@ export default async function AdminDashboardPage({
         ) : null}
       </div>
 
-      {revenueTrend ? (
-        <div
-          className={
-            'rounded-lg border p-4 text-sm ' +
-            (revenueTrend.percent >= 0
-              ? 'border-success/20 bg-success/5 text-success'
-              : 'border-danger/20 bg-danger/5 text-danger')
-          }
-        >
-          <span className="font-medium">
-            {interpolate(
-              revenueTrend.percent >= 0 ? dict.dashboard.revenueUp : dict.dashboard.revenueDown,
-              { percent: Math.abs(revenueTrend.percent).toFixed(1) },
-            )}
-          </span>{' '}
-          <span className="text-foreground/80">
-            {interpolate(
-              revenueTrend.percent >= 0
-                ? dict.dashboard.revenueDeltaMore
-                : dict.dashboard.revenueDeltaLess,
-              {
-                amount: `${revenueTrend.percent >= 0 ? '+' : '−'}${formatKes(Math.abs(revenueDeltaKes))}`,
-              },
-            )}
-          </span>
-        </div>
-      ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {revenue ? (
@@ -330,14 +296,8 @@ export default async function AdminDashboardPage({
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <link.icon className="size-4" aria-hidden="true" />
                 </span>
-                <span className="flex-1">
-                  <span className="block text-sm font-medium text-foreground">
-                    {dict.nav.items[link.href as keyof typeof dict.nav.items] ?? link.label}
-                  </span>
-                  <span className="block text-caption text-muted-foreground">
-                    {dict.dashboard.quickLinks[link.href as keyof typeof dict.dashboard.quickLinks] ??
-                      link.description}
-                  </span>
+                <span className="flex-1 text-sm font-medium text-foreground">
+                  {dict.nav.items[link.href as keyof typeof dict.nav.items] ?? link.label}
                 </span>
                 <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </Link>
@@ -360,11 +320,7 @@ export default async function AdminDashboardPage({
           </CardHeader>
           <CardContent className="pt-0">
             {recentOrders.orders.length === 0 ? (
-              <EmptyState
-                icon={ClipboardList}
-                title={dict.dashboard.noOrdersTitle}
-                description={dict.dashboard.noOrdersBody}
-              />
+              <p className="py-4 text-center text-sm text-muted-foreground">{dict.dashboard.noOrdersTitle}</p>
             ) : (
               <div className="border-border overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
