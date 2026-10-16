@@ -55,7 +55,15 @@ function syncLeads() {
     const sheet = SHEET_NAME
       ? SpreadsheetApp.getActive().getSheetByName(SHEET_NAME)
       : SpreadsheetApp.getActive().getSheets()[0];
-    if (!sheet || sheet.getLastRow() < 2) return;
+    if (!sheet) {
+      console.error('No tab named "' + SHEET_NAME + '". Tabs in this sheet: ' +
+        SpreadsheetApp.getActive().getSheets().map((s) => '"' + s.getName() + '"').join(', '));
+      return;
+    }
+    if (sheet.getLastRow() < 2) {
+      console.log('Tab "' + sheet.getName() + '" has no lead rows under the header yet.');
+      return;
+    }
 
     const range = sheet.getDataRange();
     const values = range.getValues();
@@ -82,6 +90,7 @@ function syncLeads() {
       pending.push({ key: key, row: row });
     }
 
+    console.log('Tab "' + sheet.getName() + '": ' + (values.length - 1) + ' rows, ' + pending.length + ' not sent yet.');
     for (let i = 0; i < pending.length; i += BATCH_SIZE) {
       const batch = pending.slice(i, i + BATCH_SIZE);
       const response = UrlFetchApp.fetch(ENDPOINT, {
@@ -96,6 +105,7 @@ function syncLeads() {
         console.error('Lead sync failed (' + code + '): ' + response.getContentText().slice(0, 300));
         break; // Try again on the next run; nothing is marked as sent.
       }
+      console.log('Sent ' + batch.length + ' rows: ' + response.getContentText().slice(0, 300));
       batch.forEach((item) => sent.add(item.key));
       saveSent_(Array.from(sent));
     }
