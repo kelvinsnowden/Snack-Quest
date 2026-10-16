@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 import { after } from 'next/server';
 import Link from 'next/link';
-import { Inbox } from 'lucide-react';
+import { Inbox, Mail } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { hasPermission } from '@/lib/auth/permissions';
 import { vendingLeadService } from '@/services/vendingLeadService';
 import { leadNurtureService } from '@/services/leadNurtureService';
-import { NURTURE_SEQUENCE } from '@/lib/leads/nurtureSequence';
 import { VENDING_LEAD_LIST_LIMIT } from '@/repositories/vendingLeadRepository';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -91,7 +91,8 @@ export default async function VendingLeadsPage({
   if (leadNurtureService.isEnabled()) {
     after(() => leadNurtureService.runDue().catch((error) => console.error('[leads page] nurture run failed', error)));
   }
-  const entries = await vendingLeadService.listRecent();
+  const [entries, sequence] = await Promise.all([vendingLeadService.listRecent(), leadNurtureService.getSequence()]);
+  const emailCount = sequence.length;
   const now = requestTime();
   const serviceAccountEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? 'the Firebase service account';
 
@@ -117,12 +118,12 @@ export default async function VendingLeadsPage({
       : data.emailOptOutAtMs
         ? 'Unsubscribed from emails'
         : data.nurture?.stoppedReason === 'staff'
-          ? `Emails stopped (${data.nurture.sent} of ${NURTURE_SEQUENCE.length} sent)`
+          ? `Emails stopped (${data.nurture.sent} of ${emailCount} sent)`
           : data.nurture?.stoppedReason === 'booked' || data.call
             ? `Emails ended: call booked (${data.nurture?.sent ?? 0} sent)`
             : data.nurture?.stoppedReason === 'finished'
-              ? `All ${NURTURE_SEQUENCE.length} emails sent`
-              : `${data.nurture?.sent ?? 0} of ${NURTURE_SEQUENCE.length} emails sent`,
+              ? `All ${emailCount} emails sent`
+              : `${data.nurture?.sent ?? 0} of ${emailCount} emails sent`,
     emailsActive: Boolean(data.email) && !data.emailOptOutAtMs && !data.nurture?.stoppedReason && !data.call,
     followUpDue:
       data.nextFollowUpAtMs !== null && data.nextFollowUpAtMs !== undefined && data.nextFollowUpAtMs <= now && !CLOSED.has(data.status),
@@ -169,7 +170,15 @@ export default async function VendingLeadsPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">Leads</h1>
-        {canManage ? <SyncSheetButton /> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/vending/leads/emails">
+              <Mail className="size-4" aria-hidden="true" />
+              Emails
+            </Link>
+          </Button>
+          {canManage ? <SyncSheetButton /> : null}
+        </div>
       </div>
 
       {syncError ? (

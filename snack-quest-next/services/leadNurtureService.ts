@@ -6,13 +6,27 @@ import { brandedEmailHtml, escapeHtml, paragraphsToHtml } from '@/lib/notificati
 import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { bookCallUrl, stopEmailsUrl } from '@/lib/leads/leadLinks';
-import { NURTURE_SEQUENCE, dueNurtureEmail, personalise } from '@/lib/leads/nurtureSequence';
+import {
+  DEFAULT_NURTURE_SEQUENCE,
+  dueNurtureEmail,
+  personalise,
+  validateNurtureSequence,
+  type NurtureEmail,
+} from '@/lib/leads/nurtureSequence';
+import { leadNurtureSettingsRepository } from '@/repositories/leadNurtureSettingsRepository';
 import { availableCallSlots, formatCallTime, isOfferedSlot, type CallDay } from '@/lib/leads/callSlots';
 import { isValidKenyanPhone, normalizeKenyanPhone } from '@/lib/checkout/phone';
 import { vendingLeadRepository } from '@/repositories/vendingLeadRepository';
 import type { VendingLead, VendingLeadStatus } from '@/types/vendingLead';
 
 export { CallSlotTakenError } from '@/repositories/vendingLeadRepository';
+
+export class NurtureSequenceValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NurtureSequenceValidationError';
+  }
+}
 
 export class LeadBookingError extends Error {
   constructor(message: string) {
@@ -52,12 +66,42 @@ class LeadNurtureService {
     return process.env.LEAD_NURTURE_ENABLED === 'true';
   }
 
+  /** The emails as edited in the admin, or the built-in five until someone saves their own. */
+  async getSequence(): Promise<NurtureEmail[]> {
+    const saved = await leadNurtureSettingsRepository.find(getCurrentBusinessId());
+    return saved?.emails?.length ? saved.emails : [...DEFAULT_NURTURE_SEQUENCE];
+  }
+
+  async saveSequence(input: unknown, actorName: string | null): Promise<NurtureEmail[]> {
+    const checked = validateNurtureSequence(input);
+    if (!checked.ok) throw new NurtureSequenceValidationError(checked.error);
+    await leadNurtureSettingsRepository.save(getCurrentBusinessId(), checked.sequence, actorName);
+    return checked.sequence;
+  }
+
+  /** Sends one email from the editor to a staff address, exactly as a lead would get it (the links go nowhere real). */
+  async sendTest(input: unknown, to: string): Promise<void> {
+    const checked = validateNurtureSequence([input]);
+    if (!checked.ok) throw new NurtureSequenceValidationError(checked.error.replace(/^Email 1: /, ''));
+    const email = checked.sequence[0];
+    const site = getSiteUrl();
+    await this.send(to, {
+      subject: `[Test] ${personalise(email.subject, 'Amina Wanjiru')}`,
+      heading: personalise(email.heading, 'Amina Wanjiru'),
+      body: personalise(email.body, 'Amina Wanjiru'),
+      ctaLabel: email.ctaLabel,
+      ctaUrl: `${site}/own`,
+      stopUrl: `${site}/own`,
+      imageUrl: email.imageUrl,
+    });
+  }
+
   /** Sends every nurture email and call reminder that is due. Safe to run any number of times. */
   async runDue(nowMs: number = Date.now()): Promise<NurtureRunResult> {
     const result: NurtureRunResult = { enabled: this.isEnabled(), sent: 0, failed: 0, reminders: 0 };
     if (!result.enabled) return result;
 
-    const leads = await vendingLeadRepository.listRecent();
+    const [leads, sequence] = await Promise.all([vendingLeadRepository.listRecent(), this.getSequence()]);
     for (const { id, data: lead } of leads) {
       if (result.sent + result.failed >= MAX_EMAILS_PER_RUN) break;
       if (lead.call) {
@@ -68,9 +112,9 @@ class LeadNurtureService {
       if (!NURTURE_STATUSES.has(lead.status) || lead.nurture?.stoppedReason) continue;
 
       const state = lead.nurture ?? { sent: 0, lastSentAtMs: null, stoppedReason: null };
-      const email = dueNurtureEmail(state, lead.submittedAtMs, nowMs);
+      const email = dueNurtureEmail(sequence, state, lead.submittedAtMs, nowMs);
       if (!email) continue;
-      const isLast = state.sent + 1 >= NURTURE_SEQUENCE.length;
+      const isLast = state.sent + 1 >= sequence.length;
       if (!(await vendingLeadRepository.claimNurtureEmail(id, state.sent, nowMs, isLast))) continue;
 
       try {
@@ -82,6 +126,7 @@ class LeadNurtureService {
           ctaLabel: email.ctaLabel,
           ctaUrl: bookCallUrl(site, id),
           stopUrl: stopEmailsUrl(site, id),
+          imageUrl: email.imageUrl,
         });
         result.sent += 1;
       } catch (error) {
@@ -205,7 +250,15 @@ class LeadNurtureService {
 
   private async send(
     to: string,
-    email: { subject: string; heading: string; body: string; ctaLabel: string; ctaUrl: string; stopUrl: string | null },
+    email: {
+      subject: string;
+      heading: string;
+      body: string;
+      ctaLabel: string;
+      ctaUrl: string;
+      stopUrl: string | null;
+      imageUrl?: string | null;
+    },
   ): Promise<void> {
     const stop = email.stopUrl
       ? `<p style="margin:18px 0 0;font-size:12px;color:#8a8494;">Don’t want these emails? <a href="${escapeHtml(email.stopUrl)}" style="color:#8a8494;">Stop them here</a>.</p>`
@@ -220,9 +273,9 @@ class LeadNurtureService {
       html: brandedEmailHtml({
         heading: email.heading,
         bodyHtml: paragraphsToHtml(email.body) + stop,
+        imageUrl: email.imageUrl ?? null,
         ctaLabel: email.ctaLabel,
         ctaUrl: email.ctaUrl,
-        footerText: 'Snack Quest · Nairobi',
       }),
     });
   }

@@ -12,7 +12,7 @@ vi.mock('@/lib/integrations/email/smtpEmailGateway', () => ({
 }));
 
 import { leadNurtureService, CallSlotTakenError } from '@/services/leadNurtureService';
-import { NURTURE_SEQUENCE } from '@/lib/leads/nurtureSequence';
+import { DEFAULT_NURTURE_SEQUENCE as NURTURE_SEQUENCE } from '@/lib/leads/nurtureSequence';
 import type { VendingLead } from '@/types/vendingLead';
 
 /** § lead nurture — against the Firestore emulator, with email sending faked. */
@@ -55,7 +55,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   sent.length = 0;
-  for (const collection of ['vendingLeads', 'vendingLeadCalls']) {
+  for (const collection of ['vendingLeads', 'vendingLeadCalls', 'leadNurtureSettings']) {
     const snapshot = await adminFirestore.collection(collection).get();
     await Promise.all(snapshot.docs.map((doc) => doc.ref.delete()));
   }
@@ -92,6 +92,23 @@ describe('leadNurtureService.runDue', () => {
     for (let day = 0; day <= 20; day += 1) await leadNurtureService.runDue(NOW + day * DAY);
     expect(sent).toHaveLength(NURTURE_SEQUENCE.length);
     expect((await leadOf('meta_a')).nurture?.stoppedReason).toBe('finished');
+  });
+});
+
+describe('edited sequence', () => {
+  it('sends the saved emails instead of the built-in ones', async () => {
+    await leadNurtureService.saveSequence(
+      [{ day: 0, subject: 'Custom hello', heading: 'Hi {firstName}', body: 'Text', ctaLabel: 'Book', imageUrl: null }],
+      'Kelvin',
+    );
+    await seedLead('meta_a');
+    await leadNurtureService.runDue(NOW);
+    expect(sent.map((email) => email.subject)).toEqual(['Custom hello']);
+    expect((await leadOf('meta_a')).nurture?.stoppedReason).toBe('finished');
+  });
+
+  it('refuses a sequence that fails validation', async () => {
+    await expect(leadNurtureService.saveSequence([], 'Kelvin')).rejects.toThrow('Keep at least one email.');
   });
 });
 
