@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { parseSheetRow, type SheetRow } from '@/lib/leads/sheetRow';
+import { readSheetRows } from '@/lib/integrations/googleSheets';
 import { toMillis } from '@/lib/firestoreTimestamp';
 import { machineOwnerInterestRepository } from '@/repositories/machineOwnerInterestRepository';
 import { vendingLeadRepository, type VendingLeadPatch } from '@/repositories/vendingLeadRepository';
@@ -118,6 +119,28 @@ class VendingLeadService {
       else result.updated += 1;
     }
     return result;
+  }
+
+  /**
+   * Pulls every row of the Meta leads Google Sheet and ingests it — the
+   * app reads the sheet itself, so nothing has to run inside Google.
+   * `LEADS_SHEET_ID` is the long id in the sheet's URL; `LEADS_SHEET_TAB`
+   * is optional (blank reads the first tab). Returns null when the sheet
+   * isn't configured. Re-ingesting is idempotent per Meta lead id.
+   */
+  async syncFromGoogleSheet(): Promise<SheetIngestResult | null> {
+    const spreadsheetId = process.env.LEADS_SHEET_ID?.trim();
+    if (!spreadsheetId) return null;
+    const rows = await readSheetRows(spreadsheetId, process.env.LEADS_SHEET_TAB?.trim() || undefined);
+    const total: SheetIngestResult = { received: 0, created: 0, updated: 0, skipped: 0 };
+    for (let i = 0; i < rows.length; i += MAX_SHEET_ROWS_PER_REQUEST) {
+      const batch = await this.ingestSheetRows(rows.slice(i, i + MAX_SHEET_ROWS_PER_REQUEST));
+      total.received += batch.received;
+      total.created += batch.created;
+      total.updated += batch.updated;
+      total.skipped += batch.skipped;
+    }
+    return total;
   }
 
   /** Called right after an `/own` application is saved. Never throws — the application itself already succeeded. */
