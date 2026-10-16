@@ -4,13 +4,24 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import type {
   VendingLead,
+  VendingLeadCall,
   VendingLeadNote,
+  VendingLeadNurture,
   VendingLeadSegment,
   VendingLeadSourceFields,
   VendingLeadStatus,
 } from '@/types/vendingLead';
 
 const COLLECTION = 'vendingLeads';
+/** One doc per booked call slot, id = slot start ms — what stops two leads booking the same time. */
+const CALLS = 'vendingLeadCalls';
+
+export class CallSlotTakenError extends Error {
+  constructor() {
+    super('That time was just taken. Please pick another.');
+    this.name = 'CallSlotTakenError';
+  }
+}
 
 /** How many leads the admin loads at once. Newest first; plenty for a launch-stage pipeline. */
 export const VENDING_LEAD_LIST_LIMIT = 500;
@@ -84,6 +95,91 @@ class VendingLeadRepository {
         ...(note ? { notes: FieldValue.arrayUnion(note) } : {}),
         updatedAt: FieldValue.serverTimestamp(),
       });
+  }
+
+  async setNurture(id: string, nurture: VendingLeadNurture): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({ nurture, updatedAt: FieldValue.serverTimestamp() });
+  }
+
+  /**
+   * Reserves nurture email number `expectedSent + 1` for this lead
+   * before it is sent, so the daily job and a page-triggered run can
+   * never both send the same email. False when someone else got there
+   * first or the sequence was stopped meanwhile.
+   */
+  async claimNurtureEmail(id: string, expectedSent: number, nowMs: number, isLast: boolean): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(id);
+    return adminFirestore.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const lead = snap.data() as VendingLead | undefined;
+      if (!lead || lead.emailOptOutAtMs || lead.call) return false;
+      const current = lead.nurture ?? { sent: 0, lastSentAtMs: null, stoppedReason: null };
+      if (current.stoppedReason || current.sent !== expectedSent) return false;
+      const next: VendingLeadNurture = {
+        sent: expectedSent + 1,
+        lastSentAtMs: nowMs,
+        stoppedReason: isLast ? 'finished' : null,
+      };
+      tx.update(ref, { nurture: next, updatedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+  }
+
+  /** Staff stopped the emails for this lead. Keeps how many were sent. */
+  async stopNurture(id: string): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(id);
+    await adminFirestore.runTransaction(async (tx) => {
+      const lead = (await tx.get(ref)).data() as VendingLead | undefined;
+      if (!lead) return;
+      const current = lead.nurture ?? { sent: 0, lastSentAtMs: null, stoppedReason: null };
+      tx.update(ref, { nurture: { ...current, stoppedReason: 'staff' }, updatedAt: FieldValue.serverTimestamp() });
+    });
+  }
+
+  async optOutOfEmails(id: string, atMs: number): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({
+      emailOptOutAtMs: atMs,
+      'nurture.stoppedReason': 'unsubscribed',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  /**
+   * Books `call` for the lead, atomically: claims the slot (failing if
+   * another lead holds it), frees the lead's previous slot when this is
+   * a reschedule, stops the nurture emails and records a note.
+   */
+  async bookCall(id: string, call: VendingLeadCall, note: VendingLeadNote, nowStatus: VendingLeadStatus | null): Promise<void> {
+    const leadRef = adminFirestore.collection(COLLECTION).doc(id);
+    const slotRef = adminFirestore.collection(CALLS).doc(String(call.atMs));
+    await adminFirestore.runTransaction(async (tx) => {
+      const [leadSnap, slotSnap] = await Promise.all([tx.get(leadRef), tx.get(slotRef)]);
+      if (!leadSnap.exists) throw new Error('lead not found');
+      if (slotSnap.exists && (slotSnap.data() as { leadId: string }).leadId !== id) throw new CallSlotTakenError();
+      const previous = (leadSnap.data() as VendingLead).call;
+      if (previous && previous.atMs !== call.atMs) {
+        tx.delete(adminFirestore.collection(CALLS).doc(String(previous.atMs)));
+      }
+      tx.set(slotRef, { leadId: id, atMs: call.atMs });
+      tx.update(leadRef, {
+        call,
+        nextFollowUpAtMs: call.atMs,
+        ...(nowStatus ? { status: nowStatus } : {}),
+        'nurture.stoppedReason': 'booked',
+        notes: FieldValue.arrayUnion(note),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  /** Slot starts already booked from `fromMs` on. Single-field range, so no composite index. */
+  async takenCallSlots(fromMs: number): Promise<Set<number>> {
+    const snapshot = await adminFirestore.collection(CALLS).where('atMs', '>=', fromMs).get();
+    return new Set(snapshot.docs.map((doc) => (doc.data() as { atMs: number }).atMs));
+  }
+
+  async markCallReminderSent(id: string, atMs: number): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({ 'call.reminderSentAtMs': atMs });
   }
 }
 

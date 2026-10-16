@@ -175,7 +175,7 @@ class VendingLeadService {
 
   async updateLead(
     leadId: string,
-    input: { status?: unknown; segment?: unknown; nextFollowUpAtMs?: unknown; note?: unknown },
+    input: { status?: unknown; segment?: unknown; nextFollowUpAtMs?: unknown; note?: unknown; stopEmails?: unknown },
     actor: { uid: string; name: string | null },
   ): Promise<void> {
     const patch: VendingLeadPatch = {};
@@ -216,7 +216,8 @@ class VendingLeadService {
       }
     }
 
-    if (Object.keys(patch).length === 0 && !note) {
+    const stopEmails = input.stopEmails === true;
+    if (Object.keys(patch).length === 0 && !note && !stopEmails) {
       throw new VendingLeadValidationError('Nothing to change.');
     }
 
@@ -224,7 +225,12 @@ class VendingLeadService {
     if (!existing) {
       throw new VendingLeadNotFoundError();
     }
-    await vendingLeadRepository.update(leadId, patch, note);
+    if (Object.keys(patch).length > 0 || note) {
+      await vendingLeadRepository.update(leadId, patch, note);
+    }
+    if (stopEmails) {
+      await vendingLeadRepository.stopNurture(leadId);
+    }
   }
 }
 

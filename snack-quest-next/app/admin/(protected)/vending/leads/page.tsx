@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
+import { after } from 'next/server';
 import Link from 'next/link';
-import { Inbox } from 'lucide-react';
+import { Inbox, Mail } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { hasPermission } from '@/lib/auth/permissions';
 import { vendingLeadService } from '@/services/vendingLeadService';
+import { leadNurtureService } from '@/services/leadNurtureService';
 import { VENDING_LEAD_LIST_LIMIT } from '@/repositories/vendingLeadRepository';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -84,7 +87,12 @@ export default async function VendingLeadsPage({
   const q = (params.q ?? '').trim().slice(0, 80);
 
   const syncError = await syncSheetIfDue();
-  const entries = await vendingLeadService.listRecent();
+  // New leads get their first email now rather than at the next daily run — after the page is sent, so it never slows it.
+  if (leadNurtureService.isEnabled()) {
+    after(() => leadNurtureService.runDue().catch((error) => console.error('[leads page] nurture run failed', error)));
+  }
+  const [entries, sequence] = await Promise.all([vendingLeadService.listRecent(), leadNurtureService.getSequence()]);
+  const emailCount = sequence.length;
   const now = requestTime();
   const serviceAccountEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? 'the Firebase service account';
 
@@ -104,6 +112,19 @@ export default async function VendingLeadsPage({
     segment: data.segment,
     nextFollowUpAtMs: data.nextFollowUpAtMs ?? null,
     notes: (data.notes ?? []).map((note) => ({ text: note.text, byName: note.byName, atMs: note.atMs })),
+    call: data.call ? { atMs: data.call.atMs, whatsapp: data.call.whatsapp } : null,
+    emails: !data.email
+      ? 'No email address'
+      : data.emailOptOutAtMs
+        ? 'Unsubscribed from emails'
+        : data.nurture?.stoppedReason === 'staff'
+          ? `Emails stopped (${data.nurture.sent} of ${emailCount} sent)`
+          : data.nurture?.stoppedReason === 'booked' || data.call
+            ? `Emails ended: call booked (${data.nurture?.sent ?? 0} sent)`
+            : data.nurture?.stoppedReason === 'finished'
+              ? `All ${emailCount} emails sent`
+              : `${data.nurture?.sent ?? 0} of ${emailCount} emails sent`,
+    emailsActive: Boolean(data.email) && !data.emailOptOutAtMs && !data.nurture?.stoppedReason && !data.call,
     followUpDue:
       data.nextFollowUpAtMs !== null && data.nextFollowUpAtMs !== undefined && data.nextFollowUpAtMs <= now && !CLOSED.has(data.status),
   }));
@@ -140,19 +161,68 @@ export default async function VendingLeadsPage({
     visible.sort((a, b) => (a.nextFollowUpAtMs ?? 0) - (b.nextFollowUpAtMs ?? 0));
   }
 
+  const upcomingCalls = all
+    .filter((lead) => lead.call && lead.call.atMs > now - 60 * 60 * 1000)
+    .sort((a, b) => (a.call?.atMs ?? 0) - (b.call?.atMs ?? 0));
   const newToday = all.filter((lead) => now - lead.submittedAtMs < 24 * 60 * 60 * 1000).length;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">Leads</h1>
-        {canManage ? <SyncSheetButton /> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/vending/leads/emails">
+              <Mail className="size-4" aria-hidden="true" />
+              Emails
+            </Link>
+          </Button>
+          {canManage ? <SyncSheetButton /> : null}
+        </div>
       </div>
 
       {syncError ? (
         <p role="alert" className="border-warning/40 bg-warning/5 text-foreground rounded-lg border p-3 text-sm">
           {syncError}
         </p>
+      ) : null}
+
+      {!leadNurtureService.isEnabled() && canManage ? (
+        <p className="border-border text-muted-foreground rounded-lg border p-3 text-sm">
+          Automatic emails are off. Set <code className="text-foreground">LEAD_NURTURE_ENABLED</code> to{' '}
+          <code className="text-foreground">true</code> in Vercel to start them.
+        </p>
+      ) : null}
+
+      {upcomingCalls.length > 0 ? (
+        <Card className="p-4">
+          <p className="text-foreground text-sm font-semibold">Upcoming calls</p>
+          <ul className="mt-2 flex flex-col divide-y divide-border">
+            {upcomingCalls.map((lead) => (
+              <li key={lead.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <span className="text-foreground font-medium">{lead.fullName}</span>
+                <span className="text-muted-foreground tabular-nums">
+                  {new Date(lead.call!.atMs).toLocaleString('en-KE', {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    timeZone: 'Africa/Nairobi',
+                  })}
+                </span>
+                <a
+                  href={`https://wa.me/${lead.call!.whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary font-medium hover:underline"
+                >
+                  WhatsApp +{lead.call!.whatsapp}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Card>
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

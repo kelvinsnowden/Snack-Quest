@@ -9,7 +9,8 @@ import {
 /**
  * `PATCH /api/admin/vending/leads/{leadId}` (§ vending leads CRM) —
  * move a lead through the pipeline, change its segment, set or clear
- * its follow-up date, and/or add a note. Any combination in one call.
+ * its follow-up date, add a note, and/or stop its nurture emails
+ * (`stopEmails: true`). Any combination in one call.
  */
 export async function PATCH(
   request: Request,
@@ -41,6 +42,7 @@ export async function PATCH(
         segment: input.segment,
         nextFollowUpAtMs: input.nextFollowUpAtMs,
         note: input.note,
+        stopEmails: input.stopEmails,
       },
       { uid: session.uid, name: session.displayName || null },
     );
