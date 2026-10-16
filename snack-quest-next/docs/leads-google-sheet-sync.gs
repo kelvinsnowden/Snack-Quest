@@ -17,7 +17,9 @@
  * so nothing is ever duplicated — running "Send ALL rows again" is safe.
  */
 
-const ENDPOINT = 'https://snackquests.shop/api/leads/sheet';
+// www: the bare domain 308-redirects there, and Apps Script re-sends a
+// redirected POST as a GET, which this route answers with 405.
+const ENDPOINT = 'https://www.snackquests.shop/api/leads/sheet';
 const SECRET = 'PASTE-THE-SAME-VALUE-AS-LEADS_SHEET_SECRET';
 /** Leave blank to use the first tab, or put the tab name Meta writes to. */
 const SHEET_NAME = '';
