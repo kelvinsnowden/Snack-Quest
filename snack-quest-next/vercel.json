@@ -40,6 +40,10 @@
     {
       "path": "/api/cron/generate-recommendations",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-leads-sheet",
+      "schedule": "30 6 * * *"
     }
   ]
 }

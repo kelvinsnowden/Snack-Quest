@@ -3,15 +3,15 @@ import Link from 'next/link';
 import { Inbox } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { hasPermission } from '@/lib/auth/permissions';
-import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { vendingLeadService } from '@/services/vendingLeadService';
 import { VENDING_LEAD_LIST_LIMIT } from '@/repositories/vendingLeadRepository';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { CopyLinkButton } from '@/components/creator/CopyLinkButton';
 import { LeadCard, type LeadRow } from '@/components/admin/vending/LeadCard';
 import { ImportOwnApplicationsButton } from '@/components/admin/vending/ImportOwnApplicationsButton';
+import { SyncSheetButton } from '@/components/admin/vending/SyncSheetButton';
+import { sheetSyncErrorMessage } from '@/lib/leads/sheetSync';
 import {
   VENDING_LEAD_SEGMENTS,
   VENDING_LEAD_STATUSES,
@@ -30,6 +30,25 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 const CLOSED: ReadonlySet<VendingLeadStatus> = new Set(['won', 'lost']);
+
+/** Opening the page syncs the sheet, but at most this often per server instance. */
+const SHEET_SYNC_INTERVAL_MS = 2 * 60 * 1000;
+let lastSheetSyncMs = 0;
+
+/** Brings in new rows from the Meta leads sheet before the list is read. Never throws. */
+async function syncSheetIfDue(): Promise<string | null> {
+  if (Date.now() - lastSheetSyncMs < SHEET_SYNC_INTERVAL_MS) return null;
+  lastSheetSyncMs = Date.now();
+  try {
+    await vendingLeadService.syncFromGoogleSheet();
+    return null;
+  } catch (error) {
+    console.error('[leads page] sheet sync failed', error);
+    // Retry on the next page load rather than waiting out the interval.
+    lastSheetSyncMs = 0;
+    return sheetSyncErrorMessage(error);
+  }
+}
 
 /** The request's own clock — read once, outside render, so every lead is judged against the same instant. */
 function requestTime(): number {
@@ -64,8 +83,10 @@ export default async function VendingLeadsPage({
     : 'all';
   const q = (params.q ?? '').trim().slice(0, 80);
 
+  const syncError = await syncSheetIfDue();
   const entries = await vendingLeadService.listRecent();
   const now = requestTime();
+  const serviceAccountEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? 'the Firebase service account';
 
   const all: LeadRow[] = entries.map(({ id, data }) => ({
     id,
@@ -119,17 +140,20 @@ export default async function VendingLeadsPage({
     visible.sort((a, b) => (a.nextFollowUpAtMs ?? 0) - (b.nextFollowUpAtMs ?? 0));
   }
 
-  const webhookUrl = `${getSiteUrl()}/api/leads/sheet`;
   const newToday = all.filter((lead) => now - lead.submittedAtMs < 24 * 60 * 60 * 1000).length;
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-2xl md:text-3xl text-foreground font-bold tracking-tight">Leads</h1>
-        <p className="hidden sm:block text-muted-foreground mt-1 text-sm">
-          Everyone who asked about owning or hosting a machine — Meta lead forms and the website’s /own form, in one list.
-        </p>
+        {canManage ? <SyncSheetButton /> : null}
       </div>
+
+      {syncError ? (
+        <p role="alert" className="border-warning/40 bg-warning/5 text-foreground rounded-lg border p-3 text-sm">
+          {syncError}
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -186,7 +210,7 @@ export default async function VendingLeadsPage({
           title={all.length === 0 ? 'No leads yet' : 'Nothing in this view'}
           description={
             all.length === 0
-              ? 'Leads from the Google Sheet appear here within a few minutes of Meta writing them, once the sync below is set up.'
+              ? 'Leads from the Google Sheet appear here once it is connected (see below).'
               : 'Try another tab or clear the search.'
           }
         />
@@ -206,18 +230,18 @@ export default async function VendingLeadsPage({
         <summary className="text-foreground cursor-pointer text-sm font-medium">Connect the Google Sheet</summary>
         <div className="text-muted-foreground mt-4 flex flex-col gap-3 text-sm">
           <p>
-            A small script inside the sheet sends new rows here every 5 minutes. The sheet can stay private. Full steps and
-            the script are in <code>docs/leads-google-sheet-sync.gs</code>.
+            The site reads the sheet itself each time this page opens, and once a day. The sheet stays private.
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <code className="border-border bg-background text-foreground min-w-0 flex-1 truncate rounded-md border px-3 py-2">
-              {webhookUrl}
-            </code>
-            <CopyLinkButton url={webhookUrl} />
-          </div>
-          <p>
-            The script needs the same secret as the <code>LEADS_SHEET_SECRET</code> environment variable on Vercel.
-          </p>
+          <ol className="list-decimal flex flex-col gap-1 pl-5">
+            <li>
+              Share the sheet (Viewer) with <code className="text-foreground">{serviceAccountEmail}</code>.
+            </li>
+            <li>
+              In Vercel, set <code className="text-foreground">LEADS_SHEET_ID</code> to the long ID in the sheet’s link
+              (between <code>/d/</code> and <code>/edit</code>), then redeploy.
+            </li>
+            <li>Turn on the Google Sheets API for the same Google Cloud project, if it isn’t already.</li>
+          </ol>
           {canManage ? <ImportOwnApplicationsButton /> : null}
         </div>
       </details>
