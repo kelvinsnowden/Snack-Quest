@@ -325,6 +325,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // vendingLeadCalls: one doc per booked WhatsApp call slot, written
+    // only by the booking route through the Admin SDK.
+    match /vendingLeadCalls/{slotId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // inventoryMovements: the stock-adjustment audit trail (§ Admin:
     // Inventory) — staff-readable, Admin SDK-only writes (InventoryService
     // is the sole writer, always inside the same transaction as the

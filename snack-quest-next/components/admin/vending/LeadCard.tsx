@@ -33,6 +33,10 @@ export interface LeadRow {
   segment: VendingLeadSegment;
   nextFollowUpAtMs: number | null;
   notes: { text: string; byName: string | null; atMs: number }[];
+  call: { atMs: number; whatsapp: string } | null;
+  /** One line on where the automatic emails stand for this lead. */
+  emails: string;
+  emailsActive: boolean;
   /** Computed on the server against the request's clock. */
   followUpDue: boolean;
 }
@@ -122,6 +126,7 @@ export function LeadCard({ lead, canManage }: { lead: LeadRow; canManage: boolea
         <div className="flex flex-wrap gap-1.5">
           <Badge variant={STATUS_VARIANT[lead.status]}>{statusLabel}</Badge>
           <Badge variant="outline">{segmentLabel}</Badge>
+          {lead.call ? <Badge variant="success">Call {formatDateTime(lead.call.atMs)}</Badge> : null}
           {lead.followUpDue ? (
             <Badge variant="danger">Follow-up due</Badge>
           ) : null}
@@ -177,6 +182,23 @@ export function LeadCard({ lead, canManage }: { lead: LeadRow; canManage: boolea
           ))}
         </dl>
       ) : null}
+
+      <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="inline-flex items-center gap-1.5">
+          <Mail className="size-3.5" aria-hidden="true" />
+          {lead.emails}
+        </span>
+        {canManage && lead.emailsActive ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => save({ stopEmails: true })}
+            className="text-primary font-medium hover:underline disabled:opacity-50"
+          >
+            Stop emails
+          </button>
+        ) : null}
+      </div>
 
       {lead.notes.length > 0 ? (
         <ul className="flex flex-col gap-2">

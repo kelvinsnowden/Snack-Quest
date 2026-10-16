@@ -76,12 +76,35 @@ export interface VendingLeadSourceFields {
   submittedAtMs: number;
 }
 
+/** Where a lead is in the automated nurture emails (§ lead nurture). Absent until the first email goes out. */
+export interface VendingLeadNurture {
+  /** How many sequence emails have been sent. */
+  sent: number;
+  lastSentAtMs: number | null;
+  /** Set once the sequence will send nothing more: finished, booked, unsubscribed, or stopped by staff. */
+  stoppedReason: 'finished' | 'booked' | 'unsubscribed' | 'staff' | null;
+}
+
+/** A WhatsApp call the lead booked from the link in their emails. */
+export interface VendingLeadCall {
+  /** Start of the 30-minute slot, epoch ms. */
+  atMs: number;
+  bookedAtMs: number;
+  /** The number to call — the lead can correct it while booking. */
+  whatsapp: string;
+  reminderSentAtMs: number | null;
+}
+
 export interface VendingLead extends VendingLeadSourceFields {
   status: VendingLeadStatus;
   segment: VendingLeadSegment;
   notes: VendingLeadNote[];
   /** Epoch ms, or null when no follow-up is scheduled. */
   nextFollowUpAtMs: number | null;
+  nurture?: VendingLeadNurture;
+  /** Set when the lead asked for no more emails. Never cleared by a re-sync. */
+  emailOptOutAtMs?: number | null;
+  call?: VendingLeadCall | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
