@@ -150,5 +150,6 @@ function saveSent_(keys) {
   if (current) chunks.push(current);
   const next = {};
   chunks.forEach((chunk, i) => (next[SENT_KEY_PREFIX + ('000' + i).slice(-4)] = chunk));
-  store.setProperties(next);
+  // Apps Script fails with a bare "unknown error" when handed an empty object.
+  if (chunks.length > 0) store.setProperties(next);
 }
