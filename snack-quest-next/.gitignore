@@ -61,3 +61,6 @@ scripts/deck/snack-quest-deck.html
 
 # Left behind whenever build.py is imported rather than run.
 __pycache__/
+
+# Machine Agent bundle, built by scripts/buildMachineAgent.mjs before next build
+/public/machine-agent/

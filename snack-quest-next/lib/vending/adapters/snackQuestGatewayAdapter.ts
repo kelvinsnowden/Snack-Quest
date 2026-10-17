@@ -92,6 +92,8 @@ export class SnackQuestGatewayAdapter implements VendingHardwareAdapter {
       remote_restart: true,
       // Relayed as a generic command; each model must still declare it (M109E: only after acceptance S11/S12).
       remote_cooling: true,
+      // Only machines running Snack Quest's agent can act on it; machineAgentUpdateService checks that too.
+      agent_update: true,
       payment_device: true,
       camera: true,
     };

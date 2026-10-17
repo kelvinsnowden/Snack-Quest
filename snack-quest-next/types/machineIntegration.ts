@@ -57,6 +57,14 @@ export interface MachineIntegration extends AuditFields {
   integrationType: IntegrationType;
   /** The version of the contract spoken — the Snack Quest Machine API version (inbound) or the manufacturer API/SDK version (outbound). */
   integrationVersion: string | null;
+  /** What the software on the machine last said about itself in a heartbeat (`diagnostics`). Absent for machines that don't report it. */
+  agentHealth?: {
+    uptimeSeconds: number | null;
+    owedReports: number | null;
+    lastError: string | null;
+    lastErrorAt: Timestamp | null;
+    reportedAt: Timestamp;
+  } | null;
   adapterKey: string;
   environment: MachineIntegrationEnvironment;
   state: MachineIntegrationState;

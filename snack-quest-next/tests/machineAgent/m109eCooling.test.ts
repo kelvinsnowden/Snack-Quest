@@ -83,7 +83,7 @@ describe('Thermostat', () => {
 });
 
 describe('the agent and set_cooling', () => {
-  async function agentWith(cooling: { board: number; compressorOutput: number } | null) {
+  async function agentWith(cooling: { board: number; compressorOutput: number } | null, updater?: { install(payload: unknown): Promise<{ ok: true; version: string } | { ok: false; reason: string }> }) {
     const clock = new FakeClock();
     const bus = new FakeM109eBus();
     const board = bus.add(new FakeM109eBoard(1, [0, 0x64, 0, 0x3b, 4, 0x47, 0x36, 0x32, 0x33, 0x38, 0x36, 0x39], clock));
@@ -122,11 +122,15 @@ describe('the agent and set_cooling', () => {
       cooling,
       coolingStore: { load: () => null, save: (target) => void saved.push(target) },
       wallNow: () => clock.now(),
+      updater,
     });
     const send = (payload: Record<string, unknown>) => {
       commands = [{ commandId: `CMD-${commands.length}-${clock.now()}`, type: 'set_cooling', payload, expiresAt: new Date(clock.now() + 10 * MIN).toISOString() }];
     };
-    return { clock, board, agent, reports, statuses, saved, send };
+    const sendRaw = (type: string, payload: Record<string, unknown>) => {
+      commands = [{ commandId: `CMD-${type}-${clock.now()}`, type, payload, expiresAt: new Date(clock.now() + 10 * MIN).toISOString() }];
+    };
+    return { clock, board, agent, reports, statuses, saved, send, sendRaw };
   }
 
   it('applies a new range, keeps it, reports completed and drives the compressor output', async () => {
@@ -145,6 +149,20 @@ describe('the agent and set_cooling', () => {
     board.temperatureTenths = 5; // 0.5 °C
     await agent.cycle();
     expect(board.outputs.get(2)).toBe(false);
+  });
+
+  it('installs an update_agent release, reports it completed and asks to be restarted; declines without an updater', async () => {
+    const { agent, reports, sendRaw } = await agentWith(null, { install: async () => ({ ok: true, version: '0.3.0' }) });
+    sendRaw('update_agent', { version: '0.3.0', url: 'https://www.snackquests.shop/machine-agent/x.mjs', sha256: 'a'.repeat(64) });
+    await agent.cycle();
+    expect(reports.at(-1)?.report.status).toBe('completed');
+    expect(agent.restartRequested).toBe(true);
+
+    const plain = await agentWith(null);
+    plain.sendRaw('update_agent', {});
+    await plain.agent.cycle();
+    expect(plain.reports.at(-1)?.report).toMatchObject({ status: 'failed' });
+    expect(plain.agent.restartRequested).toBe(false);
   });
 
   it('declines set_cooling when the board runs its own cooling, and never touches an output', async () => {

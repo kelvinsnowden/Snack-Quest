@@ -263,6 +263,12 @@ class MachineIntegrationRepository {
     await this.updateIfExists(machineId, { previousFirmwareVersion: previousVersion, firmwareChangedAt: FieldValue.serverTimestamp() });
   }
 
+  async recordAgentHealth(machineId: string, health: { uptimeSeconds: number | null; owedReports: number | null; lastError: string | null; lastErrorAt: Date | null }): Promise<void> {
+    await this.updateIfExists(machineId, {
+      agentHealth: { ...health, lastErrorAt: health.lastErrorAt ? Timestamp.fromDate(health.lastErrorAt) : null, reportedAt: FieldValue.serverTimestamp() },
+    });
+  }
+
   async recordSignal(machineId: string, kind: IntegrationSignalKind): Promise<void> {
     await this.updateIfExists(machineId, { [`signals.${kind}`]: FieldValue.serverTimestamp() });
   }

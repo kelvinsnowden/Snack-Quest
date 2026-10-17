@@ -29,6 +29,7 @@ export class CommandExpiredError extends Error {
 const CAPABILITY_FOR_COMMAND: Record<MachineCommandType, HardwareCapability> = {
   restart: 'remote_restart',
   set_cooling: 'remote_cooling',
+  update_agent: 'agent_update',
 };
 
 /**

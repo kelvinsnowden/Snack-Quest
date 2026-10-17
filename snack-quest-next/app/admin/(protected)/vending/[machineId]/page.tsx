@@ -42,6 +42,8 @@ import { MachineConnectivityBadge } from '@/components/admin/MachineConnectivity
 import { MachineTransactionStatusBadge } from '@/components/admin/MachineTransactionStatusBadge';
 import { MachineCommandStatusBadge } from '@/components/admin/MachineCommandStatusBadge';
 import { IssueMachineCommandAction } from '@/components/admin/IssueMachineCommandAction';
+import { MachineAgentCard } from '@/components/admin/vending/MachineAgentCard';
+import { agentReleaseOf, machineAgentUpdateService } from '@/services/machineAgentUpdateService';
 import { TestVendAction } from '@/components/admin/TestVendAction';
 import { CertificationToolsPanel } from '@/components/admin/integrations/CertificationToolsPanel';
 import { StockDiscrepancyForm } from '@/components/admin/StockDiscrepancyForm';
@@ -156,7 +158,11 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     cameras.map(async ({ id, data }) => ({ id, camera: serializeCamera(id, data), diagnostics: await cameraService.getDiagnostics(data) })),
   );
 
-  const liveness = machineLiveness(machine, await machineIntegrationRepository.findByMachineId(session.businessId, machineId));
+  const integrationRecord = await machineIntegrationRepository.findByMachineId(session.businessId, machineId);
+  const liveness = machineLiveness(machine, integrationRecord);
+  const agentRelease = agentReleaseOf(integrationRecord?.integrationVersion);
+  const latestAgentRelease = agentRelease ? await machineAgentUpdateService.latestRelease().then((manifest) => manifest.release, () => null) : null;
+  const agentHealth = integrationRecord?.agentHealth ?? null;
   const connectivityStatus = connectivityOf(liveness);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);
   const lastVendTransaction = transactionPage.transactions.find((t) => t.data.status === 'dispensed' || t.data.status === 'paid_vend_failed');
@@ -383,6 +389,33 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
           )}
         </CardContent>
       </Card>
+
+      {agentRelease ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Machine software</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MachineAgentCard
+              machineId={machineId}
+              release={agentRelease}
+              latest={latestAgentRelease}
+              health={
+                agentHealth
+                  ? {
+                      uptimeSeconds: agentHealth.uptimeSeconds,
+                      owedReports: agentHealth.owedReports,
+                      lastError: agentHealth.lastError,
+                      lastErrorAt: agentHealth.lastErrorAt ? agentHealth.lastErrorAt.toDate().toISOString() : null,
+                      reportedAt: agentHealth.reportedAt.toDate().toISOString(),
+                    }
+                  : null
+              }
+              canUpdate={hasPermission(session, 'machines.commands.issue')}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

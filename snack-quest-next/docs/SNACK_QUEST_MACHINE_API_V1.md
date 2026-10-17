@@ -550,6 +550,8 @@ Connect is safe to call on every boot.
 { "eventId": "hb-NV0001-000418", "occurredAt": "2026-09-27T09:14:05+03:00", "uptimeSeconds": 86400 }
 ```
 
+Optional: `"diagnostics": { "owedReports": 0, "lastError": "…", "lastErrorAt": "…" }` — the machine software's own health (outcome reports stored but not yet accepted, its last problem). Staff see it on the machine page.
+
 **Response `202`**
 
 ```json
