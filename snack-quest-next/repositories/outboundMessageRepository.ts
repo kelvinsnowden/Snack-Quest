@@ -6,7 +6,7 @@ import type { OutboundMessage, OutboundMessageStatus } from '@/types';
 
 /** Statuses that count as a real, successful delivery attempt vs. a real failure, for stats purposes — `'queued'` is excluded from both since it means dispatch never actually resolved (normally transient; a message stuck there is its own signal, not a success or a failure). */
 const SUCCESS_STATUSES: OutboundMessageStatus[] = ['sent', 'delivered'];
-const FAILURE_STATUSES: OutboundMessageStatus[] = ['failed', 'bounced'];
+const FAILURE_STATUSES: OutboundMessageStatus[] = ['failed', 'bounced', 'expired'];
 
 /**
  * `outboundMessages` reads/writes (§ Notification breadth,
@@ -73,6 +73,11 @@ class OutboundMessageRepository {
       status: 'failed',
       failureReason,
     });
+  }
+
+  /** A failed message the retry sweep will no longer resend because it is out of date. */
+  async markExpired(id: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({ status: 'expired' });
   }
 
   /**

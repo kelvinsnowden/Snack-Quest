@@ -90,6 +90,8 @@ export class SnackQuestGatewayAdapter implements VendingHardwareAdapter {
       temperature: true,
       door_status: true,
       remote_restart: true,
+      // Relayed as a generic command; each model must still declare it (M109E: only after acceptance S11/S12).
+      remote_cooling: true,
       payment_device: true,
       camera: true,
     };

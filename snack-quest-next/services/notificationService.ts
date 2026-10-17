@@ -21,6 +21,21 @@ export class TemplateNotFoundError extends Error {
 
 const DEFAULT_RETRY_CEILING = 5;
 
+/**
+ * How old a failed message may be and still be resent. Without a limit,
+ * the first sweep after a long outage (or after the retry job is first
+ * switched on) resends everything that ever failed — machine alerts
+ * about problems fixed long ago included. Alerts go stale fastest.
+ */
+const RETRY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const RETRY_MAX_AGE_BY_TEMPLATE: Record<string, number> = {
+  vending_critical_alert_sms: 2 * 60 * 60 * 1000,
+};
+
+export function retryMaxAgeMs(templateCode: string): number {
+  return RETRY_MAX_AGE_BY_TEMPLATE[templateCode] ?? RETRY_MAX_AGE_MS;
+}
+
 export interface SendNotificationInput {
   channel: NotificationChannel;
   templateCode: string;
@@ -167,15 +182,24 @@ class NotificationService {
     return { outcome: 'ignored', outboundMessageId: match.id };
   }
 
-  async retrySweep(businessId: string, retryCeiling = DEFAULT_RETRY_CEILING): Promise<{ attempted: number }> {
+  async retrySweep(businessId: string, retryCeiling = DEFAULT_RETRY_CEILING, now: Date = new Date()): Promise<{ attempted: number; expired: number }> {
     const retryable = await outboundMessageRepository.listRetryable(businessId, retryCeiling);
 
+    let attempted = 0;
+    let expired = 0;
     for (const { id, data } of retryable) {
+      // Too old to be useful: taken out of the queue instead of resent.
+      if (!data.createdAt || now.getTime() - data.createdAt.toMillis() > retryMaxAgeMs(data.templateCode)) {
+        await outboundMessageRepository.markExpired(id);
+        expired += 1;
+        continue;
+      }
       await outboundMessageRepository.incrementRetryCount(id);
       await this.dispatch(businessId, id, data.channel, data.recipientRef, data.renderedSubject, data.renderedBody, data.renderedHtmlBody);
+      attempted += 1;
     }
 
-    return { attempted: retryable.length };
+    return { attempted, expired };
   }
 
   private async dispatch(

@@ -23,7 +23,7 @@ describe('acceptance record and capability gate', () => {
   it('declares nothing and relaxes nothing on a blank record', () => {
     const gate = capabilityGate(blankAcceptanceRecord('M109E'));
     expect(gate.declaredCapabilities).toEqual([]);
-    expect(gate.agent).toEqual({ curtainNegativeIsCertain: false, resultsPersistUntilRead: false, doorInput: null });
+    expect(gate.agent).toEqual({ curtainNegativeIsCertain: false, resultsPersistUntilRead: false, doorInput: null, cooling: null });
     expect(gate.productionBlockers).toContain('S5');
     expect(gate.productionBlockers).toContain('P7');
   });
@@ -43,9 +43,9 @@ describe('acceptance record and capability gate', () => {
   it('relaxes the agent only on the tests that prove it', () => {
     const record = pass(blankAcceptanceRecord('M109E'), 'S3', 'S5', 'S7', 'S10');
     record.findings = { resultClearing: 'timer', doorInput: null };
-    expect(capabilityGate(record).agent).toEqual({ curtainNegativeIsCertain: true, resultsPersistUntilRead: false, doorInput: null });
+    expect(capabilityGate(record).agent).toEqual({ curtainNegativeIsCertain: true, resultsPersistUntilRead: false, doorInput: null, cooling: null });
     record.findings = { resultClearing: 'until_read', doorInput: 2 };
-    expect(capabilityGate(record).agent).toEqual({ curtainNegativeIsCertain: true, resultsPersistUntilRead: true, doorInput: 2 });
+    expect(capabilityGate(record).agent).toEqual({ curtainNegativeIsCertain: true, resultsPersistUntilRead: true, doorInput: 2, cooling: null });
     // A door capability needs a door.
     expect(capabilityGate(pass(blankAcceptanceRecord('M109E'), 'S10')).declaredCapabilities).not.toContain('door_status');
   });

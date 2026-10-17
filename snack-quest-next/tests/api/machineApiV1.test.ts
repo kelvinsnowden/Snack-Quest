@@ -247,6 +247,20 @@ describe('reporting', () => {
     expect((await machineIntegrationRepository.findByMachineId(BUSINESS_ID, setup.machineId))?.lastReportedStatus?.doorOpen).toBe(true);
   });
 
+  it('remembers when the door was first reported open, across reports, and forgets it once shut', async () => {
+    const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+    const send = (eventId: string, secondsAgo: number, doorOpen: boolean) =>
+      status(signed(`/api/v1/machines/${setup.machineCode}/status`, { eventId, occurredAt: at(secondsAgo), online: true, doorOpen }), machineParams());
+    const since = async () => (await machineIntegrationRepository.findByMachineId(BUSINESS_ID, setup.machineId))?.lastReportedStatus?.doorOpenSince ?? null;
+    await send('d-1', 120, true);
+    const opened = await since();
+    expect(opened).not.toBeNull();
+    await send('d-2', 60, true);
+    expect((await since())?.toMillis()).toBe(opened?.toMillis());
+    await send('d-3', 10, false);
+    expect(await since()).toBeNull();
+  });
+
   it('inventory mismatches come back in the manufacturer\'s slot names', async () => {
     const response = await inventory(signed(`/api/v1/machines/${setup.machineCode}/inventory`, { reportId: 'inv-1', slots: [{ slotId: 'spiral_01', quantity: 3 }, { slotId: 'spiral_99', quantity: 1 }] }), machineParams());
     const { data } = await response.json();

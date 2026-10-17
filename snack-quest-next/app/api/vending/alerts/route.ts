@@ -26,6 +26,10 @@ const ALERT_TYPES: AlertType[] = [
   'credential_expiring',
   'credential_revoked',
   'webhook_failures',
+  'temperature_out_of_range',
+  'temperature_not_reported',
+  'door_left_open',
+  'slot_paused',
 ];
 const ALERT_SEVERITIES: AlertSeverity[] = ['critical', 'warning', 'info'];
 

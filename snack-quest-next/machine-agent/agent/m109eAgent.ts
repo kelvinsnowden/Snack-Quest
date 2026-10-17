@@ -3,7 +3,8 @@ import type { M109eProtocolClient } from '../m109e/protocolClient';
 import type { DispenseDriver } from '../m109e/dispenseDriver';
 import type { DispenseOutcome } from '../m109e/outcomeMapper';
 import type { SlotMap } from '../m109e/slotMap';
-import type { Journal, OutcomeReport } from '../journal/journal';
+import type { CommandOutcome, Journal, OutcomeReport } from '../journal/journal';
+import { CoolingTargetError, Thermostat, parseCoolingTarget, type CoolingTarget } from './thermostat';
 
 export const AGENT_VERSION = 'm109e-agent/0.1.0';
 
@@ -16,6 +17,15 @@ export interface AgentConfig {
    * events rather than guessing.
    */
   doorInput: 1 | 2 | 3 | 4 | null;
+  /**
+   * Where the compressor is switched, from the acceptance gate
+   * (`capabilityGate(...).agent.cooling`). Null — the default — means the
+   * board or a separate controller runs the cooling: the agent only
+   * reports the temperature and declines `set_cooling`.
+   */
+  cooling?: { board: number; compressorOutput: number } | null;
+  /** Keeps the last cooling range across restarts (a small file on the host). Without it a restart falls back to the default range. */
+  coolingStore?: { load(): CoolingTarget | null; save(target: CoolingTarget): void | Promise<void> };
   /** Wall-clock time for timestamps and command expiry (the host's clock). */
   wallNow?: () => number;
 }
@@ -50,6 +60,8 @@ export class M109eMachineAgent {
   /** Sandbox controls — the certification harness's hooks. Never set in production. */
   readonly sandbox = { holdNextCommands: false, deferNextReport: false };
   private lastReportedCommandId: string | null = null;
+  /** Present only when this agent switches the compressor itself (`config.cooling`). */
+  readonly thermostat: Thermostat | null;
 
   constructor(
     private readonly api: SnackQuestMachineClient,
@@ -60,6 +72,7 @@ export class M109eMachineAgent {
     private readonly config: AgentConfig,
   ) {
     this.startedAt = this.wallNow();
+    this.thermostat = config.cooling ? new Thermostat(config.coolingStore?.load() ?? null) : null;
   }
 
   private wallNow(): number {
@@ -113,6 +126,14 @@ export class M109eMachineAgent {
       }
     }
     if (this.curtainSelfTestFailed) faults.push('light_curtain_self_test_failed');
+    if (this.thermostat && this.config.cooling) {
+      const want = this.thermostat.decide(temperatureCelsius ?? null, this.wallNow());
+      if (want !== null) {
+        const written = await this.board.writeOutput(this.config.cooling.board, this.config.cooling.compressorOutput, want).catch(() => false);
+        if (written) this.thermostat.switched(want, this.wallNow());
+        else faults.push('cooling_output_unreachable');
+      }
+    }
 
     let doorOpen: boolean | undefined;
     if (this.config.doorInput !== null) {
@@ -158,7 +179,11 @@ export class M109eMachineAgent {
         continue;
       }
       await this.journal.record({ t: 'acked', commandId: command.commandId, at: this.wallNow() });
-      if (command.type !== 'dispense') {
+      if (command.type === 'set_cooling') {
+        const outcome = await this.applyCooling(command.payload);
+        await this.journal.record({ t: 'result', commandId: command.commandId, board: null, outcome, at: this.wallNow() });
+        (outcome.status === 'completed' ? executed : refused).push(command.commandId);
+      } else if (command.type !== 'dispense') {
         // Acknowledged and declined, never dropped silently (spec §4.4).
         await this.journal.record({ t: 'result', commandId: command.commandId, board: null, outcome: { status: 'failed', failureCode: 'failed', reason: `unsupported command type "${command.type}"` }, at: this.wallNow() });
         refused.push(command.commandId);
@@ -175,6 +200,22 @@ export class M109eMachineAgent {
       }
     }
     return { executed, refused, nextPollSeconds: poll.data?.nextPollSeconds ?? 10 };
+  }
+
+  /** A new cooling range from Snack Quest. Declined, with the reason, when this machine's cooling isn't the agent's to run. */
+  private async applyCooling(payload: unknown): Promise<CommandOutcome> {
+    if (!this.thermostat) {
+      return { status: 'failed', failureCode: 'failed', reason: 'this machine runs its own cooling; the agent does not switch the compressor (acceptance S11, S12)' };
+    }
+    try {
+      const target = parseCoolingTarget(payload);
+      this.thermostat.setTarget(target);
+      await this.config.coolingStore?.save(target);
+      return { status: 'completed', note: target.enabled ? `cooling ${target.minCelsius}–${target.maxCelsius} °C` : 'cooling off' };
+    } catch (error) {
+      if (error instanceof CoolingTargetError) return { status: 'failed', failureCode: 'failed', reason: error.message };
+      throw error;
+    }
   }
 
   /** Turns every decided outcome that has no report yet into an owed report (the outbox). Its eventId is fixed from here on. */
@@ -222,8 +263,9 @@ export class M109eMachineAgent {
   }
 }
 
-function toReport(outcome: DispenseOutcome, occurredAt: string): OutcomeReport {
+function toReport(outcome: CommandOutcome, occurredAt: string): OutcomeReport {
   const eventId = newEventId('out');
+  if (outcome.status === 'completed') return { status: 'completed', eventId, occurredAt };
   if (outcome.status === 'dispensed') return { status: 'dispensed', eventId, occurredAt };
   if (outcome.status === 'failed') return { status: 'failed', eventId, occurredAt, failureCode: outcome.failureCode, failureReason: outcome.reason };
   return { status: 'unknown', eventId, occurredAt, failureReason: outcome.reason };

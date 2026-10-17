@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 import type { DispenseConfirmationStrategy } from '@/lib/vending/hardwareAdapter';
+import type { MachineCooling } from '@/lib/vending/cooling';
 import type { MachineOwnershipType } from './economics';
 import type { MachineDisplayProfile } from './kioskExperience';
 
@@ -128,6 +129,10 @@ export interface Machine extends AuditFields {
   dispenseConfirmationStrategy: DispenseConfirmationStrategy | null;
   /** The customer screen's size and orientation (§ DEVICE PROFILES). Absent until staff record it; the builder previews at a default size meanwhile. */
   display?: MachineDisplayProfile | null;
+  /** Cooling target and alert delay (`lib/vending/cooling.ts`). Absent: the default range applies once the machine reports a temperature (`effectiveCooling`). */
+  cooling?: MachineCooling | null;
+  /** Start of the current out-of-range temperature spell, kept by the alert sweep. Null when in range. */
+  temperatureBreachSince?: Timestamp | null;
 }
 
 /** Every status transition this machine may make, keyed by its current status — enforced by `machineService.updateStatus`, not left to the caller. */

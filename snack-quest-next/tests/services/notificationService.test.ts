@@ -246,7 +246,7 @@ describe('NotificationService.retrySweep', () => {
 
     const result = await service.retrySweep(BUSINESS_ID);
 
-    expect(result).toEqual({ attempted: 1 });
+    expect(result).toEqual({ attempted: 1, expired: 0 });
     // `businessId` is part of the assertion, not incidental: SMS
     // credentials are per business now, so a dispatch that dropped it
     // would send this text from another tenant's sender ID.
@@ -284,8 +284,37 @@ describe('NotificationService.retrySweep', () => {
 
     const result = await service.retrySweep(BUSINESS_ID, 5);
 
-    expect(result).toEqual({ attempted: 0 });
+    expect(result).toEqual({ attempted: 0, expired: 0 });
     expect(sms.send).not.toHaveBeenCalled();
+  });
+
+  it('expires a failed message too old to resend instead of sending it, and alerts go stale sooner', async () => {
+    const base = {
+      businessId: BUSINESS_ID,
+      notificationId: null,
+      channel: 'sms' as const,
+      recipientRef: '254700000000',
+      renderedSubject: null,
+      renderedHtmlBody: null,
+      providerMessageId: null,
+      status: 'failed' as const,
+      failureReason: 'prior timeout',
+      sentAt: null,
+      deliveredAt: null,
+      retryCount: 1,
+    };
+    await outboundMessageRepository.create('sms:old-alert', { ...base, templateCode: 'vending_critical_alert_sms', renderedBody: 'SQ1 offline' });
+    await outboundMessageRepository.create('sms:recent-receipt', { ...base, templateCode: 'withdrawal_paid_sms', renderedBody: 'paid' });
+
+    const sms = fakeSms();
+    const service = new NotificationService(fakeWhatsapp(), fakeEmail(), sms);
+    // Three hours on: past the alert's 2-hour limit, inside everything else's 24 hours.
+    const result = await service.retrySweep(BUSINESS_ID, 5, new Date(Date.now() + 3 * 60 * 60 * 1000));
+
+    expect(result).toEqual({ attempted: 1, expired: 1 });
+    expect(sms.send).toHaveBeenCalledTimes(1);
+    expect(sms.send).toHaveBeenCalledWith(expect.objectContaining({ body: 'paid' }));
+    expect((await outboundMessageRepository.findById('sms:old-alert'))?.status).toBe('expired');
   });
 });
 

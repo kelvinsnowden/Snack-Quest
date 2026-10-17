@@ -31,7 +31,9 @@ export type HardwareCapability =
   /** The machine has its own payment peripheral (card reader, cash/coin mech) whose health the integration reports. Customer payment itself is always Snack Quest's own flow. */
   | 'payment_device'
   /** Remote configuration beyond price/enable — e.g. slot capacity, display settings — pushed through the integration. */
-  | 'remote_configuration';
+  | 'remote_configuration'
+  /** The machine can take a cooling target from Snack Quest (`set_cooling`) and run its refrigeration to it. Monitoring needs only `temperature`. */
+  | 'remote_cooling';
 
 export const ALL_HARDWARE_CAPABILITIES: readonly HardwareCapability[] = [
   'vend',
@@ -51,6 +53,7 @@ export const ALL_HARDWARE_CAPABILITIES: readonly HardwareCapability[] = [
   'camera',
   'payment_device',
   'remote_configuration',
+  'remote_cooling',
 ];
 
 /** Human labels for the admin UI and the external spec — the brief's DISPENSE/INVENTORY/HEALTH/… names map onto this one vocabulary rather than a second parallel set. */
@@ -72,6 +75,7 @@ export const HARDWARE_CAPABILITY_LABELS: Record<HardwareCapability, string> = {
   camera: 'Camera',
   payment_device: 'Payment device',
   remote_configuration: 'Remote configuration',
+  remote_cooling: 'Cooling control',
 };
 
 export function isHardwareCapability(value: unknown): value is HardwareCapability {

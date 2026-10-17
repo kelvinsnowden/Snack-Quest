@@ -112,7 +112,7 @@ export const PERMISSIONS = [
   { key: 'machines.status.manage', label: 'Change a machine’s status', group: 'Machines' },
   { key: 'machines.decommission', label: 'Retire a machine for good', group: 'Machines' },
   { key: 'machines.relocate', label: 'Move a machine to another location', group: 'Machines' },
-  { key: 'machines.commands.issue', label: 'Send commands to a machine (restart, sync)', group: 'Machines' },
+  { key: 'machines.commands.issue', label: 'Send commands to a machine (restart, cooling)', group: 'Machines' },
   { key: 'machines.test_vend', label: 'Run a test vend', group: 'Machines' },
   { key: 'machines.slots.toggle', label: 'Switch slots on or off', group: 'Machines' },
   { key: 'machines.slots.configure', label: 'Set up slots and slot mapping', group: 'Machines' },

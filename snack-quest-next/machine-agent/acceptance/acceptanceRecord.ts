@@ -99,6 +99,13 @@ export interface AcceptanceRecord {
     resultClearing: 'until_read' | 'until_next_run' | 'timer' | 'unknown';
     /** S10: the DI input wired to the door, or null if there is none. */
     doorInput: 1 | 2 | 3 | 4 | null;
+    /**
+     * S11/S12: who switches the cooling and on which DO output. Only
+     * `owner: 'host'` with a known compressor output lets the agent run
+     * the thermostat; a board that runs its own cooling is monitored only.
+     * Missing in older records, which means unknown.
+     */
+    refrigeration?: { owner: 'board' | 'host' | 'none' | 'unknown'; board: number | null; compressorOutput: number | null };
   };
   results: Record<string, AcceptanceResult>;
 }
@@ -136,6 +143,15 @@ export function validateAcceptanceRecord(record: AcceptanceRecord): void {
   if (record.findings.doorInput !== null && record.results.S10?.result !== 'passed') {
     throw new AcceptanceRecordError('findings.doorInput is set but S10 has not passed');
   }
+  const refrigeration = record.findings.refrigeration;
+  if (refrigeration && (refrigeration.owner !== 'unknown' || refrigeration.compressorOutput !== null)) {
+    if (record.results.S11?.result !== 'passed' || record.results.S12?.result !== 'passed') {
+      throw new AcceptanceRecordError('findings.refrigeration is set but S11 and S12 have not both passed');
+    }
+    if (refrigeration.owner === 'host' && (refrigeration.board === null || refrigeration.compressorOutput === null)) {
+      throw new AcceptanceRecordError('findings.refrigeration: a host-run cooling system needs the board and compressor output');
+    }
+  }
 }
 
 /** Each capability the model may declare, and the tests that must all have passed first. */
@@ -147,6 +163,8 @@ export const CAPABILITY_EVIDENCE: Readonly<Record<string, readonly string[]>> = 
   faults: ['M2', 'M3', 'M4', 'S3'],
   temperature: ['S8'],
   door_status: ['S10'],
+  /** Snack Quest sets the cooling range; also needs S12 to find the host, not the board, runs the compressor. */
+  remote_cooling: ['S8', 'S11', 'S12'],
 };
 
 /**
@@ -164,7 +182,13 @@ export interface GateResult {
   /** Capabilities held back, with the tests still missing. */
   withheld: { capability: string; missing: string[] }[];
   /** The agent's safety settings, relaxed only by passed tests. */
-  agent: { curtainNegativeIsCertain: boolean; resultsPersistUntilRead: boolean; doorInput: 1 | 2 | 3 | 4 | null };
+  agent: {
+    curtainNegativeIsCertain: boolean;
+    resultsPersistUntilRead: boolean;
+    doorInput: 1 | 2 | 3 | 4 | null;
+    /** Where the compressor is switched, when the agent may run the thermostat; null means monitoring only. */
+    cooling: { board: number; compressorOutput: number } | null;
+  };
   /** Production-gate tests not yet passed. Empty means the gate is met — not that the machine is production-ready by itself. */
   productionBlockers: string[];
   /** Tests that were run and failed. */
@@ -174,12 +198,19 @@ export interface GateResult {
 export function capabilityGate(record: AcceptanceRecord): GateResult {
   validateAcceptanceRecord(record);
   const passed = (id: string) => record.results[id]?.result === 'passed';
+  const refrigeration = record.findings.refrigeration;
+  const hostCooling =
+    passed('S8') && passed('S11') && passed('S12') && refrigeration?.owner === 'host' && refrigeration.board !== null && refrigeration.compressorOutput !== null
+      ? { board: refrigeration.board, compressorOutput: refrigeration.compressorOutput }
+      : null;
   const declaredCapabilities: string[] = [];
   const withheld: GateResult['withheld'] = [];
   for (const [capability, tests] of Object.entries(CAPABILITY_EVIDENCE)) {
     const missing = tests.filter((id) => !passed(id));
     if (capability === 'door_status' && record.findings.doorInput === null && missing.length === 0) {
       withheld.push({ capability, missing: ['S10 found no door input'] });
+    } else if (capability === 'remote_cooling' && !hostCooling && missing.length === 0) {
+      withheld.push({ capability, missing: ['S12 did not find host-run cooling with a known compressor output'] });
     } else if (missing.length === 0) {
       declaredCapabilities.push(capability);
     } else {
@@ -193,6 +224,7 @@ export function capabilityGate(record: AcceptanceRecord): GateResult {
       curtainNegativeIsCertain: passed('S3') && passed('S5'),
       resultsPersistUntilRead: passed('S7') && record.findings.resultClearing === 'until_read',
       doorInput: passed('S10') ? record.findings.doorInput : null,
+      cooling: hostCooling,
     },
     productionBlockers: PRODUCTION_GATE.filter((id) => !passed(id)),
     failed: ACCEPTANCE_TESTS.filter((test) => record.results[test.id]?.result === 'failed').map((test) => test.id),

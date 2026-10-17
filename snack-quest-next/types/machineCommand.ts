@@ -31,7 +31,8 @@ import type { Timestamp } from 'firebase/firestore';
  * with no caller" `docs/VENDING_OS_BENCHMARK.md` already flagged once
  * for the adapter interface itself.
  */
-export type MachineCommandType = 'restart';
+/** `set_cooling` carries `{ enabled, minCelsius, maxCelsius }` (`lib/vending/cooling.ts`) and needs the `remote_cooling` capability. */
+export type MachineCommandType = 'restart' | 'set_cooling';
 
 /**
  * `pending` → a real machine's gateway hasn't fetched this yet.
