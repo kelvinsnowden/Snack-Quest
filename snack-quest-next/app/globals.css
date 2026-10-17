@@ -174,7 +174,7 @@
  * `--own-panel` frames the two photos that were shot on black.
  */
 .theme-own-light {
-  color-scheme: light;
+  color-scheme: only light;
   --sq-background: #ffffff;
   --sq-foreground: #16140f;
   --sq-surface: #f6f4ef;

@@ -18,6 +18,8 @@ const PUBLIC: Record<string, string> = {
   'GET /api/checkout/web/[sessionId]': 'the unguessable checkout session id is the bearer',
   'GET /api/creator/referral-code': 'checks whether a referral code is free',
   'POST /api/invest/interest': 'public lead form',
+  'POST /api/leads/call': 'the signed lead token from the email is the bearer',
+  'POST /api/leads/stop-emails': 'the signed lead token from the unsubscribe link is the bearer',
   'POST /api/machine-owners/interest': 'public lead form',
   'GET /api/pickup-stations': 'public list of pickup points',
   'GET /api/premium-snacks': 'public catalogue',
