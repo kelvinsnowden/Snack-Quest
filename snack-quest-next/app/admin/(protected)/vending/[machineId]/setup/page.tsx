@@ -25,6 +25,8 @@ import { partnerMachineAgreementRepository } from '@/repositories/partnerMachine
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineCoolingService } from '@/services/machineCoolingService';
 import { CoolingCard } from '@/components/admin/vending/CoolingCard';
+import { TemperatureChart } from '@/components/admin/vending/TemperatureChart';
+import { temperatureRecord } from '@/services/machineTemperatureService';
 import { DEFAULT_COOLING, effectiveCooling, judgeTemperature } from '@/lib/vending/cooling';
 
 export const metadata: Metadata = { title: 'Machine setup' };
@@ -58,10 +60,14 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
     machineCoolingService.canControl(session.businessId, machineId),
   ]);
   const reported = integration?.lastReportedStatus ?? null;
+  const nowMs = new Date().getTime();
+  const weekAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const temperatureRows = await temperatureRecord(session.businessId, machineId, weekAgoMs, nowMs);
+  const effectiveRange = effectiveCooling(machine.cooling, reported?.temperatureCelsius);
   const temperatureVerdict = judgeTemperature(
     effectiveCooling(machine.cooling, reported?.temperatureCelsius),
     reported ? { celsius: reported.temperatureCelsius, atMs: reported.reportedAt.toMillis() } : null,
-    new Date().getTime(),
+    nowMs,
   ).kind;
   const iso = (value: { toDate(): Date } | null | undefined) => (value ? value.toDate().toISOString() : null);
   const names = new Map(locations.map(({ id, data }) => [id, data.name]));
@@ -133,6 +139,15 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
               canEdit={hasPermission(session, 'machines.commands.issue')}
               canControl={canControlCooling}
             />
+            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">Last 7 days</p>
+                <a href={`/api/vending/machines/${machineId}/temperature-log`} className="text-sm font-medium text-primary hover:underline">
+                  Download record (CSV, 30 days)
+                </a>
+              </div>
+              <TemperatureChart rows={temperatureRows} fromMs={weekAgoMs} toMs={nowMs} target={effectiveRange?.enabled ? effectiveRange : null} />
+            </div>
           </CardContent>
         </Card>
 

@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { TemperatureHour } from '@/lib/vending/temperatureLog';
 import type { AuditFields } from './common';
 import type { IntegrationType } from './manufacturer';
 
@@ -57,6 +58,8 @@ export interface MachineIntegration extends AuditFields {
   integrationType: IntegrationType;
   /** The version of the contract spoken — the Snack Quest Machine API version (inbound) or the manufacturer API/SDK version (outbound). */
   integrationVersion: string | null;
+  /** The temperature record's current, unfinished hour (`lib/vending/temperatureLog.ts`). */
+  temperatureHour?: TemperatureHour | null;
   /** What the software on the machine last said about itself in a heartbeat (`diagnostics`). Absent for machines that don't report it. */
   agentHealth?: {
     uptimeSeconds: number | null;
