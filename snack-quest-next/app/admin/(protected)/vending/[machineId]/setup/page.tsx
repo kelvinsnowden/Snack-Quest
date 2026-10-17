@@ -25,6 +25,8 @@ import { partnerMachineAgreementRepository } from '@/repositories/partnerMachine
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineCoolingService } from '@/services/machineCoolingService';
 import { CoolingCard } from '@/components/admin/vending/CoolingCard';
+import { AgentKeyCard } from '@/components/admin/vending/AgentKeyCard';
+import { machineAgentKeyService } from '@/services/machineAgentKeyService';
 import { TemperatureChart } from '@/components/admin/vending/TemperatureChart';
 import { temperatureRecord } from '@/services/machineTemperatureService';
 import { DEFAULT_COOLING, effectiveCooling, judgeTemperature } from '@/lib/vending/cooling';
@@ -60,6 +62,8 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
     machineCoolingService.canControl(session.businessId, machineId),
   ]);
   const reported = integration?.lastReportedStatus ?? null;
+  const canManageAgentKeys = hasPermission(session, 'integrations.credentials.manage') && integration !== null;
+  const agentKeys = canManageAgentKeys ? await machineAgentKeyService.list(session.businessId, machineId) : [];
   const nowMs = new Date().getTime();
   const weekAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
   const temperatureRows = await temperatureRecord(session.businessId, machineId, weekAgoMs, nowMs);
@@ -150,6 +154,27 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
             </div>
           </CardContent>
         </Card>
+
+        {canManageAgentKeys ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Machine software key</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AgentKeyCard
+                machineId={machineId}
+                machineCode={machine.machineCode}
+                keys={agentKeys.map((key) => ({
+                  keyId: key.keyId,
+                  environment: key.environment,
+                  status: key.status,
+                  issuedAt: key.issuedAt ? key.issuedAt.toDate().toISOString() : null,
+                  lastUsedAt: key.lastUsedAt ? key.lastUsedAt.toDate().toISOString() : null,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
 
         {canManageKeys ? (
           <Card>
