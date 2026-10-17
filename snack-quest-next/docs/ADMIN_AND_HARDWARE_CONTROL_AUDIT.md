@@ -101,7 +101,7 @@ Phases 0 to 5 of the roadmap (§25) are built. Phase 6 is built as far as it can
 
 **Still open:**
 - Every high- and medium-priority gap in the gap tables (G-H1 to G-H14, G-M1 to G-M10) now has an implementation. The Future items in §24 do not.
-- A paused slot doesn't raise an Alert Center alert yet. It shows on the slot page, the machine page and the fleet page.
+- A paused slot raises a `slot_paused` alert (warning) until someone returns it to sale. It also shows on the slot page, the machine page and the fleet page.
 - The vending reversal has only been tested against a stubbed gateway, not Safaricom's sandbox.
 - Snapshot images still have no storage.
 - The new pages have no browser tests; they were checked by type-checking, lint and the API and service tests behind them.
@@ -355,7 +355,7 @@ Classes:
 | Payments | none | M-Pesa STK (`machineTransactionService.initiateCartPayment`) | Server + kiosk | None | — |
 | Capabilities | — | `MachineModel.declaredCapabilities`, `effectiveCapabilities` | Server | **Model edit UI missing** (G-H3) | Over-declared capabilities |
 | Certification | — | `integrationCertificationService.run` + sandbox control endpoints | Server + admin UI | Agent must implement control endpoints in sandbox | — |
-| Refrigeration | `08H` | **No abstraction** | — | New `refrigeration` concept (if host-run) | Food safety |
+| Refrigeration | `07H`, `08H` | `machine.cooling` range; `set_cooling` command behind `remote_cooling` | Server complete: range per machine, temperature / no-reading / door-open alerts | Agent thermostat on the compressor DO, only when the acceptance record shows host-run cooling (S8, S11, S12); otherwise monitoring only | Food safety |
 | Remote restart | none (board) | `restart` command | Server | Agent: host reboot only | Host permissions |
 | Kiosk UI | none | `components/kiosk/KioskScreen.tsx` | Complete | Host browser verification | Host unknown |
 
@@ -1119,7 +1119,7 @@ G-M1 hidden analytics · G-M2 price history · G-M3 search · G-M4 exports · G-
 - **F4 Technicians:** people, assignments, routes; restock and maintenance tasks assigned to them; mobile checklists.
 - **F5 Planogram templates** by location type, applied to many machines.
 - **F6 Bulk operations** everywhere (status, prices, catalogue).
-- **F7 Refrigeration domain** (set-points, compliance log), if hosts must control cooling.
+- **F7 Refrigeration domain** — done except the compliance log: a cooling range per machine (Setup → Cooling), `temperature_out_of_range` (critical, after the range's alert delay), `temperature_not_reported` and `door_left_open` alerts, and a `set_cooling` command the M109E agent carries out with an anti-short-cycle thermostat once S11/S12 prove the host owns the compressor. Until then cooling is monitored, not controlled.
 - **F8 Multi-tenant hardening** (`getCurrentBusinessId()` is env-based for public and device routes).
 - **F9 Per-machine manufacturer keys** issued from the machine wizard.
 

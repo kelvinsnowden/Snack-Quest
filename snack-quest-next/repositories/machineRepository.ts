@@ -1,8 +1,9 @@
 import 'server-only';
 
-import { FieldValue, type Transaction } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type Transaction } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import type { Machine, MachineDisplayProfile, MachineStatus } from '@/types';
+import type { MachineCooling } from '@/lib/vending/cooling';
 
 const COLLECTION = 'machines';
 
@@ -185,6 +186,21 @@ class MachineRepository {
       throw new MachineNotFoundError(machineId);
     }
     await ref.update({ display, updatedAt: FieldValue.serverTimestamp(), updatedBy });
+  }
+
+  async updateCooling(businessId: string, machineId: string, cooling: MachineCooling, updatedBy: string): Promise<void> {
+    const ref = adminFirestore.collection(COLLECTION).doc(machineId);
+    const data = (await ref.get()).data() as Machine | undefined;
+    if (!data || data.businessId !== businessId) {
+      throw new MachineNotFoundError(machineId);
+    }
+    // A new target restarts the out-of-range clock: the old spell was judged against the old range.
+    await ref.update({ cooling, temperatureBreachSince: null, updatedAt: FieldValue.serverTimestamp(), updatedBy });
+  }
+
+  /** Written only by the alert sweep. Not an audit-worthy edit, so `updatedAt` is left alone. */
+  async setTemperatureBreachSince(machineId: string, since: Date | null): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(machineId).update({ temperatureBreachSince: since ? Timestamp.fromDate(since) : null });
   }
 
   getRef(machineId: string): FirebaseFirestore.DocumentReference {

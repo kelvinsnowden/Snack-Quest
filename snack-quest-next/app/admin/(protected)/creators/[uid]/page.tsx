@@ -20,6 +20,7 @@ const MESSAGE_STATUS_VARIANT: Record<OutboundMessageStatus, 'success' | 'danger'
   delivered: 'success',
   failed: 'danger',
   bounced: 'danger',
+  expired: 'danger',
   queued: 'outline',
 };
 

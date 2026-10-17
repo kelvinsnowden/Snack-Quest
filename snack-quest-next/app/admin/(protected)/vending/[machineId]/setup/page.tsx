@@ -22,6 +22,10 @@ import { deviceCredentialRepository } from '@/repositories/deviceCredentialRepos
 import { partnerService } from '@/services/partnerService';
 import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
+import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
+import { machineCoolingService } from '@/services/machineCoolingService';
+import { CoolingCard } from '@/components/admin/vending/CoolingCard';
+import { DEFAULT_COOLING, effectiveCooling, judgeTemperature } from '@/lib/vending/cooling';
 
 export const metadata: Metadata = { title: 'Machine setup' };
 
@@ -49,6 +53,16 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
     canManageKeys ? deviceCredentialRepository.listByMachine(session.businessId, machineId) : Promise.resolve([]),
     canSeeMoney ? machineSubscriptionService.findActiveForMachine(session.businessId, machineId) : Promise.resolve(null),
   ]);
+  const [integration, canControlCooling] = await Promise.all([
+    machineIntegrationRepository.findByMachineId(session.businessId, machineId),
+    machineCoolingService.canControl(session.businessId, machineId),
+  ]);
+  const reported = integration?.lastReportedStatus ?? null;
+  const temperatureVerdict = judgeTemperature(
+    effectiveCooling(machine.cooling, reported?.temperatureCelsius),
+    reported ? { celsius: reported.temperatureCelsius, atMs: reported.reportedAt.toMillis() } : null,
+    new Date().getTime(),
+  ).kind;
   const iso = (value: { toDate(): Date } | null | undefined) => (value ? value.toDate().toISOString() : null);
   const names = new Map(locations.map(({ id, data }) => [id, data.name]));
   const ownerNames = new Map(owners.map(({ id, data }) => [id, data.name]));
@@ -102,6 +116,23 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
                 </ul>
               </div>
             ) : null}
+          </CardContent>
+        </Card>
+
+        <Card id="cooling" className="scroll-mt-20">
+          <CardHeader>
+            <CardTitle className="text-base">Cooling</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CoolingCard
+              machineId={machineId}
+              cooling={machine.cooling ?? DEFAULT_COOLING}
+              saved={Boolean(machine.cooling)}
+              reading={reported ? { celsius: reported.temperatureCelsius, at: reported.reportedAt.toDate().toISOString() } : null}
+              verdict={temperatureVerdict}
+              canEdit={hasPermission(session, 'machines.commands.issue')}
+              canControl={canControlCooling}
+            />
           </CardContent>
         </Card>
 

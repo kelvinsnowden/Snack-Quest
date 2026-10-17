@@ -13,6 +13,7 @@ import { alertService, ResolutionRequiredError } from '@/services/alertService';
 import { AlertNotFoundError, AlertNotOpenError } from '@/repositories/alertRepository';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import type { MachineSubscription } from '@/types';
+import { machineCoolingService } from '@/services/machineCoolingService';
 
 /**
  * § PART 6 — ALERT CENTER. Every detection rule reads a signal some
@@ -37,6 +38,7 @@ async function cleanCollections() {
     'restockTasks',
     'alerts',
     'deviceCredentials',
+    'machineIntegrations',
   ]) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
@@ -266,6 +268,103 @@ describe('AlertService.evaluateAndSync — expiry risk', () => {
     await machineInventoryMovementService.recordMovement({ businessId: BUSINESS_ID, machineId, slotId: 'A01', reason: 'restock', quantityDelta: 5, expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), actor: 'staff-1' });
     await alertService.evaluateAndSync(BUSINESS_ID);
     expect(await alertService.listOpen(BUSINESS_ID, { type: 'expiry_risk' })).toHaveLength(0);
+  });
+});
+
+/** What the machine last reported, written as `machineApiService.status` would leave it. */
+async function reportStatus(machineId: string, status: { temperatureCelsius?: number | null; doorOpen?: boolean | null; doorOpenMinutesAgo?: number; online?: boolean }) {
+  const now = Timestamp.now();
+  await adminFirestore.collection('machineIntegrations').doc(machineId).set(
+    {
+      businessId: BUSINESS_ID,
+      machineId,
+      manufacturerId: 'mfr-alert-test',
+      adapterKey: 'snack_quest_gateway',
+      state: 'active',
+      heartbeatIntervalSeconds: 60,
+      signals: { heartbeat: now },
+      lastReportedStatus: {
+        online: status.online ?? true,
+        doorOpen: status.doorOpen ?? false,
+        temperatureCelsius: status.temperatureCelsius ?? null,
+        faults: [],
+        paymentDeviceOk: null,
+        reportedAt: now,
+        observedAt: now,
+        doorOpenSince: status.doorOpenMinutesAgo !== undefined ? Timestamp.fromDate(new Date(Date.now() - status.doorOpenMinutesAgo * 60_000)) : null,
+      },
+    },
+    { merge: true },
+  );
+}
+
+describe('AlertService.evaluateAndSync — cooling, door and paused slots', () => {
+  it('raises temperature_out_of_range only after the spell lasts alertAfterMinutes, and clears it back in range', async () => {
+    const { machineId } = await provisionActiveMachineWithSlot(new MockVendingAdapter());
+    await machineCoolingService.save(BUSINESS_ID, machineId, { enabled: true, minCelsius: 3, maxCelsius: 8, alertAfterMinutes: 20 }, 'staff-1');
+    await reportStatus(machineId, { temperatureCelsius: 12 });
+
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'temperature_out_of_range' })).toHaveLength(0);
+    expect((await machineRepository.findById(BUSINESS_ID, machineId))?.temperatureBreachSince).toBeTruthy();
+
+    // The spell began 25 minutes ago.
+    await adminFirestore.collection('machines').doc(machineId).update({ temperatureBreachSince: Timestamp.fromDate(new Date(Date.now() - 25 * 60_000)) });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    const open = await alertService.listOpen(BUSINESS_ID, { type: 'temperature_out_of_range' });
+    expect(open).toHaveLength(1);
+    expect(open[0].data).toMatchObject({ machineId, severity: 'critical' });
+
+    await reportStatus(machineId, { temperatureCelsius: 5 });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'temperature_out_of_range' })).toHaveLength(0);
+    expect((await machineRepository.findById(BUSINESS_ID, machineId))?.temperatureBreachSince).toBeNull();
+  });
+
+  it('raises temperature_not_reported for a cooled machine in contact without a reading, but never for one nobody set up', async () => {
+    const { machineId } = await provisionActiveMachineWithSlot(new MockVendingAdapter());
+    await reportStatus(machineId, { temperatureCelsius: null });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'temperature_not_reported' })).toHaveLength(0);
+
+    await machineCoolingService.save(BUSINESS_ID, machineId, { enabled: true, minCelsius: 3, maxCelsius: 8, alertAfterMinutes: 30 }, 'staff-1');
+    await reportStatus(machineId, { temperatureCelsius: -50 });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'temperature_not_reported' })).toHaveLength(1);
+
+    await machineCoolingService.save(BUSINESS_ID, machineId, { enabled: false, minCelsius: 3, maxCelsius: 8, alertAfterMinutes: 30 }, 'staff-1');
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'temperature_not_reported' })).toHaveLength(0);
+  });
+
+  it('raises door_left_open once the door has been open past the limit, and clears it when shut', async () => {
+    const { machineId } = await provisionActiveMachineWithSlot(new MockVendingAdapter());
+    await reportStatus(machineId, { doorOpen: true, doorOpenMinutesAgo: 5 });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'door_left_open' })).toHaveLength(0);
+
+    await reportStatus(machineId, { doorOpen: true, doorOpenMinutesAgo: 20 });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'door_left_open' })).toHaveLength(1);
+
+    await reportStatus(machineId, { doorOpen: false });
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'door_left_open' })).toHaveLength(0);
+  });
+
+  it('raises slot_paused for a slot the machine took off sale, and clears it once returned to sale', async () => {
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await provisionActiveMachineWithSlot(adapter);
+    const slots = new MachineSlotService(() => adapter);
+    await slots.quarantineAfterVend(BUSINESS_ID, machineId, 'A01', 'jam', 'txn-1');
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    const open = await alertService.listOpen(BUSINESS_ID, { type: 'slot_paused' });
+    expect(open).toHaveLength(1);
+    expect(open[0].data.title).toBe('Slot A01 paused');
+
+    await slots.releaseQuarantine(BUSINESS_ID, machineId, 'A01');
+    await alertService.evaluateAndSync(BUSINESS_ID);
+    expect(await alertService.listOpen(BUSINESS_ID, { type: 'slot_paused' })).toHaveLength(0);
   });
 });
 

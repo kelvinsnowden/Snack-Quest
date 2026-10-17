@@ -36,6 +36,7 @@ import {
   unavailableManufacturerApis,
 } from '@/lib/vending/integrationAlerts';
 import { logger } from '@/lib/observability/logger';
+import { DOOR_OPEN_ALERT_MS, breachIsAlertable, effectiveCooling, judgeTemperature, nextBreachSince } from '@/lib/vending/cooling';
 
 const DEFAULT_EXPIRY_WARNING_DAYS = 7;
 const DEFAULT_SETTLEMENT_STALE_AFTER_DAYS = 3;
@@ -89,6 +90,8 @@ class AlertService {
       ['manufacturer outages', () => this.evaluateManufacturerOutages(businessId)],
       ['scheduled jobs', () => this.evaluateScheduledJobs(businessId)],
       ['integration health', () => this.evaluateIntegrationHealth(businessId, locationByMachine)],
+      ['machine conditions', () => this.evaluateMachineConditions(businessId)],
+      ['paused slots', () => this.evaluatePausedSlots(businessId, machines, locationByMachine)],
     ];
     const results = await Promise.allSettled(evaluators.map(([, run]) => run()));
     const failed = results.flatMap((result, index) => (result.status === 'rejected' ? [{ name: evaluators[index][0], error: result.reason as unknown }] : []));
@@ -352,6 +355,91 @@ class AlertService {
     }
     await alertRepository.autoResolveMissing(businessId, 'machine_offline', offlineKeys);
     await alertRepository.autoResolveMissing(businessId, 'heartbeat_missing', staleKeys);
+  }
+
+  /**
+   * `temperature_out_of_range`, `temperature_not_reported` and
+   * `door_left_open` — from what each machine last reported, for
+   * `active` machines outside planned maintenance. Temperature is judged
+   * against the machine's cooling range (§ refrigeration): out of range
+   * only alerts once it has lasted `alertAfterMinutes`, so a restock
+   * with the door open doesn't page anyone. When the spell started is
+   * kept on the machine (`temperatureBreachSince`) because only the
+   * latest reading is stored. "Not reported" is raised only while the
+   * machine is otherwise in contact — a silent machine is already
+   * `machine_offline`.
+   */
+  private async evaluateMachineConditions(businessId: string): Promise<void> {
+    const now = Date.now();
+    const [machines, integrations] = await Promise.all([machineRepository.listAllForBusiness(businessId), machineIntegrationRepository.listByBusiness(businessId)]);
+    const integrationOf = new Map(integrations.map((integration) => [integration.machineId, integration]));
+    const tempKeys = new Set<string>();
+    const silentKeys = new Set<string>();
+    const doorKeys = new Set<string>();
+    for (const { id, data: machine } of machines) {
+      if (machine.status !== 'active') continue;
+      const integration = integrationOf.get(id) ?? null;
+      if (integration?.maintenanceUntil && integration.maintenanceUntil.toMillis() > now) continue;
+      const reported = integration?.lastReportedStatus ?? null;
+      const locationId = machine.locationId ?? null;
+
+      const cooling = effectiveCooling(machine.cooling, reported?.temperatureCelsius);
+      const verdict = judgeTemperature(cooling, reported ? { celsius: reported.temperatureCelsius, atMs: reported.reportedAt.toMillis() } : null, now);
+      const previousSince = machine.temperatureBreachSince?.toMillis() ?? null;
+      const since = nextBreachSince(previousSince, verdict, now);
+      if (since !== previousSince) await machineRepository.setTemperatureBreachSince(id, since === null ? null : new Date(since));
+      if (cooling && (verdict.kind === 'too_warm' || verdict.kind === 'too_cold') && breachIsAlertable(cooling, since, now)) {
+        const key = `temperature_out_of_range:${id}`;
+        tempKeys.add(key);
+        const minutes = Math.round((now - (since as number)) / 60_000);
+        await this.open({
+          businessId,
+          type: 'temperature_out_of_range',
+          machineId: id,
+          locationId,
+          dedupeKey: key,
+          title: `${verdict.kind === 'too_warm' ? 'Too warm' : 'Too cold'}: ${verdict.celsius.toFixed(1)} °C`,
+          detail: `Outside ${cooling.minCelsius}–${cooling.maxCelsius} °C for about ${minutes} minutes. Check the door seal, the cooling unit and whether the vents are blocked; chilled stock may need to come out.`,
+        });
+      } else if (verdict.kind === 'no_reading' && reported?.online && now - reported.reportedAt.toMillis() <= 60 * 60 * 1000) {
+        // In contact (a recent status report) but with no usable temperature in it.
+        const key = `temperature_not_reported:${id}`;
+        silentKeys.add(key);
+        await this.open({ businessId, type: 'temperature_not_reported', machineId: id, locationId, dedupeKey: key, title: 'No temperature reading', detail: 'The machine is reporting in, but without a temperature. The probe may be unplugged or broken, so a cooling failure would go unnoticed.' });
+      }
+
+      const doorSince = reported?.doorOpen === true ? (reported.doorOpenSince ?? reported.observedAt ?? null) : null;
+      if (doorSince && now - doorSince.toMillis() >= DOOR_OPEN_ALERT_MS) {
+        const key = `door_left_open:${id}`;
+        doorKeys.add(key);
+        await this.open({ businessId, type: 'door_left_open', machineId: id, locationId, dedupeKey: key, title: `Door open for ${Math.round((now - doorSince.toMillis()) / 60_000)} minutes`, detail: 'Longer than a restock takes. Stock is exposed and a cooled machine is losing its cold.' });
+      }
+    }
+    await alertRepository.autoResolveMissing(businessId, 'temperature_out_of_range', tempKeys);
+    await alertRepository.autoResolveMissing(businessId, 'temperature_not_reported', silentKeys);
+    await alertRepository.autoResolveMissing(businessId, 'door_left_open', doorKeys);
+  }
+
+  /**
+   * `slot_paused` — a slot the machine took off sale by itself (a jam,
+   * an unknown result, a sensor failure) stays off sale until someone
+   * returns it, so it gets an alert rather than waiting to be noticed.
+   */
+  private async evaluatePausedSlots(
+    businessId: string,
+    machines: Awaited<ReturnType<typeof machineRepository.listAllStatuses>>,
+    locationByMachine: Map<string, string | null>,
+  ): Promise<void> {
+    const activeMachineIds = new Set(machines.filter((m) => m.status === 'active').map((m) => m.id));
+    const reasonLabel = { jam: 'a jam', unknown: 'a sale with no known result', sensor_failure: 'a sensor failure' } as const;
+    const keys = new Set<string>();
+    for (const slot of await machineSlotRepository.listByBusiness(businessId)) {
+      if (!slot.quarantine || !activeMachineIds.has(slot.machineId)) continue;
+      const key = `slot_paused:${slot.machineId}:${slot.slotCode}`;
+      keys.add(key);
+      await this.open({ businessId, type: 'slot_paused', machineId: slot.machineId, locationId: locationByMachine.get(slot.machineId) ?? null, dedupeKey: key, title: `Slot ${slot.slotCode} paused`, detail: `Taken off sale after ${reasonLabel[slot.quarantine.reason] ?? 'a problem'}. Check the slot, then return it to sale on the slots page.` });
+    }
+    await alertRepository.autoResolveMissing(businessId, 'slot_paused', keys);
   }
 
   /**

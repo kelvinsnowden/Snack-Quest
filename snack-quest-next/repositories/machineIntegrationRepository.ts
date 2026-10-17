@@ -280,7 +280,7 @@ class MachineIntegrationRepository {
    * offline queue flushing out of order) never overwrites fresher state.
    * Returns whether it was stored.
    */
-  async setLastReportedStatus(machineId: string, status: Omit<NonNullable<MachineIntegration['lastReportedStatus']>, 'reportedAt' | 'observedAt'>, observedAt: Date): Promise<boolean> {
+  async setLastReportedStatus(machineId: string, status: Omit<NonNullable<MachineIntegration['lastReportedStatus']>, 'reportedAt' | 'observedAt' | 'doorOpenSince'>, observedAt: Date): Promise<boolean> {
     const ref = adminFirestore.collection(COLLECTION).doc(machineId);
     return adminFirestore.runTransaction(async (tx) => {
       const snapshot = await tx.get(ref);
@@ -292,7 +292,9 @@ class MachineIntegrationRepository {
       if (existingObserved && existingObserved.toMillis() > observedAt.getTime()) {
         return false;
       }
-      tx.update(ref, { lastReportedStatus: { ...status, reportedAt: FieldValue.serverTimestamp(), observedAt: Timestamp.fromDate(observedAt) } });
+      // Kept across reports while the door stays open, so "open for how long" survives every heartbeat.
+      const doorOpenSince = status.doorOpen === true ? (existing?.doorOpen === true ? (existing.doorOpenSince ?? existingObserved) : null) ?? Timestamp.fromDate(observedAt) : null;
+      tx.update(ref, { lastReportedStatus: { ...status, doorOpenSince, reportedAt: FieldValue.serverTimestamp(), observedAt: Timestamp.fromDate(observedAt) } });
       return true;
     });
   }

@@ -42,6 +42,10 @@ const TYPE_LABEL: Record<SerializedAlert['type'], string> = {
   credential_expiring: 'Credential expiring',
   credential_revoked: 'Credential revoked',
   webhook_failures: 'Webhook failures',
+  temperature_out_of_range: 'Temperature out of range',
+  temperature_not_reported: 'No temperature reading',
+  door_left_open: 'Door left open',
+  slot_paused: 'Slot paused',
 };
 
 /**

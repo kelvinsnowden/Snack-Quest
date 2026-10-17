@@ -31,9 +31,14 @@ export function alertFixLink(type: AlertType, machineId: string | null, dedupeKe
       return { href: '/admin/vending/restock', label: 'Plan a restock' };
     case 'expiry_risk':
     case 'inventory_discrepancy':
+    case 'slot_paused':
       return machine ? { href: `${machine}/slots`, label: 'Check the slots' } : null;
+    case 'temperature_out_of_range':
+    case 'temperature_not_reported':
+      return machine ? { href: `${machine}/setup#cooling`, label: 'Open cooling' } : null;
     case 'machine_offline':
     case 'heartbeat_missing':
+    case 'door_left_open':
     case 'machine_fault':
     case 'dispense_failures':
     case 'integration_issue':

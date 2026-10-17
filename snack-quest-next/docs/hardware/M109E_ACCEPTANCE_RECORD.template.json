@@ -7,7 +7,8 @@
   },
   "findings": {
     "resultClearing": "unknown",
-    "doorInput": null
+    "doorInput": null,
+    "refrigeration": { "owner": "unknown", "board": null, "compressorOutput": null }
   },
   "results": {
     "C1": {

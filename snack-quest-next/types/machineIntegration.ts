@@ -81,6 +81,8 @@ export interface MachineIntegration extends AuditFields {
     reportedAt: Timestamp;
     /** When the machine says the snapshot was taken (plausibility-checked) — used to refuse an older snapshot arriving after a newer one. */
     observedAt?: Timestamp | null;
+    /** When the door was first reported open in the current open spell; null while closed. Drives the "door left open" alert. */
+    doorOpenSince?: Timestamp | null;
   } | null;
   /** When this integration was last (re)configured. Contact before this doesn't count towards liveness. */
   configuredAt?: Timestamp | null;

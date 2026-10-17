@@ -165,7 +165,7 @@ export default async function AdminOperationsPage() {
           <p className="text-sm text-muted-foreground">No abandoned checkout attempts.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="border-b border-border text-left text-caption text-muted-foreground uppercase">
                 <tr>
                   <th className="py-2 pr-4 font-medium">Phone</th>
@@ -355,7 +355,8 @@ export default async function AdminOperationsPage() {
                     <th className="py-2 pr-4 font-medium">Recent run</th>
                     <th className="py-2 pr-4 font-medium">Status</th>
                     <th className="py-2 pr-4 font-medium">Duration</th>
-                    <th className="py-2 font-medium">Started</th>
+                    <th className="py-2 pr-4 font-medium">Started</th>
+                    <th className="py-2 font-medium">Result</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -366,7 +367,8 @@ export default async function AdminOperationsPage() {
                         <Badge variant={RUN_STATUS_BADGE[data.status]}>{data.status}</Badge>
                       </td>
                       <td className="py-2 pr-4 tabular-nums text-foreground">{data.status === 'running' ? '—' : `${data.durationMs}ms`}</td>
-                      <td className="py-2 text-muted-foreground tabular-nums">{formatDateTime(data.startedAt)}</td>
+                      <td className="py-2 pr-4 text-muted-foreground tabular-nums">{formatDateTime(data.startedAt)}</td>
+                      <td className="py-2 text-muted-foreground">{summarizeRun(data.resultSummary)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -388,4 +390,13 @@ export default async function AdminOperationsPage() {
       ) : null}
     </div>
   );
+}
+
+/** A run's own counts in a line (e.g. "attempted 3 · expired 12"), so what a job actually did is visible without the logs. */
+function summarizeRun(summary: Record<string, unknown> | null | undefined): string {
+  if (!summary) return '—';
+  const parts = Object.entries(summary)
+    .filter(([, value]) => typeof value === 'number' || typeof value === 'boolean' || (typeof value === 'string' && value.length <= 40))
+    .map(([key, value]) => `${key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()} ${String(value)}`);
+  return parts.length > 0 ? parts.slice(0, 6).join(' · ') : '—';
 }

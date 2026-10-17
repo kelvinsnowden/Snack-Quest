@@ -2,6 +2,9 @@ import { open, readFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { DispenseOutcome } from '../m109e/outcomeMapper';
 
+/** A dispense's outcome, or a non-dispense command (e.g. `set_cooling`) that was carried out. */
+export type CommandOutcome = DispenseOutcome | { status: 'completed'; note: string };
+
 /**
  * The agent's memory across crashes and reboots: a write-ahead journal.
  *
@@ -34,7 +37,7 @@ export type JournalEntry =
   /** The board said, in a valid reply, that this run did not start. */
   | { t: 'run_refused'; commandId: string; reason: string; at: number }
   /** How the run ended — the board's raw reading (if any) and the outcome decided from it. Enough to rebuild the report after a crash. */
-  | { t: 'result'; commandId: string; board: Record<string, unknown> | null; outcome: DispenseOutcome; at: number }
+  | { t: 'result'; commandId: string; board: Record<string, unknown> | null; outcome: CommandOutcome; at: number }
   /** The report owed to Snack Quest — the outbox entry. Its eventId never changes. */
   | { t: 'report_owed'; commandId: string; report: OutcomeReport; at: number }
   | { t: 'report_accepted'; commandId: string; eventId: string; httpStatus: number; at: number };
@@ -50,7 +53,7 @@ export interface CommandRecord {
   board: number | null;
   motor: number | null;
   /** Set once the run's outcome is decided. */
-  outcome: DispenseOutcome | null;
+  outcome: CommandOutcome | null;
   /** Reports owed or sent, in order; the last one is the command's outcome. */
   reports: { report: OutcomeReport; accepted: boolean }[];
 }

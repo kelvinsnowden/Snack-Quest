@@ -59,7 +59,8 @@ export interface NotificationTemplate {
   isActive: boolean;
 }
 
-export type OutboundMessageStatus = 'queued' | 'sent' | 'delivered' | 'failed' | 'bounced';
+/** `expired`: failed and too old to be worth resending — a late alert or OTP does more harm than none. */
+export type OutboundMessageStatus = 'queued' | 'sent' | 'delivered' | 'failed' | 'bounced' | 'expired';
 
 /**
  * `outboundMessages/{messageId}` — the real per-channel dispatch log

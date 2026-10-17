@@ -61,7 +61,15 @@ export type AlertType =
   /** A revoked credential is still needed: Snack Quest's API key for a manufacturer with active machines. */
   | 'credential_revoked'
   /** A manufacturer's authenticated webhook deliveries are being refused. */
-  | 'webhook_failures';
+  | 'webhook_failures'
+  /** A cooled machine has been warmer or colder than its target range for longer than its alert delay (`lib/vending/cooling.ts`). */
+  | 'temperature_out_of_range'
+  /** A cooled machine that is online has sent no usable temperature reading for 30 minutes. */
+  | 'temperature_not_reported'
+  /** The cabinet door has been reported open for too long outside planned maintenance. */
+  | 'door_left_open'
+  /** A slot was paused automatically (jam, unknown result, sensor failure) and is waiting for someone to return it to sale. */
+  | 'slot_paused';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertStatus = 'open' | 'acknowledged' | 'resolved';
@@ -111,4 +119,8 @@ export const ALERT_SEVERITY_BY_TYPE: Record<AlertType, AlertSeverity> = {
   credential_expiring: 'warning',
   credential_revoked: 'critical',
   webhook_failures: 'warning',
+  temperature_out_of_range: 'critical',
+  temperature_not_reported: 'warning',
+  door_left_open: 'warning',
+  slot_paused: 'warning',
 };
