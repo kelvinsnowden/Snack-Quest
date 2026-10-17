@@ -167,6 +167,9 @@ export default async function AdminVendingPage({ searchParams }: { searchParams:
           <Button asChild variant="outline">
             <Link href="/admin/vending/products">Products on machines</Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/vending/bulk">Change many machines</Link>
+          </Button>
           {hasPermission(session, 'machines.create') ? (
             <Button asChild>
               <Link href="/admin/vending/new">Register a machine</Link>
