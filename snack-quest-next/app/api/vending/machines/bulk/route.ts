@@ -13,6 +13,8 @@ import { BulkActionError, machineBulkService, parseBulkRequest, permissionsFor }
 export async function POST(request: Request): Promise<Response> {
   const session = await verifyStaffSessionFromRequest(request);
   if (!session) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  // Seeing the fleet comes first; each change then needs its own permissions (below).
+  if (!hasPermission(session, 'machines.view')) return forbiddenForPermission('machines.view');
   let parsed: ReturnType<typeof parseBulkRequest>;
   try {
     parsed = parseBulkRequest(await request.json().catch(() => null));
