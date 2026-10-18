@@ -9,8 +9,12 @@ import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { machineRepository } from '@/repositories/machineRepository';
 import { locationService } from '@/services/locationService';
 import { MAINTENANCE_REQUEST_CATEGORY_LABEL } from '@/types/maintenance';
+import { resolveVendingProducts } from '@/lib/vending/productDetails';
+import type { RestockJobData } from '@/components/warehouse/RestockJobFlow';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TechnicianJobCard, type JobCardData } from '@/components/warehouse/TechnicianJobCard';
+import { RouteCard } from '@/components/vending/RouteCard';
+import { machineRouteStops } from '@/lib/vending/machineRouteStops';
 
 export const metadata: Metadata = { title: 'My jobs' };
 
@@ -31,13 +35,30 @@ export default async function MyJobsPage() {
       const location = machine?.locationId ? place.get(machine.locationId) : undefined;
       let title = 'Restock';
       let detail: string | null = null;
+      let urgent = false;
+      let restock: RestockJobData | undefined;
       if (job.kind === 'maintenance') {
         const request = await maintenanceRepository.findRequest(session.businessId, job.refId);
         title = request ? MAINTENANCE_REQUEST_CATEGORY_LABEL[request.category] : 'Maintenance';
-        detail = request ? `${request.urgency === 'urgent' ? 'Urgent. ' : ''}${request.description}${request.scheduledFor ? ` · visit ${request.scheduledFor}` : ''}` : null;
+        urgent = request?.urgency === 'urgent';
+        detail = request ? `${request.description}${request.scheduledFor ? ` · visit ${request.scheduledFor}` : ''}` : null;
       } else {
         const task = await restockTaskRepository.findById(session.businessId, job.refId);
-        detail = task ? `${task.items.reduce((sum, item) => sum + (item.quantityDispatched ?? item.quantityNeeded), 0)} items · stage: ${task.status.replace('_', ' ')}. Picking, dispatch and receipt are on the Machines page.` : null;
+        if (task && ['draft', 'approved', 'picking', 'dispatched', 'in_transit'].includes(task.status)) {
+          const products = await resolveVendingProducts(session.businessId, task.items.map((item) => item.productId ?? ''));
+          const lines = task.items.map((item) => ({
+            slotId: item.slotId,
+            slotCode: item.slotId.split('__').pop() ?? item.slotId,
+            productId: item.productId,
+            name: item.productId ? (products.get(item.productId)?.name ?? item.productId) : 'Empty slot',
+            imageUrl: item.productId ? (products.get(item.productId)?.imageUrl ?? null) : null,
+            quantity: item.quantityDispatched ?? item.quantityNeeded,
+          }));
+          const total = lines.reduce((sum, line) => sum + line.quantity, 0);
+          title = `${total} item${total === 1 ? '' : 's'} into ${lines.length} slot${lines.length === 1 ? '' : 's'}`;
+          urgent = task.priority === 'high';
+          restock = { taskId: job.refId, status: task.status as RestockJobData['status'], lines };
+        }
       }
       return {
         id: job.id,
@@ -53,9 +74,21 @@ export default async function MyJobsPage() {
             }
           : null,
         checklist: job.checklist.map(({ label, done }) => ({ label, done })),
+        urgent,
+        restock,
       };
     }),
   );
+
+  // One stop per machine, however many jobs are at it.
+  const visited = new Map<string, NonNullable<(typeof machines)[number]>>();
+  jobs.forEach((job, index) => {
+    const machine = machines[index];
+    if (machine && !visited.has(job.machineId)) visited.set(job.machineId, machine);
+  });
+  const jobsAt = (machineId: string) =>
+    cards.filter((_, index) => jobs[index].machineId === machineId).map((card) => (card.kind === 'restock' ? 'Restock' : card.title)).join(', ');
+  const route = machineRouteStops([...visited].map(([id, data]) => ({ id, data })), locations, jobsAt);
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
@@ -63,6 +96,12 @@ export default async function MyJobsPage() {
         <h1 className="text-2xl font-semibold text-foreground">My jobs</h1>
         <p className="text-sm text-muted-foreground">{cards.length === 0 ? 'Nothing assigned to you right now.' : `${cards.length} to do`}</p>
       </div>
+      {visited.size > 1 ? (
+        <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+          <h2 className="text-lg font-semibold text-foreground">My route</h2>
+          <RouteCard stops={route.stops} missing={route.missing} intro="The shortest way round your machines. Open it in Google Maps and follow it stop by stop." />
+        </section>
+      ) : null}
       {cards.length === 0 ? <EmptyState icon={ClipboardCheck} title="No jobs" description="When a restock or a maintenance visit is given to you, it shows here with its checklist." /> : null}
       {cards.map((card) => (
         <TechnicianJobCard key={card.id} job={card} />

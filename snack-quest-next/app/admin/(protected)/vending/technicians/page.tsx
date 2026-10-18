@@ -11,6 +11,9 @@ import { MAINTENANCE_REQUEST_CATEGORY_LABEL, MAINTENANCE_REQUEST_STATUS_LABEL } 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AssignTechnician } from '@/components/admin/vending/AssignTechnician';
+import { RouteCard } from '@/components/vending/RouteCard';
+import { machineRouteStops } from '@/lib/vending/machineRouteStops';
+import { locationService } from '@/services/locationService';
 
 export const metadata: Metadata = { title: 'Technicians' };
 
@@ -33,6 +36,7 @@ export default async function TechniciansPage() {
     restockTaskRepository.listOpenByBusiness(session.businessId),
     machineRepository.listAllForBusiness(session.businessId),
   ]);
+  const locations = await locationService.listByBusiness(session.businessId);
   const code = new Map(machines.map(({ id, data }) => [id, data.machineCode]));
   const job = new Map(jobs.map((entry) => [entry.id, entry]));
   const forKind = (kind: 'maintenance' | 'restock') => technicians.filter((technician) => technician.kinds.includes(kind)).map(({ uid, name }) => ({ uid, name }));
@@ -41,6 +45,13 @@ export default async function TechniciansPage() {
     if (!entry || entry.status !== 'assigned') return null;
     return `${entry.checklist.filter((item) => item.done).length}/${entry.checklist.length} checked`;
   };
+  const restockMachines = new Set(restocks.map(({ data }) => data.machineId));
+  const restockItems = (machineId: string) => {
+    const items = restocks.filter(({ data }) => data.machineId === machineId).reduce((sum, { data }) => sum + data.items.reduce((n, item) => n + item.quantityNeeded, 0), 0);
+    return `${items} item${items === 1 ? '' : 's'} to load`;
+  };
+  const restockRound = machineRouteStops(machines.filter(({ id }) => restockMachines.has(id)), locations, restockItems);
+  const fleetRound = machineRouteStops(machines.filter(({ data }) => data.status === 'active' || data.status === 'maintenance'), locations);
   const load = new Map<string, number>();
   for (const entry of jobs) if (entry.status === 'assigned' && entry.assigneeUid) load.set(entry.assigneeUid, (load.get(entry.assigneeUid) ?? 0) + 1);
 
@@ -65,6 +76,29 @@ export default async function TechniciansPage() {
           </Badge>
         ))}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Routes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <details open={restockRound.stops.length > 1} className="group rounded-lg border border-border p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-foreground">
+              Restock round · {restockRound.stops.length} machine{restockRound.stops.length === 1 ? '' : 's'} with a restock under way
+            </summary>
+            <div className="mt-4">
+              <RouteCard stops={restockRound.stops} missing={restockRound.missing} />
+            </div>
+          </details>
+          <details className="rounded-lg border border-border p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-foreground">Every machine · {fleetRound.stops.length} on the map</summary>
+            <div className="mt-4">
+              <RouteCard stops={fleetRound.stops} missing={fleetRound.missing} intro="If one rider visited every machine that is selling or in maintenance, this is the shortest way round." />
+            </div>
+          </details>
+          <p className="text-xs text-muted-foreground">Each technician also gets a route for just their own jobs under My jobs.</p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

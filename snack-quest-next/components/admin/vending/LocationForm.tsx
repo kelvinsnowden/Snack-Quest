@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, LocateFixed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,6 +54,28 @@ export function LocationForm({ locationId, initial, canEdit }: { locationId: str
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locateNote, setLocateNote] = useState<string | null>(null);
+
+  function fillFromHere() {
+    if (!('geolocation' in navigator)) {
+      setLocateNote('This device can’t share its location; paste the numbers from Google Maps instead.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setValues((current) => ({ ...current, latitude: position.coords.latitude.toFixed(6), longitude: position.coords.longitude.toFixed(6) }));
+        setLocateNote(`Filled in from this device (accurate to about ${Math.round(position.coords.accuracy)} m). Save to keep it.`);
+        setLocating(false);
+      },
+      () => {
+        setLocateNote('Location wasn’t shared; paste the numbers from Google Maps instead.');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15_000 },
+    );
+  }
   const set = (key: keyof LocationFormValues) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setSaved(false);
     setValues((current) => ({ ...current, [key]: event.target.value }));
@@ -137,6 +159,17 @@ export function LocationForm({ locationId, initial, canEdit }: { locationId: str
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="loc-lng">Longitude</Label>
           <Input id="loc-lng" inputMode="decimal" value={values.longitude} onChange={set('longitude')} placeholder="36.8148" />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <div>
+            <Button type="button" size="sm" variant="outline" onClick={fillFromHere} loading={locating}>
+              <LocateFixed className="size-4" aria-hidden="true" />
+              Use where I’m standing
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {locateNote ?? 'Stand at the machine and tap this, or paste the numbers from Google Maps (press and hold the spot). Routes for technicians use this position.'}
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="loc-traffic">People passing per day (estimate)</Label>
