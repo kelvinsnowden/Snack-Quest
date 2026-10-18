@@ -17,6 +17,7 @@ const PUBLIC: Record<string, string> = {
   'POST /api/analytics/event': 'anonymous page analytics',
   'GET /api/checkout/web/[sessionId]': 'the unguessable checkout session id is the bearer',
   'GET /api/creator/referral-code': 'checks whether a referral code is free',
+  'GET /api/internal/latency-probe': 'preview deployments only (404 in production), behind Vercel Authentication; returns timings only',
   'POST /api/invest/interest': 'public lead form',
   'POST /api/leads/call': 'the signed lead token from the email is the bearer',
   'POST /api/leads/stop-emails': 'the signed lead token from the unsubscribe link is the bearer',
