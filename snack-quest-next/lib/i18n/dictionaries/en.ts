@@ -57,6 +57,7 @@ export const en = {
       '/admin/vending/kiosk-design': 'Screen Design',
       '/admin/vending/advertising': 'Advertising',
       '/admin/vending/maintenance': 'Maintenance',
+      '/admin/vending/technicians': 'Technicians',
       '/admin/vending/restock': 'Restock Command Center',
       '/admin/vending/leads': 'Leads',
       '/admin/vending/partners': 'Machine Owners',
