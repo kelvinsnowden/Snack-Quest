@@ -14,6 +14,8 @@ import { withdrawalService } from '@/services/withdrawalService';
 import { alertService } from '@/services/alertService';
 import { machineSlotService, LOW_STOCK_THRESHOLD_FRACTION } from '@/services/machineSlotService';
 import { restockTaskService } from '@/services/restockTaskService';
+import { technicianJobService } from '@/services/technicianJobService';
+import { currentVisit, type RestockVisit } from '@/lib/vending/restockVisit';
 import { cameraService, CameraNotFoundError } from '@/services/cameraService';
 import { machineEventRepository } from '@/repositories/machineEventRepository';
 import { defaultVendingAdapterResolver, UnsupportedManufacturerError } from '@/lib/vending/adapterRegistry';
@@ -321,6 +323,25 @@ class OwnerPortalService {
       performanceByWindow,
       lifetimeDistributableProfitKes,
     };
+  }
+
+  /**
+   * The restock visit each owned machine has going on — requested,
+   * planned, being packed, a rider on the way, or done in the last day
+   * (`currentVisit`). Machines with nothing to show are left out. Only
+   * this owner's time with the machine counts.
+   */
+  async getRestockVisits(businessId: string, partnerId: string, machineId?: string): Promise<Map<string, RestockVisit>> {
+    const owned = await this.resolveOwnedMachineIds(businessId, partnerId, machineId);
+    const now = new Date();
+    const visits = await Promise.all(
+      owned.map(async ({ id, since }) => {
+        const rows = (await restockTaskRepository.listByMachine(businessId, id, 5)).filter(({ data }) => withinTenure(data.createdAt, since));
+        const tasks = await Promise.all(rows.map(async ({ id: taskId, data }) => ({ task: data, riderName: (await technicianJobService.find(businessId, `restock_${taskId}`))?.assigneeName ?? null })));
+        return [id, currentVisit(tasks, now)] as const;
+      }),
+    );
+    return new Map(visits.filter((entry): entry is readonly [string, RestockVisit] => entry[1] !== null));
   }
 
   /** Every owned machine, or just one — `assertPartnerOwnsMachine` still runs for the single-machine case, so a caller can never widen scope by passing an id that isn't actually theirs. */

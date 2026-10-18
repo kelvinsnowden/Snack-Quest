@@ -224,9 +224,9 @@ class RestockTaskService {
     return { machineId: task.machineId, bySlot };
   }
 
-  /** `dispatched → in_transit` — no new data, just the fact that the shipment has left. */
+  /** `dispatched → in_transit` — the shipment has left; when is what the machine's owner sees as "on the way since". */
   async markInTransit(businessId: string, taskId: string, actor: string): Promise<void> {
-    await restockTaskRepository.moveStatus(businessId, taskId, 'in_transit', actor);
+    await restockTaskRepository.moveStatus(businessId, taskId, 'in_transit', actor, { inTransitAt: FieldValue.serverTimestamp() });
   }
 
   /**

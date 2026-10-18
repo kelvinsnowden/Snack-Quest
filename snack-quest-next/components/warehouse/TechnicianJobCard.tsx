@@ -24,8 +24,8 @@ export interface JobCardData {
 }
 
 /**
- * One job on a technician's phone: where, what, and — for a restock — the
- * pack / travel / load steps with product photos; then the on-site
+ * One job on a technician's phone: where, what, and — for a restock —
+ * what this machine gets, then the slot-by-slot load list; then the on-site
  * checklist (ticks save as they're tapped, so a dropped signal loses at
  * most one) and Finish. Every target is thumb-sized; the only typing is
  * the closing note, and only when something wasn't done.
@@ -53,28 +53,6 @@ export function TechnicianJobCard({ job }: { job: JobCardData }) {
       setChecklist((items) => items.map((item, at) => (at === index ? { ...item, done: !done } : item)));
       const data = (await response.json().catch(() => null)) as { error?: string } | null;
       setError(data?.error ?? 'That tick didn’t save. Check your signal and try again.');
-    }
-  }
-
-  async function advance(path: string, body?: unknown): Promise<boolean> {
-    if (!restock) return false;
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/vending/restock/${restock.taskId}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      const data = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(data?.error ?? 'That didn’t save. Check your signal and try again.');
-      router.refresh();
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'That didn’t save.');
-      return false;
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -134,7 +112,7 @@ export function TechnicianJobCard({ job }: { job: JobCardData }) {
         ) : null}
       </header>
 
-      {restock ? <RestockJobFlow restock={restock} busy={busy} onAdvance={advance} loaded={loaded} setLoaded={setLoaded} /> : null}
+      {restock ? <RestockJobFlow restock={restock} loaded={loaded} setLoaded={setLoaded} /> : null}
 
       {atMachine ? (
         <>
