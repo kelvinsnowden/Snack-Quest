@@ -1113,15 +1113,15 @@ G-M1 hidden analytics · G-M2 price history · G-M3 search · G-M4 exports · G-
 
 ## 24. Future improvements
 
-- **F1 Machine replacement:** keep identity, catalogue, slots and history; swap hardware and integration identity.
+- **F1 Machine replacement:** done — Setup → Hardware swaps serial/model and re-points the integration (back to *configured*), revokes the old unit's machine keys, keeps everything else; history in `machineHardwareHistory`.
 - **F2 "Why isn't this machine selling?":** one panel combining liveness, sellable slots, stock, payment gate, recent jams and alerts.
 - **F3 Stock transfer between machines** (and warehouse ↔ machine) with movements on both sides.
-- **F4 Technicians:** people, assignments, routes; restock and maintenance tasks assigned to them; mobile checklists.
-- **F5 Planogram templates** by location type, applied to many machines.
-- **F6 Bulk operations** everywhere (status, prices, catalogue).
-- **F7 Refrigeration domain** — done except the compliance log: a cooling range per machine (Setup → Cooling), `temperature_out_of_range` (critical, after the range's alert delay), `temperature_not_reported` and `door_left_open` alerts, and a `set_cooling` command the M109E agent carries out with an anti-short-cycle thermostat once S11/S12 prove the host owns the compressor. Until then cooling is monitored, not controlled.
+- **F4 Technicians:** done except routes — Admin → Technicians assigns restocks and maintenance visits; the technician's phone view (Warehouse → My jobs) has directions, a per-job checklist and Finish (`technicianJobs`).
+- **F5 Planogram templates:** done — saved from a machine's Slots page, applied to many machines through bulk changes (`planogramTemplates`, `machineSlotService.applyLayout`).
+- **F6 Bulk operations:** done for status, a product's price, add/remove a product, copy a range and planograms (`/admin/vending/bulk`).
+- **F7 Refrigeration domain** — done, including the hourly temperature record (7-day chart and CSV on Setup → Cooling): a cooling range per machine (Setup → Cooling), `temperature_out_of_range` (critical, after the range's alert delay), `temperature_not_reported` and `door_left_open` alerts, and a `set_cooling` command the M109E agent carries out with an anti-short-cycle thermostat once S11/S12 prove the host owns the compressor. Until then cooling is monitored, not controlled.
 - **F8 Multi-tenant hardening** (`getCurrentBusinessId()` is env-based for public and device routes).
-- **F9 Per-machine manufacturer keys** issued from the machine wizard.
+- **F9 Per-machine keys:** done — Setup → Machine software key issues a machine-only key with a ready-to-paste agent config.
 
 ---
 
