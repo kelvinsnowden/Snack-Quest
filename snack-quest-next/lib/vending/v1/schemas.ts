@@ -33,6 +33,15 @@ export const heartbeatSchema = z.object({
   eventId,
   occurredAt,
   uptimeSeconds: z.number().int().nonnegative().optional(),
+  /** Optional self-report from the software on the machine, shown to staff as its health. */
+  diagnostics: z
+    .object({
+      /** Outcome reports written down but not yet accepted by Snack Quest. */
+      owedReports: z.number().int().nonnegative().max(1_000_000).optional(),
+      lastError: z.string().max(300).optional().nullable(),
+      lastErrorAt: z.string().datetime({ offset: true }).optional().nullable(),
+    })
+    .optional(),
 });
 
 export const statusSchema = z.object({

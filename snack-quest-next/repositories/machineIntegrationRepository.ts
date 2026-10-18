@@ -2,6 +2,7 @@ import 'server-only';
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
+import { addReading, temperatureLogDocId } from '@/lib/vending/temperatureLog';
 import type {
   IntegrationErrorKind,
   IntegrationSignalKind,
@@ -10,6 +11,7 @@ import type {
 } from '@/types';
 
 const COLLECTION = 'machineIntegrations';
+const TEMPERATURE_LOG = 'machineTemperatureLog';
 /** One claim doc per (manufacturer, manufacturer machine id) — makes that pair unique across the fleet, enforced in the same transaction as the integration write. */
 const IDENTITY_CLAIMS = 'machineIntegrationIdentities';
 
@@ -263,6 +265,12 @@ class MachineIntegrationRepository {
     await this.updateIfExists(machineId, { previousFirmwareVersion: previousVersion, firmwareChangedAt: FieldValue.serverTimestamp() });
   }
 
+  async recordAgentHealth(machineId: string, health: { uptimeSeconds: number | null; owedReports: number | null; lastError: string | null; lastErrorAt: Date | null }): Promise<void> {
+    await this.updateIfExists(machineId, {
+      agentHealth: { ...health, lastErrorAt: health.lastErrorAt ? Timestamp.fromDate(health.lastErrorAt) : null, reportedAt: FieldValue.serverTimestamp() },
+    });
+  }
+
   async recordSignal(machineId: string, kind: IntegrationSignalKind): Promise<void> {
     await this.updateIfExists(machineId, { [`signals.${kind}`]: FieldValue.serverTimestamp() });
   }
@@ -294,7 +302,21 @@ class MachineIntegrationRepository {
       }
       // Kept across reports while the door stays open, so "open for how long" survives every heartbeat.
       const doorOpenSince = status.doorOpen === true ? (existing?.doorOpen === true ? (existing.doorOpenSince ?? existingObserved) : null) ?? Timestamp.fromDate(observedAt) : null;
-      tx.update(ref, { lastReportedStatus: { ...status, doorOpenSince, reportedAt: FieldValue.serverTimestamp(), observedAt: Timestamp.fromDate(observedAt) } });
+      // The temperature record: this hour accumulates here; a finished hour is copied out in the same transaction.
+      const integration = snapshot.data() as MachineIntegration;
+      const temperature = addReading(integration.temperatureHour, status.temperatureCelsius, observedAt.getTime());
+      if (temperature.finished) {
+        tx.set(adminFirestore.collection(TEMPERATURE_LOG).doc(temperatureLogDocId(machineId, temperature.finished.hourStartMs)), {
+          businessId: integration.businessId,
+          machineId,
+          ...temperature.finished,
+          hourStart: Timestamp.fromMillis(temperature.finished.hourStartMs),
+        });
+      }
+      tx.update(ref, {
+        lastReportedStatus: { ...status, doorOpenSince, reportedAt: FieldValue.serverTimestamp(), observedAt: Timestamp.fromDate(observedAt) },
+        ...(temperature.changed ? { temperatureHour: temperature.hour } : {}),
+      });
       return true;
     });
   }

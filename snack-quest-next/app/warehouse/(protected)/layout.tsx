@@ -38,7 +38,11 @@ export default async function WarehouseLayout({ children }: { children: React.Re
   }
 
   const business = await businessRepository.findById(session.businessId);
-  const navItems = hasPermission(session, 'restock.view') ? [...NAV_ITEMS, { href: '/warehouse/machines', label: 'Machines' }] : NAV_ITEMS;
+  const navItems = [
+    ...NAV_ITEMS,
+    ...(hasPermission(session, 'restock.view') ? [{ href: '/warehouse/machines', label: 'Machines' }] : []),
+    ...(hasPermission(session, 'maintenance.manage') || hasPermission(session, 'restock.execute') ? [{ href: '/warehouse/jobs', label: 'My jobs' }] : []),
+  ];
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">

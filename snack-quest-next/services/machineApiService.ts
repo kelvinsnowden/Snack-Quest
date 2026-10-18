@@ -31,6 +31,7 @@ const RECOMMENDED_HEARTBEAT_SECONDS = 60;
 /** While a customer is paying at this machine, ask it to poll this often. */
 const FAST_POLL_SECONDS = 2;
 const CONTACT_WRITE_INTERVAL_MS = 30_000;
+const AGENT_HEALTH_WRITE_INTERVAL_MS = 5 * 60_000;
 
 /** Latest contact of any kind, by Snack Quest's clock. */
 export function latestContact(integration: Pick<MachineIntegration, 'signals'>): Date | null {
@@ -178,6 +179,7 @@ class MachineApiService {
    */
   async heartbeat(context: MachineApiContext, body: z.infer<typeof heartbeatSchema>): Promise<{ accepted: true; reportOutcomes: { commandId: string; reason: string }[] }> {
     await this.noteContact(context, body.eventId, 'heartbeat');
+    await this.noteAgentHealth(context, body);
     const outstanding = await dispenseCommandService.listNeedingOutcome(context.businessId, context.machine.id);
     return {
       accepted: true,
@@ -243,6 +245,27 @@ class MachineApiService {
    * per request) and, when this contact ends a period of silence, a
    * MACHINE_ONLINE event.
    */
+  /**
+   * Keeps the machine's own health report for the admin. Written when
+   * something in it changed, or every few minutes for the uptime — not
+   * on every heartbeat.
+   */
+  private async noteAgentHealth(context: MachineApiContext, body: z.infer<typeof heartbeatSchema>): Promise<void> {
+    if (body.uptimeSeconds === undefined && !body.diagnostics) return;
+    const next = {
+      uptimeSeconds: body.uptimeSeconds ?? null,
+      owedReports: body.diagnostics?.owedReports ?? null,
+      lastError: body.diagnostics?.lastError ?? null,
+      lastErrorAt: body.diagnostics?.lastErrorAt ? new Date(body.diagnostics.lastErrorAt) : null,
+    };
+    const previous = context.integration.agentHealth ?? null;
+    const changed = !previous || previous.owedReports !== next.owedReports || previous.lastError !== next.lastError;
+    const stale = !previous?.reportedAt || Date.now() - previous.reportedAt.toMillis() >= AGENT_HEALTH_WRITE_INTERVAL_MS;
+    // A restart shows as uptime going backwards.
+    const restarted = previous?.uptimeSeconds != null && next.uptimeSeconds !== null && next.uptimeSeconds < previous.uptimeSeconds;
+    if (changed || stale || restarted) await machineIntegrationRepository.recordAgentHealth(context.machine.id, next);
+  }
+
   private async noteContact(context: MachineApiContext, eventId: string, via: 'heartbeat' | 'status'): Promise<void> {
     const integration = context.integration;
     const now = new Date();

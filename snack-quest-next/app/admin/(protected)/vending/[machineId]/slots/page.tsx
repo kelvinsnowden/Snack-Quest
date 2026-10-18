@@ -10,6 +10,7 @@ import { machineRepository } from '@/repositories/machineRepository';
 import { listProductOptions } from '@/lib/vending/productOptions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SlotEditor } from '@/components/admin/vending/SlotEditor';
+import { SavePlanogramTemplate } from '@/components/admin/vending/SavePlanogramTemplate';
 import { StockLedgerCheck } from '@/components/admin/vending/StockLedgerCheck';
 import { RemoveStockForm } from '@/components/admin/vending/EconomicsControls';
 
@@ -94,6 +95,17 @@ export default async function MachineSlotsPage({ params }: { params: Promise<{ m
                   </li>
                 ))}
             </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {hasPermission(session, 'machines.slots.configure') && slots.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Planogram template</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SavePlanogramTemplate machineId={machineId} />
           </CardContent>
         </Card>
       ) : null}

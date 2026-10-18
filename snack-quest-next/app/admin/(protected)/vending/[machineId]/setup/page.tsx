@@ -25,6 +25,12 @@ import { partnerMachineAgreementRepository } from '@/repositories/partnerMachine
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import { machineCoolingService } from '@/services/machineCoolingService';
 import { CoolingCard } from '@/components/admin/vending/CoolingCard';
+import { AgentKeyCard } from '@/components/admin/vending/AgentKeyCard';
+import { ReplaceHardwareCard } from '@/components/admin/vending/ReplaceHardwareCard';
+import { machineReplacementService } from '@/services/machineReplacementService';
+import { machineAgentKeyService } from '@/services/machineAgentKeyService';
+import { TemperatureChart } from '@/components/admin/vending/TemperatureChart';
+import { temperatureRecord } from '@/services/machineTemperatureService';
 import { DEFAULT_COOLING, effectiveCooling, judgeTemperature } from '@/lib/vending/cooling';
 
 export const metadata: Metadata = { title: 'Machine setup' };
@@ -58,10 +64,18 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
     machineCoolingService.canControl(session.businessId, machineId),
   ]);
   const reported = integration?.lastReportedStatus ?? null;
+  const canReplace = hasPermission(session, 'machines.create') && (integration === null || hasPermission(session, 'integrations.machines.configure'));
+  const hardwareHistory = canReplace ? await machineReplacementService.history(session.businessId, machineId) : [];
+  const canManageAgentKeys = hasPermission(session, 'integrations.credentials.manage') && integration !== null;
+  const agentKeys = canManageAgentKeys ? await machineAgentKeyService.list(session.businessId, machineId) : [];
+  const nowMs = new Date().getTime();
+  const weekAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const temperatureRows = await temperatureRecord(session.businessId, machineId, weekAgoMs, nowMs);
+  const effectiveRange = effectiveCooling(machine.cooling, reported?.temperatureCelsius);
   const temperatureVerdict = judgeTemperature(
     effectiveCooling(machine.cooling, reported?.temperatureCelsius),
     reported ? { celsius: reported.temperatureCelsius, atMs: reported.reportedAt.toMillis() } : null,
-    new Date().getTime(),
+    nowMs,
   ).kind;
   const iso = (value: { toDate(): Date } | null | undefined) => (value ? value.toDate().toISOString() : null);
   const names = new Map(locations.map(({ id, data }) => [id, data.name]));
@@ -133,8 +147,61 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
               canEdit={hasPermission(session, 'machines.commands.issue')}
               canControl={canControlCooling}
             />
+            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">Last 7 days</p>
+                <a href={`/api/vending/machines/${machineId}/temperature-log`} className="text-sm font-medium text-primary hover:underline">
+                  Download record (CSV, 30 days)
+                </a>
+              </div>
+              <TemperatureChart rows={temperatureRows} fromMs={weekAgoMs} toMs={nowMs} target={effectiveRange?.enabled ? effectiveRange : null} />
+            </div>
           </CardContent>
         </Card>
+
+        {canReplace ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Hardware</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ReplaceHardwareCard
+                machineId={machineId}
+                status={machine.status}
+                currentSerial={machine.serialNumber}
+                integrated={integration !== null}
+                history={hardwareHistory.map((entry) => ({
+                  id: entry.id,
+                  at: entry.replacedAt ? entry.replacedAt.toDate().toISOString() : null,
+                  fromSerial: entry.before.serialNumber,
+                  toSerial: entry.after.serialNumber,
+                  reason: entry.reason,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {canManageAgentKeys ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Machine software key</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AgentKeyCard
+                machineId={machineId}
+                machineCode={machine.machineCode}
+                keys={agentKeys.map((key) => ({
+                  keyId: key.keyId,
+                  environment: key.environment,
+                  status: key.status,
+                  issuedAt: key.issuedAt ? key.issuedAt.toDate().toISOString() : null,
+                  lastUsedAt: key.lastUsedAt ? key.lastUsedAt.toDate().toISOString() : null,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
 
         {canManageKeys ? (
           <Card>

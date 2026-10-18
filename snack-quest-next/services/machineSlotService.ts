@@ -133,25 +133,37 @@ class MachineSlotService {
    */
   async copyLayout(businessId: string, fromMachineId: string, toMachineId: string, options: { includePrices: boolean; actor: string }): Promise<{ copied: string[] }> {
     if (fromMachineId === toMachineId) throw new SlotChangeRefusedError('Choose a different machine to copy from.');
-    const [source, target, sourceSlots, targetSlots] = await Promise.all([
-      machineRepository.findById(businessId, fromMachineId),
-      machineRepository.findById(businessId, toMachineId),
-      machineSlotRepository.listByMachine(businessId, fromMachineId),
-      machineSlotRepository.listByMachine(businessId, toMachineId),
-    ]);
+    const [source, sourceSlots] = await Promise.all([machineRepository.findById(businessId, fromMachineId), machineSlotRepository.listByMachine(businessId, fromMachineId)]);
     if (!source) throw new MachineNotFoundError(fromMachineId);
-    if (!target) throw new MachineNotFoundError(toMachineId);
     if (sourceSlots.length === 0) throw new SlotChangeRefusedError(`${source.machineCode} has no slots to copy.`);
+    return this.applyLayout(businessId, toMachineId, sourceSlots, options);
+  }
+
+  /**
+   * Puts a layout — from another machine or a planogram template — onto
+   * a machine, with the same checks as `copyLayout`: checked as a whole
+   * first, stock never copied, a slot holding stock never changes
+   * product, slots the layout doesn't mention are left alone.
+   */
+  async applyLayout(
+    businessId: string,
+    toMachineId: string,
+    layout: Pick<MachineSlot, 'slotCode' | 'productId' | 'productCatalogue' | 'priceKes' | 'capacity' | 'position'>[],
+    options: { includePrices: boolean; actor: string },
+  ): Promise<{ copied: string[] }> {
+    const [target, targetSlots] = await Promise.all([machineRepository.findById(businessId, toMachineId), machineSlotRepository.listByMachine(businessId, toMachineId)]);
+    if (!target) throw new MachineNotFoundError(toMachineId);
+    if (layout.length === 0) throw new SlotChangeRefusedError('The layout has no slots.');
     const existing = new Map(targetSlots.map((slot) => [slot.slotCode, slot]));
     const problems: string[] = [];
-    for (const slot of sourceSlots) {
+    for (const slot of layout) {
       const here = existing.get(slot.slotCode);
       if (!here && !options.includePrices) problems.push(`${slot.slotCode} is new here and needs a price`);
       if (here && here.currentQuantity > 0 && (here.productId !== slot.productId || here.productCatalogue !== slot.productCatalogue)) problems.push(`${slot.slotCode} still holds ${here.currentQuantity} of a different product`);
       if (here && slot.capacity < here.currentQuantity) problems.push(`${slot.slotCode} holds more than the copied capacity`);
     }
     if (problems.length > 0) throw new SlotChangeRefusedError(`Nothing was copied: ${problems.join('; ')}.`);
-    for (const slot of sourceSlots) {
+    for (const slot of layout) {
       const here = existing.get(slot.slotCode);
       await this.configureSlot({
         businessId,
@@ -165,7 +177,7 @@ class MachineSlotService {
         actor: options.actor,
       });
     }
-    return { copied: sourceSlots.map((slot) => slot.slotCode) };
+    return { copied: layout.map((slot) => slot.slotCode) };
   }
 
   /**

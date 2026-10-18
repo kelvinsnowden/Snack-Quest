@@ -6,7 +6,9 @@ import type { SlotMap } from '../m109e/slotMap';
 import type { CommandOutcome, Journal, OutcomeReport } from '../journal/journal';
 import { CoolingTargetError, Thermostat, parseCoolingTarget, type CoolingTarget } from './thermostat';
 
-export const AGENT_VERSION = 'm109e-agent/0.1.0';
+/** The release number — bumped for every agent change; the bundle and update manifest are named after it. */
+export const AGENT_RELEASE = '0.2.0';
+export const AGENT_VERSION = `m109e-agent/${AGENT_RELEASE}`;
 
 export interface AgentConfig {
   /** This machine's id as registered with Snack Quest (the integration's manufacturerMachineId). */
@@ -26,6 +28,11 @@ export interface AgentConfig {
   cooling?: { board: number; compressorOutput: number } | null;
   /** Keeps the last cooling range across restarts (a small file on the host). Without it a restart falls back to the default range. */
   coolingStore?: { load(): CoolingTarget | null; save(target: CoolingTarget): void | Promise<void> };
+  /**
+   * Installs a new agent release (`update_agent`). Present only in the
+   * installed agent (`main.ts`); without it the command is declined.
+   */
+  updater?: { install(payload: unknown): Promise<{ ok: true; version: string } | { ok: false; reason: string }> };
   /** Wall-clock time for timestamps and command expiry (the host's clock). */
   wallNow?: () => number;
 }
@@ -60,6 +67,10 @@ export class M109eMachineAgent {
   /** Sandbox controls — the certification harness's hooks. Never set in production. */
   readonly sandbox = { holdNextCommands: false, deferNextReport: false };
   private lastReportedCommandId: string | null = null;
+  /** Set once an update is installed and reported: the process should exit so the service manager starts the new release. */
+  restartRequested = false;
+  /** The last thing that went wrong, for the health report. */
+  lastError: { message: string; at: string } | null = null;
   /** Present only when this agent switches the compressor itself (`config.cooling`). */
   readonly thermostat: Thermostat | null;
 
@@ -103,7 +114,12 @@ export class M109eMachineAgent {
     }
     const code = this.machineCode;
 
-    const heartbeat = await this.api.heartbeat(code, { eventId: newEventId('hb'), occurredAt: this.isoNow(), uptimeSeconds: Math.floor((this.wallNow() - this.startedAt) / 1000) });
+    const heartbeat = await this.api.heartbeat(code, {
+      eventId: newEventId('hb'),
+      occurredAt: this.isoNow(),
+      uptimeSeconds: Math.floor((this.wallNow() - this.startedAt) / 1000),
+      diagnostics: { owedReports: this.journal.owedReports().length, lastError: this.lastError?.message ?? null, lastErrorAt: this.lastError?.at ?? null },
+    });
     for (const wanted of heartbeat.data?.reportOutcomes ?? []) await this.answerOutcomeRequest(wanted.commandId);
 
     await this.reportHealth();
@@ -161,6 +177,8 @@ export class M109eMachineAgent {
     this.sandbox.holdNextCommands = false;
 
     for (const command of poll.data?.commands ?? []) {
+      // A new release is installed: leave the rest for it (they aren't acknowledged, so they come back on its first poll).
+      if (this.restartRequested) break;
       const known = this.journal.get(command.commandId);
       // Already acted on: executed at most once. (Held or ack-refused commands never reached run_pending, so acking again is safe.)
       if (known && known.phase !== 'received' && known.phase !== 'ack_refused') continue;
@@ -179,7 +197,11 @@ export class M109eMachineAgent {
         continue;
       }
       await this.journal.record({ t: 'acked', commandId: command.commandId, at: this.wallNow() });
-      if (command.type === 'set_cooling') {
+      if (command.type === 'update_agent') {
+        const outcome = await this.applyUpdate(command.payload);
+        await this.journal.record({ t: 'result', commandId: command.commandId, board: null, outcome, at: this.wallNow() });
+        (outcome.status === 'completed' ? executed : refused).push(command.commandId);
+      } else if (command.type === 'set_cooling') {
         const outcome = await this.applyCooling(command.payload);
         await this.journal.record({ t: 'result', commandId: command.commandId, board: null, outcome, at: this.wallNow() });
         (outcome.status === 'completed' ? executed : refused).push(command.commandId);
@@ -200,6 +222,15 @@ export class M109eMachineAgent {
       }
     }
     return { executed, refused, nextPollSeconds: poll.data?.nextPollSeconds ?? 10 };
+  }
+
+  /** A new agent release. Installed beside the running one; the restart happens after the report is sent (`restartRequested`). */
+  private async applyUpdate(payload: unknown): Promise<CommandOutcome> {
+    if (!this.config.updater) return { status: 'failed', failureCode: 'failed', reason: 'this agent was not installed with the updater' };
+    const result = await this.config.updater.install(payload).catch((error: unknown) => ({ ok: false as const, reason: error instanceof Error ? error.message : String(error) }));
+    if (!result.ok) return { status: 'failed', failureCode: 'failed', reason: result.reason };
+    this.restartRequested = true;
+    return { status: 'completed', note: `installed ${result.version}` };
   }
 
   /** A new cooling range from Snack Quest. Declined, with the reason, when this machine's cooling isn't the agent's to run. */

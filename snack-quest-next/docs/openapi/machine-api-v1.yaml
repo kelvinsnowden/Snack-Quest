@@ -525,6 +525,13 @@ components:
         eventId: { $ref: "#/components/schemas/EventId" }
         occurredAt: { $ref: "#/components/schemas/OccurredAt" }
         uptimeSeconds: { type: integer, minimum: 0 }
+        diagnostics:
+          type: object
+          description: Optional self-report shown to staff as the machine software's health.
+          properties:
+            owedReports: { type: integer, minimum: 0, description: Outcome reports stored but not yet accepted }
+            lastError: { type: string, maxLength: 300, nullable: true }
+            lastErrorAt: { type: string, format: date-time, nullable: true }
     HeartbeatResult:
       type: object
       properties:

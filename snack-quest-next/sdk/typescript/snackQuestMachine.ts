@@ -170,7 +170,7 @@ export class SnackQuestMachineClient {
     return this.request<Record<string, unknown>>('GET', this.machinePath(machineCode, ''));
   }
 
-  heartbeat(machineCode: string, body: { eventId: string; occurredAt?: string; uptimeSeconds?: number }) {
+  heartbeat(machineCode: string, body: { eventId: string; occurredAt?: string; uptimeSeconds?: number; diagnostics?: { owedReports?: number; lastError?: string | null; lastErrorAt?: string | null } }) {
     return this.request<{ accepted: boolean; reportOutcomes?: { commandId: string; reason: string }[] }>('POST', this.machinePath(machineCode, 'heartbeat'), body);
   }
 

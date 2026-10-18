@@ -33,7 +33,9 @@ export type HardwareCapability =
   /** Remote configuration beyond price/enable — e.g. slot capacity, display settings — pushed through the integration. */
   | 'remote_configuration'
   /** The machine can take a cooling target from Snack Quest (`set_cooling`) and run its refrigeration to it. Monitoring needs only `temperature`. */
-  | 'remote_cooling';
+  | 'remote_cooling'
+  /** Snack Quest's own Machine Agent runs on the machine and installs new releases sent from the admin (`update_agent`). */
+  | 'agent_update';
 
 export const ALL_HARDWARE_CAPABILITIES: readonly HardwareCapability[] = [
   'vend',
@@ -54,6 +56,7 @@ export const ALL_HARDWARE_CAPABILITIES: readonly HardwareCapability[] = [
   'payment_device',
   'remote_configuration',
   'remote_cooling',
+  'agent_update',
 ];
 
 /** Human labels for the admin UI and the external spec — the brief's DISPENSE/INVENTORY/HEALTH/… names map onto this one vocabulary rather than a second parallel set. */
@@ -76,6 +79,7 @@ export const HARDWARE_CAPABILITY_LABELS: Record<HardwareCapability, string> = {
   payment_device: 'Payment device',
   remote_configuration: 'Remote configuration',
   remote_cooling: 'Cooling control',
+  agent_update: 'Agent updates',
 };
 
 export function isHardwareCapability(value: unknown): value is HardwareCapability {

@@ -88,3 +88,5 @@ export * from './kioskExperience';
 export * from './advertising';
 export * from './kioskRuntime';
 export * from './machineDeal';
+export * from './planogramTemplate';
+export * from './technicianJob';
