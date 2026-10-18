@@ -16,6 +16,7 @@ import { SalesTrendChart } from '@/components/partner/SalesTrendChart';
 import { StockLevelBar } from '@/components/partner/StockLevelBar';
 import { StatusPill } from '@/components/partner/StatusPill';
 import { cn } from '@/lib/utils';
+import { RestockVisitNotice } from '@/components/partner/RestockVisitNotice';
 
 export const metadata: Metadata = { title: 'Overview' };
 
@@ -49,10 +50,17 @@ const TONE_CLASSES: Record<'primary' | 'success' | 'secondary', string> = {
  */
 export default async function PartnerDashboardPage() {
   const session = await requirePartnerSession();
-  const [dashboard, points] = await Promise.all([
+  const [dashboard, points, visits] = await Promise.all([
     ownerPortalService.getDashboard(session.businessId, session.partnerId, WINDOW_DAYS),
     ownerPortalService.getSalesTrend(session.businessId, session.partnerId, WINDOW_DAYS),
+    ownerPortalService.getRestockVisits(session.businessId, session.partnerId),
   ]);
+  // Riders on the way first, then anything being packed or planned, then what was done today.
+  const STAGE_ORDER = ['on_the_way', 'packing', 'planned', 'requested', 'restocked'];
+  const restocking = dashboard.machines
+    .filter((machine) => visits.has(machine.machineId))
+    .map((machine) => ({ machine, visit: visits.get(machine.machineId)! }))
+    .sort((a, b) => STAGE_ORDER.indexOf(a.visit.stage) - STAGE_ORDER.indexOf(b.visit.stage));
 
   const firstName = dashboard.partner.name.split(' ')[0];
   const locationCounts = new Map<string, number>();
@@ -74,6 +82,17 @@ export default async function PartnerDashboardPage() {
         <h1 className="text-2xl font-bold text-foreground">Good to see you, {firstName} 👋</h1>
         <p className="text-sm text-muted-foreground">Manage your machines, track performance and stay in control — all in one place.</p>
       </div>
+
+      {restocking.length > 0 ? (
+        <section className="flex flex-col gap-2" aria-labelledby="restocking">
+          <h2 id="restocking" className="text-base font-semibold text-foreground">
+            Restocking
+          </h2>
+          {restocking.map(({ machine, visit }) => (
+            <RestockVisitNotice key={machine.machineId} visit={visit} machineCode={machine.machineCode} href={`/partner/machines/${machine.machineId}`} />
+          ))}
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {QUICK_NAV.map(({ href, label, description, icon: Icon, tone }) => (

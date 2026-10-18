@@ -20,6 +20,7 @@ import { machineInventoryReserveService } from '@/services/machineInventoryReser
 import { locationService } from '@/services/locationService';
 import { LocationExpensesForm } from '@/components/partner/LocationExpensesForm';
 import { RestockRequestButton } from '@/components/partner/RestockRequestButton';
+import { RestockVisitNotice } from '@/components/partner/RestockVisitNotice';
 import { MaintenanceRequestForm, WithdrawRequestButton } from '@/components/partner/MaintenanceRequestForm';
 import { maintenanceService } from '@/services/maintenanceService';
 import { MAINTENANCE_COST_CATEGORY_LABEL, MAINTENANCE_REQUEST_CATEGORY_LABEL, MAINTENANCE_REQUEST_STATUS_LABEL } from '@/types/maintenance';
@@ -73,7 +74,7 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
     throw error;
   }
 
-  const [reserve, fullLocation, inventory, health, salesTrend, topProducts, recentActivity, cameras, maintenance] = await Promise.all([
+  const [reserve, fullLocation, inventory, health, salesTrend, topProducts, recentActivity, cameras, maintenance, visits] = await Promise.all([
     machineInventoryReserveService.getReserveStatus(session.businessId, machineId),
     detail.location ? locationService.findById(session.businessId, detail.location.id) : Promise.resolve(null),
     ownerPortalService.getMachineInventory(session.businessId, session.partnerId, machineId),
@@ -83,7 +84,9 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
     ownerPortalService.getRecentActivity(session.businessId, session.partnerId, 10, machineId),
     ownerPortalService.listCamerasForMachine(session.businessId, session.partnerId, machineId),
     maintenanceService.forOwnerMachine(session.businessId, session.partnerId, machineId),
+    ownerPortalService.getRestockVisits(session.businessId, session.partnerId, machineId),
   ]);
+  const visit = visits.get(machineId) ?? null;
 
   const [today, sevenDay, thirtyDay, ninetyDay] = OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => detail.performanceByWindow[days]);
   const aov30d = thirtyDay.transactionCount > 0 ? Math.round(thirtyDay.revenueKes / thirtyDay.transactionCount) : null;
@@ -509,6 +512,8 @@ export default async function PartnerMachineDetailPage({ params }: { params: Pro
           </span>
         </div>
       </div>
+
+      {visit ? <RestockVisitNotice visit={visit} machineCode={detail.machineCode} /> : null}
 
       <Tabs
         defaultValue="overview"

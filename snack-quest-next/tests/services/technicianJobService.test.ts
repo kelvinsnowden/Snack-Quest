@@ -10,6 +10,7 @@ import { restockTaskService } from '@/services/restockTaskService';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { MachineSlotService } from '@/services/machineSlotService';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
+import { currentVisit } from '@/lib/vending/restockVisit';
 
 const BUSINESS_ID = 'biz-technicians';
 const createdUids: string[] = [];
@@ -83,7 +84,7 @@ describe('technician jobs', () => {
     const [job] = await technicianJobService.listMine(BUSINESS_ID, tech);
 
     // Not on the way yet: can't finish.
-    await expect(technicianJobService.complete(BUSINESS_ID, job.id, { note: 'skip checks', loaded: [{ slotId: 'A01', quantity: 6 }] }, tech, false)).rejects.toThrow(/On my way/);
+    await expect(technicianJobService.complete(BUSINESS_ID, job.id, { note: 'skip checks', loaded: [{ slotId: 'A01', quantity: 6 }] }, tech, false)).rejects.toThrow(/Start the round/);
 
     await restockTaskService.startPicking(BUSINESS_ID, taskId, tech);
     await restockTaskService.dispatch(BUSINESS_ID, taskId, tech, [{ slotId: 'A01', quantityDispatched: 6 }]);
@@ -94,5 +95,37 @@ describe('technician jobs', () => {
     expect(task?.status).toBe('partially_received');
     expect(task?.items[0]).toMatchObject({ quantityReceived: 4, discrepancyQuantity: 2 });
     expect(await technicianJobService.listMine(BUSINESS_ID, tech)).toEqual([]);
+  });
+  it('packs and sets off a whole round together, leaving unapproved restocks behind', async () => {
+    const tech = await staff(`rider-${Date.now()}@example.com`, 'warehouse', 'Wanjiru Rider');
+    const adapter = new MockVendingAdapter();
+    const slots = new MachineSlotService(() => adapter);
+    const tasks: string[] = [];
+    for (const code of ['SQ-T2', 'SQ-T3', 'SQ-T4']) {
+      const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: code, serialNumber: `SN-${code}`, manufacturer: 'mock', model: 'test', actor: 'staff-1' });
+      adapter.seedSlot(machineId, 'A01', { quantity: 0 });
+      await slots.configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: 'pkg-1', productCatalogue: 'package', priceKes: 300, capacity: 10, position: 1 });
+      const taskId = await restockTaskService.createDraft({ businessId: BUSINESS_ID, machineId, items: [{ slotId: 'A01', productId: 'pkg-1', quantityNeeded: 5 }], actor: 'manager' });
+      if (code !== 'SQ-T4') await restockTaskService.approve(BUSINESS_ID, taskId, 'manager');
+      await technicianJobService.assign(BUSINESS_ID, { kind: 'restock', refId: taskId, assigneeUid: tech }, 'manager');
+      tasks.push(taskId);
+    }
+    const statuses = async () => Promise.all(tasks.map(async (id) => (await restockTaskRepository.findById(BUSINESS_ID, id))?.status));
+
+    expect(await technicianJobService.advanceTrip(BUSINESS_ID, tech, 'pack')).toEqual({ moved: 2 });
+    expect(await statuses()).toEqual(['picking', 'picking', 'draft']);
+
+    expect(await technicianJobService.advanceTrip(BUSINESS_ID, tech, 'leave')).toEqual({ moved: 2 });
+    expect(await statuses()).toEqual(['in_transit', 'in_transit', 'draft']);
+    const onTheWay = await restockTaskRepository.findById(BUSINESS_ID, tasks[0]);
+    expect(onTheWay?.items[0].quantityDispatched).toBe(5);
+    expect(onTheWay?.inTransitAt).toBeTruthy();
+
+    // What the machine's owner sees: the rider by first name, and when they left.
+    const visit = currentVisit([{ task: onTheWay!, riderName: 'Wanjiru Rider' }], new Date());
+    expect(visit).toMatchObject({ stage: 'on_the_way', items: 5, riderFirstName: 'Wanjiru' });
+    expect(visit?.at).toBe(onTheWay!.inTransitAt!.toDate().toISOString());
+
+    await expect(technicianJobService.advanceTrip(BUSINESS_ID, tech, 'leave')).rejects.toThrow(TechnicianJobError);
   });
 });

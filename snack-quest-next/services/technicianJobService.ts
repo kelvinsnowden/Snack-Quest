@@ -142,7 +142,7 @@ class TechnicianJobService {
     if (job.kind === 'restock') {
       const task = await restockTaskRepository.findById(businessId, job.refId);
       if (!task) throw new TechnicianJobError('That restock doesn’t exist.');
-      if (task.status !== 'in_transit') throw new TechnicianJobError('Tap “On my way” first, then load the machine and finish.');
+      if (task.status !== 'in_transit') throw new TechnicianJobError('Start the round from your trip list first, then load the machine and finish.');
       if (!input.loaded || input.loaded.length === 0) throw new TechnicianJobError('Say how many went into each slot.');
       await restockTaskService.receive(
         businessId,
@@ -156,6 +156,41 @@ class TechnicianJobService {
       await maintenanceService.updateByStaff(businessId, job.refId, uid, { status: 'resolved', resolution: note || 'Fixed on a technician visit; every checklist item done.' });
     }
     await adminFirestore.collection(COLLECTION).doc(id).update({ status: 'done', note: note || null, completedAt: FieldValue.serverTimestamp(), completedBy: uid });
+  }
+
+  /**
+   * Moves every restock on this person's round along together, so a
+   * round is packed from one list and set off with one tap.
+   * `pack` starts packing whatever is approved. `leave` puts everything
+   * not yet on the road on it: packing started if it hadn't been,
+   * dispatched with what was planned, then on its way. Restocks still
+   * waiting for approval stay behind. Each restock moves on its own, so
+   * if the signal drops part way, tapping again carries on with the rest.
+   */
+  async advanceTrip(businessId: string, uid: string, step: 'pack' | 'leave'): Promise<{ moved: number }> {
+    const jobs = (await this.listMine(businessId, uid)).filter((job) => job.kind === 'restock');
+    let moved = 0;
+    for (const job of jobs) {
+      const task = await restockTaskRepository.findById(businessId, job.refId);
+      if (!task) continue;
+      const before = task.status;
+      let status = before;
+      if (status === 'approved') {
+        await restockTaskService.startPicking(businessId, job.refId, uid);
+        status = 'picking';
+      }
+      if (step === 'leave' && status === 'picking') {
+        await restockTaskService.dispatch(businessId, job.refId, uid, task.items.map((item) => ({ slotId: item.slotId, quantityDispatched: item.quantityNeeded })));
+        status = 'dispatched';
+      }
+      if (step === 'leave' && status === 'dispatched') {
+        await restockTaskService.markInTransit(businessId, job.refId, uid);
+        status = 'in_transit';
+      }
+      if (status !== before) moved += 1;
+    }
+    if (moved === 0) throw new TechnicianJobError(step === 'pack' ? 'Nothing on your round is waiting to be packed.' : 'Everything on your round is already on its way.');
+    return { moved };
   }
 
   private async task(businessId: string, kind: TechnicianJobKind, refId: string) {

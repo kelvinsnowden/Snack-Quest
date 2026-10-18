@@ -85,6 +85,8 @@ export interface RestockTask extends AuditFields {
   /** Who dispatched it — set by `dispatch()`. Null before dispatch. */
   dispatchedBy: string | null;
   dispatchedAt: Timestamp | null;
+  /** When the rider set off for the machine — set by `markInTransit()`. Absent on tasks from before it was recorded. */
+  inTransitAt?: Timestamp | null;
   /** Who confirmed receipt at the machine — set by `receive()`. Null before receipt. */
   receivedBy: string | null;
   /** Set once the task reaches any terminal state (`received`/`partially_received`/`cancelled`) — when, not which. */

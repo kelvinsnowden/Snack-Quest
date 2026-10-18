@@ -15,10 +15,18 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { TechnicianJobCard, type JobCardData } from '@/components/warehouse/TechnicianJobCard';
 import { RouteCard } from '@/components/vending/RouteCard';
 import { machineRouteStops } from '@/lib/vending/machineRouteStops';
+import { planRoute } from '@/lib/vending/routePlanner';
+import { tripPackList } from '@/lib/vending/tripPackList';
+import { TripPackCard } from '@/components/warehouse/TripPackCard';
 
 export const metadata: Metadata = { title: 'My jobs' };
 
-/** The jobs given to the person signed in, oldest first, each with where to go and its checklist. */
+/**
+ * The jobs given to the person signed in. Restocks not yet on the road
+ * are packed together from one trip list at the top; below it, one card
+ * per job in the order of the shortest route, each with only what that
+ * machine needs.
+ */
 export default async function MyJobsPage() {
   const session = await requireStaffSession();
   if (!hasPermission(session, 'maintenance.manage') && !hasPermission(session, 'restock.execute')) redirect('/warehouse');
@@ -89,6 +97,15 @@ export default async function MyJobsPage() {
   const jobsAt = (machineId: string) =>
     cards.filter((_, index) => jobs[index].machineId === machineId).map((card) => (card.kind === 'restock' ? 'Restock' : card.title)).join(', ');
   const route = machineRouteStops([...visited].map(([id, data]) => ({ id, data })), locations, jobsAt);
+  const order = new Map(planRoute(route.stops).stops.map((stop, index) => [stop.id, index]));
+  const ordered = cards
+    .map((card, index) => ({ card, machineId: jobs[index].machineId, index }))
+    .sort((a, b) => (order.get(a.machineId) ?? order.size) - (order.get(b.machineId) ?? order.size) || a.index - b.index);
+
+  // The trip list: every restock that's approved but not yet on the road.
+  const toPack = ordered.filter(({ card }) => card.restock && ['approved', 'picking', 'dispatched'].includes(card.restock.status));
+  const trip = tripPackList(toPack.map(({ card, machineId }) => ({ machineId, machineCode: card.machineCode, lines: card.restock!.lines })));
+  const waitingForApproval = cards.filter((card) => card.restock?.status === 'draft').length;
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
@@ -96,6 +113,16 @@ export default async function MyJobsPage() {
         <h1 className="text-2xl font-semibold text-foreground">My jobs</h1>
         <p className="text-sm text-muted-foreground">{cards.length === 0 ? 'Nothing assigned to you right now.' : `${cards.length} to do`}</p>
       </div>
+      {toPack.length > 0 ? (
+        <TripPackCard
+          tripKey={toPack.map(({ card }) => card.restock!.taskId).sort().join(',')}
+          products={trip.products}
+          totalItems={trip.totalItems}
+          machineCount={new Set(toPack.map(({ machineId }) => machineId)).size}
+          canStartPacking={toPack.some(({ card }) => card.restock!.status === 'approved')}
+          waitingForApproval={waitingForApproval}
+        />
+      ) : null}
       {visited.size > 1 ? (
         <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
           <h2 className="text-lg font-semibold text-foreground">My route</h2>
@@ -103,7 +130,7 @@ export default async function MyJobsPage() {
         </section>
       ) : null}
       {cards.length === 0 ? <EmptyState icon={ClipboardCheck} title="No jobs" description="When a restock or a maintenance visit is given to you, it shows here with its checklist." /> : null}
-      {cards.map((card) => (
+      {ordered.map(({ card }) => (
         <TechnicianJobCard key={card.id} job={card} />
       ))}
     </div>

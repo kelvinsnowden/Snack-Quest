@@ -1,10 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import Image from 'next/image';
-import { Check, Minus, PackageCheck, Plus, Truck } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { ProductPhoto as Photo } from '@/components/warehouse/ProductPhoto';
 
 export interface RestockLine {
   /** The slot's id on the restock (`machineId__A01`). */
@@ -35,18 +34,6 @@ function stepOf(status: RestockJobData['status']): number {
   return 0;
 }
 
-function Photo({ src, alt, size }: { src: string | null; alt: string; size: 'tile' | 'row' }) {
-  return (
-    <span className={cn('relative block shrink-0 overflow-hidden rounded-xl bg-muted/40', size === 'tile' ? 'aspect-square w-full' : 'size-16')}>
-      {src ? (
-        <Image src={src} alt={alt} fill sizes={size === 'tile' ? '(max-width: 640px) 45vw, 200px' : '64px'} className="object-cover" />
-      ) : (
-        <span className="flex h-full w-full items-center justify-center px-1 text-center text-xs font-medium text-warning">No photo</span>
-      )}
-    </span>
-  );
-}
-
 function Stepper({ value, max, onChange, label }: { value: number; max: number; onChange: (next: number) => void; label: string }) {
   return (
     <div className="flex items-center gap-1" role="group" aria-label={label}>
@@ -64,53 +51,27 @@ function Stepper({ value, max, onChange, label }: { value: number; max: number; 
 }
 
 /**
- * A restock on the technician's phone, one stage at a time:
- *
- * 1. **Pack** — a pick list of product photos, one tile per product with
- *    how many to take (slots carrying the same product are added up), so
- *    packing is matching pictures to shelves. Tap a tile once it's in the
- *    bag; "Packed" tells the system and starts the trip.
- * 2. **On the way** — one button, for a restock someone else packed.
- * 3. **Load** — slot by slot in the machine's order, photo beside the
- *    slot code, a big − / + defaulted to what was packed. Fewer in, and
- *    the note asks why. Finishing records what went in, which adds the
- *    stock and closes the job.
+ * One machine's restock on the technician's phone. Packing and setting
+ * off happen for the whole round at once (`TripPackCard`), so before
+ * the rider arrives this only says what this machine gets. At the
+ * machine it is the load list: slot by slot in the machine's order,
+ * photo beside the slot code, a big − / + defaulted to what was packed.
+ * Fewer in, and the note asks why. Finishing records what went in,
+ * which adds the stock and closes the job.
  */
 export function RestockJobFlow({
   restock,
-  busy,
-  onAdvance,
   loaded,
   setLoaded,
 }: {
   restock: RestockJobData;
-  busy: boolean;
-  /** Runs a stage change on the restock (`start-picking`, `dispatch`, `mark-in-transit`). */
-  onAdvance: (path: string, body?: unknown) => Promise<boolean>;
   loaded: Record<string, number>;
   setLoaded: (next: Record<string, number>) => void;
 }) {
   const step = stepOf(restock.status);
-  const [packed, setPacked] = useState<Set<string>>(new Set());
-
-  // One tile per product: what to take off the shelf, however many slots it goes into.
-  const pickList = useMemo(() => {
-    const byProduct = new Map<string, { key: string; name: string; imageUrl: string | null; quantity: number; slots: string[] }>();
-    for (const line of restock.lines) {
-      const key = line.productId ?? `slot:${line.slotId}`;
-      const entry = byProduct.get(key) ?? { key, name: line.name, imageUrl: line.imageUrl, quantity: 0, slots: [] };
-      entry.quantity += line.quantity;
-      entry.slots.push(line.slotCode);
-      byProduct.set(key, entry);
-    }
-    return [...byProduct.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [restock.lines]);
   const totalItems = restock.lines.reduce((sum, line) => sum + line.quantity, 0);
-
-  async function packedAndLeaving() {
-    const dispatched = await onAdvance('/dispatch', { items: restock.lines.map((line) => ({ slotId: line.slotId, quantityDispatched: line.quantity })) });
-    if (dispatched) await onAdvance('/mark-in-transit');
-  }
+  const products = new Map<string, { name: string; imageUrl: string | null }>();
+  for (const line of restock.lines) products.set(line.productId ?? line.slotId, { name: line.name, imageUrl: line.imageUrl });
 
   return (
     <div className="flex flex-col gap-4">
@@ -123,72 +84,25 @@ export function RestockJobFlow({
         ))}
       </ol>
 
-      {restock.status === 'draft' ? <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">Waiting for the office to approve this restock. It’ll be ready to pack once they do.</p> : null}
+      {restock.status === 'draft' ? <p className="rounded-xl border border-border bg-background p-3 text-sm text-muted-foreground">Waiting for the office to approve this restock. It joins your trip list once they do.</p> : null}
 
-      {step === 0 && restock.status !== 'draft' ? (
-        <section className="flex flex-col gap-3" aria-labelledby={`pick-${restock.taskId}`}>
-          <div className="flex items-baseline justify-between gap-2">
-            <h3 id={`pick-${restock.taskId}`} className="text-base font-semibold text-foreground">
-              Pick list
-            </h3>
-            <span className="text-sm text-muted-foreground">
-              {totalItems} items · {packed.size}/{pickList.length} packed
+      {step < 2 && restock.status !== 'draft' ? (
+        <div className="flex flex-col gap-3 rounded-xl bg-background p-3">
+          <p className="text-sm text-foreground">
+            <span className="font-medium">{totalItems} items</span>
+            <span className="text-muted-foreground">
+              {' '}
+              for {restock.lines.length} slot{restock.lines.length === 1 ? '' : 's'} — {step === 0 ? 'packed from the trip list above.' : 'on their way with you.'}
             </span>
-          </div>
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {pickList.map((product) => {
-              const done = packed.has(product.key);
-              return (
-                <li key={product.key}>
-                  <button
-                    type="button"
-                    aria-pressed={done}
-                    onClick={() =>
-                      setPacked((current) => {
-                        const next = new Set(current);
-                        if (next.has(product.key)) next.delete(product.key);
-                        else next.add(product.key);
-                        return next;
-                      })
-                    }
-                    className={cn(
-                      'relative flex w-full flex-col gap-2 rounded-2xl border p-2 text-left transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      done ? 'border-success bg-success/10' : 'border-border bg-background hover:border-primary/40',
-                    )}
-                  >
-                    <Photo src={product.imageUrl} alt={product.name} size="tile" />
-                    <span className="absolute right-3 top-3 rounded-full bg-background/90 px-2.5 py-1 text-lg font-bold tabular-nums text-foreground shadow-sm">×{product.quantity}</span>
-                    {done ? (
-                      <span className="absolute left-3 top-3 flex size-8 items-center justify-center rounded-full bg-success text-success-foreground">
-                        <Check className="size-5" aria-hidden="true" />
-                      </span>
-                    ) : null}
-                    <span className="line-clamp-2 text-sm font-medium leading-tight text-foreground">{product.name}</span>
-                    <span className="text-xs text-muted-foreground">Slot {product.slots.join(', ')}</span>
-                  </button>
-                </li>
-              );
-            })}
+          </p>
+          <ul className="flex flex-wrap gap-2" aria-label="Products for this machine">
+            {[...products.entries()].map(([key, product]) => (
+              <li key={key}>
+                <Photo src={product.imageUrl} alt={product.name} size="thumb" />
+              </li>
+            ))}
           </ul>
-          {restock.status === 'approved' ? (
-            <Button type="button" size="lg" onClick={() => onAdvance('/start-picking')} loading={busy}>
-              <PackageCheck className="size-5" aria-hidden="true" />
-              Start packing
-            </Button>
-          ) : (
-            <Button type="button" size="lg" onClick={packedAndLeaving} loading={busy}>
-              <Truck className="size-5" aria-hidden="true" />
-              {packed.size < pickList.length ? `Packed — leave (${pickList.length - packed.size} not ticked)` : 'Packed — leave for the machine'}
-            </Button>
-          )}
-        </section>
-      ) : null}
-
-      {restock.status === 'dispatched' ? (
-        <Button type="button" size="lg" onClick={() => onAdvance('/mark-in-transit')} loading={busy}>
-          <Truck className="size-5" aria-hidden="true" />
-          I’m on my way
-        </Button>
+        </div>
       ) : null}
 
       {step === 2 ? (
