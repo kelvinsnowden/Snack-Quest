@@ -28,7 +28,7 @@ interface Result {
   detail: string;
 }
 
-type Kind = 'status' | 'price' | 'add_product' | 'remove_product' | 'copy_range';
+type Kind = 'status' | 'price' | 'add_product' | 'remove_product' | 'copy_range' | 'planogram';
 const STATUSES = ['active', 'maintenance', 'offline', 'testing', 'installing', 'decommissioned'] as const;
 const field = 'h-10 rounded-lg border border-border bg-background px-3 text-sm';
 
@@ -38,7 +38,19 @@ const field = 'h-10 rounded-lg border border-border bg-background px-3 text-sm';
  * rules as its own page, and the result lists each one: done, skipped
  * (and why) or failed (and why).
  */
-export function BulkMachineEditor({ machines, products, can }: { machines: MachineRow[]; products: ProductRow[]; can: { status: boolean; decommission: boolean; price: boolean; catalogue: boolean } }) {
+export function BulkMachineEditor({
+  machines,
+  products,
+  templates,
+  initialTemplate,
+  can,
+}: {
+  machines: MachineRow[];
+  products: ProductRow[];
+  templates: { id: string; name: string }[];
+  initialTemplate: string | null;
+  can: { status: boolean; decommission: boolean; price: boolean; catalogue: boolean; slots: boolean };
+}) {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -48,9 +60,11 @@ export function BulkMachineEditor({ machines, products, can }: { machines: Machi
     if (can.status) list.push(['status', 'Change status']);
     if (can.price) list.push(['price', 'Set a product’s price']);
     if (can.catalogue) list.push(['add_product', 'Add a product'], ['remove_product', 'Remove a product'], ['copy_range', 'Copy the range of one machine']);
+    if (can.slots && can.price && templates.length > 0) list.push(['planogram', 'Apply a planogram template']);
     return list;
-  }, [can]);
-  const [kind, setKind] = useState<Kind | ''>(kinds[0]?.[0] ?? '');
+  }, [can, templates.length]);
+  const [kind, setKind] = useState<Kind | ''>(initialTemplate && kinds.some(([key]) => key === 'planogram') ? 'planogram' : (kinds[0]?.[0] ?? ''));
+  const [template, setTemplate] = useState(initialTemplate ?? '');
   const [to, setTo] = useState<string>('maintenance');
   const [product, setProduct] = useState('');
   const [price, setPrice] = useState('');
@@ -96,6 +110,8 @@ export function BulkMachineEditor({ machines, products, can }: { machines: Machi
         return product ? { kind, productCatalogue, productId } : null;
       case 'copy_range':
         return fromMachine ? { kind, fromMachineId: fromMachine, includePriceOverrides: withPrices } : null;
+      case 'planogram':
+        return template ? { kind, templateId: template } : null;
       default:
         return null;
     }
@@ -223,6 +239,20 @@ export function BulkMachineEditor({ machines, products, can }: { machines: Machi
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="bulk-price">Price on these machines (KES)</Label>
               <Input id="bulk-price" type="number" min={1} step={1} value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Blank = normal price" />
+            </div>
+          ) : null}
+          {kind === 'planogram' ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="bulk-template">Template</Label>
+              <select id="bulk-template" value={template} onChange={(event) => setTemplate(event.target.value)} className={field}>
+                <option value="">Choose…</option>
+                {templates.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">Sets slots, products, capacities and prices. A slot still holding a different product stops that machine; empty it first.</p>
             </div>
           ) : null}
           {kind === 'copy_range' ? (

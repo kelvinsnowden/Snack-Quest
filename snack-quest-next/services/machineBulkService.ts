@@ -3,6 +3,7 @@ import 'server-only';
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineService } from '@/services/machineService';
 import { machineAssortmentService } from '@/services/machineAssortmentService';
+import { planogramService } from '@/services/planogramService';
 import { MachineAssortmentNotFoundError } from '@/repositories/machineAssortmentRepository';
 import type { PermissionKey } from '@/lib/auth/permissions';
 import type { MachineAssortment, MachineStatus } from '@/types';
@@ -19,7 +20,8 @@ export type BulkAction =
   | { kind: 'price'; productCatalogue: MachineAssortment['productCatalogue']; productId: string; priceKes: number | null }
   | { kind: 'add_product'; productCatalogue: MachineAssortment['productCatalogue']; productId: string }
   | { kind: 'remove_product'; productCatalogue: MachineAssortment['productCatalogue']; productId: string }
-  | { kind: 'copy_range'; fromMachineId: string; includePriceOverrides: boolean };
+  | { kind: 'copy_range'; fromMachineId: string; includePriceOverrides: boolean }
+  | { kind: 'planogram'; templateId: string };
 
 export interface BulkResult {
   machineId: string;
@@ -66,6 +68,9 @@ export function parseBulkRequest(body: unknown): { action: BulkAction; machineId
     case 'copy_range':
       if (typeof a.fromMachineId !== 'string' || !a.fromMachineId) throw new BulkActionError('Choose the machine to copy from.');
       return { machineIds: ids, action: { kind: 'copy_range', fromMachineId: a.fromMachineId, includePriceOverrides: a.includePriceOverrides === true } };
+    case 'planogram':
+      if (typeof a.templateId !== 'string' || !a.templateId) throw new BulkActionError('Choose a planogram template.');
+      return { machineIds: ids, action: { kind: 'planogram', templateId: a.templateId } };
     default:
       throw new BulkActionError('Choose what to change.');
   }
@@ -83,6 +88,9 @@ export function permissionsFor(action: BulkAction): PermissionKey[] {
       return ['machine_catalog.manage'];
     case 'copy_range':
       return action.includePriceOverrides ? ['machine_catalog.manage', 'pricing.manage'] : ['machine_catalog.manage'];
+    case 'planogram':
+      // A template carries prices, so applying one sets them.
+      return ['machines.slots.configure', 'pricing.manage'];
   }
 }
 
@@ -124,6 +132,11 @@ class MachineBulkService {
               result('done', `${copied.added} added, ${copied.alreadyCarried} already carried.`);
             }
             break;
+          case 'planogram': {
+            const { copied } = await planogramService.apply(businessId, action.templateId, machineId, actor);
+            result('done', `${copied.length} slots set.`);
+            break;
+          }
         }
       } catch (error) {
         if (error instanceof MachineAssortmentNotFoundError) result('skipped', 'Doesn’t carry this product.');
