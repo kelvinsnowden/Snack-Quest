@@ -26,13 +26,24 @@ const nextConfig: NextConfig = {
   // has handled require(ESM) since 22.12, which is what makes this work.
   // See the `--webpack` note on the build script in package.json for why
   // the bundler choice matters here.
-  // The webpack build of 350+ routes runs close to the 8 GB of a Vercel
-  // build container: branch builds on 2026-10-18 were killed for running
-  // out of memory about a minute into compiling. This trades a little
-  // compile time for a lower memory peak (Next.js memory-usage guide:
-  // "considered to be low-risk").
+  // Build memory on Vercel (2 cores, 8 GB). On 2026-10-18 every branch
+  // build that restored webpack's cache from an earlier build was killed
+  // for running out of memory about a minute into compiling, while the
+  // same code built without the cache peaked near 4.2 GB, and main built
+  // without cache passed in 221 s (the last cached production build took
+  // 263 s). Loading a stale cache and then recompiling most modules is
+  // what tips it over, and the cache bought no time, so Vercel builds
+  // skip it. `webpackMemoryOptimizations` lowers the peak further
+  // (Next.js memory-usage guide: "considered to be low-risk"), and the
+  // build worker is named because a custom webpack function would
+  // otherwise turn it off.
   experimental: {
     webpackMemoryOptimizations: true,
+    webpackBuildWorker: true,
+  },
+  webpack: (config, { dev }) => {
+    if (!dev && process.env.VERCEL) config.cache = false;
+    return config;
   },
   serverExternalPackages: ['firebase-admin', 'jwks-rsa', 'jose'],
   // `app/(marketing)/opengraph-image.tsx` reads `public/logo.png` off
