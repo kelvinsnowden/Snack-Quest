@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { verifySessionAndLoad } from '@/lib/auth/verifySession';
 import { adminAuth, adminFirestore } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import {
@@ -303,23 +304,16 @@ class CreatorAuthService {
 
   /** The Secure tier check — same shape as `StaffAuthService.verifySessionCookie` (see that file for why this re-reads Firestore instead of trusting the cookie's own claims). */
   async verifySessionCookie(cookie: string): Promise<CreatorSession | null> {
-    let decoded;
-    try {
-      decoded = await adminAuth.verifySessionCookie(cookie, true);
-    } catch {
-      return null;
-    }
-
-    const businessId = getCurrentBusinessId();
-    const [user, profile] = await Promise.all([
-      userRepository.findById(decoded.uid),
-      creatorRepository.findById(businessId, decoded.uid),
-    ]);
-    if (!user || user.deletedAt || !profile) {
-      return null;
-    }
-
-    return toSession(decoded.uid, user, profile);
+    return verifySessionAndLoad(cookie, async (uid) => {
+      const [user, profile] = await Promise.all([
+        userRepository.findById(uid),
+        creatorRepository.findById(getCurrentBusinessId(), uid),
+      ]);
+      if (!user || user.deletedAt || !profile) {
+        return null;
+      }
+      return toSession(uid, user, profile);
+    });
   }
 }
 

@@ -253,7 +253,7 @@ class OwnerPortalService {
 
     const cards: OwnerMachineCard[] = await Promise.all(
       machines.map(async ({ id: machineId, data: machine }) => {
-        const [summary, liveness] = await Promise.all([ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30), this.livenessOf(businessId, machineId, machine)]);
+        const [[summary], liveness] = await Promise.all([ownerIntelligenceService.summarizeOwnedMachine(businessId, { id: machineId, data: machine }, [30]), this.livenessOf(businessId, machineId, machine)]);
         return {
           machineId,
           machineCode: machine.machineCode,
@@ -289,7 +289,7 @@ class OwnerPortalService {
     const since = ownerSince(machine);
 
     const [performanceEntries, lastSalePage, restockRows, settlementRows, location, liveness] = await Promise.all([
-      Promise.all(OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, days))),
+      ownerIntelligenceService.summarizeOwnedMachine(businessId, { id: machineId, data: machine }, [...OWNER_PERFORMANCE_WINDOWS_DAYS]),
       // A few, not one: a staff test vend is dispensed too, and isn't a sale.
       machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
       restockTaskRepository.listByMachine(businessId, machineId, 1),
@@ -379,8 +379,8 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const byDate = new Map<string, { revenueKes: number; unitsSold: number }>();
-    for (const { id, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
+    const perMachine = await Promise.all(machines.map(({ id, since }) => machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate)));
+    for (const rollups of perMachine) {
       for (const [date, rollup] of rollups) {
         const existing = byDate.get(date) ?? { revenueKes: 0, unitsSold: 0 };
         existing.revenueKes += rollup.grossSalesKes;
@@ -407,8 +407,8 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const totals = new Map<string, { unitsSold: number; revenueKes: number }>();
-    for (const { id, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
+    const perMachine = await Promise.all(machines.map(({ id, since }) => machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate)));
+    for (const rollups of perMachine) {
       for (const rollup of rollups.values()) {
         for (const [productId, product] of Object.entries(rollup.byProduct)) {
           const existing = totals.get(productId) ?? { unitsSold: 0, revenueKes: 0 };
@@ -753,8 +753,8 @@ class OwnerPortalService {
     let revenueKes = 0;
     let unitsSold = 0;
     let grossProfitKes = 0;
-    for (const { id: machineId, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate);
+    const perMachine = await Promise.all(machines.map(({ id: machineId, since }) => machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate)));
+    for (const rollups of perMachine) {
       for (const rollup of rollups.values()) {
         revenueKes += rollup.grossSalesKes;
         unitsSold += rollup.unitsSold;

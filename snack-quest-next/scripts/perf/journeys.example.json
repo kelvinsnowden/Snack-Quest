@@ -1,0 +1,102 @@
+[
+ {
+  "name": "Admin home",
+  "path": "/admin",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Machine list",
+  "path": "/admin/vending",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Machine detail (admin)",
+  "path": "/admin/vending/<machineId>",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Machine sales",
+  "path": "/admin/vending/sales",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Restock planning",
+  "path": "/admin/vending/restock",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Maintenance",
+  "path": "/admin/vending/maintenance",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Technicians",
+  "path": "/admin/vending/technicians",
+  "cookie": "sq_staff_session=<techCookie>"
+ },
+ {
+  "name": "Alerts",
+  "path": "/admin/vending/alerts",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Warehouse home",
+  "path": "/warehouse",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Warehouse machines",
+  "path": "/warehouse/machines",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Warehouse inventory",
+  "path": "/warehouse/inventory",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Technician: my jobs",
+  "path": "/warehouse/jobs",
+  "cookie": "sq_staff_session=<techCookie>"
+ },
+ {
+  "name": "Support: conversations",
+  "path": "/admin/conversations",
+  "cookie": "sq_staff_session=<staffCookie>"
+ },
+ {
+  "name": "Owner: dashboard",
+  "path": "/partner",
+  "cookie": "sq_partner_session=<ownerCookie>"
+ },
+ {
+  "name": "Owner: machines",
+  "path": "/partner/machines",
+  "cookie": "sq_partner_session=<ownerCookie>"
+ },
+ {
+  "name": "Owner: machine detail",
+  "path": "/partner/machines/<machineId>",
+  "cookie": "sq_partner_session=<ownerCookie>"
+ },
+ {
+  "name": "Owner: sales",
+  "path": "/partner/sales",
+  "cookie": "sq_partner_session=<ownerCookie>"
+ },
+ {
+  "name": "Owner: inventory",
+  "path": "/partner/inventory",
+  "cookie": "sq_partner_session=<ownerCookie>"
+ },
+ {
+  "name": "Owner: payouts",
+  "path": "/partner/payouts",
+  "cookie": "sq_partner_session=<ownerCookie>"
+ },
+ {
+  "name": "Login page",
+  "path": "/admin/login",
+  "cookie": ""
+ }
+]

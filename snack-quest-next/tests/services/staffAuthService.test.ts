@@ -200,4 +200,22 @@ describe('StaffAuthService.verifySessionCookie', () => {
 
     expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
   });
+
+  it('returns null at once when the account is disabled or its sessions are revoked in Firebase Auth', async () => {
+    const uid = await createAuthUser('will-be-disabled@example.com');
+    await userRepository.create(uid, { email: 'will-be-disabled@example.com', roles: ['warehouse'], displayName: 'Disabled Soon', photoURL: null }, 'system');
+    await staffRepository.create(uid, { businessId: BUSINESS_ID, role: 'warehouse', permissions: [], department: 'Warehouse' }, 'system');
+    const { cookie } = await staffAuthService.establishSession(await getIdTokenForUid(uid));
+    expect(await staffAuthService.verifySessionCookie(cookie)).not.toBeNull();
+
+    await adminAuth.updateUser(uid, { disabled: true });
+    expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
+
+    await adminAuth.updateUser(uid, { disabled: false });
+    expect(await staffAuthService.verifySessionCookie(cookie)).not.toBeNull();
+    // Session cookies record their sign-in time in whole seconds; revoke strictly after it.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await adminAuth.revokeRefreshTokens(uid);
+    expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
+  });
 });

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { verifySessionAndLoad } from '@/lib/auth/verifySession';
 import { adminAuth } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { staffRepository } from '@/repositories/staffRepository';
@@ -113,23 +114,20 @@ class StaffAuthService {
    * session is rejected immediately, not just once the cookie expires.
    */
   async verifySessionCookie(cookie: string): Promise<StaffSession | null> {
-    let decoded;
-    try {
-      decoded = await adminAuth.verifySessionCookie(cookie, true);
-    } catch {
-      return null;
-    }
+    return verifySessionAndLoad(cookie, (uid) => this.loadSession(uid));
+  }
 
+  private async loadSession(uid: string): Promise<StaffSession | null> {
     const [user, staffProfile] = await Promise.all([
-      userRepository.findById(decoded.uid),
-      staffRepository.findById(decoded.uid),
+      userRepository.findById(uid),
+      staffRepository.findById(uid),
     ]);
     if (!user || user.deletedAt || !staffProfile) {
       return null;
     }
 
     return {
-      uid: decoded.uid,
+      uid,
       email: user.email,
       displayName: user.displayName,
       roles: user.roles,

@@ -29,14 +29,18 @@ export default async function TechniciansPage() {
   const canRestock = hasPermission(session, 'restock.plan');
   if (!canMaintenance && !canRestock && !hasPermission(session, 'maintenance.view') && !hasPermission(session, 'restock.view')) redirect('/admin');
 
-  const [technicians, jobs, maintenance, restocks, machines] = await Promise.all([
+  const [technicians, maintenance, restocks, machines, locations] = await Promise.all([
     technicianJobService.listTechnicians(session.businessId),
-    technicianJobService.listForBusiness(session.businessId),
     Promise.all((['open', 'acknowledged', 'scheduled'] as const).map((status) => maintenanceRepository.listRequests(session.businessId, { status }))).then((lists) => lists.flat()),
     restockTaskRepository.listOpenByBusiness(session.businessId),
     machineRepository.listAllForBusiness(session.businessId),
+    locationService.listByBusiness(session.businessId),
   ]);
-  const locations = await locationService.listByBusiness(session.businessId);
+  // Only the jobs for the open tasks shown here, by id — not every job ever given out.
+  const jobs = await technicianJobService.findForTasks(session.businessId, [
+    ...maintenance.map(({ id }) => ({ kind: 'maintenance' as const, refId: id })),
+    ...restocks.map(({ id }) => ({ kind: 'restock' as const, refId: id })),
+  ]);
   const code = new Map(machines.map(({ id, data }) => [id, data.machineCode]));
   const job = new Map(jobs.map((entry) => [entry.id, entry]));
   const forKind = (kind: 'maintenance' | 'restock') => technicians.filter((technician) => technician.kinds.includes(kind)).map(({ uid, name }) => ({ uid, name }));

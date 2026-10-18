@@ -7,7 +7,7 @@ import { machineRepository, MachineNotFoundError } from '@/repositories/machineR
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { packageRepository } from '@/repositories/packageRepository';
-import type { MachineAssortment, MachineAssortmentPromotionalState, ProductAvailabilityState, SellableCatalogItem } from '@/types';
+import type { MachineAssortment, MachineAssortmentPromotionalState, MachineSlot, ProductAvailabilityState, SellableCatalogItem } from '@/types';
 
 export class ProductNotFoundError extends Error {
   constructor(productCatalogue: string, productId: string) {
@@ -77,6 +77,40 @@ interface ResolvedProduct {
  * `MachineInventoryMovement` directly; those stay
  * `machineSlotService`'s and `machineInventoryMovementService`'s own.
  */
+/**
+ * Whether one assorted product can be bought right now, from its row, its
+ * slot (if it has one) and the machine's status. The one rule behind both
+ * the customer catalog (`getSellableCatalog`) and the stock-health counts
+ * (`getStockHealth`), so the two can never disagree.
+ */
+export function availabilityOf(
+  row: Pick<MachineAssortment, 'effectiveFrom' | 'effectiveTo'>,
+  slot: Pick<MachineSlot, 'enabled' | 'currentQuantity'> | null,
+  machineStatus: string,
+  nowMs: number,
+): { availabilityState: ProductAvailabilityState; withinPromoWindow: boolean } {
+  const notYetStarted = Boolean(row.effectiveFrom && row.effectiveFrom.toMillis() > nowMs);
+  const windowEnded = Boolean(row.effectiveTo && row.effectiveTo.toMillis() < nowMs);
+  let availabilityState: ProductAvailabilityState;
+  if (notYetStarted) {
+    availabilityState = 'coming_soon';
+  } else if (!slot || !slot.enabled || windowEnded || machineStatus !== 'active') {
+    availabilityState = 'unavailable';
+  } else if (slot.currentQuantity <= 0) {
+    availabilityState = 'sold_out';
+  } else {
+    availabilityState = 'available';
+  }
+  return { availabilityState, withinPromoWindow: !notYetStarted && !windowEnded };
+}
+
+/** How many products a machine carries, how many have stock in their slot, and how many a customer can buy now. */
+export interface MachineStockHealth {
+  assortmentCount: number;
+  stockedCount: number;
+  sellableCount: number;
+}
+
 class MachineAssortmentService {
   /** Verifies the referenced product actually exists in its catalogue — never assort a product this business's own catalogue doesn't have. */
   private async resolveProduct(
@@ -350,6 +384,28 @@ class MachineAssortmentService {
   }
 
   /**
+   * The stock-health counts `classifyMachineCatalogLayers` reports, from
+   * just the machine's assortment and slots (two reads): no product
+   * details, prices or global catalogue. For callers that already hold
+   * the machine document, such as the owner portal's per-machine cards.
+   */
+  async getStockHealth(businessId: string, machine: { id: string; status: string }): Promise<MachineStockHealth> {
+    const [assortmentRows, slots] = await Promise.all([
+      machineAssortmentRepository.listByMachine(businessId, machine.id),
+      machineSlotRepository.listByMachine(businessId, machine.id),
+    ]);
+    const slotByCode = new Map(slots.map((slot) => [slot.slotCode, slot]));
+    const assorted = assortmentRows.filter((row) => row.assorted);
+    const slotOf = (row: MachineAssortment) => (row.slotCode ? (slotByCode.get(row.slotCode) ?? null) : null);
+    const now = Date.now();
+    return {
+      assortmentCount: assorted.length,
+      stockedCount: assorted.filter((row) => (slotOf(row)?.currentQuantity ?? 0) > 0).length,
+      sellableCount: assorted.filter((row) => row.visible && availabilityOf(row, slotOf(row), machine.status, now).availabilityState === 'available').length,
+    };
+  }
+
+  /**
    * The customer screen's own read (§ MACHINE CUSTOMER CATALOG,
    * § PRODUCT STATES). `availabilityState` is derived here, never
    * stored, in this precedence order:
@@ -442,20 +498,7 @@ class MachineAssortmentService {
 
       const priceKes = slot ? effectiveSellingPriceKes({ slotPriceKes: slot.priceKes, assortmentOverrideKes: row.priceOverrideKes }) : (row.priceOverrideKes ?? fallbackPriceKes);
 
-      const notYetStarted = Boolean(row.effectiveFrom && row.effectiveFrom.toMillis() > now);
-      const windowEnded = Boolean(row.effectiveTo && row.effectiveTo.toMillis() < now);
-      const withinPromoWindow = !notYetStarted && !windowEnded;
-
-      let availabilityState: ProductAvailabilityState;
-      if (notYetStarted) {
-        availabilityState = 'coming_soon';
-      } else if (!slot || !slot.enabled || windowEnded || machine.status !== 'active') {
-        availabilityState = 'unavailable';
-      } else if (slot.currentQuantity <= 0) {
-        availabilityState = 'sold_out';
-      } else {
-        availabilityState = 'available';
-      }
+      const { availabilityState, withinPromoWindow } = availabilityOf(row, slot, machine.status, now);
 
       items.push({
         productId: row.productId,

@@ -561,6 +561,7 @@ class BusinessAnalyticsService {
     const byPath: Record<string, number> = {};
     const days: { date: string; visits: number; uniqueVisitors: number }[] = [];
 
+    const rollups: { date: string; rollup: TrafficDaily }[] = [];
     for (const date of completed) {
       let rollup = stored.get(date);
       if (!rollup) {
@@ -578,11 +579,16 @@ class BusinessAnalyticsService {
         byPath[path] = (byPath[path] ?? 0) + count;
       }
       days.push({ date, visits: rollup.visits, uniqueVisitors: rollup.uniqueVisitors });
+      rollups.push({ date, rollup });
+    }
 
-      if (rollup.visitorShardCount > 0) {
-        for (const id of await trafficDailyRepository.listVisitorIds(businessId, date)) {
-          visitors.add(id);
-        }
+    // Each day's visitor ids are their own read: fetch them together, not one day after another.
+    const visitorIdsByDay = await Promise.all(
+      rollups.filter(({ rollup }) => rollup.visitorShardCount > 0).map(({ date }) => trafficDailyRepository.listVisitorIds(businessId, date)),
+    );
+    for (const ids of visitorIdsByDay) {
+      for (const id of ids) {
+        visitors.add(id);
       }
     }
 
