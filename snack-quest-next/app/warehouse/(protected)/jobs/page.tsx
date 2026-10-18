@@ -11,6 +11,8 @@ import { locationService } from '@/services/locationService';
 import { MAINTENANCE_REQUEST_CATEGORY_LABEL } from '@/types/maintenance';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TechnicianJobCard, type JobCardData } from '@/components/warehouse/TechnicianJobCard';
+import { RouteCard } from '@/components/vending/RouteCard';
+import { machineRouteStops } from '@/lib/vending/machineRouteStops';
 
 export const metadata: Metadata = { title: 'My jobs' };
 
@@ -57,12 +59,28 @@ export default async function MyJobsPage() {
     }),
   );
 
+  // One stop per machine, however many jobs are at it.
+  const visited = new Map<string, NonNullable<(typeof machines)[number]>>();
+  jobs.forEach((job, index) => {
+    const machine = machines[index];
+    if (machine && !visited.has(job.machineId)) visited.set(job.machineId, machine);
+  });
+  const jobsAt = (machineId: string) =>
+    cards.filter((_, index) => jobs[index].machineId === machineId).map((card) => (card.kind === 'restock' ? 'Restock' : card.title)).join(', ');
+  const route = machineRouteStops([...visited].map(([id, data]) => ({ id, data })), locations, jobsAt);
+
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">My jobs</h1>
         <p className="text-sm text-muted-foreground">{cards.length === 0 ? 'Nothing assigned to you right now.' : `${cards.length} to do`}</p>
       </div>
+      {visited.size > 1 ? (
+        <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+          <h2 className="text-lg font-semibold text-foreground">My route</h2>
+          <RouteCard stops={route.stops} missing={route.missing} intro="The shortest way round your machines. Open it in Google Maps and follow it stop by stop." />
+        </section>
+      ) : null}
       {cards.length === 0 ? <EmptyState icon={ClipboardCheck} title="No jobs" description="When a restock or a maintenance visit is given to you, it shows here with its checklist." /> : null}
       {cards.map((card) => (
         <TechnicianJobCard key={card.id} job={card} />
