@@ -18,7 +18,7 @@ import { appendFileSync } from 'node:fs';
  *   slices per page load to count reads and sequential round trips.
  *
  * It wraps the public read and commit methods of the Admin SDK's classes
- * once, at server start (`instrumentation.ts`). The wrapper returns the
+ * once per process, when `adminFirestore` is first used (`lib/firebase/admin.ts`). The wrapper returns the
  * SDK's own promise untouched; timing hangs off a side branch that
  * swallows its own errors, so the tracer can never change a result,
  * throw, or turn a rejection into an unhandled one.
