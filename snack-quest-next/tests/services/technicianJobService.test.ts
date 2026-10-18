@@ -133,6 +133,9 @@ describe('technician jobs', () => {
     const tech = await staff(`finder-${Date.now()}@example.com`, 'warehouse', 'Akinyi Finder');
     const { machineId, requestId } = await coolingRequest();
     await technicianJobService.assign(BUSINESS_ID, { kind: 'maintenance', refId: requestId, assigneeUid: tech }, 'manager');
+    const adapter = new MockVendingAdapter();
+    adapter.seedSlot(machineId, 'A01', { quantity: 0 });
+    await new MachineSlotService(() => adapter).configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: 'pkg-1', productCatalogue: 'package', priceKes: 300, capacity: 10, position: 1 });
     const taskId = await restockTaskService.createDraft({ businessId: BUSINESS_ID, machineId, items: [{ slotId: 'A01', productId: 'pkg-1', quantityNeeded: 2 }], actor: 'manager' });
     await technicianJobService.assign(BUSINESS_ID, { kind: 'restock', refId: taskId, assigneeUid: tech }, 'manager');
 

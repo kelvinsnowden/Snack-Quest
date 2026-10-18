@@ -1,10 +1,5 @@
 import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
-import {
-  connectFirestoreEmulator,
-  getFirestore,
-  type Firestore,
-} from 'firebase/firestore';
 
 /**
  * Client SDK initialization (TDD §17 / §6). Browser-safe — only reads
@@ -16,7 +11,12 @@ import {
  *
  * Firebase Storage is deliberately not initialized here (§ Vercel Blob
  * migration): file storage is Vercel Blob's job now, not Firebase's —
- * see `services/storageService.ts`. Firebase is auth + Firestore only.
+ * see `services/storageService.ts`.
+ *
+ * Only Auth is initialised: no browser code reads Firestore (every read
+ * goes through the server), and creating the Firestore client here
+ * shipped the whole Firestore SDK with every sign-in form. Import
+ * `firebase/firestore` where a deliberate client read is added.
  */
 
 const isEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true';
@@ -38,7 +38,6 @@ function createClientApp(): FirebaseApp {
 const app = createClientApp();
 
 export const clientAuth: Auth = getAuth(app);
-export const clientFirestore: Firestore = getFirestore(app);
 
 // Emulator connectors are idempotent-guarded via a global flag: React
 // Fast Refresh re-executes this module in dev, and calling
@@ -55,6 +54,5 @@ if (
   connectAuthEmulator(clientAuth, 'http://127.0.0.1:9099', {
     disableWarnings: true,
   });
-  connectFirestoreEmulator(clientFirestore, '127.0.0.1', 8080);
   globalThis.__firebaseEmulatorsConnected = true;
 }

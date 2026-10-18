@@ -28,6 +28,8 @@ PERF_TRACE_FILE=/tmp/trace.jsonl node scripts/perf/measurePages.mjs journeys.jso
 
 The first load of each page is reported separately (`coldTotalMs`); the other runs give the medians.
 
+`jsWeight.mjs` sums the JavaScript a page makes the browser download (raw and gzip): `node scripts/perf/jsWeight.mjs http://localhost:3124 js.json /admin/login /partner/login /`.
+
 ## Reading the numbers
 
 - **Times on the emulator are not production times.** The emulator answers in about a millisecond; Firestore from Vercel's `cpt1` region takes a real round trip (`GET /api/internal/latency-probe` on a preview deployment measures it). Estimate production server time as `depth × round trip + Firebase Auth check` and compare pages by depth and documents read.

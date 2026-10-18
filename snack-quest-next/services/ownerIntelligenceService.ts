@@ -66,9 +66,10 @@ class OwnerIntelligenceService {
    * has already established this owner owns (it came from
    * `partnerService.listMachines` or `assertPartnerOwnsMachine`). One
    * rollup read covers every window (they all end yesterday), and stock
-   * health and recommendations are read once, not once per window.
+   * health and recommendations are read once, not once per window
+   * (`recommendations: false` skips them, for callers that don't show them).
    */
-  async summarizeOwnedMachine(businessId: string, machine: { id: string; data: Machine }, windows: number[]): Promise<OwnerMachineSummary[]> {
+  async summarizeOwnedMachine(businessId: string, machine: { id: string; data: Machine }, windows: number[], options: { recommendations?: boolean } = {}): Promise<OwnerMachineSummary[]> {
     const machineId = machine.id;
     const since = ownerSince(machine.data);
     const ranges = windows.map((windowDays) => {
@@ -80,7 +81,7 @@ class OwnerIntelligenceService {
     const [allRollups, stockHealth, allRecommendations] = await Promise.all([
       machineDailySummaryRepository.listRange(businessId, machineId, earliest, ranges[0].endDate),
       machineAssortmentService.getStockHealth(businessId, { id: machineId, status: machine.data.status }),
-      pendingRecommendations(businessId),
+      options.recommendations === false ? Promise.resolve([]) : pendingRecommendations(businessId),
     ]);
     const recommendations = allRecommendations.filter(
       (r) => r.target.kind === 'machine' && r.target.id === machineId && OWNER_VISIBLE_RECOMMENDATION_TYPES.includes(r.type),
