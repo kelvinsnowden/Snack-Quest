@@ -16,7 +16,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   const canManage = job.kind === 'maintenance' ? hasPermission(session, 'maintenance.manage') : hasPermission(session, 'restock.plan');
   const body = ((await request.json().catch(() => null)) ?? {}) as Record<string, unknown>;
   try {
-    await technicianJobService.complete(session.businessId, jobId, { note: typeof body.note === 'string' ? body.note : '', fixed: body.fixed === true }, session.uid, canManage);
+    const loaded = Array.isArray(body.loaded)
+      ? (body.loaded as Record<string, unknown>[]).filter((line) => typeof line?.slotId === 'string' && Number.isInteger(line.quantity) && (line.quantity as number) >= 0).map((line) => ({ slotId: line.slotId as string, quantity: line.quantity as number }))
+      : undefined;
+    await technicianJobService.complete(session.businessId, jobId, { note: typeof body.note === 'string' ? body.note : '', fixed: body.fixed === true, loaded }, session.uid, canManage);
     await recordAuditLog(request, { businessId: session.businessId, actorId: session.uid, action: 'technician_job.complete', entityType: 'technicianJob', entityId: jobId, machineId: job.machineId, after: { fixed: body.fixed === true } });
     return Response.json({ ok: true });
   } catch (error) {

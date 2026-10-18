@@ -14,7 +14,8 @@ const FOR_CATEGORY: Record<MaintenanceRequestCategory, string[]> = {
   other: ['Fix what was reported'],
 };
 
-const RESTOCK = ['Check expiry dates of stock already inside', 'Load each slot to the planned quantity', 'Clean the delivery port', 'Read the cabinet temperature', 'Photo of the loaded machine'];
+/** Loading itself is counted slot by slot on the job, so the checklist is everything around it. */
+const RESTOCK = ['Move older stock to the front (check expiry dates)', 'Clean the delivery port', 'Read the cabinet temperature', 'Photo of the loaded machine'];
 
 /** The on-site checklist a job starts with. */
 export function defaultChecklist(kind: 'maintenance' | 'restock', category?: MaintenanceRequestCategory | null): string[] {

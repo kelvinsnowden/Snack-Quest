@@ -6,12 +6,16 @@ import { machineService } from '@/services/machineService';
 import { maintenanceService } from '@/services/maintenanceService';
 import { maintenanceRepository } from '@/repositories/maintenanceRepository';
 import { technicianJobService, TechnicianJobError } from '@/services/technicianJobService';
+import { restockTaskService } from '@/services/restockTaskService';
+import { restockTaskRepository } from '@/repositories/restockTaskRepository';
+import { MachineSlotService } from '@/services/machineSlotService';
+import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 
 const BUSINESS_ID = 'biz-technicians';
 const createdUids: string[] = [];
 
 async function clean() {
-  for (const name of ['users', 'staffProfiles', 'machines', 'maintenanceRequests', 'technicianJobs', 'deviceCredentials']) {
+  for (const name of ['users', 'staffProfiles', 'machines', 'machineSlots', 'machineInventoryMovements', 'restockTasks', 'maintenanceRequests', 'technicianJobs', 'deviceCredentials', 'stockTransfers']) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(name));
   }
 }
@@ -65,5 +69,30 @@ describe('technician jobs', () => {
     await expect(technicianJobService.assign(BUSINESS_ID, { kind: 'maintenance', refId: requestId, assigneeUid: finance }, 'manager')).rejects.toBeInstanceOf(TechnicianJobError);
     await maintenanceService.updateByStaff(BUSINESS_ID, requestId, 'staff-1', { status: 'cancelled', resolution: 'Duplicate report' });
     await expect(technicianJobService.assign(BUSINESS_ID, { kind: 'maintenance', refId: requestId, assigneeUid: null }, 'manager')).rejects.toThrow(/finished/);
+  });
+
+  it('finishing a restock job records what went into each slot as the restock’s receipt', async () => {
+    const tech = await staff(`loader-${Date.now()}@example.com`, 'warehouse', 'Otieno Loader');
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: 'SQ-R1', serialNumber: 'SN-R1', manufacturer: 'mock', model: 'test', actor: 'staff-1' });
+    adapter.seedSlot(machineId, 'A01', { quantity: 1 });
+    await new MachineSlotService(() => adapter).configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: 'pkg-1', productCatalogue: 'package', priceKes: 300, capacity: 10, position: 1 });
+    const taskId = await restockTaskService.createDraft({ businessId: BUSINESS_ID, machineId, items: [{ slotId: 'A01', productId: 'pkg-1', quantityNeeded: 6 }], actor: 'manager' });
+    await restockTaskService.approve(BUSINESS_ID, taskId, 'manager');
+    await technicianJobService.assign(BUSINESS_ID, { kind: 'restock', refId: taskId, assigneeUid: tech }, 'manager');
+    const [job] = await technicianJobService.listMine(BUSINESS_ID, tech);
+
+    // Not on the way yet: can't finish.
+    await expect(technicianJobService.complete(BUSINESS_ID, job.id, { note: 'skip checks', loaded: [{ slotId: 'A01', quantity: 6 }] }, tech, false)).rejects.toThrow(/On my way/);
+
+    await restockTaskService.startPicking(BUSINESS_ID, taskId, tech);
+    await restockTaskService.dispatch(BUSINESS_ID, taskId, tech, [{ slotId: 'A01', quantityDispatched: 6 }]);
+    await restockTaskService.markInTransit(BUSINESS_ID, taskId, tech);
+    await technicianJobService.complete(BUSINESS_ID, job.id, { note: 'Two packets crushed in transit; checks skipped', loaded: [{ slotId: 'A01', quantity: 4 }] }, tech, false);
+
+    const task = await restockTaskRepository.findById(BUSINESS_ID, taskId);
+    expect(task?.status).toBe('partially_received');
+    expect(task?.items[0]).toMatchObject({ quantityReceived: 4, discrepancyQuantity: 2 });
+    expect(await technicianJobService.listMine(BUSINESS_ID, tech)).toEqual([]);
   });
 });

@@ -6,6 +6,7 @@ import { maintenanceRepository } from '@/repositories/maintenanceRepository';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { staffManagementService } from '@/services/staffManagementService';
 import { maintenanceService } from '@/services/maintenanceService';
+import { restockTaskService } from '@/services/restockTaskService';
 import { defaultChecklist } from '@/lib/vending/technicianChecklist';
 import type { TechnicianJob, TechnicianJobKind } from '@/types';
 
@@ -119,8 +120,18 @@ class TechnicianJobService {
    * Finishes the visit. Anything left unticked needs a note saying why.
    * For a maintenance job, `fixed: true` also resolves the request with
    * the note — the same as resolving it from the maintenance page.
+   * For a restock job, `loaded` is what went into each slot: it is
+   * recorded as the restock's receipt (which adds the stock, and marks
+   * any shortfall), so loading the machine and finishing the job are one
+   * step for the technician.
    */
-  async complete(businessId: string, id: string, input: { note: string; fixed?: boolean }, uid: string, canManage: boolean): Promise<void> {
+  async complete(
+    businessId: string,
+    id: string,
+    input: { note: string; fixed?: boolean; loaded?: { slotId: string; quantity: number }[] },
+    uid: string,
+    canManage: boolean,
+  ): Promise<void> {
     const job = await this.find(businessId, id);
     if (!job) throw new TechnicianJobError('That job no longer exists.');
     if (job.assigneeUid !== uid && !canManage) throw new TechnicianJobError('This job is someone else’s.');
@@ -128,6 +139,19 @@ class TechnicianJobService {
     const note = input.note.trim();
     const missing = job.checklist.filter((item) => !item.done);
     if (missing.length > 0 && note.length < 3) throw new TechnicianJobError(`Say why ${missing.length} item(s) weren’t done.`);
+    if (job.kind === 'restock') {
+      const task = await restockTaskRepository.findById(businessId, job.refId);
+      if (!task) throw new TechnicianJobError('That restock doesn’t exist.');
+      if (task.status !== 'in_transit') throw new TechnicianJobError('Tap “On my way” first, then load the machine and finish.');
+      if (!input.loaded || input.loaded.length === 0) throw new TechnicianJobError('Say how many went into each slot.');
+      await restockTaskService.receive(
+        businessId,
+        job.refId,
+        uid,
+        input.loaded.map((line) => ({ slotId: line.slotId, quantityReceived: line.quantity })),
+        note || null,
+      );
+    }
     if (job.kind === 'maintenance' && input.fixed) {
       await maintenanceService.updateByStaff(businessId, job.refId, uid, { status: 'resolved', resolution: note || 'Fixed on a technician visit; every checklist item done.' });
     }

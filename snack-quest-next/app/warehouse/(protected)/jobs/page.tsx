@@ -9,6 +9,8 @@ import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { machineRepository } from '@/repositories/machineRepository';
 import { locationService } from '@/services/locationService';
 import { MAINTENANCE_REQUEST_CATEGORY_LABEL } from '@/types/maintenance';
+import { resolveVendingProducts } from '@/lib/vending/productDetails';
+import type { RestockJobData } from '@/components/warehouse/RestockJobFlow';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TechnicianJobCard, type JobCardData } from '@/components/warehouse/TechnicianJobCard';
 import { RouteCard } from '@/components/vending/RouteCard';
@@ -33,13 +35,30 @@ export default async function MyJobsPage() {
       const location = machine?.locationId ? place.get(machine.locationId) : undefined;
       let title = 'Restock';
       let detail: string | null = null;
+      let urgent = false;
+      let restock: RestockJobData | undefined;
       if (job.kind === 'maintenance') {
         const request = await maintenanceRepository.findRequest(session.businessId, job.refId);
         title = request ? MAINTENANCE_REQUEST_CATEGORY_LABEL[request.category] : 'Maintenance';
-        detail = request ? `${request.urgency === 'urgent' ? 'Urgent. ' : ''}${request.description}${request.scheduledFor ? ` · visit ${request.scheduledFor}` : ''}` : null;
+        urgent = request?.urgency === 'urgent';
+        detail = request ? `${request.description}${request.scheduledFor ? ` · visit ${request.scheduledFor}` : ''}` : null;
       } else {
         const task = await restockTaskRepository.findById(session.businessId, job.refId);
-        detail = task ? `${task.items.reduce((sum, item) => sum + (item.quantityDispatched ?? item.quantityNeeded), 0)} items · stage: ${task.status.replace('_', ' ')}. Picking, dispatch and receipt are on the Machines page.` : null;
+        if (task && ['draft', 'approved', 'picking', 'dispatched', 'in_transit'].includes(task.status)) {
+          const products = await resolveVendingProducts(session.businessId, task.items.map((item) => item.productId ?? ''));
+          const lines = task.items.map((item) => ({
+            slotId: item.slotId,
+            slotCode: item.slotId.split('__').pop() ?? item.slotId,
+            productId: item.productId,
+            name: item.productId ? (products.get(item.productId)?.name ?? item.productId) : 'Empty slot',
+            imageUrl: item.productId ? (products.get(item.productId)?.imageUrl ?? null) : null,
+            quantity: item.quantityDispatched ?? item.quantityNeeded,
+          }));
+          const total = lines.reduce((sum, line) => sum + line.quantity, 0);
+          title = `${total} item${total === 1 ? '' : 's'} into ${lines.length} slot${lines.length === 1 ? '' : 's'}`;
+          urgent = task.priority === 'high';
+          restock = { taskId: job.refId, status: task.status as RestockJobData['status'], lines };
+        }
       }
       return {
         id: job.id,
@@ -55,6 +74,8 @@ export default async function MyJobsPage() {
             }
           : null,
         checklist: job.checklist.map(({ label, done }) => ({ label, done })),
+        urgent,
+        restock,
       };
     }),
   );
