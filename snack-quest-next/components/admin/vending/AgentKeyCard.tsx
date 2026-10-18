@@ -16,6 +16,9 @@ export interface AgentKeyRow {
   lastUsedAt: string | null;
 }
 
+/** Statuses a key can still sign with (`lib/vending/credentialLifecycle.ts`), so it can be revoked. */
+const USABLE = new Set(['issued', 'active', 'rotating']);
+
 const when = new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', year: 'numeric' });
 const format = (iso: string | null) => (iso ? when.format(new Date(iso)) : '—');
 
@@ -143,13 +146,13 @@ export function AgentKeyCard({ machineId, machineCode, keys }: { machineId: stri
             <li key={key.keyId} className="flex flex-col gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-mono text-foreground">{key.keyId}</span>
-                <Badge variant={key.status === 'active' ? 'success' : 'outline'}>{key.status}</Badge>
+                <Badge variant={USABLE.has(key.status) ? 'success' : 'outline'}>{key.status === 'issued' ? 'not used yet' : key.status}</Badge>
                 <Badge variant="outline">{key.environment}</Badge>
                 <span className="text-muted-foreground">
                   Issued {format(key.issuedAt)} · last used {format(key.lastUsedAt)}
                 </span>
               </div>
-              {key.status === 'active' ? (
+              {USABLE.has(key.status) ? (
                 revoking === key.keyId ? (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                     <div className="flex flex-1 flex-col gap-1.5">

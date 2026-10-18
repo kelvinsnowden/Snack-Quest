@@ -26,6 +26,8 @@ import { machineIntegrationRepository } from '@/repositories/machineIntegrationR
 import { machineCoolingService } from '@/services/machineCoolingService';
 import { CoolingCard } from '@/components/admin/vending/CoolingCard';
 import { AgentKeyCard } from '@/components/admin/vending/AgentKeyCard';
+import { ReplaceHardwareCard } from '@/components/admin/vending/ReplaceHardwareCard';
+import { machineReplacementService } from '@/services/machineReplacementService';
 import { machineAgentKeyService } from '@/services/machineAgentKeyService';
 import { TemperatureChart } from '@/components/admin/vending/TemperatureChart';
 import { temperatureRecord } from '@/services/machineTemperatureService';
@@ -62,6 +64,8 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
     machineCoolingService.canControl(session.businessId, machineId),
   ]);
   const reported = integration?.lastReportedStatus ?? null;
+  const canReplace = hasPermission(session, 'machines.create') && (integration === null || hasPermission(session, 'integrations.machines.configure'));
+  const hardwareHistory = canReplace ? await machineReplacementService.history(session.businessId, machineId) : [];
   const canManageAgentKeys = hasPermission(session, 'integrations.credentials.manage') && integration !== null;
   const agentKeys = canManageAgentKeys ? await machineAgentKeyService.list(session.businessId, machineId) : [];
   const nowMs = new Date().getTime();
@@ -154,6 +158,29 @@ export default async function MachineSetupPage({ params }: { params: Promise<{ m
             </div>
           </CardContent>
         </Card>
+
+        {canReplace ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Hardware</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ReplaceHardwareCard
+                machineId={machineId}
+                status={machine.status}
+                currentSerial={machine.serialNumber}
+                integrated={integration !== null}
+                history={hardwareHistory.map((entry) => ({
+                  id: entry.id,
+                  at: entry.replacedAt ? entry.replacedAt.toDate().toISOString() : null,
+                  fromSerial: entry.before.serialNumber,
+                  toSerial: entry.after.serialNumber,
+                  reason: entry.reason,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
 
         {canManageAgentKeys ? (
           <Card>
