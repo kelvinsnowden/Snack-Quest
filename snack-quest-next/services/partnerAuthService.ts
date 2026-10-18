@@ -104,14 +104,18 @@ class PartnerAuthService {
   }
 
   /** The Secure-tier check — same shape as `CreatorAuthService.verifySessionCookie`: re-reads Firestore rather than trusting the cookie's own claims, so a revoked/suspended partner loses access on its very next request. */
-  async verifySessionCookie(cookie: string): Promise<PartnerSession | null> {
-    return verifySessionAndLoad(cookie, async (uid) => {
-      const found = await partnerRepository.findByAuthUid(getCurrentBusinessId(), uid);
-      if (!found || found.data.deletedAt || found.data.status !== 'active') {
-        return null;
-      }
-      return toSession(uid, found.id, found.data);
-    });
+  async verifySessionCookie(cookie: string, options: { fresh?: boolean } = {}): Promise<PartnerSession | null> {
+    return verifySessionAndLoad(
+      cookie,
+      async ({ uid }) => {
+        const found = await partnerRepository.findByAuthUid(getCurrentBusinessId(), uid);
+        if (!found || found.data.deletedAt || found.data.status !== 'active') {
+          return null;
+        }
+        return toSession(uid, found.id, found.data);
+      },
+      options,
+    );
   }
 }
 

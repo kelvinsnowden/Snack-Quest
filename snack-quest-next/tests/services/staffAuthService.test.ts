@@ -201,21 +201,42 @@ describe('StaffAuthService.verifySessionCookie', () => {
     expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
   });
 
-  it('returns null at once when the account is disabled or its sessions are revoked in Firebase Auth', async () => {
+  it('refuses a session disabled through the app at once, and confirms with Firebase Auth on every request that changes something', async () => {
     const uid = await createAuthUser('will-be-disabled@example.com');
     await userRepository.create(uid, { email: 'will-be-disabled@example.com', roles: ['warehouse'], displayName: 'Disabled Soon', photoURL: null }, 'system');
     await staffRepository.create(uid, { businessId: BUSINESS_ID, role: 'warehouse', permissions: [], department: 'Warehouse' }, 'system');
     const { cookie } = await staffAuthService.establishSession(await getIdTokenForUid(uid));
     expect(await staffAuthService.verifySessionCookie(cookie)).not.toBeNull();
 
+    // Disabled directly in Firebase (not through the app): a request that changes something asks Firebase Auth and is refused...
     await adminAuth.updateUser(uid, { disabled: true });
-    expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
+    expect(await staffAuthService.verifySessionCookie(cookie, { fresh: true })).toBeNull();
+    // ...and so is a page view, once its remembered answer is older than SESSION_REVOCATION_CHECK_SECONDS.
+    process.env.SESSION_REVOCATION_CHECK_SECONDS = '0';
+    try {
+      expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
+    } finally {
+      delete process.env.SESSION_REVOCATION_CHECK_SECONDS;
+    }
 
+    // Revoked in Firebase Auth: refused on the next request that changes something.
     await adminAuth.updateUser(uid, { disabled: false });
-    expect(await staffAuthService.verifySessionCookie(cookie)).not.toBeNull();
+    expect(await staffAuthService.verifySessionCookie(cookie, { fresh: true })).not.toBeNull();
     // Session cookies record their sign-in time in whole seconds; revoke strictly after it.
     await new Promise((resolve) => setTimeout(resolve, 1100));
     await adminAuth.revokeRefreshTokens(uid);
+    expect(await staffAuthService.verifySessionCookie(cookie, { fresh: true })).toBeNull();
+  });
+
+  it('refuses a session at once when the app stamps the account revoked, even while Firebase Auth\'s answer is remembered', async () => {
+    const uid = await createAuthUser('app-revoked@example.com');
+    await userRepository.create(uid, { email: 'app-revoked@example.com', roles: ['warehouse'], displayName: 'App Revoked', photoURL: null }, 'system');
+    await staffRepository.create(uid, { businessId: BUSINESS_ID, role: 'warehouse', permissions: [], department: 'Warehouse' }, 'system');
+    const { cookie } = await staffAuthService.establishSession(await getIdTokenForUid(uid));
+    expect(await staffAuthService.verifySessionCookie(cookie)).not.toBeNull();
+
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await userRepository.revokeSessions(uid, 'admin');
     expect(await staffAuthService.verifySessionCookie(cookie)).toBeNull();
   });
 });

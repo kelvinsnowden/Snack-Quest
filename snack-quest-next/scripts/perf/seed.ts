@@ -96,8 +96,8 @@ it('seeds the measurement dataset', async () => {
       for (let k = 0; k < 10; k += 1) byProduct[products[(index * 7 + k) % products.length].id] = { unitsSold: 1, grossSalesKes: 150, cogsKes: 60, grossProfitKes: 90, category: products[(index * 7 + k) % products.length].category };
       rollups.push({ path: `machineDailySummary/${machineDailySummaryDocId(machine.id, date)}`, data: { businessId: B, machineId: machine.id, date, transactionCount: units + 1, dispensedCount: units, paidVendFailedCount: 0, grossSalesKes: gross, refundsKes: 0, unitsSold: units, averageOrderValueKes: 150, byProduct, unpricedUnitsSold: 0, stockoutProductIds: [], heartbeatCount: 288, faultCount: d % 30 === 0 ? 1 : 0, rebuiltAt: ts(now) } });
     }
-    for (const [partnerId, gross] of perOwner) rollups.push({ path: `partnerDailySummary/${partnerDailySummaryDocId(partnerId, date)}`, data: { businessId: B, partnerId, date, grossSalesKes: gross, unitsSold: gross / 150, transactionCount: gross / 150, rebuiltAt: ts(now) } });
-    rollups.push({ path: `networkDailySummary/${networkDailySummaryDocId(B, date)}`, data: { businessId: B, date, grossSalesKes: network, unitsSold: network / 150, transactionCount: network / 150, activeMachineCount: 20, rebuiltAt: ts(now) } });
+    for (const [partnerId, gross] of perOwner) rollups.push({ path: `partnerDailySummary/${partnerDailySummaryDocId(partnerId, date)}`, data: { businessId: B, partnerId, date, machineCount: 5, transactionCount: gross / 150, dispensedCount: gross / 150, grossSalesKes: gross, refundsKes: 0, faultCount: 0, rebuiltAt: ts(now) } });
+    rollups.push({ path: `networkDailySummary/${networkDailySummaryDocId(B, date)}`, data: { businessId: B, date, machineCount: 20, transactionCount: network / 150, dispensedCount: network / 150, grossSalesKes: network, refundsKes: 0, unitsSold: network / 150, cogsKes: (network / 150) * 60, grossProfitKes: (network / 150) * 90, unpricedUnitsSold: 0, faultCount: 0, stockoutSnapshotCount: 0, byCategory: { Chips: { unitsSold: network / 300, grossSalesKes: network / 2, cogsKes: (network / 300) * 60, grossProfitKes: (network / 300) * 90 }, Drinks: { unitsSold: network / 300, grossSalesKes: network / 2, cogsKes: (network / 300) * 60, grossProfitKes: (network / 300) * 90 } }, rebuiltAt: ts(now) } });
   }
   await writeAll(rollups);
 
@@ -131,7 +131,7 @@ it('seeds the measurement dataset', async () => {
   }
   for (const [index, machine] of machines.entries()) {
     if (!machine.owner) continue;
-    for (let p = 0; p < 3; p += 1) misc.push({ path: `machineSettlements/perf-settlement-${index}-${p}`, data: { businessId: B, machineId: machine.id, partnerId: machine.owner, periodStart: dateKey(now - (p + 1) * 30 * DAY), periodEnd: dateKey(now - p * 30 * DAY), status: 'paid', distributableOwnerKes: 25_000, createdAt: ts(now - p * 30 * DAY), updatedAt: ts(now - p * 30 * DAY) } });
+    for (let p = 0; p < 3; p += 1) misc.push({ path: `machineSettlements/perf-settlement-${index}-${p}`, data: { businessId: B, machineId: machine.id, partnerId: machine.owner, agreementId: null, periodStart: ts(now - (p + 1) * 30 * DAY), periodEnd: ts(now - p * 30 * DAY), status: 'paid', grossSalesKes: 60_000, refundsKes: 0, failedVendRefundsKes: 0, outcomeConflictCount: 0, operatingCostsKes: 5_000, adjustmentKes: 0, adjustmentReason: null, netDistributableKes: 31_000, partnerShareKes: 25_000, businessShareKes: 6_000, distributableOwnerKes: 25_000, cogsKes: 24_000, unpricedSaleCount: 0, estimatedCostSaleCount: 0, subscriptionChargedKes: 15_000, createdAt: ts(now - p * 30 * DAY), updatedAt: ts(now - p * 30 * DAY) } });
   }
   for (let i = 0; i < 30; i += 1) misc.push({ path: `withdrawals/perf-withdrawal-${i}`, data: { businessId: B, partnerId: owners[0], amountKes: 10_000, status: i < 25 ? 'paid' : 'pending', createdAt: ts(now - i * 3 * DAY), updatedAt: ts(now - i * 3 * DAY) } });
   await writeAll(misc);

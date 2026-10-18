@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { parseCookie } from 'cookie';
 import { creatorAuthService, type CreatorSession } from '@/services/creatorAuthService';
 import { CREATOR_SESSION_COOKIE } from './cookieName';
+import { isChangingRequest } from './verifySession';
 
 /**
  * The Data Access Layer for creator sessions — same pattern and same
@@ -45,5 +46,5 @@ export async function verifyCreatorSessionFromRequest(request: Request): Promise
   if (!cookie) {
     return null;
   }
-  return creatorAuthService.verifySessionCookie(cookie);
+  return creatorAuthService.verifySessionCookie(cookie, { fresh: isChangingRequest(request) });
 }

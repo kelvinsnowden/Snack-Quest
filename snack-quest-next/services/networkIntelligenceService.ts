@@ -142,8 +142,9 @@ class NetworkIntelligenceService {
     const snackItemIds = new Set<string>();
     const slotsByMachine = new Map<string, Awaited<ReturnType<typeof machineSlotRepository.listByMachine>>>();
 
-    for (const { id: machineId } of machines) {
-      const slots = await machineSlotRepository.listByMachine(businessId, machineId);
+    // One read per machine, all at once — not one machine after another.
+    const perMachine = await Promise.all(machines.map(({ id: machineId }) => machineSlotRepository.listByMachine(businessId, machineId).then((slots) => [machineId, slots] as const)));
+    for (const [machineId, slots] of perMachine) {
       slotsByMachine.set(machineId, slots);
       for (const slot of slots) {
         if (slot.productCatalogue === 'snackItem' && slot.productId) {

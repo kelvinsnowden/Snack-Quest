@@ -78,8 +78,10 @@ class ProductIntelligenceService {
     >();
     let daysObserved = 0;
 
-    for (const machine of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, machine.id, startDate, endDate);
+    // Every machine's rollups at once, then summed in the same order as before.
+    const rollupsByMachine = await Promise.all(machines.map((machine) => machineDailySummaryRepository.listRange(businessId, machine.id, startDate, endDate)));
+    for (const [index, machine] of machines.entries()) {
+      const rollups = rollupsByMachine[index];
       daysObserved = Math.max(daysObserved, rollups.size);
       const locationId = machineLocationId.get(machine.id) ?? null;
 

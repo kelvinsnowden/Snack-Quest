@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { verifySessionAndLoad } from '@/lib/auth/verifySession';
+import { signedInBeforeRevocation, verifySessionAndLoad, type VerifiedSession } from '@/lib/auth/verifySession';
 import { adminAuth } from '@/lib/firebase/admin';
 import { userRepository } from '@/repositories/userRepository';
 import { staffRepository } from '@/repositories/staffRepository';
@@ -113,16 +113,16 @@ class StaffAuthService {
    * Firestore read, so a deactivated staff account or a revoked
    * session is rejected immediately, not just once the cookie expires.
    */
-  async verifySessionCookie(cookie: string): Promise<StaffSession | null> {
-    return verifySessionAndLoad(cookie, (uid) => this.loadSession(uid));
+  async verifySessionCookie(cookie: string, options: { fresh?: boolean } = {}): Promise<StaffSession | null> {
+    return verifySessionAndLoad(cookie, (session) => this.loadSession(session), options);
   }
 
-  private async loadSession(uid: string): Promise<StaffSession | null> {
+  private async loadSession({ uid, authTimeMs }: VerifiedSession): Promise<StaffSession | null> {
     const [user, staffProfile] = await Promise.all([
       userRepository.findById(uid),
       staffRepository.findById(uid),
     ]);
-    if (!user || user.deletedAt || !staffProfile) {
+    if (!user || user.deletedAt || !staffProfile || signedInBeforeRevocation(user, authTimeMs)) {
       return null;
     }
 

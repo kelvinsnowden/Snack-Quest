@@ -46,7 +46,8 @@ class MachineAgentUpdateService {
     const site = getSiteUrl();
     let response: Response;
     try {
-      response = await fetchImpl(`${site}/machine-agent/manifest.json`, { cache: 'no-store' });
+      // A static file from this site's CDN: a few seconds is plenty, and a stuck fetch must not hold a page open.
+      response = await fetchImpl(`${site}/machine-agent/manifest.json`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     } catch (error) {
       throw new AgentReleaseUnavailableError(error instanceof Error ? error.message : String(error));
     }

@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { parseCookie } from 'cookie';
 import { staffAuthService, type StaffSession } from '@/services/staffAuthService';
 import { STAFF_SESSION_COOKIE } from './cookieName';
+import { isChangingRequest } from './verifySession';
 import { applyViewAs, VIEW_AS_COOKIE } from './viewAs';
 
 /**
@@ -48,7 +49,8 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
 export async function getRealStaffSession(): Promise<StaffSession | null> {
   const cookieStore = await cookies();
   const cookie = cookieStore.get(STAFF_SESSION_COOKIE)?.value;
-  return cookie ? staffAuthService.verifySessionCookie(cookie) : null;
+  // Only the route that changes the viewing role calls this: confirm the session with Firebase Auth now.
+  return cookie ? staffAuthService.verifySessionCookie(cookie, { fresh: true }) : null;
 }
 
 /** For Server Components/layouts that must not render at all without a valid staff session. */
@@ -79,7 +81,7 @@ export async function verifyStaffSessionFromRequest(request: Request): Promise<S
   if (!cookie) {
     return null;
   }
-  const session = await staffAuthService.verifySessionCookie(cookie);
+  const session = await staffAuthService.verifySessionCookie(cookie, { fresh: isChangingRequest(request) });
   if (!session) {
     return null;
   }

@@ -329,6 +329,8 @@ describe('StaffManagementService.setDisabled', () => {
 
     await staffManagementService.setDisabled(BUSINESS_ID, uid, true, sa('actor-uid'));
     expect((await adminAuth.getUser(uid)).disabled).toBe(true);
+    // Their open sessions end on their next request (lib/auth/verifySession.ts).
+    expect((await userRepository.findById(uid))?.sessionsRevokedAt).toBeTruthy();
 
     await staffManagementService.setDisabled(BUSINESS_ID, uid, false, sa('actor-uid'));
     expect((await adminAuth.getUser(uid)).disabled).toBe(false);
