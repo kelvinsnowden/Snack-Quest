@@ -7,7 +7,7 @@ import type { CommandOutcome, Journal, OutcomeReport } from '../journal/journal'
 import { CoolingTargetError, Thermostat, parseCoolingTarget, type CoolingTarget } from './thermostat';
 
 /** The release number — bumped for every agent change; the bundle and update manifest are named after it. */
-export const AGENT_RELEASE = '0.2.0';
+export const AGENT_RELEASE = '0.3.0';
 export const AGENT_VERSION = `m109e-agent/${AGENT_RELEASE}`;
 
 export interface AgentConfig {

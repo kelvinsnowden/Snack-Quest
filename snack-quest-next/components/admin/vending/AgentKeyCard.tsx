@@ -118,7 +118,7 @@ export function AgentKeyCard({ machineId, machineCode, keys }: { machineId: stri
         <CopyBlock label="2. /etc/snack-quest-agent/config.json" text={issued.config} />
         <CopyBlock label="3. /etc/snack-quest-agent/secret" text={issued.secret} />
         <p className="text-xs text-muted-foreground">
-          Motor type and curtain mode start at the usual values; confirm each lane during the bench tests. Then run{' '}
+          Motor type and curtain mode start at the usual values; confirm each lane during the bench tests (<code>sudo snack-quest-bench help</code> on the machine). Then run{' '}
           <code>sudo systemctl start snack-quest-agent</code>.
         </p>
         <div>

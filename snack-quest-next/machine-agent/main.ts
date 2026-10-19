@@ -5,9 +5,11 @@ import { AgentConfigError, loadConfig, type LoadedConfig } from './config/agentC
 import { M109eMachineAgent, AGENT_RELEASE, AGENT_VERSION } from './agent/m109eAgent';
 import { FileCoolingStore } from './agent/coolingStore';
 import { systemClock } from './agent/clock';
+import { BoardBusyError, lockBoard } from './agent/boardLock';
+import { runBench } from './bench/bench';
 import { FileJournalStorage, Journal, JournalCorruptError } from './journal/journal';
 import { DispenseDriver } from './m109e/dispenseDriver';
-import { M109eProtocolClient } from './m109e/protocolClient';
+import { BoardUnreachableError, M109eProtocolClient } from './m109e/protocolClient';
 import { SlotMap } from './m109e/slotMap';
 import { FakeM109eBoard, FakeM109eBus } from './transport/fakeM109e';
 import { PortSerialTransport, openLinuxSerialPort } from './transport/linuxSerialTransport';
@@ -18,6 +20,7 @@ import { AgentUpdater } from './update/updater';
  * The Machine Agent as a program:
  *
  *   node agent.mjs [--config /etc/snack-quest-agent/config.json] [--check]
+ *   node agent.mjs bench <command> … [--config …] [--frames]
  *
  * Runs the agent loop until stopped, sleeping between cycles as Snack
  * Quest asks (`nextPollSeconds`) and backing off on errors. Meant to run
@@ -25,9 +28,14 @@ import { AgentUpdater } from './update/updater';
  * after an update, a crash or a power cut — every restart begins with
  * the journal's crash recovery, so nothing is run twice.
  *
+ * The agent takes the board (`agent/boardLock.ts`) before it opens the
+ * serial line; while the bench tool holds it, the agent exits 1 and
+ * systemd tries again a few seconds later.
+ *
  * Exit codes: 0 stopped or restarting for an update; 78 the config or
  * acceptance record is wrong, or the journal is damaged — a person must
- * look, so systemd does not restart it; anything else is a crash.
+ * look, so systemd does not restart it; anything else is a crash or the
+ * board being busy. `bench` has its own (see `bench`).
  */
 export const EXIT_NEEDS_A_PERSON = 78;
 
@@ -88,7 +96,8 @@ function pingWatchdog(): void {
   execFile('systemd-notify', ['WATCHDOG=1'], () => undefined);
 }
 
-export async function run(argv: string[], options: { stop?: AbortSignal; log?: Log } = {}): Promise<number> {
+export async function run(argv: string[], options: { stop?: AbortSignal; log?: Log; print?: (line: string) => void } = {}): Promise<number> {
+  if (argv[0] === 'bench') return bench(argv.slice(1), options.print);
   const say = options.log ?? log;
   const configPath = argv.includes('--config') ? argv[argv.indexOf('--config') + 1] : DEFAULT_CONFIG;
   let config: LoadedConfig;
@@ -99,6 +108,30 @@ export async function run(argv: string[], options: { stop?: AbortSignal; log?: L
     return EXIT_NEEDS_A_PERSON;
   }
 
+  let unlock: () => Promise<void>;
+  try {
+    unlock = await lockBoard(config.dataDir, 'agent');
+  } catch (error) {
+    if (!(error instanceof BoardBusyError)) {
+      say('error', `can't take the board: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
+    say(
+      'warn',
+      error.holder.role === 'agent'
+        ? `${error.message}; stop it first (sudo systemctl stop snack-quest-agent)`
+        : `${error.message}; the agent starts once it is done`,
+    );
+    return 1;
+  }
+  try {
+    return await runAgent(config, argv, options, say);
+  } finally {
+    await unlock();
+  }
+}
+
+async function runAgent(config: LoadedConfig, argv: string[], options: { stop?: AbortSignal }, say: Log): Promise<number> {
   let built: Awaited<ReturnType<typeof createAgent>>;
   try {
     built = await createAgent(config, { installDir: process.env.SNACK_QUEST_AGENT_HOME });
@@ -167,6 +200,103 @@ export async function run(argv: string[], options: { stop?: AbortSignal; log?: L
     return 0;
   } finally {
     await transport.close().catch(() => undefined);
+  }
+}
+
+const BENCH_USAGE = [
+  'snack-quest-bench <command> [--frames]   (stop the agent first: sudo systemctl stop snack-quest-agent)',
+  '  id <board>                  board id (01H)',
+  '  poll <board>                motor state and last result (03H)',
+  '  temp <board>                temperature (07H)',
+  '  inputs <board>              DI1–DI4, e.g. the door (09H)',
+  '  humidity <board>            humidity and temperature (10H)',
+  '  switch <board> <motor>      one lane microswitch (2AH)',
+  '  row <board> <row>           a row of microswitches (2BH)',
+  '  run <board> <motor> --yes   turn one motor once and read the result (05H, 03H)',
+  '                              options: --type 3  --mode 2  --timeout-tenths 0',
+  '  --frames                    also print every frame sent and received, as hex',
+];
+
+/**
+ * `agent.mjs bench …`: the technician's bench tool (`bench/bench.ts`) on
+ * the installed agent — `sudo snack-quest-bench temp 1` once the
+ * installer has run. It reads the agent's own config for the serial line
+ * (no API secret needed) and takes the board first, so it refuses while
+ * the agent is running. `poll` and `run` are also refused on a board
+ * where the journal shows a vend the agent hasn't settled yet.
+ *
+ * Exit codes: 0 done; 1 refused, or the board didn't answer; 2 the
+ * command or the config is wrong.
+ */
+export async function bench(argv: string[], print: (line: string) => void = (line) => process.stdout.write(`${line}\n`)): Promise<number> {
+  const args = [...argv];
+  let configPath = DEFAULT_CONFIG;
+  if (args.includes('--config')) configPath = args.splice(args.indexOf('--config'), 2)[1];
+  const frames = args.includes('--frames');
+  if (frames) args.splice(args.indexOf('--frames'), 1);
+  if (!args[0] || args[0] === 'help') {
+    BENCH_USAGE.forEach((line) => print(line));
+    return args[0] ? 0 : 2;
+  }
+
+  let config: LoadedConfig;
+  let slots: SlotMap;
+  try {
+    config = await loadConfig(configPath, { requireSecret: false });
+    slots = new SlotMap(config.slots);
+  } catch (error) {
+    print(`config: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
+  }
+
+  let unlock: () => Promise<void>;
+  try {
+    unlock = await lockBoard(config.dataDir, 'bench');
+  } catch (error) {
+    if (!(error instanceof BoardBusyError)) throw error;
+    print(
+      error.holder.role === 'agent'
+        ? `refused: the agent is running (pid ${error.holder.pid}) and using the board. Stop it first: sudo systemctl stop snack-quest-agent — and start it again when you're done: sudo systemctl start snack-quest-agent`
+        : `refused: another bench command is using the board (pid ${error.holder.pid})`,
+    );
+    return 1;
+  }
+  try {
+    let journal: Journal | null = null;
+    let journalProblem = '';
+    try {
+      journal = await Journal.open(new FileJournalStorage(join(config.dataDir, 'journal.jsonl')));
+    } catch (error) {
+      journalProblem = error instanceof Error ? error.message : String(error);
+    }
+    const unsettledRun = (board: number): string | null => {
+      if (!journal) return `the agent's journal can't be read (${journalProblem}), so it can't be checked for an unfinished vend on board ${board}`;
+      const open = journal.all().find((record) => (record.phase === 'run_pending' || record.phase === 'run_started') && record.board === board);
+      return open
+        ? `the agent has an unfinished vend on board ${board} (motor ${open.motor}, command ${open.commandId}); reading the board now could lose its result. Start the agent so it settles it (sudo systemctl start snack-quest-agent), wait a minute, then stop it again`
+        : null;
+    };
+
+    let transport: SerialTransport;
+    try {
+      ({ transport } = await buildTransport(config, slots));
+    } catch (error) {
+      print(`can't open the serial line: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
+    try {
+      const client = new M109eProtocolClient(transport, frames ? { log: (entry) => print(`  ${entry.direction} ${entry.hex}${entry.note ? ` (${entry.note})` : ''}`) } : {});
+      const lines = await runBench(args, { client, clock: systemClock, unsettledRun });
+      lines.forEach((line) => print(line));
+      return lines[0]?.startsWith('refused:') ? 1 : 0;
+    } catch (error) {
+      print(error instanceof Error ? error.message : String(error));
+      return error instanceof BoardUnreachableError ? 1 : 2;
+    } finally {
+      await transport.close().catch(() => undefined);
+    }
+  } finally {
+    await unlock();
   }
 }
 

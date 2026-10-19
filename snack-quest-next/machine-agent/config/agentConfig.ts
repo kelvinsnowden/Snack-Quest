@@ -94,8 +94,13 @@ export function validateConfig(raw: unknown): AgentFileConfig {
   return config as unknown as AgentFileConfig;
 }
 
-/** Reads the config, its secret and the acceptance record; resolves relative paths against the config file. */
-export async function loadConfig(path: string): Promise<LoadedConfig> {
+/**
+ * Reads the config, its secret and the acceptance record; resolves
+ * relative paths against the config file. The bench tool never talks to
+ * Snack Quest, so it reads the config with `requireSecret: false` and
+ * works on a machine that has no API key yet (its `secret` is then empty).
+ */
+export async function loadConfig(path: string, options: { requireSecret?: boolean } = {}): Promise<LoadedConfig> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(path, 'utf8'));
@@ -107,13 +112,14 @@ export async function loadConfig(path: string): Promise<LoadedConfig> {
   config.snackQuest.secretFile = near(config.snackQuest.secretFile);
   config.dataDir = near(config.dataDir);
 
-  let secret: string;
+  const requireSecret = options.requireSecret ?? true;
+  let secret = '';
   try {
     secret = (await readFile(config.snackQuest.secretFile, 'utf8')).trim();
   } catch {
-    throw new AgentConfigError(`can't read the API secret from ${config.snackQuest.secretFile}`);
+    if (requireSecret) throw new AgentConfigError(`can't read the API secret from ${config.snackQuest.secretFile}`);
   }
-  if (secret.length < 16) throw new AgentConfigError(`${config.snackQuest.secretFile} doesn't hold an API secret`);
+  if (requireSecret && secret.length < 16) throw new AgentConfigError(`${config.snackQuest.secretFile} doesn't hold an API secret`);
 
   let acceptance = blankAcceptanceRecord('M109E');
   if (config.acceptanceRecordFile) {
