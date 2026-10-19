@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { parseCookie } from 'cookie';
 import { partnerAuthService, type PartnerSession } from '@/services/partnerAuthService';
 import { PARTNER_SESSION_COOKIE } from './cookieName';
+import { isChangingRequest } from './verifySession';
 
 /**
  * The Data Access Layer for partner (machine owner) sessions
@@ -45,5 +46,5 @@ export async function verifyPartnerSessionFromRequest(request: Request): Promise
   if (!cookie) {
     return null;
   }
-  return partnerAuthService.verifySessionCookie(cookie);
+  return partnerAuthService.verifySessionCookie(cookie, { fresh: isChangingRequest(request) });
 }

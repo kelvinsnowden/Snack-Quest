@@ -238,22 +238,54 @@ class OwnerPortalService {
   }
 
   async getDashboard(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboard> {
-    const partner = await partnerService.findById(businessId, partnerId);
+    const [partner, machines] = await Promise.all([partnerService.findById(businessId, partnerId), partnerService.listMachines(businessId, partnerId)]);
     if (!partner) {
       throw new PartnerDoesNotOwnMachineError(partnerId, '(no machine)');
     }
-    const machines = await partnerService.listMachines(businessId, partnerId);
-    const [locations, subscriptions, summary] = await Promise.all([
-      locationService.listByBusiness(businessId),
-      machineSubscriptionService.listByPartner(businessId, partnerId),
+    // `availableCashKes`/`lifetimeEarnedKes` are already the running
+    // totals § OWNER WALLET requires ("never present gross central
+    // Snack Quest cash as owner balance") — `pendingKes`/`withdrawnKes`
+    // are the one thing not already cached anywhere, so they're summed
+    // from the partner's own withdrawal history.
+    const [cards, summary, { pendingKes, withdrawnKes }] = await Promise.all([
+      this.buildMachineCards(businessId, partnerId, machines),
       this.getDashboardSummary(businessId, partnerId, windowDays),
+      sumWithdrawals(businessId, partnerId),
     ]);
+
+    return {
+      partner: { id: partnerId, name: partner.name, contactEmail: partner.contactEmail },
+      wallet: { earnedKes: partner.lifetimeEarnedKes, availableKes: partner.availableCashKes, pendingKes, withdrawnKes },
+      machines: cards,
+      summary,
+    };
+  }
+
+  /**
+   * Just the machine cards, for the pages that list machines (machines,
+   * inventory, cameras, locations): the same cards the overview shows,
+   * without its money totals and withdrawal history.
+   */
+  async getMachineCards(businessId: string, partnerId: string): Promise<OwnerMachineCard[]> {
+    const [partner, machines] = await Promise.all([partnerService.findById(businessId, partnerId), partnerService.listMachines(businessId, partnerId)]);
+    if (!partner) {
+      throw new PartnerDoesNotOwnMachineError(partnerId, '(no machine)');
+    }
+    return this.buildMachineCards(businessId, partnerId, machines);
+  }
+
+  /** One card per machine this owner holds (`machines` came from `partnerService.listMachines`). */
+  private async buildMachineCards(businessId: string, partnerId: string, machines: { id: string; data: Machine }[]): Promise<OwnerMachineCard[]> {
+    const [locations, subscriptions] = await Promise.all([locationService.listByBusiness(businessId), machineSubscriptionService.listByPartner(businessId, partnerId)]);
     const locationById = new Map<string, Location>(locations.map(({ id, data }) => [id, data]));
     const subscriptionByMachine = new Map<string, MachineSubscription>(subscriptions.map(({ data }) => [data.machineId, data]));
-
-    const cards: OwnerMachineCard[] = await Promise.all(
+    return Promise.all(
       machines.map(async ({ id: machineId, data: machine }) => {
-        const [summary, liveness] = await Promise.all([ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, 30), this.livenessOf(businessId, machineId, machine)]);
+        // Cards show sales and stock, not recommendations, so those aren't read.
+        const [[summary], liveness] = await Promise.all([
+          ownerIntelligenceService.summarizeOwnedMachine(businessId, { id: machineId, data: machine }, [30], { recommendations: false }),
+          this.livenessOf(businessId, machineId, machine),
+        ]);
         return {
           machineId,
           machineCode: machine.machineCode,
@@ -268,20 +300,6 @@ class OwnerPortalService {
         };
       }),
     );
-
-    // `availableCashKes`/`lifetimeEarnedKes` are already the running
-    // totals § OWNER WALLET requires ("never present gross central
-    // Snack Quest cash as owner balance") — `pendingKes`/`withdrawnKes`
-    // are the one thing not already cached anywhere, so they're summed
-    // from the partner's own withdrawal history.
-    const { pendingKes, withdrawnKes } = await sumWithdrawals(businessId, partnerId);
-
-    return {
-      partner: { id: partnerId, name: partner.name, contactEmail: partner.contactEmail },
-      wallet: { earnedKes: partner.lifetimeEarnedKes, availableKes: partner.availableCashKes, pendingKes, withdrawnKes },
-      machines: cards,
-      summary,
-    };
   }
 
   async getMachineDetail(businessId: string, partnerId: string, machineId: string): Promise<OwnerMachineDetail> {
@@ -289,7 +307,7 @@ class OwnerPortalService {
     const since = ownerSince(machine);
 
     const [performanceEntries, lastSalePage, restockRows, settlementRows, location, liveness] = await Promise.all([
-      Promise.all(OWNER_PERFORMANCE_WINDOWS_DAYS.map((days) => ownerIntelligenceService.getMachineOwnerSummary(businessId, partnerId, machineId, days))),
+      ownerIntelligenceService.summarizeOwnedMachine(businessId, { id: machineId, data: machine }, [...OWNER_PERFORMANCE_WINDOWS_DAYS]),
       // A few, not one: a staff test vend is dispensed too, and isn't a sale.
       machineTransactionRepository.listByBusiness(businessId, { machineId, status: 'dispensed', limit: 5 }),
       restockTaskRepository.listByMachine(businessId, machineId, 1),
@@ -379,8 +397,8 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const byDate = new Map<string, { revenueKes: number; unitsSold: number }>();
-    for (const { id, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
+    const perMachine = await Promise.all(machines.map(({ id, since }) => machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate)));
+    for (const rollups of perMachine) {
       for (const [date, rollup] of rollups) {
         const existing = byDate.get(date) ?? { revenueKes: 0, unitsSold: 0 };
         existing.revenueKes += rollup.grossSalesKes;
@@ -407,8 +425,8 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const totals = new Map<string, { unitsSold: number; revenueKes: number }>();
-    for (const { id, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate);
+    const perMachine = await Promise.all(machines.map(({ id, since }) => machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate)));
+    for (const rollups of perMachine) {
       for (const rollup of rollups.values()) {
         for (const [productId, product] of Object.entries(rollup.byProduct)) {
           const existing = totals.get(productId) ?? { unitsSold: 0, revenueKes: 0 };
@@ -753,8 +771,8 @@ class OwnerPortalService {
     let revenueKes = 0;
     let unitsSold = 0;
     let grossProfitKes = 0;
-    for (const { id: machineId, since } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate);
+    const perMachine = await Promise.all(machines.map(({ id: machineId, since }) => machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate)));
+    for (const rollups of perMachine) {
       for (const rollup of rollups.values()) {
         revenueKes += rollup.grossSalesKes;
         unitsSold += rollup.unitsSold;

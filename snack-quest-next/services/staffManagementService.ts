@@ -428,6 +428,8 @@ class StaffManagementService {
       await this.assertNotLastSuperAdmin(businessId, uid);
     }
     await adminAuth.updateUser(uid, { disabled });
+    // Their open sessions end on their next request, not when Firebase Auth is next asked.
+    if (disabled) await userRepository.revokeSessions(uid, actor.uid);
   }
 
   async removeStaff(businessId: string, uid: string, actor: StaffActor): Promise<void> {

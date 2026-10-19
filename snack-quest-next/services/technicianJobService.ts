@@ -90,16 +90,24 @@ class TechnicianJobService {
 
   /** Every job given to this person that is still to do, oldest first. Jobs whose task finished some other way drop off. */
   async listMine(businessId: string, uid: string): Promise<(TechnicianJob & { id: string })[]> {
-    const snapshot = await adminFirestore.collection(COLLECTION).where('assigneeUid', '==', uid).get();
-    const jobs = snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as TechnicianJob) })).filter((job) => job.businessId === businessId && job.status === 'assigned');
+    // Only the open ones: a technician's finished jobs pile up, and this page never shows them.
+    const snapshot = await adminFirestore.collection(COLLECTION).where('assigneeUid', '==', uid).where('status', '==', 'assigned').get();
+    const jobs = snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as TechnicianJob) })).filter((job) => job.businessId === businessId);
     const stillOpen = await Promise.all(jobs.map(async (job) => (await this.task(businessId, job.kind, job.refId).catch(() => null))?.open ?? false));
     return jobs.filter((_, index) => stillOpen[index]).sort((a, b) => (a.assignedAt?.toMillis() ?? 0) - (b.assignedAt?.toMillis() ?? 0));
   }
 
-  /** Jobs for many tasks at once, for the assignment page. */
-  async listForBusiness(businessId: string): Promise<(TechnicianJob & { id: string })[]> {
-    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as TechnicianJob) }));
+  /**
+   * The jobs for these tasks (one read each, by id), for the assignment
+   * page — it only ever shows open tasks, so it never needs the whole
+   * history of finished jobs.
+   */
+  async findForTasks(businessId: string, tasks: { kind: TechnicianJobKind; refId: string }[]): Promise<(TechnicianJob & { id: string })[]> {
+    if (tasks.length === 0) return [];
+    const snapshots = await adminFirestore.getAll(...tasks.map(({ kind, refId }) => adminFirestore.collection(COLLECTION).doc(jobId(kind, refId))));
+    return snapshots
+      .filter((doc) => doc.exists && (doc.data() as TechnicianJob).businessId === businessId)
+      .map((doc) => ({ id: doc.id, ...(doc.data() as TechnicianJob) }));
   }
 
   /** Ticks or unticks one checklist item. Only the person it's assigned to, unless `canManage`. */

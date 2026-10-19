@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: 'Inventory' };
  */
 export default async function PartnerInventoryPage() {
   const session = await requirePartnerSession();
-  const dashboard = await ownerPortalService.getDashboard(session.businessId, session.partnerId);
+  const machines = await ownerPortalService.getMachineCards(session.businessId, session.partnerId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -27,11 +27,11 @@ export default async function PartnerInventoryPage() {
         <p className="text-sm text-muted-foreground">Stock health across every machine in your fleet.</p>
       </div>
 
-      {dashboard.machines.length === 0 ? (
+      {machines.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No machines yet.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          {dashboard.machines.map((machine) => {
+          {machines.map((machine) => {
             const percent = machine.stockHealth.assortmentCount > 0 ? (machine.stockHealth.sellableCount / machine.stockHealth.assortmentCount) * 100 : 100;
             return (
               <Link key={machine.machineId} href={`/partner/machines/${machine.machineId}`} className="block">

@@ -69,8 +69,18 @@ class LocationIntelligenceService {
     const peakDays = new Array(7).fill(0) as number[];
     let assortmentDepth = 0;
 
-    for (const { id: machineId } of machines) {
-      const rollups = await machineDailySummaryRepository.listRange(businessId, machineId, startDate, endDate);
+    // Every machine's reads at once, then summed in the same order as before (they used to run machine by machine).
+    const perMachine = await Promise.all(
+      machines.map(async ({ id: machineId }) => {
+        const [rollups, time, layers] = await Promise.all([
+          machineDailySummaryRepository.listRange(businessId, machineId, startDate, endDate),
+          productIntelligenceService.getTimeIntelligence(businessId, machineId, windowDays),
+          machineAssortmentIntelligenceService.classifyMachineCatalogLayers(businessId, machineId),
+        ]);
+        return { rollups, time, layers };
+      }),
+    );
+    for (const { rollups, time, layers } of perMachine) {
       daysObserved = Math.max(daysObserved, rollups.size);
 
       for (const rollup of rollups.values()) {
@@ -89,11 +99,8 @@ class LocationIntelligenceService {
         }
       }
 
-      const time = await productIntelligenceService.getTimeIntelligence(businessId, machineId, windowDays);
       for (let h = 0; h < 24; h += 1) peakHours[h] += time.byHour[h];
       for (let d = 0; d < 7; d += 1) peakDays[d] += time.byWeekday[d];
-
-      const layers = await machineAssortmentIntelligenceService.classifyMachineCatalogLayers(businessId, machineId);
       assortmentDepth += layers.assortmentCount;
     }
 
@@ -135,11 +142,10 @@ class LocationIntelligenceService {
     const machines = await machineRepository.listByLocation(businessId, locationId);
     const byCategory: Record<string, number[]> = {};
 
-    for (const { id: machineId } of machines) {
-      const [slots, assortmentRows] = await Promise.all([
-        machineSlotRepository.listByMachine(businessId, machineId),
-        machineAssortmentRepository.listByMachine(businessId, machineId),
-      ]);
+    const perMachine = await Promise.all(
+      machines.map(({ id: machineId }) => Promise.all([machineSlotRepository.listByMachine(businessId, machineId), machineAssortmentRepository.listByMachine(businessId, machineId)])),
+    );
+    for (const [slots, assortmentRows] of perMachine) {
       const categoryBySlotCode = new Map(assortmentRows.filter((row) => row.slotCode).map((row) => [row.slotCode as string, row.category]));
 
       for (const slot of slots) {

@@ -2,7 +2,9 @@ import 'server-only';
 
 import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
+import * as firestoreModule from 'firebase-admin/firestore';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { installFirestoreTrace } from '@/lib/observability/firestoreTrace';
 
 /**
  * Admin SDK initialization (TDD §17 / §6). Server-only by construction —
@@ -89,6 +91,8 @@ function getAdminApp(): App {
 
 export const adminAuth: Auth = lazy(() => getAuth(getAdminApp()));
 export const adminFirestore: Firestore = lazy(() => {
+  // Slow-read logging and measurement runs (lib/observability/firestoreTrace.ts). Once per process.
+  installFirestoreTrace(firestoreModule as unknown as Record<string, unknown>);
   const firestore = getFirestore(getAdminApp());
   /*
    * `undefined` means "absent", the same as it does in TypeScript.

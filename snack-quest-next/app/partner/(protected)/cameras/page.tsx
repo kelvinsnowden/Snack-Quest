@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: 'Cameras' };
  */
 export default async function PartnerCamerasPage() {
   const session = await requirePartnerSession();
-  const dashboard = await ownerPortalService.getDashboard(session.businessId, session.partnerId);
+  const machines = await ownerPortalService.getMachineCards(session.businessId, session.partnerId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -25,11 +25,11 @@ export default async function PartnerCamerasPage() {
         <p className="text-sm text-muted-foreground">Open a machine&apos;s camera for its live feed and recent snapshots.</p>
       </div>
 
-      {dashboard.machines.length === 0 ? (
+      {machines.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No machines yet.</p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {dashboard.machines.map((machine) => (
+          {machines.map((machine) => (
             <Link key={machine.machineId} href={`/partner/machines/${machine.machineId}/camera`} className="block">
               <Card className="transition-colors hover:bg-border/10">
                 <CardContent className="flex items-center gap-3 p-4">

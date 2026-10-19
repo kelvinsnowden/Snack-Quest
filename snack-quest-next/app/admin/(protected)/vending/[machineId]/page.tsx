@@ -127,7 +127,8 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
     notFound();
   }
 
-  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion, catalogLayers, assortmentPerformance, cameras] =
+  // Everything below depends only on the machine, so it loads in one round, not one wave after another.
+  const [slots, transactionPage, telemetryEvents, diagnostics, commandHistory, assortment, reserveStatus, activeSubscription, settlements, restockTasks, catalogVersion, catalogLayers, assortmentPerformance, cameras, [integrationView, registryManufacturers, registryModels, machineEvents, dispenseCommands, mappingHistory, integrationRecord, latestManifestRelease]] =
     await Promise.all([
       machineSlotService.listByMachine(session.businessId, machineId),
       machineTransactionRepository.listByBusiness(session.businessId, { machineId, limit: 20 }),
@@ -143,25 +144,26 @@ export default async function AdminMachineDetailPage({ params }: { params: Promi
       machineAssortmentIntelligenceService.classifyMachineCatalogLayers(session.businessId, machineId),
       machineAssortmentIntelligenceService.getAssortmentPerformance(session.businessId, machineId, 30),
       cameraService.listByMachine(session.businessId, machineId),
+      Promise.all([
+        machineIntegrationService.getView(session.businessId, machineId),
+        manufacturerRegistryService.listManufacturers(session.businessId),
+        manufacturerRegistryService.listModels(session.businessId),
+        machineEventService.listForMachine(session.businessId, machineId, 15),
+        dispenseCommandService.listForMachine(session.businessId, machineId, 10),
+        slotMappingHistoryRepository.listForMachine(session.businessId, machineId, 50),
+        machineIntegrationRepository.findByMachineId(session.businessId, machineId),
+        // Only shown for a machine running the agent, but fetched now rather than after the integration read.
+        machineAgentUpdateService.latestRelease().then((manifest) => manifest.release, () => null),
+      ]),
     ]);
-
-  const [integrationView, registryManufacturers, registryModels, machineEvents, dispenseCommands, mappingHistory] = await Promise.all([
-    machineIntegrationService.getView(session.businessId, machineId),
-    manufacturerRegistryService.listManufacturers(session.businessId),
-    manufacturerRegistryService.listModels(session.businessId),
-    machineEventService.listForMachine(session.businessId, machineId, 15),
-    dispenseCommandService.listForMachine(session.businessId, machineId, 10),
-    slotMappingHistoryRepository.listForMachine(session.businessId, machineId, 50),
-  ]);
 
   const cameraRows = await Promise.all(
     cameras.map(async ({ id, data }) => ({ id, camera: serializeCamera(id, data), diagnostics: await cameraService.getDiagnostics(data) })),
   );
 
-  const integrationRecord = await machineIntegrationRepository.findByMachineId(session.businessId, machineId);
   const liveness = machineLiveness(machine, integrationRecord);
   const agentRelease = agentReleaseOf(integrationRecord?.integrationVersion);
-  const latestAgentRelease = agentRelease ? await machineAgentUpdateService.latestRelease().then((manifest) => manifest.release, () => null) : null;
+  const latestAgentRelease = agentRelease ? latestManifestRelease : null;
   const agentHealth = integrationRecord?.agentHealth ?? null;
   const connectivityStatus = connectivityOf(liveness);
   const registryEntry = findProtocolRegistryEntry(machine.manufacturer);

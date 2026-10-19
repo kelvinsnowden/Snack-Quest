@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 export const metadata: Metadata = { title: 'Locations' };
 
 /**
- * § LOCATIONS (fleet-wide). `getDashboard`'s machine cards only carry
+ * § LOCATIONS (fleet-wide). The machine cards (`getMachineCards`) only carry
  * `locationName`, not the full `Location` record — grouping by that
  * name is the honest version of this page for now rather than a
  * literal map, which needs geocoding this portal doesn't have wired up
@@ -17,10 +17,10 @@ export const metadata: Metadata = { title: 'Locations' };
  */
 export default async function PartnerLocationsPage() {
   const session = await requirePartnerSession();
-  const dashboard = await ownerPortalService.getDashboard(session.businessId, session.partnerId);
+  const machines = await ownerPortalService.getMachineCards(session.businessId, session.partnerId);
 
-  const byLocation = new Map<string, typeof dashboard.machines>();
-  for (const machine of dashboard.machines) {
+  const byLocation = new Map<string, typeof machines>();
+  for (const machine of machines) {
     const key = machine.locationName ?? 'Unassigned';
     byLocation.set(key, [...(byLocation.get(key) ?? []), machine]);
   }

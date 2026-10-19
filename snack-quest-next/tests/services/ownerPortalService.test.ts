@@ -90,6 +90,22 @@ describe('OwnerPortalService.getDashboard', () => {
     const dashboard = await ownerPortalService.getDashboard(BUSINESS_ID, partnerA);
     expect(dashboard.machines).toEqual([]);
   });
+
+  it('gives the machine list pages the same cards as the overview, and refuses an unknown owner', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Cards Owner', actor: 'staff-1' });
+    const other = await partnerService.create({ businessId: BUSINESS_ID, name: 'Other Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    for (const [code, owner] of [['SQ-CARD-1', partnerId], ['SQ-CARD-2', partnerId], ['SQ-CARD-3', other]] as const) {
+      const { machineId } = await machineService.provisionDevice({ businessId: BUSINESS_ID, machineCode: `${code}-${Date.now()}`, serialNumber: `SN-${code}`, manufacturer: 'mock', model: 'test', ownerPartnerId: owner, actor: 'staff-1' });
+      adapter.seedSlot(machineId, 'A01', { quantity: 1 });
+      await new MachineSlotService(() => adapter).configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: 'pkg-1', productCatalogue: 'package', priceKes: 300, capacity: 10, position: 1 });
+    }
+
+    const cards = await ownerPortalService.getMachineCards(BUSINESS_ID, partnerId);
+    expect(cards).toHaveLength(2);
+    expect(cards).toEqual((await ownerPortalService.getDashboard(BUSINESS_ID, partnerId)).machines);
+    await expect(ownerPortalService.getMachineCards(BUSINESS_ID, 'no-such-owner')).rejects.toBeInstanceOf(PartnerDoesNotOwnMachineError);
+  });
 });
 
 describe('OwnerPortalService.getMachineDetail', () => {

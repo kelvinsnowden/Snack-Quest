@@ -30,6 +30,7 @@ import { formatDate, formatKes } from '@/lib/orders/format';
 import { computePeriodTrend } from '@/lib/analytics/trend';
 import { cn } from '@/lib/utils';
 import { MachineNetworkPanel } from '@/components/admin/MachineNetworkPanel';
+import { Suspense } from 'react';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -157,7 +158,10 @@ export default async function AdminDashboardPage({
         </h1>
       </div>
 
-      <MachineNetworkPanel session={session} />
+      {/* The panel's numbers come from slower reads; the rest of the page doesn't wait for them. */}
+      <Suspense fallback={null}>
+        <MachineNetworkPanel session={session} />
+      </Suspense>
 
       {/* Two-up on a phone: four KPIs in two rows instead of four. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">

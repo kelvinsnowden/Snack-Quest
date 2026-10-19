@@ -128,4 +128,28 @@ describe('technician jobs', () => {
 
     await expect(technicianJobService.advanceTrip(BUSINESS_ID, tech, 'leave')).rejects.toThrow(TechnicianJobError);
   });
+
+  it('finds the jobs for given tasks by id, and lists only a person\'s open jobs', async () => {
+    const tech = await staff(`finder-${Date.now()}@example.com`, 'warehouse', 'Akinyi Finder');
+    const { machineId, requestId } = await coolingRequest();
+    await technicianJobService.assign(BUSINESS_ID, { kind: 'maintenance', refId: requestId, assigneeUid: tech }, 'manager');
+    const adapter = new MockVendingAdapter();
+    adapter.seedSlot(machineId, 'A01', { quantity: 0 });
+    await new MachineSlotService(() => adapter).configureSlot({ businessId: BUSINESS_ID, machineId, slotCode: 'A01', productId: 'pkg-1', productCatalogue: 'package', priceKes: 300, capacity: 10, position: 1 });
+    const taskId = await restockTaskService.createDraft({ businessId: BUSINESS_ID, machineId, items: [{ slotId: 'A01', productId: 'pkg-1', quantityNeeded: 2 }], actor: 'manager' });
+    await technicianJobService.assign(BUSINESS_ID, { kind: 'restock', refId: taskId, assigneeUid: tech }, 'manager');
+
+    const found = await technicianJobService.findForTasks(BUSINESS_ID, [
+      { kind: 'maintenance', refId: requestId },
+      { kind: 'restock', refId: taskId },
+      { kind: 'restock', refId: 'no-such-task' },
+    ]);
+    expect(found.map((job) => job.id).sort()).toEqual([`maintenance_${requestId}`, `restock_${taskId}`].sort());
+    expect(await technicianJobService.findForTasks('another-business', [{ kind: 'maintenance', refId: requestId }])).toEqual([]);
+    expect(await technicianJobService.findForTasks(BUSINESS_ID, [])).toEqual([]);
+
+    const [maintenanceJob] = found.filter((job) => job.kind === 'maintenance');
+    await technicianJobService.complete(BUSINESS_ID, maintenanceJob.id, { note: 'Checked the fan; all fine now', fixed: true }, tech, false);
+    expect((await technicianJobService.listMine(BUSINESS_ID, tech)).map((job) => job.kind)).toEqual(['restock']);
+  });
 });

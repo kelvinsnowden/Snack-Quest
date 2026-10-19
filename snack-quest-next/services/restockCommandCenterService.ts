@@ -25,9 +25,9 @@ export interface RestockCommandCenterRow extends RestockNeed {
  */
 class RestockCommandCenterService {
   async getAtRiskSlots(businessId: string, windowDays = 14): Promise<RestockCommandCenterRow[]> {
-    const machines = await machineRepository.listAllStatuses(businessId);
-    const activeMachineIds = machines.filter((m) => m.status === 'active').map((m) => m.id);
+    // One read of the fleet gives both the active machines and their names.
     const fullMachines = await machineRepository.listAllForBusiness(businessId);
+    const activeMachineIds = fullMachines.filter(({ data }) => data.status === 'active').map(({ id }) => id);
     const machineById = new Map(fullMachines.map(({ id, data }) => [id, data]));
 
     const perMachine = await Promise.all(

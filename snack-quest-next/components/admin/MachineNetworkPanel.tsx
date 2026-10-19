@@ -1,10 +1,35 @@
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { hasPermission, type PermissionHolder } from '@/lib/auth/permissions';
 import { reconciliationChecksService } from '@/services/reconciliationChecksService';
 import { advertisingService } from '@/services/advertisingService';
 import { kioskExperienceService } from '@/services/kioskExperienceService';
 import { maintenanceService } from '@/services/maintenanceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+/**
+ * The two numbers the panel shows from the record checks. Running the
+ * checks reads thousands of records (a month of sales, settlements,
+ * price history), which the admin home was doing on every visit; this
+ * keeps the answer for five minutes across visits and says when it was
+ * taken. The checks page itself (`/admin/vending/reconciliation/checks`)
+ * still runs them live.
+ */
+const CHECKS_TTL_SECONDS = 300;
+const checkSummary = unstable_cache(
+  async (businessId: string) => {
+    const checks = await reconciliationChecksService.run(businessId);
+    return {
+      failing: checks.filter((check) => check.status !== 'ok').length,
+      silentScreens: checks.find((check) => check.key === 'screens_not_reporting')?.count ?? 0,
+      checkedAt: new Date().toISOString(),
+    };
+  },
+  ['admin-home-record-checks'],
+  { revalidate: CHECKS_TTL_SECONDS },
+);
+
+const checkedTime = new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' });
 
 /**
  * The machine network at a glance on the admin home (§ ADMIN DASHBOARD):
@@ -19,17 +44,17 @@ export async function MachineNetworkPanel({ session }: { session: PermissionHold
   if (!canChecks && !canAds && !canDesigns && !canMaintenance) return null;
 
   const [checks, campaigns, creatives, layers, openMaintenance] = await Promise.all([
-    canChecks ? reconciliationChecksService.run(session.businessId) : Promise.resolve(null),
+    canChecks ? checkSummary(session.businessId) : Promise.resolve(null),
     canAds ? advertisingService.listCampaigns(session.businessId) : Promise.resolve(null),
     canAds ? advertisingService.listCreatives(session.businessId) : Promise.resolve(null),
     canDesigns ? kioskExperienceService.listLayers(session.businessId) : Promise.resolve(null),
     canMaintenance ? maintenanceService.countOpenRequests(session.businessId) : Promise.resolve(null),
   ]);
-  const failing = checks?.filter((check) => check.status !== 'ok') ?? [];
-  const silentScreens = checks?.find((check) => check.key === 'screens_not_reporting')?.count ?? 0;
+  const failing = checks?.failing ?? 0;
+  const silentScreens = checks?.silentScreens ?? 0;
 
   const rows: { label: string; value: string; href: string; attention: boolean }[] = [];
-  if (checks) rows.push({ label: 'Record checks', value: failing.length === 0 ? 'All pass' : `${failing.length} need a look`, href: '/admin/vending/reconciliation/checks', attention: failing.length > 0 });
+  if (checks) rows.push({ label: `Record checks (as of ${checkedTime.format(new Date(checks.checkedAt))})`, value: failing === 0 ? 'All pass' : `${failing} need a look`, href: '/admin/vending/reconciliation/checks', attention: failing > 0 });
   if (checks) rows.push({ label: 'Screens silent over an hour', value: String(silentScreens), href: '/admin/vending/reconciliation/checks', attention: silentScreens > 0 });
   if (openMaintenance !== null) rows.push({ label: 'Maintenance problems waiting', value: String(openMaintenance), href: '/admin/vending/maintenance', attention: openMaintenance > 0 });
   if (campaigns) rows.push({ label: 'Ad campaigns running', value: String(campaigns.filter(({ data }) => data.status === 'active').length), href: '/admin/vending/advertising', attention: false });

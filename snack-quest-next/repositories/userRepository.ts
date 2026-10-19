@@ -70,6 +70,15 @@ class UserRepository {
     });
   }
 
+  /** Refuses every session this person signed in before now (see `User.sessionsRevokedAt`). */
+  async revokeSessions(uid: string, actor: string): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(uid).update({
+      sessionsRevokedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor,
+    });
+  }
+
   /** § Staff Management — soft delete alongside `staffRepository.softDelete`; `establishSession`/`verifySessionCookie` already reject a `deletedAt` user. */
   async softDelete(uid: string, actor: string): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(uid).update({
