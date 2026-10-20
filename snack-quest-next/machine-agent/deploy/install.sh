@@ -16,6 +16,7 @@
 #   /var/lib/snack-quest-agent/                         journal and cooling range
 #   snack-quest-agent.service                           starts at boot, restarts on crash and after updates
 #   snack-quest-kiosk.service (with --kiosk)            the customer screen, full screen
+#   /usr/local/bin/snack-quest-bench                    the technician's bench commands
 set -eu
 
 SITE="https://www.snackquests.shop"
@@ -112,6 +113,16 @@ UNIT
 systemctl daemon-reload
 systemctl enable snack-quest-agent.service >/dev/null
 
+# The technician's bench tool, as the agent's user with this machine's config.
+cat > /usr/local/bin/snack-quest-bench <<SCRIPT
+#!/bin/sh
+# Bench commands for the machine's board (sudo snack-quest-bench help).
+# Stop the agent first: sudo systemctl stop snack-quest-agent
+[ "\$(id -u)" -eq 0 ] || { echo "run it with sudo: sudo snack-quest-bench \$*" >&2; exit 1; }
+exec runuser -u $SERVICE_USER -- /usr/bin/env node $HOME_DIR/current/agent.mjs bench --config $CONFIG_DIR/config.json "\$@"
+SCRIPT
+chmod 0755 /usr/local/bin/snack-quest-bench
+
 if [ -n "$KIOSK_MACHINE" ]; then
   say "Setting up the customer screen for $KIOSK_MACHINE"
   apt-get install -y -q cage chromium >/dev/null 2>&1 || apt-get install -y -q cage chromium-browser
@@ -146,6 +157,7 @@ if grep -q REPLACE_ME "$CONFIG_DIR/config.json" || [ ! -s "$CONFIG_DIR/secret" ]
   echo "  1. Edit $CONFIG_DIR/config.json: keyId, manufacturerMachineId, serial device, slots."
   echo "  2. Paste the API secret into $CONFIG_DIR/secret (one line)."
   echo "  3. Check it:  sudo -u $SERVICE_USER node $HOME_DIR/current/agent.mjs --config $CONFIG_DIR/config.json --check"
+  echo "     Talk to the board (no API key needed):  sudo snack-quest-bench id 1   (all commands: sudo snack-quest-bench help)"
   echo "  4. Start it:  sudo systemctl start snack-quest-agent   (logs: journalctl -u snack-quest-agent -f)"
 else
   systemctl restart snack-quest-agent.service

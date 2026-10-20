@@ -21,11 +21,34 @@ Hardware: a Raspberry Pi 4/5 (or any Debian-based Linux box) running Raspberry P
    sudo systemctl start snack-quest-agent
    journalctl -u snack-quest-agent -f
    ```
-5. Run the acceptance tests with a technician (bench tool, then `docs/hardware/M109E_ACCEPTANCE_RECORD.template.json`), save the record next to the config and set `acceptanceRecordFile`. Only then swap in a live key.
+5. Run the acceptance tests with a technician (bench commands below, then `docs/hardware/M109E_ACCEPTANCE_RECORD.template.json`), save the record next to the config and set `acceptanceRecordFile`. Only then swap in a live key.
 
 The service starts at boot, restarts after a crash, a hang (systemd watchdog) or an update, and stops for good (exit 78) when the config, acceptance record or journal needs a person — check the log. Every start begins with the journal's crash recovery, so a restart never runs a motor twice.
 
 **Updates:** every deploy of the site publishes the agent from this folder at `/machine-agent/` (`scripts/buildMachineAgent.mjs`). When a machine runs an older release, its admin page shows **Update to x.y.z** under *Machine software*. The machine downloads the file from the site, checks its SHA-256 against the one in the signed command, installs it beside the old one and restarts into it. The two previous releases stay in `/opt/snack-quest-agent/releases/`; to roll back by hand, point the `current` link at one and restart the service.
+
+## Bench commands (technician, at the machine)
+
+The installer adds `snack-quest-bench`, which talks to the board over the same serial line using the machine's config. It needs no API key, so it works before the machine is registered.
+
+```sh
+sudo systemctl stop snack-quest-agent      # the bench refuses while the agent is using the board
+sudo snack-quest-bench id 1                # is board 1 there? (C1, C2)
+sudo snack-quest-bench temp 1              # temperature (S8)
+sudo snack-quest-bench inputs 1            # DI1–DI4: open and close the door to find it (S10)
+sudo snack-quest-bench humidity 1          # humidity and temperature (S9)
+sudo snack-quest-bench poll 1              # motor state and last result
+sudo snack-quest-bench run 1 7 --yes       # turn motor 7 once and read the result (M1, M2, M9)
+sudo snack-quest-bench help                # all commands; add --frames to any to print every frame as hex
+sudo systemctl start snack-quest-agent
+```
+
+- `run` turns a motor and needs `--yes`. It never retries: a lost reply says so, and `poll` tells you what happened.
+- Products a bench run drops aren't sales. Count the machine before it goes back on sale.
+- `poll` and `run` are refused on a board with a vend the agent hasn't settled yet (reading the board could lose that vend's result). Start the agent, give it a minute to settle it, then stop it again.
+- The agent and the bench share `board.lock` in the data directory. A lock left by a crash or a power cut is taken over automatically.
+
+Exit codes: 0 done; 1 refused, or the board didn't answer; 2 the command or the config is wrong.
 
 ## Run a fake machine (no hardware)
 
@@ -78,7 +101,8 @@ Run it on any computer with Node 18+: `npm run agent:build`, then `node public/m
 | `update/updater.ts` | Installs `update_agent` releases: same site only, SHA-256 checked, atomic switch, keeps two previous releases |
 | `agent/thermostat.ts`, `agent/coolingStore.ts` | Cooling control (only with host-run cooling proven by S11/S12) and the saved range |
 | `deploy/install.sh` | The Raspberry Pi installer: user, folders, systemd service with watchdog, optional kiosk screen |
-| `bench/bench.ts` | Technician commands: read-only by default; `run` turns one motor once and needs `--yes` |
+| `bench/bench.ts` | Technician commands (`agent.mjs bench …`, installed as `snack-quest-bench`): read-only by default; `run` turns one motor once and needs `--yes` |
+| `agent/boardLock.ts` | One program on the serial line at a time: the agent and the bench take `board.lock` first; a stale lock is taken over |
 | `transport/fakeM109e.ts`, `transport/faultInjection.ts` | A board that follows the document, and a serial line that loses, corrupts or misdirects frames |
 
 ## Safety settings, and what turns them on

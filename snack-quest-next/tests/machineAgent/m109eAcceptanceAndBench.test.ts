@@ -106,6 +106,18 @@ describe('bench tool', () => {
     expect((await run('run 1 7 --yes --timeout-tenths 20'))[0]).toBe('motor run: started');
     expect((await run('run 1 60 --yes').catch((error: Error) => [error.message]))[0]).toMatch(/motor must be/);
   });
+
+  it('does not read the motor result of a board the agent still has an unsettled run on', async () => {
+    const { bus, board } = bench();
+    board.load(7, 1);
+    const client = new M109eProtocolClient(bus);
+    const guarded = (line: string) => runBench(line.split(' '), { client, clock: new FakeClock(), unsettledRun: (b) => (b === 1 ? 'unfinished vend on board 1' : null) });
+    expect(await guarded('poll 1')).toEqual(['refused: unfinished vend on board 1']);
+    expect(await guarded('run 1 7 --yes')).toEqual(['refused: unfinished vend on board 1']);
+    expect(bus.written).toEqual([]);
+    expect(board.rotations).toEqual([]);
+    expect((await guarded('temp 1'))[0]).toMatch(/°C|no temperature probe/);
+  });
 });
 
 describe('machine-agent boundary', () => {

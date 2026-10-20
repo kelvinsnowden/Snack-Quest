@@ -19,8 +19,16 @@ import type { CurtainMode } from '../m109e/commands';
  *   row <board> <row>                row of microswitches (2BH)
  *   run <board> <motor> [--type 3] [--mode 2] [--timeout-tenths 0] --yes
  *                                    turn one motor once, then read the result (05H + 03H)
+ *
+ * Reading a board's motor result can clear it, and the agent settles a
+ * vend that a restart interrupted by reading that result. `unsettledRun`
+ * says whether the agent's journal still waits on one for a board; if it
+ * does, `poll` and `run` are refused there.
  */
-export async function runBench(argv: string[], deps: { client: M109eProtocolClient; clock: Clock }): Promise<string[]> {
+export async function runBench(
+  argv: string[],
+  deps: { client: M109eProtocolClient; clock: Clock; unsettledRun?: (board: number) => string | null },
+): Promise<string[]> {
   const [command, ...rest] = argv;
   const flags = new Map<string, string>();
   const positional: string[] = [];
@@ -38,6 +46,10 @@ export async function runBench(argv: string[], deps: { client: M109eProtocolClie
   };
   const board = () => int(positional[0], 'board', 1, 8);
   const { client } = deps;
+  if (command === 'poll' || command === 'run') {
+    const unsettled = deps.unsettledRun?.(board());
+    if (unsettled) return [`refused: ${unsettled}`];
+  }
 
   switch (command) {
     case 'id':
