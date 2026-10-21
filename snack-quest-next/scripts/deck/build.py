@@ -70,6 +70,8 @@ SHOT_ALT = {
                 'proposing a Snack Quest tasting and review video with their sister.',
         'dm-f': 'An inbound direct message from a verified food-review account '
                 'offering a collaboration at no charge.',
+        'machines': 'Kelvin Kimathi, founder of Snack Quest, standing in front of the '
+                    'partner vending machines Snack Quest stocks and manages.',
     },
     'zh': {
         'interior': 'Snack Quest 门店内景：按国别陈列的零食墙、“自选盲盒”自选墙、盲盒陈列台与休息区。',
@@ -90,6 +92,7 @@ SHOT_ALT = {
         'dm-d': '一位拥有 11.33 万粉丝的创作者主动发来私信，提出可以合作。',
         'dm-e': '一位拥有 17.21 万粉丝的创作者主动发来的长私信，提议和妹妹一起拍摄 Snack Quest 试吃测评视频。',
         'dm-f': '一个已认证的美食测评账号主动发来私信，提出免费合作。',
+        'machines': 'Snack Quest 创始人 Kelvin Kimathi 站在由 Snack Quest 供货并管理的合作售货机前。',
     },
 }
 
