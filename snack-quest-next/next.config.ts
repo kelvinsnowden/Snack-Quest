@@ -153,6 +153,10 @@ const nextConfig: NextConfig = {
       // the link opens in the reader's language with no interaction,
       // and survives being emailed on.
       { source: '/deck/zh', destination: '/deck/zh/index.html' },
+      // The short pitch: eleven slides for a panel, with a PDF beside it
+      // for organisers who want a file. A standalone document, not built
+      // from the long deck's sources.
+      { source: '/deck/pitch', destination: '/deck/pitch/index.html' },
     ];
   },
 };
