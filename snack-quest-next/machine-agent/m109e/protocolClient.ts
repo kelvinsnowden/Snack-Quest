@@ -91,6 +91,16 @@ export class M109eProtocolClient {
     return this.read(board, request.readRowSwitches(board, row), (data) => decode.readRowSwitches(data));
   }
 
+  /** Whether something is in the light curtain's beam right now (`0CH`). */
+  readCurtain(board: number): Promise<{ blocked: boolean }> {
+    return this.read(board, request.curtainState(board), (data) => decode.curtainState(data));
+  }
+
+  /** The curtain's block timer (`0DH`): how long the beam was blocked, in ms per the document (acceptance test S2 settles its width and reset). */
+  readCurtainTimer(board: number): Promise<{ blockedMs: number }> {
+    return this.read(board, request.curtainTimer(board), (data) => decode.curtainTimer(data));
+  }
+
   /** Starts a motor. Sent exactly once. `no_reply` means the motor may or may not have started. */
   motorRun(board: number, params: MotorRunParams): Promise<MotorRunReply | 'no_reply'> {
     const frame = request.motorRun(board, params);

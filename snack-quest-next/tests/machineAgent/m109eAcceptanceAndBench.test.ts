@@ -6,6 +6,7 @@ import { runBench } from '@/machine-agent/bench/bench';
 import { FakeClock } from '@/machine-agent/agent/clock';
 import { FakeM109eBoard, FakeM109eBus } from '@/machine-agent/transport/fakeM109e';
 import { M109eProtocolClient } from '@/machine-agent/m109e/protocolClient';
+import { FaultInjectingTransport } from '@/machine-agent/transport/faultInjection';
 import { CMD } from '@/machine-agent/m109e/commands';
 
 const pass = (record: AcceptanceRecord, ...ids: string[]) => {
@@ -105,6 +106,72 @@ describe('bench tool', () => {
     expect(board.rotations).toEqual([7]);
     expect((await run('run 1 7 --yes --timeout-tenths 20'))[0]).toBe('motor run: started');
     expect((await run('run 1 60 --yes').catch((error: Error) => [error.message]))[0]).toMatch(/motor must be/);
+  });
+
+  it('reads the light curtain, and with --watch says each change as a hand goes in and out (S1, S2)', async () => {
+    const { bus, board, run } = bench();
+    expect(await run('curtain 1')).toEqual(['board 1 curtain: clear, block timer 0 ms']);
+    board.curtainBlocked = true;
+    board.curtainBlockedMs = 120;
+    expect(await run('curtain 1')).toEqual(['board 1 curtain: BLOCKED, block timer 120 ms']);
+
+    board.curtainBlocked = false;
+    board.curtainBlockedMs = 0;
+    const said: string[] = [];
+    // A hand goes into the beam after the first reading, and out after the second.
+    const say = (line: string) => {
+      said.push(line);
+      if (said.length === 1) board.curtainBlocked = true;
+      if (said.length === 2) board.curtainBlocked = false;
+    };
+    const client = new M109eProtocolClient(bus);
+    expect(await runBench(['curtain', '1', '--watch', '5'], { client, clock: new FakeClock(), say })).toEqual(['watched 5 s: 2 changes']);
+    expect(said.map((line) => line.replace(/^\s*[\d.]+ s {2}/, ''))).toEqual(['board 1 curtain: clear, block timer 0 ms', 'board 1 curtain: BLOCKED, block timer 0 ms', 'board 1 curtain: clear, block timer 0 ms']);
+    expect(said[0]).toMatch(/^ {2}0\.0 s {2}/);
+
+    // Without a `say`, the changes come back as lines; the door input works the same way (S10).
+    const inputs = await run('inputs 1 --watch 1');
+    expect(inputs).toEqual([expect.stringMatching(/0\.0 s {2}board 1: DI1=closed/), 'watched 1 s: 0 changes']);
+    expect(bus.written.every((frame) => ([CMD.CURTAIN_STATE, CMD.CURTAIN_TIMER, CMD.READ_INPUTS] as number[]).includes(frame[1]))).toBe(true);
+  });
+
+  it('switches the curtain and the outputs only with --yes, and says what the board confirmed (S1, S11)', async () => {
+    const { bus, board, run } = bench();
+    expect(await run('curtain 1 off')).toEqual(['refused: this switches the light curtain off. Add --yes to confirm.']);
+    expect(await run('output 1 3 on')).toEqual([expect.stringMatching(/^refused: this switches output 3 on, which may drive the compressor/)]);
+    expect(bus.written).toEqual([]);
+
+    board.curtainBlockedMs = 50;
+    expect(await run('curtain 1 on --yes')).toEqual(['board 1 curtain: switched on']);
+    expect(board.curtainPowered).toBe(true);
+    expect(board.curtainBlockedMs).toBe(0);
+    expect(await run('curtain 1 off --yes')).toEqual(['board 1 curtain: switched off', 'switch it back on before the agent starts: sudo snack-quest-bench curtain 1 on --yes']);
+    expect(board.curtainPowered).toBe(false);
+
+    expect(await run('output 1 3 on --yes')).toEqual(['board 1 output 3: on (confirmed by the board)', 'note what it drives, then set it back: sudo snack-quest-bench output 1 3 off --yes']);
+    expect(board.outputs.get(3)).toBe(true);
+    expect((await run('output 1 3 off --yes'))[0]).toBe('board 1 output 3: off (confirmed by the board)');
+    expect(board.outputs.get(3)).toBe(false);
+
+    // Board 2 isn't there: nothing confirms the switch.
+    expect((await run('output 2 3 on --yes'))[0]).toMatch(/^no answer: board 2 did not confirm output 3 on/);
+    expect((await run('curtain 2 on --yes'))[0]).toMatch(/^no answer: board 2 did not answer the curtain on command/);
+
+    await expect(run('output 1 7 on --yes')).rejects.toThrow('output must be a whole number 0–6');
+    await expect(run('curtain 1 dim --yes')).rejects.toThrow('say on or off');
+    expect(board.rotations).toEqual([]);
+    expect(bus.written.every((frame) => frame[1] !== CMD.MOTOR_RUN)).toBe(true);
+  });
+
+  it('a lost motor-run reply is "no answer" and is never sent again', async () => {
+    const { bus, board } = bench();
+    board.load(7, 2);
+    const faults = new FaultInjectingTransport(bus);
+    faults.inject('drop_reply', CMD.MOTOR_RUN);
+    const lines = await runBench(['run', '1', '7', '--yes'], { client: new M109eProtocolClient(faults), clock: new FakeClock() });
+    expect(lines).toEqual(['no answer: the motor run got no reply, so the motor may or may not have turned; do NOT run it again, read it with `poll`']);
+    expect(board.rotations).toEqual([7]);
+    expect(bus.written.filter((frame) => frame[1] === CMD.MOTOR_RUN)).toHaveLength(1);
   });
 
   it('does not read the motor result of a board the agent still has an unsettled run on', async () => {

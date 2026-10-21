@@ -212,8 +212,12 @@ const BENCH_USAGE = [
   '  humidity <board>            humidity and temperature (10H)',
   '  switch <board> <motor>      one lane microswitch (2AH)',
   '  row <board> <row>           a row of microswitches (2BH)',
+  '  curtain <board>             light curtain: blocked or clear, and its block timer (0CH, 0DH)',
+  '  curtain <board> on|off --yes             power the light curtain (0BH)',
+  '  output <board> <index> on|off --yes      switch digital output 0–6 (08H)',
   '  run <board> <motor> --yes   turn one motor once and read the result (05H, 03H)',
   '                              options: --type 3  --mode 2  --timeout-tenths 0',
+  '  --watch <seconds>           with inputs or curtain: print each change as it happens',
   '  --frames                    also print every frame sent and received, as hex',
 ];
 
@@ -286,9 +290,9 @@ export async function bench(argv: string[], print: (line: string) => void = (lin
     }
     try {
       const client = new M109eProtocolClient(transport, frames ? { log: (entry) => print(`  ${entry.direction} ${entry.hex}${entry.note ? ` (${entry.note})` : ''}`) } : {});
-      const lines = await runBench(args, { client, clock: systemClock, unsettledRun });
+      const lines = await runBench(args, { client, clock: systemClock, unsettledRun, say: print });
       lines.forEach((line) => print(line));
-      return lines[0]?.startsWith('refused:') ? 1 : 0;
+      return /^(refused|no answer):/.test(lines[0] ?? '') ? 1 : 0;
     } catch (error) {
       print(error instanceof Error ? error.message : String(error));
       return error instanceof BoardUnreachableError ? 1 : 2;
