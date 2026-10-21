@@ -35,15 +35,19 @@ The installer adds `snack-quest-bench`, which talks to the board over the same s
 sudo systemctl stop snack-quest-agent      # the bench refuses while the agent is using the board
 sudo snack-quest-bench id 1                # is board 1 there? (C1, C2)
 sudo snack-quest-bench temp 1              # temperature (S8)
-sudo snack-quest-bench inputs 1            # DI1–DI4: open and close the door to find it (S10)
+sudo snack-quest-bench inputs 1 --watch 30 # DI1–DI4 for 30 s: open and close the door to find it (S10)
 sudo snack-quest-bench humidity 1          # humidity and temperature (S9)
+sudo snack-quest-bench curtain 1 on --yes  # power the light curtain (S1)
+sudo snack-quest-bench curtain 1 --watch 30   # blocked/clear and the block timer, each change as it happens (S1, S2)
+sudo snack-quest-bench output 1 3 on --yes # switch output 3, see what it drives, then switch it off again (S11)
 sudo snack-quest-bench poll 1              # motor state and last result
 sudo snack-quest-bench run 1 7 --yes       # turn motor 7 once and read the result (M1, M2, M9)
 sudo snack-quest-bench help                # all commands; add --frames to any to print every frame as hex
 sudo systemctl start snack-quest-agent
 ```
 
-- `run` turns a motor and needs `--yes`. It never retries: a lost reply says so, and `poll` tells you what happened.
+- `run`, `curtain … on|off` and `output` change the machine and need `--yes`. They are sent once and never retried: if the board doesn't answer, the bench says so (exit 1), and the switch may or may not have happened.
+- Leave the curtain on and the outputs as you found them before starting the agent. The agent doesn't power the curtain itself, and it switches an output only when cooling control is turned on by the acceptance record.
 - Products a bench run drops aren't sales. Count the machine before it goes back on sale.
 - `poll` and `run` are refused on a board with a vend the agent hasn't settled yet (reading the board could lose that vend's result). Start the agent, give it a minute to settle it, then stop it again.
 - The agent and the bench share `board.lock` in the data directory. A lock left by a crash or a power cut is taken over automatically.

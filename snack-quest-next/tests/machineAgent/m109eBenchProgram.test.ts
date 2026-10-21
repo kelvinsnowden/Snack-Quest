@@ -85,6 +85,25 @@ describe('bench commands on the installed agent', () => {
     expect(ran.lines.some((line) => line.startsWith('  rx '))).toBe(true);
   });
 
+  it('reads and switches the light curtain and the outputs, printing --watch changes as they happen', async () => {
+    const { bench } = await machine();
+    expect(await bench('curtain 1')).toEqual({ code: 0, lines: ['board 1 curtain: clear, block timer 0 ms'] });
+    expect(await bench('curtain 1 on')).toEqual({ code: 1, lines: ['refused: this switches the light curtain on. Add --yes to confirm.'] });
+    expect(await bench('curtain 1 on --yes')).toEqual({ code: 0, lines: ['board 1 curtain: switched on'] });
+    expect((await bench('output 1 2 on --yes')).lines[0]).toBe('board 1 output 2: on (confirmed by the board)');
+    // Board 2 isn't on this machine: the board didn't answer, exit 1.
+    expect((await bench('output 2 2 on --yes')).code).toBe(1);
+    expect((await bench('output 1 2 sideways --yes')).code).toBe(2);
+
+    const printed: { at: number; line: string }[] = [];
+    const started = Date.now();
+    const code = await run(['bench', 'curtain', '1', '--watch', '1', '--config', (await machine()).path], { print: (line) => void printed.push({ at: Date.now() - started, line }) });
+    expect(code).toBe(0);
+    expect(printed.map((entry) => entry.line)).toEqual([expect.stringMatching(/0\.0 s {2}board 1 curtain: clear/), 'watched 1 s: 0 changes']);
+    // The first reading was printed straight away, not held until the watch ended.
+    expect(printed[0].at).toBeLessThan(printed[1].at - 500);
+  });
+
   it('says what is wrong with a command or the config', async () => {
     const { bench, dir } = await machine();
     expect(await bench('temp 9')).toEqual({ code: 2, lines: ['board must be a whole number 1–8'] });

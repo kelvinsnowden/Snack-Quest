@@ -67,6 +67,10 @@ export class FakeM109eBoard {
   private finishedAt = 0;
   curtainPowered = false;
   curtainWorks = true;
+  /** Something is in the beam right now (`0CH`). */
+  curtainBlocked = false;
+  /** What `0DH` reports: how long the beam was last blocked, in ms; reset when the curtain is powered on or off. */
+  curtainBlockedMs = 0;
   /** Tenths of a degree; `null` = no sensor (reads −50.0). */
   temperatureTenths: number | null = 45;
   humidity = { pct: 55, celsius: 22, fresh: true };
@@ -142,11 +146,12 @@ export class FakeM109eBoard {
         return reply(this.inputs.map((on) => (on ? 1 : 0)));
       case CMD.CURTAIN_POWER:
         this.curtainPowered = y[0] === 1;
+        this.curtainBlockedMs = 0;
         return reply([y[0]]);
       case CMD.CURTAIN_STATE:
-        return reply([0]);
+        return reply([this.curtainBlocked ? 1 : 0]);
       case CMD.CURTAIN_TIMER:
-        return reply([0]);
+        return reply([Math.min(255, this.curtainBlockedMs)]);
       case CMD.READ_HUMIDITY:
         return reply([this.humidity.pct, this.humidity.celsius, this.humidity.fresh ? 1 : 0]);
       case CMD.READ_SWITCH:
