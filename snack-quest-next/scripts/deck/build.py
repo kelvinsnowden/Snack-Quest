@@ -70,6 +70,8 @@ SHOT_ALT = {
                 'proposing a Snack Quest tasting and review video with their sister.',
         'dm-f': 'An inbound direct message from a verified food-review account '
                 'offering a collaboration at no charge.',
+        'machines': 'Kelvin Kimathi, founder of Snack Quest, standing in front of the '
+                    'partner vending machines Snack Quest stocks and manages.',
     },
     'zh': {
         'interior': 'Snack Quest 门店内景：按国别陈列的零食墙、“自选盲盒”自选墙、盲盒陈列台与休息区。',
@@ -90,6 +92,7 @@ SHOT_ALT = {
         'dm-d': '一位拥有 11.33 万粉丝的创作者主动发来私信，提出可以合作。',
         'dm-e': '一位拥有 17.21 万粉丝的创作者主动发来的长私信，提议和妹妹一起拍摄 Snack Quest 试吃测评视频。',
         'dm-f': '一个已认证的美食测评账号主动发来私信，提出免费合作。',
+        'machines': 'Snack Quest 创始人 Kelvin Kimathi 站在由 Snack Quest 供货并管理的合作售货机前。',
     },
 }
 
@@ -98,9 +101,9 @@ LANGS = {
         'html_lang': 'en',
         'title': 'Snack Quest Investor Deck',
         'desc': 'Snack Quest is building the discovery and distribution layer international '
-                'consumer brands use to reach African consumers. Raising KSh 8,000,000 to '
+                'consumer brands use to reach African consumers. Raising KSh 10,000,000 to '
                 'prove the network.',
-        'social': 'The machine is the node. The network is the asset. Raising KSh 8,000,000 '
+        'social': 'The machine is the node. The network is the asset. Raising KSh 10,000,000 '
                   'to prove a distributed retail network, starting with snacks.',
         'canonical': f'{SITE}/deck',
         'other_href': '/deck/zh',
@@ -113,8 +116,8 @@ LANGS = {
         'html_lang': 'zh-Hans',
         'title': 'Snack Quest 投资人介绍',
         'desc': 'Snack Quest 正在搭建国际消费品牌触达非洲消费者所需的发现与分销层。'
-                '我们正在募集 KSh 800 万，用以验证这张网络。',
-        'social': '机器是节点，网络才是资产。募集 KSh 800 万，从零食开始，验证一张分布式零售网络。',
+                '我们正在募集 KSh 1,000 万，用以验证这张网络。',
+        'social': '机器是节点，网络才是资产。募集 KSh 1,000 万，从零食开始，验证一张分布式零售网络。',
         'canonical': f'{SITE}/deck/zh',
         'other_href': '/deck',
         'other_label': 'EN',
