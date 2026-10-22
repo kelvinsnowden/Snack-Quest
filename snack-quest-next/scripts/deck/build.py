@@ -1,11 +1,16 @@
 """Build every copy of the investor deck from one set of sources.
 
+This is the full-detail deck: the working behind the 11-slide pitch that
+people are actually sent (`public/deck/index.html` and `public/deck/zh/
+index.html`, hand-written, styled by `public/deck/pitch.css`). It is for the
+investor who asks for more after the meeting.
+
 Three things are produced:
 
-  * `public/deck/index.html`     — English, served at /deck
-  * `public/deck/zh/index.html`  — Simplified Chinese, served at /deck/zh
-  * `snack-quest-deck.html`      — English, single-file, for publishing
-                                   outside our own domain
+  * `public/deck/full/index.html`     — English, served at /deck/full
+  * `public/deck/full/zh/index.html`  — Simplified Chinese, at /deck/full/zh
+  * `snack-quest-deck.html`           — English, single-file, for publishing
+                                        outside our own domain
 
 The two languages are separate documents rather than one page that
 switches, because this is a document people email to each other. A URL
@@ -99,14 +104,16 @@ SHOT_ALT = {
 LANGS = {
     'en': {
         'html_lang': 'en',
-        'title': 'Snack Quest Investor Deck',
+        'title': 'Snack Quest Investor Deck: Full Detail',
         'desc': 'Snack Quest is building the discovery and distribution layer international '
                 'consumer brands use to reach African consumers. Raising KSh 10,000,000 to '
                 'prove the network.',
         'social': 'The machine is the node. The network is the asset. Raising KSh 10,000,000 '
                   'to prove a distributed retail network, starting with snacks.',
-        'canonical': f'{SITE}/deck',
-        'other_href': '/deck/zh',
+        'canonical': f'{SITE}/deck/full',
+        'other_href': '/deck/full/zh',
+        'pitch_href': '/deck',
+        'pitch_label': '11-slide pitch',
         'other_label': '中文',
         'other_title': 'Switch to Simplified Chinese',
         'fonts': 'family=Bagel+Fat+One&family=Geist:wght@400;500;600;700;800'
@@ -114,12 +121,14 @@ LANGS = {
     },
     'zh': {
         'html_lang': 'zh-Hans',
-        'title': 'Snack Quest 投资人介绍',
+        'title': 'Snack Quest 投资人介绍：完整版',
         'desc': 'Snack Quest 正在搭建国际消费品牌触达非洲消费者所需的发现与分销层。'
                 '我们正在募集 KSh 1,000 万，用以验证这张网络。',
         'social': '机器是节点，网络才是资产。募集 KSh 1,000 万，从零食开始，验证一张分布式零售网络。',
-        'canonical': f'{SITE}/deck/zh',
-        'other_href': '/deck',
+        'canonical': f'{SITE}/deck/full/zh',
+        'other_href': '/deck/full',
+        'pitch_href': '/deck/zh',
+        'pitch_label': '11 页精简版',
         'other_label': 'EN',
         'other_title': '切换到英文',
         # Noto Sans SC carries the Chinese; Geist has no CJK glyphs at all,
@@ -172,6 +181,7 @@ def langbar(lang: str) -> str:
     meta = LANGS[lang]
     return (
         f'\n  <nav class="langbar" aria-label="Language">'
+        f'<a href="{meta["pitch_href"]}">{meta["pitch_label"]}</a>'
         f'<a href="{meta["other_href"]}" hreflang="{"zh-Hans" if lang == "en" else "en"}" '
         f'title="{meta["other_title"]}">{meta["other_label"]}</a></nav>\n'
     )
@@ -189,8 +199,8 @@ def compose(lang: str, body: str, style: str, inline: bool) -> tuple[str, list[s
     body, missing = put_shots(body, lang, inline)
     body = body.replace('<div class="deck">', '<div class="deck">' + langbar(lang), 1)
 
-    # Relative asset paths only resolve from /deck; the Chinese page is a
-    # directory deeper, and its own links are absolute for the same reason.
+    # Asset paths and links are absolute (/deck/...): these pages live in
+    # /deck/full and /deck/full/zh, below the folder the assets sit in.
     other = LANGS['zh' if lang == 'en' else 'en']
     head = f'''<!doctype html>
 <html lang="{meta['html_lang']}">
@@ -322,8 +332,8 @@ def main() -> int:
     check_parity(en_body, zh_body)
 
     outputs = {
-        'en': (PUBLIC / 'index.html', en_body),
-        'zh': (PUBLIC / 'zh' / 'index.html', zh_body),
+        'en': (PUBLIC / 'full' / 'index.html', en_body),
+        'zh': (PUBLIC / 'full' / 'zh' / 'index.html', zh_body),
     }
     single_path = HERE / 'snack-quest-deck.html'
 

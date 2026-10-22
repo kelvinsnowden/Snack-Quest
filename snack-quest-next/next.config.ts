@@ -131,9 +131,11 @@ const nextConfig: NextConfig = {
     ];
   },
   /*
-   * `snackquests.shop/deck` → `public/deck/index.html`.
+   * `snackquests.shop/deck` → `public/deck/index.html`: the 11-slide
+   * pitch people are sent. The full detail behind it, built by
+   * `scripts/deck/build.py`, is at `/deck/full`.
    *
-   * The deck is a self-contained static document with its own design
+   * Each deck is a self-contained static document with its own design
    * system, so it is a file in `public/` rather than a route: a page
    * under `app/` would inherit the root layout's `globals.css`, whose
    * `:root` tokens collide with the deck's own, plus the site fonts,
@@ -153,10 +155,10 @@ const nextConfig: NextConfig = {
       // the link opens in the reader's language with no interaction,
       // and survives being emailed on.
       { source: '/deck/zh', destination: '/deck/zh/index.html' },
-      // The short pitch: eleven slides for a panel, with a PDF beside it
-      // for organisers who want a file. A standalone document, not built
-      // from the long deck's sources.
-      { source: '/deck/pitch', destination: '/deck/pitch/index.html' },
+      // The full detail, for the investor who asks for more after the
+      // meeting; each pitch links to it from its top bar.
+      { source: '/deck/full', destination: '/deck/full/index.html' },
+      { source: '/deck/full/zh', destination: '/deck/full/zh/index.html' },
     ];
   },
 };
