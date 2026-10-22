@@ -150,15 +150,20 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: '/deck', destination: '/deck/index.html' },
-      // The Simplified Chinese edition. Its own URL rather than a
-      // toggle on /deck, because this is a document people forward:
-      // the link opens in the reader's language with no interaction,
-      // and survives being emailed on.
-      { source: '/deck/zh', destination: '/deck/zh/index.html' },
       // The full detail, for the investor who asks for more after the
-      // meeting; each pitch links to it from its top bar.
+      // meeting; the pitch links to it from its top bar.
       { source: '/deck/full', destination: '/deck/full/index.html' },
-      { source: '/deck/full/zh', destination: '/deck/full/zh/index.html' },
+    ];
+  },
+  /*
+   * The Chinese editions are retired. Their links were sent to people, so
+   * they land on the English deck rather than a 404. Temporary (307), so
+   * the paths stay free if a Chinese edition comes back.
+   */
+  async redirects() {
+    return [
+      { source: '/deck/zh', destination: '/deck', permanent: false },
+      { source: '/deck/full/zh', destination: '/deck/full', permanent: false },
     ];
   },
 };
