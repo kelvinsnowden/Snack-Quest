@@ -1,6 +1,6 @@
 """Build the full-detail investor deck from its source.
 
-This is the working behind the 11-slide pitch that people are actually
+This is the working behind the short pitch that people are actually
 sent (`public/deck/index.html`, hand-written, styled by
 `public/deck/pitch.css`). It is for the investor who asks for more after
 the meeting.
@@ -112,8 +112,8 @@ def split_source() -> tuple[str, str]:
 
 
 def deckbar() -> str:
-    """The way back to the 11-slide pitch, which is what most readers want."""
-    return '\n  <nav class="deckbar" aria-label="Deck links"><a href="/deck">11-slide pitch</a></nav>\n'
+    """The way back to the short pitch, which is what most readers want."""
+    return '\n  <nav class="deckbar" aria-label="Deck links"><a href="/deck">Short pitch</a></nav>\n'
 
 
 def compose(body: str, style: str, inline: bool) -> tuple[str, list[str]]:

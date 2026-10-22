@@ -131,7 +131,7 @@ const nextConfig: NextConfig = {
     ];
   },
   /*
-   * `snackquests.shop/deck` → `public/deck/index.html`: the 11-slide
+   * `snackquests.shop/deck` → `public/deck/index.html`: the short
    * pitch people are sent. The full detail behind it, built by
    * `scripts/deck/build.py`, is at `/deck/full`.
    *

@@ -1,5 +1,5 @@
 /*
-  The 11-slide investor pitch at /deck. Same palette and faces as the full
+  The short investor pitch at /deck. Same palette and faces as the full
   deck at /deck/full. Light only: it is projected and printed.
 */
 :root {
@@ -350,6 +350,9 @@ table.cmp td { padding: 0.85cqw 1cqw 0.85cqw 0; border-bottom: 1px solid var(--e
 table.cmp td:first-child { font-weight: 700; color: var(--ink); width: 24%; }
 table.cmp tr.us td { color: var(--ink); border-bottom: none; }
 table.cmp tr.us td:first-child { color: var(--quest); }
+table.cmp.lg { font-size: 1.6cqw; }
+table.cmp.lg th { font-size: 1cqw; padding-bottom: 1.2cqw; }
+table.cmp.lg td { padding: 1.6cqw 1.6cqw 1.6cqw 0; }
 
 /* ---------- 9 · team ---------- */
 .team { display: grid; grid-template-columns: 24cqw 1fr; gap: 3.4cqw; margin-top: 2.4cqw; flex: 1; min-height: 0; }
@@ -441,7 +444,91 @@ table.cmp td.st { white-space: nowrap; }
   color: var(--ink-soft);
 }
 
+/* ---------- big numbers in a row ---------- */
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.6cqw; margin-top: 2.6cqw; }
+.trio .card { padding: 2cqw 2cqw 1.8cqw; }
+.trio .big { font-size: 3cqw; }
+.trio p { margin-top: 0.8cqw; font-size: 1.3cqw; }
+/* The solution: three promises, large enough to fill the slide. */
+.trio.solve { margin-top: 3.6cqw; gap: 2cqw; }
+.trio.solve .card { padding: 2.6cqw 2.4cqw 2.8cqw; }
+.trio.solve .big { font: 400 6cqw/1 "Bagel Fat One", var(--sans); }
+.trio.solve h3 { font-size: 2.3cqw; margin: 1.6cqw 0 0.9cqw; }
+.trio.solve p { font-size: 1.6cqw; line-height: 1.5; }
+
+/* ---------- three steps with a picture each ---------- */
+.walk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8cqw; margin-top: 2.2cqw; flex: 1; min-height: 0; }
+.walk .card { display: flex; flex-direction: column; gap: 0.8cqw; padding: 1.6cqw; min-height: 0; }
+.walk .pic { position: relative; flex: 1; min-height: 0; border-radius: 0.8cqw; overflow: hidden; background: var(--ground); }
+.walk .pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.walk .pic .numeral { font: 400 9cqw/1 "Bagel Fat One", var(--sans); color: var(--quest); }
+.walk h3 { margin: 0; }
+
+/* ---------- timeline ---------- */
+.timeline { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.4cqw; margin-top: 4cqw; }
+.timeline::before { content: ""; position: absolute; left: 0; right: 0; top: 0.75cqw; height: 0.25cqw; background: var(--edge); }
+.timeline .ev { position: relative; padding-top: 2.6cqw; }
+.timeline .ev::before {
+  content: ""; position: absolute; top: 0; left: 0;
+  width: 1.7cqw; height: 1.7cqw; border-radius: 50%;
+  background: var(--paper); border: 0.35cqw solid var(--quest);
+}
+.timeline .ev.now::before { background: var(--quest); }
+.timeline .when { font: 600 0.95cqw/1.2 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--quest); }
+.timeline h3 { font: 700 1.7cqw/1.2 var(--sans); margin: 0.8cqw 0 0.5cqw; }
+.timeline p { margin: 0.3cqw 0 0; font-size: 1.3cqw; line-height: 1.45; color: var(--ink-soft); }
+.timeline .big { font-size: 2.8cqw; margin-top: 0.4cqw; }
+
+/* ---------- people ---------- */
+.people { display: grid; grid-template-columns: 1fr 1fr; gap: 2cqw; margin-top: 2.4cqw; }
+.person { display: grid; grid-template-columns: 15cqw 1fr; gap: 2cqw; align-items: start; }
+.person .face { width: 15cqw; height: 15cqw; border-radius: 1cqw; object-fit: cover; object-position: center 30%; }
+.person .initials {
+  width: 15cqw; height: 15cqw; border-radius: 1cqw; display: grid; place-items: center;
+  background: var(--void-wash); color: var(--void); font: 800 3.6cqw/1 var(--sans);
+}
+.person h3 { font: 800 2.1cqw/1.15 var(--sans); margin: 0; }
+.person .role { font: 600 0.95cqw/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--quest); margin: 0.7cqw 0 0.9cqw; }
+.person p { margin: 0; font-size: 1.4cqw; line-height: 1.5; color: var(--ink-soft); }
+
+/* ---------- competitor tiles ---------- */
+.rivals { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2cqw; }
+.rival { border: 1px solid var(--edge); border-radius: 0.9cqw; background: #fff; padding: 1.2cqw 1.4cqw; }
+.rival b { display: block; font: 800 1.35cqw/1.2 var(--sans); color: var(--ink); }
+.rival span { display: block; margin-top: 0.4cqw; font-size: 1.1cqw; line-height: 1.4; color: var(--ink-soft); }
+
+/* ---------- financial table ---------- */
+table.fin { width: 100%; border-collapse: collapse; font-size: 1.25cqw; }
+table.fin th { text-align: right; font: 600 0.95cqw/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); padding: 0 0 0.9cqw; border-bottom: 1px solid var(--edge); }
+table.fin th:first-child, table.fin td:first-child { text-align: left; }
+table.fin td { padding: 0.75cqw 0; border-bottom: 1px solid var(--edge); color: var(--ink-soft); text-align: right; }
+table.fin td.n { font: 600 1.2cqw/1.3 var(--mono); color: var(--ink); white-space: nowrap; }
+table.fin tr.gp td { color: var(--ink); font-weight: 700; border-bottom: none; }
+table.fin tr.gp td.n { color: var(--quest); font-size: 1.35cqw; }
+
+ul.plain.lg li { font-size: 1.55cqw; margin-top: 1.3cqw; padding-left: 2cqw; }
+ul.plain.lg li::before { top: 0.75cqw; width: 0.75cqw; height: 0.75cqw; }
+
+.walk .pic.spec { display: block; padding: 1.8cqw; background: var(--quest-wash); }
+.walk .pic.spec .big { font-size: 2.6cqw; }
+.walk .pic.spec ul.plain li { font-size: 1.25cqw; margin-top: 1cqw; }
+
+/* ---------- market ---------- */
+.quad { grid-template-columns: repeat(4, 1fr); gap: 1.4cqw; }
+.quad .card { padding: 1.8cqw 1.7cqw; }
+.quad p { font-size: 1.2cqw; }
+.nb { white-space: nowrap; }
+.slice { display: grid; grid-template-columns: 1fr 1.5fr; gap: 2.6cqw; align-items: center; margin-top: 1.8cqw; }
+.slice p { margin-top: 0.9cqw; font-size: 1.35cqw; }
+.slice .sums { display: grid; grid-template-columns: auto auto 1fr; gap: 2.6cqw; }
+.slice .sums .big { font-size: 2.6cqw; }
+.slice .sums p { margin-top: 0.4cqw; font-size: 1.1cqw; }
+
+/* ---------- the ask ---------- */
+.askbig { font: 800 6cqw/1 var(--sans); letter-spacing: -0.03em; color: var(--quest); }
+
 @media screen and (max-width: 700px) {
+  .walk .pic { flex: none; aspect-ratio: 4 / 3; }
   .slide { aspect-ratio: auto; }
   .in { position: relative; min-height: 56.25cqw; }
 }
