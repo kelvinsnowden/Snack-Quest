@@ -11,5 +11,6 @@ export const SEGMENT_LABEL: Record<MarketingEmailSegment, string> = {
   repeat_creators: 'Repeat sellers',
   new_creators: 'New creators',
   specific_creators: 'Specific creators',
+  vending_leads: 'Vending machine leads',
   custom: 'Custom list',
 };

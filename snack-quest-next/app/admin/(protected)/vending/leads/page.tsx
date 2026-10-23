@@ -6,6 +6,7 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { hasPermission } from '@/lib/auth/permissions';
 import { vendingLeadService } from '@/services/vendingLeadService';
 import { leadNurtureService } from '@/services/leadNurtureService';
+import { orderMeetingService } from '@/services/orderMeetingService';
 import { VENDING_LEAD_LIST_LIMIT } from '@/repositories/vendingLeadRepository';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,6 +22,7 @@ import {
   type VendingLeadSegment,
   type VendingLeadStatus,
 } from '@/types/vendingLead';
+import { ORDER_MEETING_MODES } from '@/types/vendingOrderMeeting';
 
 export const metadata: Metadata = { title: 'Leads' };
 
@@ -91,9 +93,17 @@ export default async function VendingLeadsPage({
   if (leadNurtureService.isEnabled()) {
     after(() => leadNurtureService.runDue().catch((error) => console.error('[leads page] nurture run failed', error)));
   }
-  const [entries, sequence] = await Promise.all([vendingLeadService.listRecent(), leadNurtureService.getSequence()]);
-  const emailCount = sequence.length;
   const now = requestTime();
+  const [entries, sequence, meetings] = await Promise.all([
+    vendingLeadService.listRecent(),
+    leadNurtureService.getSequence(),
+    // The meetings list is extra; if it can't load, the leads still should.
+    orderMeetingService.listUpcoming(now).catch((error) => {
+      console.error('[leads page] order meetings failed to load', error);
+      return [];
+    }),
+  ]);
+  const emailCount = sequence.length;
   const serviceAccountEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL ?? 'the Firebase service account';
 
   const all: LeadRow[] = entries.map(({ id, data }) => ({
@@ -218,6 +228,44 @@ export default async function VendingLeadsPage({
                   className="text-primary font-medium hover:underline"
                 >
                   WhatsApp +{lead.call!.whatsapp}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {meetings.length > 0 ? (
+        <Card className="p-4">
+          <p className="text-foreground text-sm font-semibold">Order meetings</p>
+          <p className="text-muted-foreground text-xs">Booked from snackquests.shop/meet.</p>
+          <ul className="mt-2 flex flex-col divide-y divide-border">
+            {meetings.map(({ id, data: meeting }) => (
+              <li key={id} className="flex flex-col gap-1 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <span className="min-w-0">
+                  <span className="text-foreground font-medium">{meeting.fullName}</span>
+                  {meeting.leadId ? null : <span className="text-muted-foreground"> · not in Leads</span>}
+                  <span className="text-muted-foreground block break-words">{meeting.location}</span>
+                </span>
+                <span className="text-muted-foreground tabular-nums sm:text-right">
+                  {new Date(meeting.atMs).toLocaleString('en-KE', {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    timeZone: 'Africa/Nairobi',
+                  })}
+                  {' · '}
+                  {ORDER_MEETING_MODES.find((mode) => mode.value === meeting.mode)?.label ?? meeting.mode}
+                </span>
+                <a
+                  href={`https://wa.me/${meeting.phone}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary shrink-0 font-medium hover:underline"
+                >
+                  WhatsApp +{meeting.phone}
                 </a>
               </li>
             ))}

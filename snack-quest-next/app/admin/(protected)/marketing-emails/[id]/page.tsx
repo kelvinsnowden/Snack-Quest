@@ -80,6 +80,8 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
             segment: campaign.segment,
             customRecipientsText: (campaign.customRecipients ?? []).join('\n'),
             specificCreators: initialSpecificCreators,
+            senderName: campaign.senderName ?? '',
+            senderEmail: campaign.senderEmail ?? '',
           }}
         />
       ) : (
@@ -105,6 +107,14 @@ export default async function MarketingEmailDetailPage({ params }: { params: Pro
                   <dt className="text-muted-foreground">Segment</dt>
                   <dd className="text-foreground">{SEGMENT_LABEL[campaign.segment]}</dd>
                 </div>
+                {campaign.senderEmail ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Sent as</dt>
+                    <dd className="text-right text-foreground">
+                      {campaign.senderName ? `${campaign.senderName} <${campaign.senderEmail}>` : campaign.senderEmail}
+                    </dd>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Sent at</dt>
                   <dd className="text-foreground">

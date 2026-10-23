@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ImagePlus, Send, Users } from 'lucide-react';
+import { FlaskConical, ImagePlus, Send, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,8 @@ export interface MarketingEmailFormValues {
   segment: MarketingEmailSegment;
   customRecipientsText: string;
   specificCreators: CreatorPickerResult[];
+  senderName: string;
+  senderEmail: string;
 }
 
 interface MarketingEmailFormProps {
@@ -59,13 +61,15 @@ const DEFAULTS: MarketingEmailFormValues = {
   segment: 'active_creators',
   customRecipientsText: '',
   specificCreators: [],
+  senderName: '',
+  senderEmail: '',
 };
 
 interface SegmentOption {
   value: MarketingEmailSegment;
   label: string;
   helpText: string;
-  group: 'Status' | 'Sales activity' | 'Other';
+  group: 'Status' | 'Sales activity' | 'Vending' | 'Other';
 }
 
 const SEGMENT_OPTIONS: SegmentOption[] = [
@@ -77,11 +81,18 @@ const SEGMENT_OPTIONS: SegmentOption[] = [
   { value: 'first_sale_creators', label: 'Made their first sale', helpText: 'Exactly one referral conversion so far.', group: 'Sales activity' },
   { value: 'repeat_creators', label: 'Repeat sellers', helpText: 'Two or more referral conversions.', group: 'Sales activity' },
   { value: 'new_creators', label: 'New creators (last 30 days)', helpText: 'Registered within the last 30 days.', group: 'Sales activity' },
+  {
+    value: 'vending_leads',
+    label: 'Vending machine leads',
+    helpText:
+      'Everyone who asked about buying a machine and gave an email, except anyone who stopped the lead emails or is marked Lost. Each email carries their own stop link.',
+    group: 'Vending',
+  },
   { value: 'specific_creators', label: 'Specific creators', helpText: 'Search and hand-pick one or more real creators by name or email.', group: 'Other' },
   { value: 'custom', label: 'Custom list', helpText: 'Paste specific email addresses, one per line or comma-separated.', group: 'Other' },
 ];
 
-const SEGMENT_GROUPS: SegmentOption['group'][] = ['Status', 'Sales activity', 'Other'];
+const SEGMENT_GROUPS: SegmentOption['group'][] = ['Status', 'Sales activity', 'Vending', 'Other'];
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -119,6 +130,8 @@ function toDraftPayload(values: MarketingEmailFormValues) {
     customRecipients: values.segment === 'custom' ? parseCustomRecipients(values.customRecipientsText) : null,
     specificCreatorIds:
       values.segment === 'specific_creators' ? values.specificCreators.map((c) => c.id) : null,
+    senderName: values.senderName.trim() || null,
+    senderEmail: values.senderEmail.trim() || null,
   };
 }
 
@@ -138,6 +151,11 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<{ recipientCount: number; sentCount: number; failedCount: number } | null>(null);
+
+  /** The campaign's id once it has been saved — a test send saves a new campaign, and later saves must update that one. */
+  const [savedId, setSavedId] = useState<string | undefined>(campaignId);
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const customRecipientCount = parseCustomRecipients(values.customRecipientsText).length;
   const displayedRecipientCount =
@@ -221,6 +239,9 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
     if (Boolean(values.ctaLabel.trim()) !== Boolean(values.ctaUrl.trim())) {
       return 'A button needs both a label and a URL, or neither.';
     }
+    if (values.senderName.trim() && !values.senderEmail.trim()) {
+      return 'Add the email address to send as, or clear the sender name.';
+    }
     return null;
   }
 
@@ -230,9 +251,9 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
     const payload = { ...toDraftPayload(values), imageUrl };
 
     const response = await fetch(
-      mode === 'create' ? '/api/admin/marketing-emails' : `/api/admin/marketing-emails/${campaignId}`,
+      savedId ? `/api/admin/marketing-emails/${savedId}` : '/api/admin/marketing-emails',
       {
-        method: mode === 'create' ? 'POST' : 'PATCH',
+        method: savedId ? 'PATCH' : 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       },
@@ -243,11 +264,12 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
     }
     setValues((v) => ({ ...v, imageUrl }));
     setPendingFile(null);
-    if (mode === 'create') {
+    if (!savedId) {
       const body = (await response.json()) as { campaignId: string };
+      setSavedId(body.campaignId);
       return body.campaignId;
     }
-    return campaignId as string;
+    return savedId;
   }
 
   async function onSaveDraft() {
@@ -266,6 +288,31 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
       setError(err instanceof Error ? err.message : 'Could not save this campaign.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /** Saves what's on screen, then sends it once to the signed-in staff member — to see the real email and check "Send as". */
+  async function onSendTest() {
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
+    setTestMessage(null);
+    setTesting(true);
+    try {
+      const id = await saveDraft();
+      const response = await fetch(`/api/admin/marketing-emails/${id}/test`, { method: 'POST' });
+      const body = (await response.json().catch(() => null)) as { to?: string; error?: string } | null;
+      if (!response.ok) {
+        throw new Error(body?.error ?? 'The test didn’t send.');
+      }
+      setTestMessage({ ok: true, text: `Test sent to ${body?.to}. Check the sender and the button link before sending.` });
+    } catch (err) {
+      setTestMessage({ ok: false, text: err instanceof Error ? err.message : 'The test didn’t send.' });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -302,7 +349,7 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
     }
   }
 
-  const busy = submitting || uploadingImage;
+  const busy = submitting || uploadingImage || testing;
 
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
@@ -512,14 +559,58 @@ export function MarketingEmailForm({ mode, campaignId, initialValues, availableT
                 />
               </div>
             ) : null}
+
+            <div className="flex flex-col gap-1.5 border-t border-border pt-4">
+              <p className="text-sm font-medium text-foreground">Send as (optional)</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="me-sender-name" className="font-normal">
+                    Name
+                  </Label>
+                  <Input
+                    id="me-sender-name"
+                    value={values.senderName}
+                    onChange={(event) => setValues((v) => ({ ...v, senderName: event.target.value }))}
+                    placeholder="Kelvin from Snack Quest"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="me-sender-email" className="font-normal">
+                    Email address
+                  </Label>
+                  <Input
+                    id="me-sender-email"
+                    type="email"
+                    value={values.senderEmail}
+                    onChange={(event) => setValues((v) => ({ ...v, senderEmail: event.target.value }))}
+                    placeholder="kelvin@snackquests.shop"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave blank to send from the usual address. Must be an @snackquests.shop address, and replies go to it.
+                Send yourself a test first: the email account must be allowed to send as this address.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
         {error ? <p className="text-sm text-danger">{error}</p> : null}
+        {testMessage ? (
+          <p role="status" className={testMessage.ok ? 'text-sm text-success' : 'text-sm text-danger'}>
+            {testMessage.text}
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="outline" loading={submitting && !sendOpen}>
             Save draft
+          </Button>
+          <Button type="button" variant="outline" onClick={onSendTest} loading={testing} disabled={busy && !testing}>
+            <FlaskConical className="size-4" aria-hidden="true" />
+            Send me a test
           </Button>
           <Button type="button" onClick={onOpenSendConfirm} disabled={busy}>
             <Send className="size-4" aria-hidden="true" />

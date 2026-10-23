@@ -502,6 +502,17 @@ export interface EmailSendResult {
   providerMessageId: string;
 }
 
+/**
+ * A per-message sender in place of the account's own (§ Admin: Marketing
+ * Emails "Send as") — e.g. a founder's own address for a personal note.
+ * The provider must accept it: an SMTP account needs it as an alias it
+ * may send as, SendGrid needs the domain authenticated. Replies go to it.
+ */
+export interface EmailSender {
+  name: string | null;
+  email: string;
+}
+
 export interface EmailGateway {
   /**
    * `businessId` because email is per-tenant now (§ one email provider
@@ -509,7 +520,14 @@ export interface EmailGateway {
    * Admin sends from its own domain, and only one that hasn't falls
    * back to the platform-wide SendGrid account.
    */
-  send(input: { businessId: string; to: string; subject: string; body: string; html?: string }): Promise<EmailSendResult>;
+  send(input: {
+    businessId: string;
+    to: string;
+    subject: string;
+    body: string;
+    html?: string;
+    from?: EmailSender | null;
+  }): Promise<EmailSendResult>;
 }
 
 export interface SmsSendResult {

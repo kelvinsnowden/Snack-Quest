@@ -479,3 +479,71 @@ describe('MarketingEmailService.fetchTestimonials', () => {
     expect(testimonials).toEqual([]);
   });
 });
+
+describe('MarketingEmailService vending_leads segment', () => {
+  async function seedLead(id: string, extra: Record<string, unknown> = {}) {
+    await adminFirestore.collection('vendingLeads').doc(id).set({
+      source: 'meta_sheet',
+      externalId: id,
+      fullName: 'Amina Wanjiru',
+      phone: '254712345678',
+      email: `${id}@example.com`,
+      campaignName: null,
+      adName: null,
+      formName: null,
+      platform: null,
+      answers: [],
+      submittedAtMs: Date.now(),
+      status: 'new',
+      segment: 'investor',
+      notes: [],
+      nextFollowUpAtMs: null,
+      ...extra,
+    });
+  }
+
+  beforeEach(async () => {
+    await adminFirestore.recursiveDelete(adminFirestore.collection('vendingLeads'));
+  });
+
+  it('resolves every lead with an email, except those who stopped the emails or are marked lost, one per address', async () => {
+    await seedLead('meta_a');
+    await seedLead('meta_b', { email: 'Shared@Example.com' });
+    await seedLead('meta_c', { email: 'shared@example.com' });
+    await seedLead('meta_optout', { emailOptOutAtMs: Date.now() });
+    await seedLead('meta_lost', { status: 'lost' });
+    await seedLead('meta_noemail', { email: null });
+
+    const recipients = await marketingEmailService.resolveRecipients(BUSINESS_ID, 'vending_leads', null);
+
+    expect(recipients.sort()).toEqual(['meta_a@example.com', 'shared@example.com']);
+  });
+});
+
+describe('MarketingEmailService "Send as"', () => {
+  it('saves a sender on the business’s own domain, lowercased', async () => {
+    const id = await marketingEmailService.createDraft(
+      BUSINESS_ID,
+      { ...VALID_DRAFT, senderName: '  Kelvin   from Snack Quest ', senderEmail: 'Kelvin@SnackQuests.shop' },
+      'admin-1',
+    );
+    const campaign = await marketingEmailService.getCampaign(BUSINESS_ID, id);
+    expect(campaign.senderName).toBe('Kelvin from Snack Quest');
+    expect(campaign.senderEmail).toBe('kelvin@snackquests.shop');
+  });
+
+  it('leaves the usual sender when both fields are blank', async () => {
+    const id = await marketingEmailService.createDraft(BUSINESS_ID, { ...VALID_DRAFT, senderName: '', senderEmail: '' }, 'admin-1');
+    const campaign = await marketingEmailService.getCampaign(BUSINESS_ID, id);
+    expect(campaign.senderEmail).toBeNull();
+  });
+
+  it('refuses an address on any other domain, and a name with no address', async () => {
+    await expect(
+      marketingEmailService.createDraft(BUSINESS_ID, { ...VALID_DRAFT, senderEmail: 'kelvin@gmail.com' }, 'admin-1'),
+    ).rejects.toBeInstanceOf(MarketingEmailValidationError);
+    await expect(
+      marketingEmailService.createDraft(BUSINESS_ID, { ...VALID_DRAFT, senderName: 'Kelvin', senderEmail: null }, 'admin-1'),
+    ).rejects.toBeInstanceOf(MarketingEmailValidationError);
+  });
+});

@@ -332,6 +332,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // vendingOrderMeetings / vendingOrderMeetingSlots: meetings booked
+    // from the public /meet page (names, phone numbers) and one doc per
+    // booked start time. Written only by the booking route and read only
+    // by the admin, both through the Admin SDK.
+    match /vendingOrderMeetings/{meetingId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    match /vendingOrderMeetingSlots/{slotId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // leadNurtureSettings: the lead email sequence as edited in the
     // admin. Server-only, like the leads it is sent to.
     match /leadNurtureSettings/{businessId} {

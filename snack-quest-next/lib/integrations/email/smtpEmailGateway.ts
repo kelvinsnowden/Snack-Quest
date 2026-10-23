@@ -5,7 +5,7 @@ import { businessIntegrationSecretRepository } from '@/repositories/businessInte
 import { getAuthEmailConfig, type AuthEmailConfig } from '../authEmail/config';
 import { sendGridGateway } from './sendGridGateway';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
-import type { EmailGateway, EmailSendResult } from '../types';
+import type { EmailGateway, EmailSendResult, EmailSender } from '../types';
 
 /**
  * Sends this app's own email — order confirmations, creator notices —
@@ -68,6 +68,7 @@ class SmtpEmailGateway implements EmailGateway {
     subject: string;
     body: string;
     html?: string;
+    from?: EmailSender | null;
   }): Promise<EmailSendResult> {
     const configured = await businessIntegrationSecretRepository.find(
       input.businessId,
@@ -86,10 +87,11 @@ class SmtpEmailGateway implements EmailGateway {
     return withCircuitBreaker(GATEWAY_NAME, async () => {
       const transport = buildTransport(config);
 
+      const sender = input.from ?? { name: config.senderName || null, email: config.senderEmail };
       const info = await transport.sendMail({
-        from: config.senderName
-          ? { name: config.senderName, address: config.senderEmail }
-          : config.senderEmail,
+        from: sender.name ? { name: sender.name, address: sender.email } : sender.email,
+        // A per-message sender is a person writing, so their replies should reach them.
+        ...(input.from ? { replyTo: input.from.email } : {}),
         to: input.to,
         subject: input.subject,
         text: input.body,
