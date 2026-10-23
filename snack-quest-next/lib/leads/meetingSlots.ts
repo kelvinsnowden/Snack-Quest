@@ -7,8 +7,8 @@
  * Nairobi has no daylight saving, so a fixed +03:00 offset is exact all year.
  */
 export const MEETING_MINUTES = 60;
-/** Monday to Saturday (1 = Monday … 6 = Saturday). */
-export const MEETING_DAYS = [1, 2, 3, 4, 5, 6];
+/** Weekdays only (1 = Monday … 5 = Friday). */
+export const MEETING_DAYS = [1, 2, 3, 4, 5];
 /** Meeting start times, Nairobi time. */
 export const MEETING_TIMES = ['10:00', '12:00', '14:00', '16:00'];
 /** The last day a meeting can be booked, Nairobi time. */
