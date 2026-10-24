@@ -3,6 +3,9 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
+import { textSmsGateway } from '@/lib/integrations/sms/textSmsGateway';
+import { toSmsSafeText } from '@/lib/sms/gsm7';
+import { WHATSAPP_CTA_NUMBER } from '@/lib/config/whatsapp';
 import { brandedEmailHtml, paragraphsToHtml } from '@/lib/notifications/brandedEmailHtml';
 import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
@@ -12,8 +15,13 @@ import { formatCallTime } from '@/lib/leads/callSlots';
 import { availableMeetingSlots, isOfferedMeetingSlot, type MeetingDay } from '@/lib/leads/meetingSlots';
 import { defaultRateLimiter } from '@/lib/rateLimit/rateLimiter';
 import { vendingLeadRepository } from '@/repositories/vendingLeadRepository';
-import { vendingOrderMeetingRepository } from '@/repositories/vendingOrderMeetingRepository';
-import { ORDER_MEETING_MODES, type OrderMeetingMode, type VendingOrderMeeting } from '@/types/vendingOrderMeeting';
+import { vendingOrderMeetingRepository, type OrderMeetingInput } from '@/repositories/vendingOrderMeetingRepository';
+import {
+  ORDER_MEETING_MODES,
+  type OrderMeetingMode,
+  type OrderMeetingReminderKind,
+  type VendingOrderMeeting,
+} from '@/types/vendingOrderMeeting';
 import type { VendingLeadStatus } from '@/types/vendingLead';
 
 export { MeetingSlotTakenError } from '@/repositories/vendingOrderMeetingRepository';
@@ -49,6 +57,29 @@ const RATE_LIMIT = { name: 'order-meeting', limit: 5, windowSeconds: 60 * 60 };
 const EARLY_STATUSES: ReadonlySet<VendingLeadStatus> = new Set(['new', 'contacted', 'qualified']);
 const MAX_NAME = 120;
 const MAX_LOCATION = 200;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+/**
+ * How close a meeting must be for each reminder. The hour-before one
+ * allows ten minutes over, so a run that comes a little early still
+ * catches it rather than leaving the next run to send it late.
+ */
+const DAY_BEFORE_MS = DAY_MS;
+const HOUR_BEFORE_MS = HOUR_MS + 10 * 60 * 1000;
+/** A booking made this close to the day-before reminder already got its confirmation text; a reminder minutes later is noise. */
+const FRESH_BOOKING_MS = DAY_MS + 3 * HOUR_MS;
+/** Who gets a text for every booking: the founder's own number, unless the deployment names another. */
+function teamPhone(): string {
+  return process.env.ORDER_MEETING_ALERT_PHONE || WHATSAPP_CTA_NUMBER;
+}
+/** The founder's number as people write it, for "WhatsApp us on …" in the texts. */
+const CONTACT_NUMBER = '0759 209 705';
+
+export interface OrderMeetingReminderRun {
+  dayBefore: number;
+  hourBefore: number;
+  failed: number;
+}
 
 function text(value: unknown, field: string, max: number): string {
   const trimmed = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
@@ -65,6 +96,32 @@ function modeLabel(mode: OrderMeetingMode): string {
   return ORDER_MEETING_MODES.find((entry) => entry.value === mode)?.label ?? mode;
 }
 
+/** "Mon 2 Nov, 10:00" — short enough to keep a text inside one SMS. */
+function smsWhen(atMs: number): string {
+  return new Date(atMs).toLocaleString('en-KE', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Africa/Nairobi',
+  });
+}
+
+function smsTime(atMs: number): string {
+  return new Date(atMs).toLocaleTimeString('en-KE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Africa/Nairobi',
+  });
+}
+
+function smsHow(mode: OrderMeetingMode): string {
+  return mode === 'in_person' ? 'in person' : 'by video call';
+}
+
 /**
  * The meetings where prospective owners talk through and place a
  * machine order (§ order meetings), booked from the public `/meet`
@@ -77,7 +134,7 @@ class OrderMeetingService {
     return availableMeetingSlots(nowMs, await vendingOrderMeetingRepository.takenDates(nowMs - 24 * 60 * 60 * 1000));
   }
 
-  /** Books (or, for a number that already has one, moves) the meeting, then emails the team and the person. */
+  /** Books (or, for a number that already has one, moves) the meeting, then emails and texts the team and the person. */
   async book(input: OrderMeetingSubmission, nowMs: number = Date.now()): Promise<{ atMs: number }> {
     const fullName = text(input.fullName, 'Your name', MAX_NAME);
     let phone: string;
@@ -107,7 +164,7 @@ class OrderMeetingService {
       console.error('[orderMeeting] lead lookup failed', error);
       return null;
     });
-    const meeting: Omit<VendingOrderMeeting, 'createdAt' | 'updatedAt'> = {
+    const meeting: OrderMeetingInput = {
       fullName,
       phone,
       email,
@@ -121,7 +178,16 @@ class OrderMeetingService {
     const moved = previousAtMs !== null && previousAtMs !== atMs;
     const when = formatCallTime(atMs);
 
-    const followUps: Promise<unknown>[] = [this.notifyTeam(meeting, moved)];
+    const followUps: Promise<unknown>[] = [
+      this.notifyTeam(meeting, moved),
+      this.textTeam(meeting, moved),
+      this.text(
+        phone,
+        `Snack Quest: you're booked for ${smsWhen(atMs)} (${smsHow(mode)}). ` +
+          `We'll WhatsApp you ${mode === 'in_person' ? 'the venue' : 'the link'}. ` +
+          `To change it, rebook at snackquests.shop/meet with this number.`,
+      ),
+    ];
     if (leadId) {
       followUps.push(this.recordOnLead(leadId, meeting, moved, nowMs));
     }
@@ -147,6 +213,40 @@ class OrderMeetingService {
     return { atMs };
   }
 
+  /**
+   * Sends every reminder text that is due: one a day before each
+   * meeting and one an hour before. Safe to run as often as anyone
+   * likes, and from several places at once — each text is claimed
+   * before it is sent. A run that comes late still sends the hour-before
+   * text up to the meeting's start; a day-before text not sent by then
+   * is dropped rather than arriving after the hour-before one.
+   */
+  async sendDueReminders(nowMs: number = Date.now()): Promise<OrderMeetingReminderRun> {
+    const run: OrderMeetingReminderRun = { dayBefore: 0, hourBefore: 0, failed: 0 };
+    for (const { id, data: meeting } of await vendingOrderMeetingRepository.listBetween(nowMs, nowMs + DAY_BEFORE_MS)) {
+      const kind: OrderMeetingReminderKind = meeting.atMs - nowMs <= HOUR_BEFORE_MS ? 'hourBefore' : 'dayBefore';
+      if (kind === 'dayBefore' && meeting.atMs - meeting.bookedAtMs <= FRESH_BOOKING_MS) continue;
+      const previous = await vendingOrderMeetingRepository.claimReminder(id, meeting.atMs, kind, nowMs);
+      if (!previous) continue;
+      try {
+        await this.text(
+          meeting.phone,
+          kind === 'hourBefore'
+            ? `Snack Quest: see you at ${smsTime(meeting.atMs)} today (${smsHow(meeting.mode)}). ` +
+                `Need us? WhatsApp ${CONTACT_NUMBER}.`
+            : `Snack Quest reminder: your meeting is on ${smsWhen(meeting.atMs)} (${smsHow(meeting.mode)}). ` +
+                `Can't make it? Rebook at snackquests.shop/meet or WhatsApp ${CONTACT_NUMBER}.`,
+        );
+        run[kind] += 1;
+      } catch (error) {
+        console.error('[orderMeeting] reminder failed', id, kind, error);
+        await vendingOrderMeetingRepository.releaseReminder(id, previous);
+        run.failed += 1;
+      }
+    }
+    return run;
+  }
+
   /** Upcoming meetings for the admin, soonest first, including any that started in the last day. */
   async listUpcoming(nowMs: number = Date.now()): Promise<{ id: string; data: VendingOrderMeeting }[]> {
     return vendingOrderMeetingRepository.listFrom(nowMs - 24 * 60 * 60 * 1000);
@@ -166,7 +266,7 @@ class OrderMeetingService {
     if (!allowed) throw new OrderMeetingRateLimitError();
   }
 
-  private async recordOnLead(leadId: string, meeting: Omit<VendingOrderMeeting, 'createdAt' | 'updatedAt'>, moved: boolean, nowMs: number) {
+  private async recordOnLead(leadId: string, meeting: OrderMeetingInput, moved: boolean, nowMs: number) {
     const lead = await vendingLeadRepository.findById(leadId);
     if (!lead) return;
     await vendingLeadRepository.recordOrderMeeting(
@@ -184,7 +284,20 @@ class OrderMeetingService {
     );
   }
 
-  private async notifyTeam(meeting: Omit<VendingOrderMeeting, 'createdAt' | 'updatedAt'>, moved: boolean) {
+  /** The founder's text for each booking: who, when, how, and the number to WhatsApp them on. */
+  private async textTeam(meeting: OrderMeetingInput, moved: boolean) {
+    await this.text(
+      teamPhone(),
+      `${moved ? 'Order meeting moved' : 'New order meeting'}: ${meeting.fullName}, ${smsWhen(meeting.atMs)}, ` +
+        `${smsHow(meeting.mode)}. WhatsApp +${meeting.phone}. Machine: ${meeting.location}`,
+    );
+  }
+
+  private async text(to: string, body: string) {
+    await textSmsGateway.send({ businessId: getCurrentBusinessId(), to, body: toSmsSafeText(body) });
+  }
+
+  private async notifyTeam(meeting: OrderMeetingInput, moved: boolean) {
     const when = formatCallTime(meeting.atMs);
     await this.send(SUPPORT_EMAIL_ADDRESS, {
       subject: `${moved ? 'Order meeting moved' : 'New order meeting'}: ${meeting.fullName}, ${when}`,

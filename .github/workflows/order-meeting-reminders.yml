@@ -1,0 +1,44 @@
+# Sends the order-meeting reminder texts (a day and an hour before each
+# meeting) by calling the reminders endpoint every 10 minutes.
+#
+# Same set-up as vending-fast-recovery.yml: repository secrets
+# SNACK_QUEST_BASE_URL and CRON_SECRET. Without them it does nothing.
+#
+# GitHub's scheduler often runs these hours late, so this is a backstop,
+# not the clock: point an outside scheduler (e.g. cron-job.org) at the
+# same URL every 5 minutes for on-time hour-before texts. The endpoint
+# claims each text before sending, so overlapping callers are harmless.
+name: Order meeting reminders
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: order-meeting-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the reminders endpoint
+        env:
+          BASE_URL: ${{ secrets.SNACK_QUEST_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "SNACK_QUEST_BASE_URL / CRON_SECRET not configured; skipping."
+            exit 0
+          fi
+          status=$(curl -sS -o response.json -w '%{http_code}' --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/cron/order-meeting-reminders")
+          cat response.json
+          echo
+          if [ "$status" != "200" ]; then
+            echo "Order meeting reminders returned HTTP $status"
+            exit 1
+          fi

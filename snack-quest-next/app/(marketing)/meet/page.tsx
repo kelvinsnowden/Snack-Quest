@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { after } from 'next/server';
 import { orderMeetingService } from '@/services/orderMeetingService';
 import { MeetingBooking } from '@/components/marketing/leads/MeetingBooking';
 
@@ -16,6 +17,8 @@ export const metadata: Metadata = {
 
 export default async function MeetPage() {
   const days = await orderMeetingService.bookingDays();
+  // Reminder texts go out from whichever caller comes first; a page view is one, after the page is sent.
+  after(() => orderMeetingService.sendDueReminders().catch((error) => console.error('[meet] reminders failed', error)));
 
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">

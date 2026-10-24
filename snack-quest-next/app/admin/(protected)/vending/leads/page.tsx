@@ -93,6 +93,7 @@ export default async function VendingLeadsPage({
   if (leadNurtureService.isEnabled()) {
     after(() => leadNurtureService.runDue().catch((error) => console.error('[leads page] nurture run failed', error)));
   }
+  after(() => orderMeetingService.sendDueReminders().catch((error) => console.error('[leads page] meeting reminders failed', error)));
   const now = requestTime();
   const [entries, sequence, meetings] = await Promise.all([
     vendingLeadService.listRecent(),

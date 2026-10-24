@@ -3,7 +3,7 @@ import 'server-only';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase/admin';
 import { nairobiDate } from '@/lib/leads/meetingSlots';
-import type { VendingOrderMeeting } from '@/types/vendingOrderMeeting';
+import type { OrderMeetingReminderKind, OrderMeetingReminders, VendingOrderMeeting } from '@/types/vendingOrderMeeting';
 
 const COLLECTION = 'vendingOrderMeetings';
 /**
@@ -21,7 +21,9 @@ export class MeetingSlotTakenError extends Error {
   }
 }
 
-export type OrderMeetingInput = Omit<VendingOrderMeeting, 'createdAt' | 'updatedAt'>;
+export type OrderMeetingInput = Omit<VendingOrderMeeting, 'createdAt' | 'updatedAt' | 'reminders'>;
+
+const NO_REMINDERS: OrderMeetingReminders = { dayBeforeAtMs: null, hourBeforeAtMs: null };
 
 /** `meet_2547…` — one meeting per number, so booking again moves it. */
 export function orderMeetingDocId(phone: string): string {
@@ -55,7 +57,17 @@ class VendingOrderMeetingRepository {
       }
       tx.set(dayRef, { meetingId: id, atMs: meeting.atMs, date });
       const now = FieldValue.serverTimestamp();
-      tx.set(meetingRef, { ...meeting, updatedAt: now, ...(meetingSnap.exists ? {} : { createdAt: now }) }, { merge: true });
+      tx.set(
+        meetingRef,
+        {
+          ...meeting,
+          // A new time needs its own reminders; booking the same time again keeps what was sent.
+          ...(previous !== meeting.atMs ? { reminders: NO_REMINDERS } : {}),
+          updatedAt: now,
+          ...(meetingSnap.exists ? {} : { createdAt: now }),
+        },
+        { merge: true },
+      );
       return previous;
     });
     return { id, previousAtMs };
@@ -65,6 +77,51 @@ class VendingOrderMeetingRepository {
   async takenDates(fromMs: number): Promise<Set<string>> {
     const snapshot = await adminFirestore.collection(SLOTS).where('atMs', '>=', fromMs).get();
     return new Set(snapshot.docs.map((doc) => nairobiDate((doc.data() as { atMs: number }).atMs)));
+  }
+
+  /** Meetings starting between `fromMs` and `toMs`, soonest first. Single-field range, so no composite index. */
+  async listBetween(fromMs: number, toMs: number): Promise<{ id: string; data: VendingOrderMeeting }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('atMs', '>=', fromMs)
+      .where('atMs', '<=', toMs)
+      .orderBy('atMs')
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as VendingOrderMeeting }));
+  }
+
+  /**
+   * Reserves a reminder text for a meeting before it is sent, so two
+   * overlapping runs never both send it. False when it was already sent,
+   * or the meeting has moved off `atMs` since it was read. Claiming the
+   * hour-before reminder also closes the day-before one: once it is that
+   * close, a "see you on…" text would only be noise. Returns what to put
+   * back if the send then fails.
+   */
+  async claimReminder(
+    id: string,
+    atMs: number,
+    kind: OrderMeetingReminderKind,
+    nowMs: number,
+  ): Promise<OrderMeetingReminders | null> {
+    const ref = adminFirestore.collection(COLLECTION).doc(id);
+    return adminFirestore.runTransaction(async (tx) => {
+      const meeting = (await tx.get(ref)).data() as VendingOrderMeeting | undefined;
+      if (!meeting || meeting.atMs !== atMs) return null;
+      const sent = meeting.reminders ?? NO_REMINDERS;
+      if (sent.hourBeforeAtMs !== null || (kind === 'dayBefore' && sent.dayBeforeAtMs !== null)) return null;
+      const next: OrderMeetingReminders =
+        kind === 'hourBefore'
+          ? { dayBeforeAtMs: sent.dayBeforeAtMs ?? nowMs, hourBeforeAtMs: nowMs }
+          : { dayBeforeAtMs: nowMs, hourBeforeAtMs: null };
+      tx.update(ref, { reminders: next });
+      return sent;
+    });
+  }
+
+  /** Puts a meeting's reminder record back after a send failed, so the next run tries again. */
+  async releaseReminder(id: string, previous: OrderMeetingReminders): Promise<void> {
+    await adminFirestore.collection(COLLECTION).doc(id).update({ reminders: previous });
   }
 
   /** Meetings starting from `fromMs` on, soonest first. */

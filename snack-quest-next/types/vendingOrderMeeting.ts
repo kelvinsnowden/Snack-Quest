@@ -21,6 +21,13 @@ export const ORDER_MEETING_MODES: readonly { value: OrderMeetingMode; label: str
   { value: 'video_call', label: 'Video call' },
 ] as const;
 
+export interface OrderMeetingReminders {
+  dayBeforeAtMs: number | null;
+  hourBeforeAtMs: number | null;
+}
+
+export type OrderMeetingReminderKind = 'dayBefore' | 'hourBefore';
+
 export interface VendingOrderMeeting {
   fullName: string;
   /** `2547XXXXXXXX`. */
@@ -33,6 +40,12 @@ export interface VendingOrderMeeting {
   atMs: number;
   bookedAtMs: number;
   leadId: string | null;
+  /**
+   * When each reminder text went out (epoch ms), so none is sent twice.
+   * Cleared whenever the meeting moves to a new time. Absent on meetings
+   * booked before reminders existed, which reads as "none sent yet".
+   */
+  reminders?: OrderMeetingReminders | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
