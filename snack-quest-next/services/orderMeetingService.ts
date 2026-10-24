@@ -71,9 +71,10 @@ function modeLabel(mode: OrderMeetingMode): string {
  * page linked in the founding-orders email.
  */
 class OrderMeetingService {
-  /** Open meeting times from now to the last date. */
+  /** The meeting days from today to the last date: open ones with their times, and the booked ones. */
   async bookingDays(nowMs: number = Date.now()): Promise<MeetingDay[]> {
-    return availableMeetingSlots(nowMs, await vendingOrderMeetingRepository.takenSlots(nowMs));
+    // From a day back, so a meeting earlier today still marks today as taken.
+    return availableMeetingSlots(nowMs, await vendingOrderMeetingRepository.takenDates(nowMs - 24 * 60 * 60 * 1000));
   }
 
   /** Books (or, for a number that already has one, moves) the meeting, then emails the team and the person. */

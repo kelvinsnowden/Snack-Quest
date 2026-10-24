@@ -7,7 +7,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { MEETING_LAST_DATE, type MeetingDay } from '@/lib/leads/meetingSlots';
+import { MEETING_FIRST_DATE, MEETING_LAST_DATE, type MeetingDay } from '@/lib/leads/meetingSlots';
+import { longDate, MeetingCalendar } from '@/components/marketing/leads/MeetingCalendar';
 import { ORDER_MEETING_MODES, type OrderMeetingMode } from '@/types/vendingOrderMeeting';
 
 const TZ = 'Africa/Nairobi';
@@ -16,14 +17,6 @@ const TZ = 'Africa/Nairobi';
 const FOUNDING_PRICE = 'KSh 360,000';
 const FOUNDING_ORDERS = 10;
 const DELIVERY_DAYS = 60;
-
-function dayLabel(date: string): { weekday: string; day: string } {
-  const at = new Date(`${date}T12:00:00+03:00`);
-  return {
-    weekday: at.toLocaleDateString('en-KE', { weekday: 'short', timeZone: TZ }),
-    day: at.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', timeZone: TZ }),
-  };
-}
 
 function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
@@ -40,15 +33,19 @@ function fullLabel(ms: number): string {
   });
 }
 
-const lastDayLabel = new Date(`${MEETING_LAST_DATE}T12:00:00+03:00`).toLocaleDateString('en-KE', {
-  day: 'numeric',
-  month: 'long',
-  timeZone: TZ,
-});
+/** "1–30 November", or "28 November – 4 December" across two months. */
+function meetingWindowLabel(): string {
+  const label = (date: string) =>
+    new Date(`${date}T12:00:00Z`).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  if (MEETING_FIRST_DATE.slice(0, 7) === MEETING_LAST_DATE.slice(0, 7)) {
+    return `${Number(MEETING_FIRST_DATE.slice(8))}–${label(MEETING_LAST_DATE)}`;
+  }
+  return `${label(MEETING_FIRST_DATE)} – ${label(MEETING_LAST_DATE)}`;
+}
 
 export function MeetingBooking({ days }: { days: MeetingDay[] }) {
   const [mode, setMode] = useState<OrderMeetingMode>('in_person');
-  const [dayIndex, setDayIndex] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<string | null>(days.find((day) => !day.booked)?.date ?? null);
   const [slot, setSlot] = useState<number | null>(null);
   const [fullName, setFullName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -108,7 +105,7 @@ export function MeetingBooking({ days }: { days: MeetingDay[] }) {
     );
   }
 
-  const day = days[Math.min(dayIndex, days.length - 1)];
+  const day = days.find((entry) => entry.date === selectedDate && !entry.booked) ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -139,7 +136,7 @@ export function MeetingBooking({ days }: { days: MeetingDay[] }) {
         <li className="border-border flex items-start gap-2.5 rounded-xl border p-3 text-sm">
           <CalendarDays className="text-primary mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span className="text-muted-foreground">
-            Meetings open until <span className="text-foreground font-semibold">{lastDayLabel}</span>
+            Weekday meetings, <span className="text-foreground font-semibold whitespace-nowrap">{meetingWindowLabel()}</span>
           </span>
         </li>
       </ul>
@@ -175,49 +172,40 @@ export function MeetingBooking({ days }: { days: MeetingDay[] }) {
 
             <fieldset className="flex min-w-0 flex-col gap-3">
               <legend className="text-foreground mb-2 text-sm font-medium">Day and time (Nairobi time)</legend>
-              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Day">
-                {days.map((entry, index) => {
-                  const label = dayLabel(entry.date);
-                  return (
-                    <button
-                      key={entry.date}
-                      type="button"
-                      role="tab"
-                      aria-selected={index === dayIndex}
-                      onClick={() => {
-                        setDayIndex(index);
-                        setSlot(null);
-                      }}
-                      className={cn(
-                        'flex min-w-16 shrink-0 flex-col items-center rounded-xl border px-3 py-2 text-sm transition-colors',
-                        index === dayIndex
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-border/30',
-                      )}
-                    >
-                      <span className="text-xs font-medium uppercase">{label.weekday}</span>
-                      <span className="font-semibold">{label.day}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {day.slots.map((at) => (
-                  <button
-                    key={at}
-                    type="button"
-                    aria-pressed={slot === at}
-                    onClick={() => setSlot(at)}
-                    className={cn(
-                      'min-h-11 rounded-lg border text-sm font-medium tabular-nums transition-colors',
-                      slot === at
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border text-foreground hover:bg-border/30',
-                    )}
-                  >
-                    {timeLabel(at)}
-                  </button>
-                ))}
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-start">
+                <MeetingCalendar
+                  days={days}
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                    setSelectedDate(date);
+                    setSlot(null);
+                  }}
+                />
+                <div className="flex min-w-0 flex-col gap-2">
+                  <p className="text-muted-foreground text-sm">
+                    {day ? `Times on ${longDate(day.date)}` : 'Pick a day to see the times.'}
+                  </p>
+                  {day ? (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
+                      {day.slots.map((at) => (
+                        <button
+                          key={at}
+                          type="button"
+                          aria-pressed={slot === at}
+                          onClick={() => setSlot(at)}
+                          className={cn(
+                            'min-h-11 rounded-lg border text-sm font-medium tabular-nums transition-colors',
+                            slot === at
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-border text-foreground hover:bg-border/30',
+                          )}
+                        >
+                          {timeLabel(at)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </fieldset>
 
