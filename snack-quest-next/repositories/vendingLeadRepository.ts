@@ -181,6 +181,29 @@ class VendingLeadRepository {
   async markCallReminderSent(id: string, atMs: number): Promise<void> {
     await adminFirestore.collection(COLLECTION).doc(id).update({ 'call.reminderSentAtMs': atMs });
   }
+
+  /** The lead with this number, else this email, else null. Single-field equality, so no composite index. */
+  async findIdByContact(phone: string, email: string | null): Promise<string | null> {
+    const byPhone = await adminFirestore.collection(COLLECTION).where('phone', '==', phone).limit(1).get();
+    if (!byPhone.empty) return byPhone.docs[0].id;
+    if (!email) return null;
+    const byEmail = await adminFirestore.collection(COLLECTION).where('email', '==', email).limit(1).get();
+    return byEmail.empty ? null : byEmail.docs[0].id;
+  }
+
+  /** The lead booked an order meeting (§ order meetings): follow up then, stop the nurture emails, record a note. */
+  async recordOrderMeeting(id: string, atMs: number, note: VendingLeadNote, nowStatus: VendingLeadStatus | null): Promise<void> {
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(id)
+      .update({
+        nextFollowUpAtMs: atMs,
+        ...(nowStatus ? { status: nowStatus } : {}),
+        'nurture.stoppedReason': 'booked',
+        notes: FieldValue.arrayUnion(note),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+  }
 }
 
 export const vendingLeadRepository = new VendingLeadRepository();

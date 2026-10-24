@@ -1,0 +1,1891 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snack Quest Investor Deck: Full Detail</title>
+<meta name="description" content="Snack Quest is building the discovery and distribution layer international consumer brands use to reach African consumers. Raising KSh 10,000,000 to prove the network.">
+
+<!--
+  Not for search results. This is a document we hand to specific people,
+  not a page we want surfaced under "snack quest nairobi", and it now
+  carries the actual funding figures. Deliberately NOT a robots.txt
+  Disallow: robots.txt is itself public, so listing the path there
+  advertises the URL it is meant to keep quiet. `noindex` (here and as
+  an X-Robots-Tag header in next.config.ts) tells the crawler not to
+  keep the page after fetching it, which is the behaviour wanted.
+-->
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="canonical" href="https://snackquests.shop/deck/full">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Snack Quest">
+<meta property="og:title" content="Snack Quest Investor Deck: Full Detail">
+<meta property="og:description" content="The machine is the node. The network is the asset. Raising KSh 10,000,000 to prove a distributed retail network, starting with snacks.">
+<meta property="og:url" content="https://snackquests.shop/deck/full">
+<meta property="og:image" content="https://snackquests.shop/deck/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Snack Quest Investor Deck: Full Detail">
+<meta name="twitter:description" content="The machine is the node. The network is the asset. Raising KSh 10,000,000 to prove a distributed retail network, starting with snacks.">
+<meta name="twitter:image" content="https://snackquests.shop/deck/og.jpg">
+
+<link rel="icon" href="/deck/logo.png" type="image/png">
+<meta name="theme-color" content="#f4f2fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17140f" media="(prefers-color-scheme: dark)">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* ============================================================
+     Snack Quest — investor deck
+     Palette, display face and motifs are taken from the live
+     Snack Quest brand (app/globals.css + the site's own hero):
+     Bagel Fat One, quest orange, deep purple, lavender ground,
+     the rotated location stamp and the dotted flight path.
+     ============================================================ */
+
+  :root {
+    --ink:        #1f1f1f;
+    --ink-soft:   #55504a;
+    --ink-faint:  #8a837a;
+    --ground:     #f4f2fb;
+    --paper:      #fffdf8;
+    --edge:       #e7dfd0;
+    --quest:      #ff7a00;
+    --void:       #6c3bff;
+    --quest-wash: rgba(255, 122, 0, 0.10);
+    --void-wash:  rgba(108, 59, 255, 0.10);
+    --shadow:     0 1px 2px rgba(31,31,31,.05), 0 12px 32px -12px rgba(31,31,31,.14);
+  }
+
+  :root:not([data-theme="light"]) {
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink:        #f7f3ea;
+      --ink-soft:   #b9b1a4;
+      --ink-faint:  #857d70;
+      --ground:     #17140f;
+      --paper:      #211d16;
+      --edge:       #38311f;
+      --quest:      #ff8f24;
+      --void:       #8a63ff;
+      --quest-wash: rgba(255, 143, 36, 0.14);
+      --void-wash:  rgba(138, 99, 255, 0.16);
+      --shadow:     0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.6);
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink:        #f7f3ea;
+    --ink-soft:   #b9b1a4;
+    --ink-faint:  #857d70;
+    --ground:     #17140f;
+    --paper:      #211d16;
+    --edge:       #38311f;
+    --quest:      #ff8f24;
+    --void:       #8a63ff;
+    --quest-wash: rgba(255, 143, 36, 0.14);
+    --void-wash:  rgba(138, 99, 255, 0.16);
+    --shadow:     0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .deck {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 clamp(14px, 3vw, 36px) 72px;
+    /* Slides number themselves. They were hand-numbered, which meant
+       inserting one in the middle silently renumbered nothing and the
+       spine started lying about the order. */
+    counter-reset: slide;
+  }
+
+  /* --- the slide, as a page of a travel document ------------- */
+  .slide {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-radius: 22px;
+    box-shadow: var(--shadow);
+    padding: clamp(26px, 4.2vw, 56px);
+    margin-top: clamp(18px, 2.4vw, 28px);
+    overflow: hidden;
+  }
+  .slide:first-child { margin-top: clamp(20px, 3vw, 34px); }
+  /* The cover and the closing page are not stops on the route. */
+  .slide:not(.cover) { counter-increment: slide; }
+
+  /* The route spine: a dashed flight path threading the deck,
+     the same dotted-journey motif the live site opens with. It
+     encodes a real sequence — the narrative genuinely runs in
+     this order — rather than decorating the margin. */
+  .slide::before {
+    content: "";
+    position: absolute;
+    left: clamp(26px, 4.2vw, 56px);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-image: linear-gradient(var(--edge) 42%, transparent 0);
+    background-size: 1px 9px;
+    opacity: .85;
+  }
+  .slide > * { position: relative; }
+
+  .slide-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 14px;
+    padding-left: 30px;
+    margin-bottom: 20px;
+  }
+  .num {
+    position: absolute;
+    left: clamp(26px, 4.2vw, 56px);
+    transform: translateX(-50%);
+    width: 26px; height: 26px;
+    display: grid; place-items: center;
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .num::before { content: counter(slide, decimal-leading-zero); }
+  .eyebrow {
+    font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--quest);
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  .display {
+    font-family: "Bagel Fat One", "Geist", system-ui, sans-serif;
+    font-weight: 400;
+    line-height: .96;
+    letter-spacing: -0.01em;
+  }
+
+  h2.title {
+    font-family: "Geist", system-ui, sans-serif;
+    font-size: clamp(28px, 4.2vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.06;
+    padding-left: 30px;
+    margin-bottom: 10px;
+  }
+  .lede {
+    padding-left: 30px;
+    font-size: clamp(17px, 1.7vw, 20px);
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin-bottom: 24px;
+  }
+  .body { padding-left: 30px; }
+
+  p { margin: 0 0 14px; }
+  p:last-child { margin-bottom: 0; }
+  strong { font-weight: 700; color: var(--ink); }
+
+  /* --- passport stamp --------------------------------------- */
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 13px;
+    border: 2px solid var(--void);
+    border-radius: 10px;
+    color: var(--void);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    transform: rotate(-3deg);
+    background: var(--void-wash);
+  }
+
+  /* --- link back to the pitch -------------------------------
+     This is the full detail; most readers want the 11 slides at /deck. */
+  .deckbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: -12px;
+  }
+  .deckbar a {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-soft);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-decoration: none;
+  }
+  .deckbar a:hover { color: var(--quest); border-color: var(--quest); }
+
+  /* Inbound messages, quoted. The words are the evidence; the
+     screenshots below them are the proof the words are real. */
+  .quote {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    border-radius: 14px;
+    background: var(--ground);
+    border: 1px solid var(--edge);
+  }
+  .quote q { font-size: 16px; line-height: 1.55; color: var(--ink); }
+  .quote .who {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--quest);
+  }
+  .proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: start; }
+  .proof img { width: 100%; height: auto; max-height: none; border-radius: 10px; border: 1px solid var(--edge); }
+
+  /* Platform screenshots, shown as evidence. */
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px;
+    max-width: 620px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+  .shot.screen img {
+    max-height: none;
+    object-fit: contain;
+    border-radius: 12px;
+    background: var(--ground);
+  }
+
+  /* The same amount in a currency the reader thinks in. */
+  .usd {
+    display: block;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    letter-spacing: 0;
+  }
+  .hf-cap .usd, .bn-k .usd { margin-top: 4px; text-transform: none; letter-spacing: 0; }
+
+  /* A caveat that has to be read but must not shout. */
+  .caveat {
+    font-size: 13px;
+    font-style: italic;
+    color: var(--ink-faint);
+  }
+
+  /* --- editable placeholder --------------------------------- */
+  .fill {
+    display: inline-block;
+    padding: 3px 10px;
+    border: 1.5px dashed var(--quest);
+    border-radius: 7px;
+    background: var(--quest-wash);
+    color: var(--quest);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: .82em;
+    font-weight: 600;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+
+  /* --- layout helpers --------------------------------------- */
+  .grid { display: grid; gap: clamp(14px, 2vw, 22px); }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+
+  .card {
+    background: var(--ground);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .card h3 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 6px;
+  }
+  .card p { font-size: 15px; color: var(--ink-soft); margin: 0; }
+
+  .card.hot { background: var(--quest-wash); border-color: var(--quest); }
+  .card.cool { background: var(--void-wash); border-color: color-mix(in srgb, var(--void) 45%, transparent); }
+
+  ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  /*
+    The marker is positioned, not a grid cell. As a two-column grid the
+    row's inline content stopped being one flow: a `<b>` mid-sentence
+    became its own grid item and landed back in the 18px marker column,
+    so "keeps <b>cash cost per creator low</b>" set one word per line.
+    Absolute positioning leaves the text a single normal inline flow,
+    which is the only thing that wraps correctly.
+  */
+  ul.ticks li {
+    position: relative;
+    padding-left: 20px;
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+  ul.ticks li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: .58em;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    background: var(--quest);
+    transform: rotate(45deg);
+  }
+  ul.ticks li b { color: var(--ink); font-weight: 650; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 6px 13px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: var(--paper);
+    font-size: 14px;
+    font-weight: 550;
+    color: var(--ink-soft);
+  }
+
+  figure { margin: 0; }
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+    /* A portrait phone photo at full column width ran to 800px tall and
+       set the height of the whole slide on its own. Cap it against the
+       viewport so an image can never be taller than the screen showing
+       it. */
+    max-height: 56vh;
+    object-fit: cover;
+  }
+  figcaption {
+    margin-top: 9px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    letter-spacing: .04em;
+    color: var(--ink-faint);
+  }
+
+  /* Slot for imagery the founder supplies. Deliberately loud —
+     an unfilled slot must be impossible to send by accident. */
+  .slot {
+    display: grid;
+    place-items: center;
+    text-align: center;
+    gap: 8px;
+    min-height: 210px;
+    padding: 26px;
+    border: 2px dashed var(--quest);
+    border-radius: 14px;
+    background: var(--quest-wash);
+    color: var(--quest);
+  }
+  .slot .k {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  .slot .h { font-size: 14px; color: var(--ink-soft); max-width: 34ch; }
+
+  /* The store renders, laid out to their real proportions so nothing
+     reflows when the files drop in. */
+  .shot { margin: 0; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+  }
+  /* Prose, not a label — so the body face, overriding the mono
+     `figcaption` rule the brand photographs use for their captions. */
+  .shot figcaption,
+  .clip figcaption {
+    margin-top: 9px;
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .shot figcaption b { color: var(--ink); font-weight: 650; }
+  .shot.hero { margin-bottom: 22px; }
+  .shot.hero img, .slot.hero { aspect-ratio: 3 / 2; object-fit: cover; }
+  .shot.panel img, .slot.panel { aspect-ratio: 3 / 2; object-fit: cover; }
+  /* The operations photographs are phone shots, held portrait. */
+  .shot.tall img, .slot.tall { aspect-ratio: 3 / 4; object-fit: cover; }
+  .shot.founder img, .slot.founder { aspect-ratio: 4 / 5; object-fit: cover; }
+  .shot.founder { max-width: 340px; }
+
+  /* Vertical creator footage. Capped by width because at full column
+     width a 384x832 clip would be a thousand pixels tall. */
+  .clip { max-width: 268px; }
+  .clip video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--edge);
+    background: #000;
+  }
+  .slot.hero, .slot.panel, .slot.tall { min-height: 0; }
+  .slot.tall { padding: 18px; }
+  .slot.tall .h { font-size: 13px; }
+  .slot.panel { padding: 16px; }
+  .slot.panel .h { font-size: 13px; }
+  .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--edge); vertical-align: top; }
+  th {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  /* --- the one number a slide is about ---------------------- */
+  .headline-figure > * { min-width: 0; }
+  .headline-figure {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 18px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    border-radius: 16px;
+    background: var(--quest-wash);
+    border: 1px solid var(--quest);
+  }
+  .hf-num {
+    font-family: "Geist", system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: clamp(34px, 5.4vw, 58px);
+    line-height: 1;
+    color: var(--quest);
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-cap {
+    font-size: 15px;
+    color: var(--ink-soft);
+    max-width: 46ch;
+  }
+
+  /* --- the three numbers that carry the model --------------- */
+  .bignums {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .bignum {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px;
+    border-radius: 14px;
+    background: var(--ground);
+    border: 1px solid var(--edge);
+  }
+  .bn-v {
+    font-family: "Geist", system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: clamp(28px, 3.4vw, 40px);
+    line-height: 1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .bn-k {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* The arithmetic, on one line where there is room for it. */
+  .equation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 16px 20px;
+    border-radius: 14px;
+    border: 1px dashed var(--edge);
+    font-size: 15px;
+    color: var(--ink-soft);
+  }
+  .equation b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .eq-o { color: var(--quest); font-weight: 700; font-size: 18px; }
+  .eq-r b { color: var(--quest); }
+
+  /* --- the assumptions, deliberately quieter ---------------- */
+  .assumptions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0 clamp(20px, 4vw, 44px);
+  }
+  .assumption {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--edge);
+    /* Rows stretch to the tallest item in the grid row, so the note
+       would otherwise float in the middle of a short cell instead of
+       hanging under the label it belongs to. */
+    align-content: start;
+  }
+  .a-k { font-size: 15px; font-weight: 650; color: var(--ink); }
+  .a-v {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--quest);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* Where an assumption carries both a target and a measured value the
+     pair is too long to sit in a right-hand column — it squeezed the
+     label into one word per line. Those stack instead. */
+  .assumption.dual { grid-template-columns: 1fr; }
+  .assumption.dual .a-v { text-align: left; white-space: normal; margin-top: 3px; }
+  /* Four items carrying a paragraph each want a 2x2, not three columns
+     and an orphan on the second row. */
+  .assumptions.wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
+
+  .a-n {
+    grid-column: 1 / -1;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin-top: 3px;
+  }
+
+  /* The lines that carry most of the raise. */
+  tr.lead td { background: var(--quest-wash); }
+  tr.lead td:first-child { border-radius: 8px 0 0 8px; }
+  tr.lead td:last-child { border-radius: 0 8px 8px 0; }
+  tr.total td { border-bottom: 0; border-top: 2px solid var(--ink); font-size: 17px; }
+
+  /*
+    Money on a phone. The use-of-funds table put its Amount column
+    off the right edge at 390px — every figure sat behind an inner
+    scrollbar nobody discovers, on the one slide an investor opens
+    the deck to read. Below the breakpoint each row becomes its own
+    block and every cell carries its column name, so the amount is
+    always on screen next to what it buys.
+  */
+  @media (max-width: 720px) {
+    .scroll table, .scroll thead, .scroll tbody, .scroll tr, .scroll th, .scroll td {
+      display: block;
+      width: auto;
+    }
+    .scroll thead { display: none; }
+    .scroll tr {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--edge);
+    }
+    .scroll td {
+      border: 0;
+      padding: 2px 0;
+      text-align: left;
+    }
+    /*
+      No column labels: three of them per row cost more height than
+      they earn, and the typography already says which is which — the
+      allocation is bold, what it covers is muted, and the amount is a
+      dashed chip. The chip is allowed to wrap here; nowrap is what put
+      it off the edge in the first place.
+    */
+    .scroll td.n { text-align: left; }
+    .scroll td.n .fill { white-space: normal; }
+    .scroll td[data-label="Allocation"] {
+      font-size: 16.5px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .scroll td[data-label="What it covers"] {
+      font-size: 14px;
+      color: var(--ink-soft);
+      margin: 1px 0 5px;
+    }
+  }
+
+  .rule { height: 1px; background: var(--edge); border: 0; margin: 26px 0; }
+
+  /* --- flywheel --------------------------------------------- */
+  .wheel { display: grid; gap: 12px; }
+  .spoke {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid var(--edge);
+    border-radius: 12px;
+    background: var(--ground);
+  }
+  .spoke .s {
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    border-radius: 8px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px; font-weight: 600;
+  }
+  .spoke b { font-weight: 650; }
+  .spoke span { color: var(--ink-soft); font-size: 15px; }
+  .spoke.turn { border-color: var(--quest); background: var(--quest-wash); }
+  .spoke.turn .s { background: var(--quest); }
+
+  .pull {
+    font-family: "Geist", system-ui, sans-serif;
+    font-size: clamp(19px, 2.3vw, 26px);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    line-height: 1.24;
+    padding: 22px 24px;
+    border-left: 4px solid var(--quest);
+    background: var(--quest-wash);
+    border-radius: 0 14px 14px 0;
+    color: var(--ink);
+  }
+
+  /* --- cover ------------------------------------------------- */
+  .cover { padding: clamp(34px, 6vw, 78px); }
+  .cover::before { display: none; }
+  .cover-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr);
+    gap: clamp(24px, 4vw, 52px);
+    align-items: center;
+  }
+  @media (max-width: 820px) { .cover-grid { grid-template-columns: 1fr; } }
+  .brandline { display: flex; align-items: center; gap: 13px; margin-bottom: 26px; }
+  .brandline img { width: 46px; height: 46px; border-radius: 12px; }
+  .brandline .n { font-weight: 700; letter-spacing: -.02em; font-size: 19px; }
+  .cover h1 {
+    font-size: clamp(40px, 8.4vw, 92px);
+    margin-bottom: 20px;
+  }
+  .cover h1 .o { color: var(--quest); }
+  .cover h1 .v { color: var(--void); }
+  .cover .sub {
+    font-size: clamp(17px, 1.9vw, 21px);
+    color: var(--ink-soft);
+    max-width: 46ch;
+    margin-bottom: 28px;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 10px 22px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+  .meta a { color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid var(--edge); }
+  .meta a:hover { color: var(--quest); border-color: var(--quest); }
+
+  /* --- closing ---------------------------------------------- */
+  .close { text-align: left; }
+  .close h2 { font-size: clamp(34px, 6.6vw, 74px); margin-bottom: 16px; }
+  .contact {
+    display: grid;
+    gap: 4px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .contact a { color: var(--quest); text-decoration: none; }
+  .contact a:hover { text-decoration: underline; }
+  .contact .who { color: var(--ink); font-weight: 600; }
+
+  a:focus-visible, summary:focus-visible {
+    outline: 2.5px solid var(--void);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .note {
+    font-size: 14px;
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  /*
+    Phones. Two things matter here and they pull against each other:
+    the left gutter costs content width on a 390px screen, and stacking
+    every grid one-per-row turns each slide into a scroll of its own.
+    So the gutter tightens, and the card grids go two-up rather than
+    one-up — six cards become three rows instead of six, which is the
+    single biggest cut to how far a reader has to scroll.
+  */
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    .slide::before { left: 16px; }
+    .num { left: 16px; }
+    .slide { padding: 24px 16px; border-radius: 18px; }
+    .slide-head, h2.title, .lede, .body { padding-left: 20px; }
+    .slide-head { margin-bottom: 16px; gap: 10px; }
+    .lede { margin-bottom: 22px; }
+
+    .g3, .g4, .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid, .panels { gap: 12px; }
+    .card { padding: 14px; border-radius: 12px; }
+    .card h3 { font-size: 14px; }
+    .card p, ul.ticks li { font-size: 14.5px; }
+    .chip { font-size: 13px; padding: 5px 11px; }
+    .spoke { padding: 11px 12px; gap: 11px; }
+    .spoke span { font-size: 14.5px; }
+    .shot figcaption,
+  .clip figcaption { font-size: 13.5px; }
+    .pull { padding: 18px; font-size: 19px; }
+    /* 11px uppercase mono reads as decoration rather than text at arm's
+       length on a phone; every label in the deck uses it. */
+    .eyebrow, .stamp, .bn-k, .quote .who, .slot .k, th, .a-v { font-size: 12px; }
+    /* Two-up keeps the evidence strip from becoming six full-width
+       screenshots. */
+    .proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .clip { max-width: none; }
+
+    .headline-figure { padding: 16px 18px; margin-bottom: 18px; gap: 4px 12px; }
+    .hf-cap { font-size: 14px; }
+    .bignums { grid-template-columns: 1fr; gap: 10px; }
+    /* Value over label, not beside it — "target monthly store-level
+       contribution" is too long to sit in a right-hand column and was
+       stacking one word per line. */
+    .bignum { padding: 14px 16px; gap: 4px; }
+    .bn-v { font-size: 30px; }
+    /* The equation stacks rather than wrapping mid-term, so each part
+       of the sum stays readable as its own line. */
+    .equation { flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px 16px; }
+    .assumptions { grid-template-columns: 1fr; }
+    .a-n { font-size: 13px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* Investors print decks. One slide, one page. */
+  @media print {
+    body { background: #fff; }
+    .deck { max-width: none; padding: 0; }
+    .slide {
+      break-after: page;
+      page-break-after: always;
+      box-shadow: none;
+      border-radius: 0;
+      border: 0;
+      margin: 0;
+      min-height: 0;
+    }
+    .slot { border-color: #999; color: #666; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+  <nav class="deckbar" aria-label="Deck links"><a href="/deck">Short pitch</a></nav>
+
+
+  <!-- ================= 1. COVER ================= -->
+  <section class="slide cover">
+    <div class="cover-grid">
+      <div>
+        <div class="brandline">
+          <img src="/deck/logo.png" alt="Snack Quest">
+          <span class="n">Snack Quest</span>
+        </div>
+        <h1 class="display">The home of <span class="o">global snack</span> <span class="v">discovery</span> in Africa.</h1>
+        <p class="sub">Kenya&rsquo;s brand for global snack discovery: sold online, through vending machines other people own, and on supermarket shelves.</p>
+        <div class="meta">
+          <span>Investor Deck</span>
+          <span>Nairobi, Kenya</span>
+          <a href="https://snackquests.shop" target="_blank" rel="noreferrer">snackquests.shop</a>
+        </div>
+      </div>
+      <figure>
+        <img src="/deck/box.webp" alt="A Snack Quest box, packed with snacks from Japan, Korea, China and Thailand">
+        <figcaption>The Snack Quest box: curated snacks from Japan, Korea, China &amp; Thailand.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ================= 2. PROBLEM ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">The opportunity</span></div>
+    <h2 class="title">Kenyans are discovering global snack culture online, and can&rsquo;t easily buy it offline.</h2>
+    <p class="lede">TikTok, Instagram and YouTube put Japanese, Korean, American, British and European snacks in front of Kenyan consumers every day. The demand is created online. The supply has not caught up.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Buying it today is hard</h3>
+          <ul class="ticks">
+            <li><b>Fragmented.</b> A handful of specialty sellers, scattered across platforms.</li>
+            <li><b>Inconsistent.</b> Stock appears and disappears without warning.</li>
+            <li><b>Hard to discover.</b> No single place to browse what exists.</li>
+            <li><b>Poorly suited to impulse.</b> Social discovery is instant; buying is not.</li>
+            <li><b>Expensive and opaque.</b> Prices vary widely between informal sellers.</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What consumers actually want</h3>
+          <div class="chips">
+            <span class="chip">Novelty</span>
+            <span class="chip">Discovery</span>
+            <span class="chip">Gifting</span>
+            <span class="chip">Social experiences</span>
+            <span class="chip">The thing they saw online</span>
+            <span class="chip">International brands</span>
+            <span class="chip">Something the supermarket doesn&rsquo;t have</span>
+          </div>
+          <p style="margin-top:18px;color:var(--ink-soft);font-size:15px;">The curiosity already exists and is growing. Nobody has organised it into a brand a customer can return to.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 3. SOLUTION ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">The solution</span></div>
+    <h2 class="title">One brand, one supply line, every place a snack is bought.</h2>
+    <p class="lede">Snack Quest is a consumer brand for global snack discovery, sold through an asset-light network of sales points across Nairobi &mdash; online, on the go and on the shelf &mdash; all fed by the one import line we control.</p>
+    <div class="body">
+      <div class="grid g3">
+        <div class="card hot">
+          <h3>Online <span style="font-weight:500;color:var(--ink-faint);">(live)</span></h3>
+          <p>snackquests.shop and curated boxes. The test kitchen: every order is costed, so we learn what sells before it goes into a machine or onto a shelf.</p>
+        </div>
+        <div class="card hot">
+          <h3>On the go <span style="font-weight:500;color:var(--ink-faint);">(now)</span></h3>
+          <p>Snack Quest vending machines, M-Pesa ready, inside other people&rsquo;s footfall: airports, campuses, offices. Owners fund the machine; we stock it and run it.</p>
+        </div>
+        <div class="card">
+          <h3>On the shelf <span style="font-weight:500;color:var(--ink-faint);">(next)</span></h3>
+          <p>Snack Quest shelves in mini-marts, then small and tier-2 supermarkets. A discovery corner that draws its own traffic, not a cheaper packet on the main aisle.</p>
+        </div>
+        <div class="card">
+          <h3>Curated boxes &amp; gifting</h3>
+          <p>Themed boxes of snacks from several countries. The repeat-purchase product, and the gift.</p>
+        </div>
+        <div class="card">
+          <h3>Creator-led discovery</h3>
+          <p>One wave of creator content sends customers to every channel at once: the site, the machine, the shelf.</p>
+        </div>
+        <div class="card cool">
+          <h3>Brand distribution <span style="font-weight:500;color:var(--ink-faint);">(future)</span></h3>
+          <p>A channel for international snack brands reaching African consumers.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= OPERATING TODAY ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Traction</span>
+      <span class="stamp">Operating today</span>
+    </div>
+    <h2 class="title">Not a concept. It already runs.</h2>
+    <p class="lede">Orders are placed on the site, paid by M-Pesa, packed into branded boxes and delivered across Nairobi, today. Small scale, but every part of the system is built and working.</p>
+    <div class="body">
+      <div class="grid g2" style="max-width:660px;margin-bottom:28px;">
+        <figure class="shot tall">
+          <img src="/deck/shot-rider.webp" alt="A delivery rider riding away down a Nairobi side road with three Snack Quest branded boxes strapped to the back of the motorbike.">
+          <figcaption><b>A real order going out.</b> Three boxes on one run, Nairobi.</figcaption>
+        </figure>
+        <figure class="shot tall">
+          <img src="/deck/shot-dispatch.webp" alt="A delivery rider in a hi-vis vest standing beside his motorbike, securing three stacked Snack Quest branded boxes.">
+          <figcaption><b>Custom-printed boxes.</b> The packaging is already part of the product, not a generic carton.</figcaption>
+        </figure>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What already exists</h3>
+      <div class="grid g3">
+        <div class="card hot">
+          <h3>Live storefront</h3>
+          <p>snackquests.shop takes orders and M-Pesa payments end to end, including from paid ads.</p>
+        </div>
+        <div class="card">
+          <h3>Branded packaging</h3>
+          <p>Custom-printed Snack Quest boxes in production and in use on every delivery.</p>
+        </div>
+        <div class="card">
+          <h3>Delivery</h3>
+          <p>Orders delivered across Nairobi today, plus courier pickup points countrywide. Tushop&rsquo;s same-day, next-day and 90-minute express service is being switched on.</p>
+        </div>
+        <div class="card">
+          <h3>Back office</h3>
+          <p>Staff portals for packing lists, dispatch, fulfilment cost capture and per-order margin.</p>
+        </div>
+        <div class="card">
+          <h3>Customer messaging</h3>
+          <p>Automated SMS when a payment lands and when an order goes out.</p>
+        </div>
+        <div class="card cool">
+          <h3>Creator programme</h3>
+          <p>Live: 33 creators registered, each with a tracked referral link. 281 clicks so far. First boxes seeded 1 September and most videos are still being edited, so the programme has produced three attributed sales to date, against KSh&nbsp;900 of commission.</p>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The first thirty days of trading, 23 August &ndash; 21 September</h3>
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;4,279</span>
+          <span class="bn-k">Average paid order value</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">24</span>
+          <span class="bn-k">Paid orders, from 24 customers</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;102,700</span>
+          <span class="bn-k">Revenue</span>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px;">Twenty-four orders is still a small number and we are not going to dress it up. It is here because the shape matters more than the size. The average paid order came in at <strong>KSh&nbsp;4,279</strong> against the <strong>KSh&nbsp;3,500</strong> we planned for, which is ahead of plan. Margin went the other way: <strong>27.1%</strong> gross against a 45% target, on the five orders where goods cost is itemised. After delivery and packaging, contribution splits in two, and the split is the honest part: <strong>19.8%</strong> across the five orders where somebody held the receipts, <strong>35.6%</strong> across the eighteen costed by spreading a shopping trip evenly over the orders it served, <strong>31.9%</strong> blended over all twenty-three. We lead with the first. An even split is an estimate; a receipt is not. One early order sold below cost, and order-level contribution ranged from &minus;21% to +55%.</p>
+      <p class="note" style="margin-top:10px;">Two numbers we are not going to leave for you to find. <strong>Repeat purchase is zero</strong> &mdash; twenty-four orders, twenty-four different customers, and the oldest of them is thirty days old. The box is our retention thesis and it has not been tested yet. And a further <strong>eight boxes went out at no charge</strong> &mdash; seven on 1 September and one on the 16th &mdash; roughly KSh&nbsp;35,500 of stock at list price, seeded to creators. Those are excluded from every revenue figure above, and from the margin: they carry real stock against no sale, and counting them as orders would drag the average order value from KSh&nbsp;4,279 down to KSh&nbsp;3,209 while adding nothing to revenue.</p>
+      <p class="note" style="margin-top:10px;">Every order on this site is instrumented: goods cost, delivery cost and margin are recorded per order. That is how we can quote an 18-point margin gap rather than an estimate, and it is why these numbers move week to week &mdash; contribution read 19.7% over the first four orders, 19.0% over seven, 21.3% over ten, and 31.9% now that twenty-three carry a cost &mdash; it moves as more shopping trips are costed against the orders they served, and lately it has been moving up.</p>
+
+      <div class="pull" style="margin-top:24px;">The system works. What it needs now is stock bought at import cost, and places to sell beyond a website.</div>
+    </div>
+  </section>
+
+  <!-- ================= OPERATOR DEMAND ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Operator demand</span>
+      <span class="stamp">October 2026</span>
+    </div>
+    <h2 class="title">The machine buyers came before we had a machine to sell.</h2>
+    <p class="lede">We ran ads asking who wanted a Snack Quest vending machine. The answers turned vending from a plan into a queue.</p>
+    <div class="body">
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">200+</span>
+          <span class="bn-k">People who asked to buy and run a Snack Quest machine</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">80</span>
+          <span class="bn-k">Say they have the cash now, or will by 1 November</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">9</span>
+          <span class="bn-k">Existing machines lined up for our stock, one at JKIA</span>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">Where the first machines are</h3>
+      <div class="grid g3">
+        <div class="card hot">
+          <h3>Five machines, one owner</h3>
+          <p>She owns five machines and has agreed that Snack Quest stocks and manages all of them. We visit this week to help her place them.</p>
+        </div>
+        <div class="card hot">
+          <h3>Four machines, one at JKIA</h3>
+          <p>A second owner with four machines, one of them already standing at Jomo Kenyatta International Airport, ready to carry Snack Quest stock.</p>
+        </div>
+        <div class="card cool">
+          <h3>USIU</h3>
+          <p>A USIU alumnus has committed to buying a machine from us, with the sale targeted before December: our route onto a campus with real spending power from next year.</p>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:20px;"><b>Stated plainly.</b> The 200+ and the 80 are what people told us on our ad form, not deposits, and we will not count any of them as a sale until money moves. The nine machines are agreements, not yet signed contracts, and none has traded on our stock. What these numbers do settle is the question that matters most for a machine network: whether anybody will put their own money behind a Snack Quest machine.</p>
+      <figure class="shot hero" style="margin-top:26px;">
+        <div data-shot="machines" class="slot hero">
+          <span class="k">Photo to come</span>
+          <span class="h">Kelvin standing in front of the partner machines.</span>
+        </div>
+        <figcaption><b>The first machines on the network.</b> Partner machines that Snack Quest stocks and manages.</figcaption>
+      </figure>
+      <div class="pull" style="margin-top:24px;">The interest is real. Turning it into signed contracts and deposits is the next step, and this raise pays for it.</div>
+    </div>
+  </section>
+
+  <!-- ================= SUPPLY & DELIVERY ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Operating spine</span>
+      <span class="stamp">Partners, not headcount</span>
+    </div>
+    <h2 class="title">Product in, orders out, without building either.</h2>
+    <p class="lede">The two things that usually sink a small retail operation are getting stock and getting it to the customer. Both are handled by named partners rather than by us hiring into them.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div class="card">
+          <h3>Supply: direct Korean sourcing</h3>
+          <p style="margin-bottom:10px;">A supplier relationship that will source any snack from Korea and ship it to Kenya on a two-to-three month lead time.</p>
+          <p>It changes what the catalogue can be. Instead of selling whatever is already importable into Kenya, we can go after what customers are actually asking for on TikTok, including the products driving a trend before anyone else here stocks them.</p>
+          <p style="margin-top:10px;">And it does not need a container of its own: we co-load into an established importer&rsquo;s containers on Oloitoktok Road.</p>
+        </div>
+        <div class="card">
+          <h3>Delivery: Tushop</h3>
+          <p style="margin-bottom:10px;">A third-party logistics partner covering Nairobi and roughly 30km around it, on three service levels:</p>
+          <ul class="ticks" style="margin-top:10px;">
+            <li><b>Express:</b> collected and delivered within 90 minutes.</li>
+            <li><b>Same day:</b> logged by 1pm, delivered by 6pm.</li>
+            <li><b>Next day:</b> logged by midnight, delivered by 4pm.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">What the Tushop terms do to the unit economics</h3>
+      <div class="grid g2">
+        <div class="card hot">
+          <h3>Delivery becomes a formula, not a guess</h3>
+          <p style="margin-bottom:10px;"><strong>KSh&nbsp;35 per km</strong> of optimised route, plus <strong>3%</strong> of declared order value for goods insurance.</p>
+          <p>That is a number we can put straight into the model rather than estimate. It also means the cost of serving a customer is known before we accept the order.</p>
+        </div>
+        <div class="card cool">
+          <h3>Batching rewards density</h3>
+          <p style="margin-bottom:10px;">Three same-day orders sharing one optimised 20km route cost the same <strong>KSh&nbsp;700</strong> as a single drop on that route, not KSh&nbsp;700 each.</p>
+          <p>Delivery cost per order therefore falls as order density rises. Machines and shelves clustered in one part of Nairobi make every delivery, and every restock round, cheaper.</p>
+        </div>
+      </div>
+
+      <div class="grid g3" style="margin-top:18px;">
+        <div class="card"><h3>Insured in transit</h3><p>100% of declared order value while the goods are in Tushop&rsquo;s custody.</p></div>
+        <div class="card"><h3>Live customer tracking</h3><p>The customer gets a tracking link and the rider&rsquo;s details, then a delivery confirmation and a review prompt.</p></div>
+        <div class="card"><h3>No delivery fleet</h3><p>Monthly invoicing. No delivery riders to hire, insure or manage as online orders grow. Restocking machines is the one round we run ourselves, on our own bikes.</p></div>
+      </div>
+
+      <div class="pull" style="margin-top:24px;">Today the company is two people. Tushop is the delivery team we would otherwise have to raise money to hire.</div>
+      <p class="note" style="margin-top:14px;">The founder full-time, plus one employee packing orders. Tushop&rsquo;s terms and service levels are as set out above and the teams are aligning for kickoff; the Korean sourcing line is an established relationship rather than an exclusive contract. Both are stated as they stand.</p>
+    </div>
+  </section>
+
+  <!-- ================= TIKTOK ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Demand signal</span>
+      <span class="stamp">TikTok &middot; @snackquests</span>
+    </div>
+    <h2 class="title">Demand showed up on TikTok before we spent anything on it.</h2>
+    <p class="lede">Under two weeks of organic content, plus three days of paid promotion. That is the entire window these numbers come from.</p>
+    <div class="body">
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">177.8K</span>
+          <span class="bn-k">Post views, 28 days to 25 Aug</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">74K</span>
+          <span class="bn-k">Best single video</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">1,208</span>
+          <span class="bn-k">Followers</span>
+        </div>
+      </div>
+
+      <div class="grid g4" style="margin-bottom:22px;">
+        <div class="card"><h3>11.4K</h3><p>Likes</p></div>
+        <div class="card"><h3>4.7K</h3><p>Profile views</p></div>
+        <div class="card"><h3>278</h3><p>Shares</p></div>
+        <div class="card"><h3>144</h3><p>Comments</p></div>
+      </div>
+
+      <div class="screens">
+        <figure class="shot screen">
+          <img src="/deck/shot-ttmetrics.webp" alt="TikTok's analytics screen for @snackquests, 28 days to 25 August 2026: 177.8K post views, 4.7K profile views, 11.4K likes, 144 comments, 278 shares.">
+          <figcaption>TikTok&rsquo;s own 28-day analytics for @snackquests.</figcaption>
+        </figure>
+        <figure class="shot screen">
+          <img src="/deck/shot-ttprofile.webp" alt="The @snackquests TikTok profile: 1,208 followers, 13.7K likes, and a grid of videos with 74K, 37.8K and 13.5K views.">
+          <figcaption>The account, with the 74K video pinned.</figcaption>
+        </figure>
+      </div>
+
+      <div class="pull">Under two weeks of organic posting. Three days of ads. No agency, no production budget.</div>
+
+      <div class="grid g2" style="margin-top:24px;">
+        <div class="card hot">
+          <h3>What this establishes</h3>
+          <ul class="ticks" style="margin-top:12px;">
+            <li>The product is <b>natively shareable</b>. 278 shares is people sending it to each other, not us buying reach.</li>
+            <li>A single founder with a phone can <b>reach six figures of views</b> in days.</li>
+            <li>It explains the <b>inbound from creators</b>: they can see the format works.</li>
+            <li>Paid promotion <b>amplifies rather than substitutes</b>. The organic posts came first.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>What it does not yet prove</h3>
+          <p style="margin-bottom:10px;">Views are attention, not revenue. This audience is real and it is growing, but converting it is currently throttled by the two constraints on the next slides: customers who will not pay online before they trust us, and nowhere to buy us in person.</p>
+          <p><strong>That gap is what the raise closes.</strong></p>
+        </div>
+      </div>
+      <p class="note" style="margin-top:18px;">Figures from TikTok&rsquo;s own analytics for @snackquests, 28-day window ending 25 August 2026. Percentage growth figures are deliberately omitted: the prior period was close to zero, so they read as thousands of percent and mean very little.</p>
+    </div>
+  </section>
+
+  <!-- ================= 4. MARKET PULL ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Market pull</span>
+      <span class="stamp">Inbound, unpaid</span>
+    </div>
+    <h2 class="title">Creators are already asking us to work with them.</h2>
+    <p class="lede">Before any physical infrastructure exists, before a marketing budget, influencers and UGC creators have been sending Snack Quest direct messages asking to collaborate.</p>
+    <div class="body">
+      <div class="pull">Many micro-creators are willing to make content in exchange for a Snack Quest box, not cash. The pull exists. What&rsquo;s missing is the capacity to meet it.</div>
+      <hr class="rule">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Why this signal matters</h3>
+          <ul class="ticks">
+            <li>Inbound interest is <b>organic demand</b>, not bought reach.</li>
+            <li>Product-for-content keeps <b>cash acquisition cost low</b>.</li>
+            <li>It suggests the product is <b>natively shareable</b>, the core requirement for social commerce.</li>
+          </ul>
+          <p class="note" style="margin-top:14px;">We are not claiming proven reach or conversion. This is early qualitative signal, and it is the reason the timing is right.</p>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Who we&rsquo;re building for</h3>
+          <p style="margin-bottom:12px;"><strong>Primary: urban Nairobi consumers aged 18&ndash;34 who discover food on social platforms and have discretionary spend.</strong> This is not a guess. Our twenty-four paying customers average KSh&nbsp;4,279 an order, which is a treat purchase, not pocket money, and our TikTok audience sits squarely in this band.</p>
+          <div class="chips">
+            <span class="chip">Gift buyers</span>
+            <span class="chip">Experience seekers</span>
+            <span class="chip">Parents &amp; families</span>
+            <span class="chip">Corporate gifting <em style="color:var(--ink-faint);">(future)</em></span>
+          </div>
+          <p class="note" style="margin-top:14px;">Secondary segments, ranked by what we have seen so far rather than by potential. The first machines and shelves are partly a test of which convert best.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MARKET SIZE ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Market size</span>
+      <span class="caveat">Counted in occasions and customers, not city population</span>
+    </div>
+    <h2 class="title">Every day is somebody&rsquo;s birthday.</h2>
+    <p class="lede">We are not chasing a share of a market. We need a number of people and a reason for each of them to come back &mdash; so this is built from the order size we have actually measured, multiplied by the occasions a real customer has in a year.</p>
+    <div class="body">
+      <div class="equation">
+        <span class="eq-t"><b>KSh&nbsp;4,279</b> measured average order</span>
+        <span class="eq-o">&times;</span>
+        <span class="eq-t"><b>6</b> occasions a year</span>
+        <span class="eq-o">=</span>
+        <span class="eq-t eq-r"><b>~KSh&nbsp;25,700</b> per customer / year</span>
+      </div>
+
+      <div class="bignums" style="margin-top:22px;">
+        <div class="bignum">
+          <span class="bn-v">~KSh&nbsp;25,700</span>
+          <span class="bn-k">What one returning customer is worth in a year</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">1 packet</span>
+          <span class="bn-k">The smallest thing a machine or a shelf sells &mdash; a sale we cannot make online at all</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">24</span>
+          <span class="bn-k">Paying customers today. That is the distance, stated plainly.</span>
+        </div>
+      </div>
+
+      <hr class="rule">
+
+      <div class="grid g3">
+        <div class="card cool">
+          <h3>Gifting is the engine</h3>
+          <p>Somewhere in this city, today is somebody&rsquo;s birthday &mdash; and tomorrow it is somebody else&rsquo;s. Add Valentine&rsquo;s, Christmas, anniversaries, apologies, movie nights and the surprise sent for no reason at all. Gifting does not require the buyer to be a snack enthusiast, which is what makes it the widest door in. Our measured <strong>KSh&nbsp;4,279</strong> order is already a gift-sized purchase, not pocket money.</p>
+        </div>
+        <div class="card">
+          <h3>Campus, and the content that comes with it</h3>
+          <p>Students are the audience already watching us: dense, social, and the people who make the format spread. The plan is a series filmed across Nairobi&rsquo;s universities &mdash; the visit is the acquisition and the content at the same time, which is the same trick the TikTok account already pulls for free.</p>
+        </div>
+        <div class="card">
+          <h3>Children, and the parents who pay</h3>
+          <p>Odd flavours from other countries are a child&rsquo;s idea of an event. Children pull, parents pay, and the occasion repeats: birthdays, school holidays, rewards, treats. It is the least fashionable segment on this slide and probably the most reliable.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3>And what only a machine or a shelf can sell</h3>
+        <p>Right now the smallest thing anybody can buy from us is a box. Somebody who wants one packet is a customer we currently turn away, because we have no product at that price and no way to hand it over. A machine or a shelf is not a bigger slice of the same demand &mdash; it is demand we cannot serve at all today, at a frequency a box will never have.</p>
+      </div>
+
+      <p class="note" style="margin-top:18px;">The honest reading of the numbers above. <strong>Six occasions a year is an assumption, not a result</strong> &mdash; repeat purchase is currently zero, and measuring it is one of the four numbers this raise is set against. At three occasions rather than six a returning customer is worth about <strong>KSh&nbsp;12,800</strong> a year instead of 25,700, which is the sensitivity a partner should push on. And single-packet trade is deliberately left out of the arithmetic entirely, so what the machines and shelves sell one packet at a time is upside this slide does not count.</p>
+      <p class="note" style="margin-top:10px;">We have deliberately not quoted a national snack-market figure, or counted the retail sites Nairobi could hold. A number that large tells you nothing about whether we can sell a KSh&nbsp;4,279 box or a packet from a machine, and a count of shopping centres is a supply answer to a demand question. The market we will report is counted in machines trading, shelves stocked and customers who come back.</p>
+    </div>
+  </section>
+
+  <!-- ================= INBOUND, VERBATIM ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Inbound, verbatim</span>
+      <span class="stamp">Unpaid &middot; unsolicited</span>
+    </div>
+    <h2 class="title">Six creators approached us. We approached none of them.</h2>
+    <p class="lede">The previous slide claims creators are coming to us. This is that claim with the evidence attached: their words, their follower counts, and not one shilling spent to prompt any of it.</p>
+    <div class="body">
+      <div class="bignums">
+        <div class="bignum">
+          <span class="bn-v">1.54M</span>
+          <span class="bn-k">Combined followers, across the five showing a count</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">6</span>
+          <span class="bn-k">Inbound approaches</span>
+        </div>
+        <div class="bignum">
+          <span class="bn-v">KSh&nbsp;0</span>
+          <span class="bn-k">Spent to get them</span>
+        </div>
+      </div>
+
+      <div class="grid g3" style="margin-top:22px;">
+        <div class="quote"><q>Hello can i get a chance to advertise snackquests on my page</q><span class="who">1.2M followers</span></div>
+        <div class="quote"><q>I&rsquo;ve been thinking about SnackQuest and I&rsquo;d actually love to explore a collaboration with you.</q><span class="who">172.1K followers</span></div>
+        <div class="quote"><q>Hey you good I think we can work right</q><span class="who">113.3K followers</span></div>
+        <div class="quote"><q>Hey kindly send me the prices I can promote you and also do an advertising video</q><span class="who">31.7K followers</span></div>
+        <div class="quote"><q>PR?</q><span class="who">23.7K followers</span></div>
+        <div class="quote"><q>I&rsquo;m intrigued by your product! Would you like to do a collab&hellip; I try to help promote small businesses and don&rsquo;t charge for any marketing :)</q><span class="who">Verified food-review account</span></div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin:26px 0 12px;">The messages themselves</h3>
+      <div class="proof">
+        <img src="/deck/shot-dm-b.webp" alt="An inbound direct message from a creator with 1.2 million followers, asking for a chance to advertise Snack Quest on their page.">
+        <img src="/deck/shot-dm-d.webp" alt="An inbound direct message from a creator with 113,300 followers, suggesting they could work together.">
+        <img src="/deck/shot-dm-c.webp" alt="An inbound direct message from a creator with 31,700 followers, asking for prices and offering an advertising video.">
+        <img src="/deck/shot-dm-a.webp" alt="An inbound direct message from a creator with 23,700 followers, asking about PR.">
+        <img src="/deck/shot-dm-f.webp" alt="An inbound direct message from a verified food-review account offering a collaboration at no charge.">
+        <img src="/deck/shot-dm-e.webp" alt="A long inbound direct message from a creator with 172,100 followers, proposing a Snack Quest tasting and review video with their sister.">
+      </div>
+
+      <div class="pull" style="margin-top:24px;">The supply of creators is already there and it is free. What is missing is the product to send them, and a place to send them to.</div>
+      <p class="note" style="margin-top:14px;">Names, handles and profile photographs are blacked out. These are private messages and the people who sent them have not agreed to appear in a fundraising document; the follower counts and the wording are untouched. Unredacted originals available on request.</p>
+    </div>
+  </section>
+
+  <!-- ================= 5. BOTTLENECKS ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">What&rsquo;s holding us back</span></div>
+    <h2 class="title">Three constraints. Not one of them is demand.</h2>
+    <p class="lede">Two are solved by putting the product where people already are, in machines and on shelves, and one by having stock money on the table. None of them is a question of whether people want the product, which is exactly what makes them fixable with this raise rather than with a better idea.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div class="card" style="border-color:var(--quest);">
+          <h3 style="color:var(--quest);">Payment friction</h3>
+          <p style="margin-bottom:12px;">We are losing sales from customers who want to pay on delivery, or who simply aren&rsquo;t comfortable paying online before they trust the brand.</p>
+          <p><strong>A machine or a shelf creates a trusted place to buy</strong>: pay by M-Pesa on the spot, with the product in hand.</p>
+        </div>
+        <div class="card" style="border-color:var(--void);">
+          <h3 style="color:var(--void);">Creator capacity</h3>
+          <p style="margin-bottom:12px;">Creators want to work with us in exchange for product. We don&rsquo;t yet have the stock or the places to point their audiences to.</p>
+          <p><strong>Machines and shelves become the call to action</strong>: every video can end at a place where the product is on sale today.</p>
+        </div>
+        <div class="card" style="border-color:var(--quest);">
+          <h3 style="color:var(--quest);">An open door, and nothing to trade</h3>
+          <p style="margin-bottom:12px;">Exotic Snack Guys run the same format in the United States: 100+ locations, 49,600 followers, features on FOX, WGN, Yahoo and the Chicago Tribune, and an Instagram bio that reads <em>DM for collabs</em>. We approached them. They asked how they could help.</p>
+          <p><strong>Stock money turns a favour into a transaction</strong>: asking an established brand to put its name beside ours is asking them to take a risk, while asking them to supply us at volume, paid upfront, is asking them to do business. The second is the far smaller ask, and the better first step.</p>
+        </div>
+      </div>
+      <div class="pull" style="margin-top:24px;">The opportunity already exists. What is missing is the infrastructure to serve it and the cash to be worth dealing with.</div>
+    </div>
+  </section>
+
+  <!-- ================= 6. WHY A NETWORK ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">The insight</span>
+      <span class="stamp">Why a network first</span>
+    </div>
+    <h2 class="title">One store concentrates risk. A network creates data.</h2>
+    <p class="lede">Putting the whole raise into one address means one location, one rent, one catchment and one set of assumptions &mdash; all tested at once, with no way to tell which of them was wrong.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div class="card">
+          <h3>One store</h3>
+          <p>Every variable moves together. If it works you do not know why; if it does not, you do not know which assumption broke. And the capital is spent before the first question is answered.</p>
+        </div>
+        <div class="card hot">
+          <h3>A discovery network</h3>
+          <p>Many locations, many customer environments, each one small enough to be wrong cheaply. Every one of them returns demand data before any large commitment is made.</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <p class="pull">I&rsquo;m not raising to open one store. I&rsquo;m raising to build a network that sells in many places at once.</p>
+      <p class="note" style="margin-top:14px;">That is why there is no store in this plan. Machines and shelves do the job a store would do &mdash; a trusted place to buy, and a read on what sells &mdash; at a fraction of the cost, and in many places at once.</p>
+    </div>
+  </section>
+
+  <!-- ================= 7. CREATOR ENGINE ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Discovery Machines</span>
+      <span class="stamp">The distribution node</span>
+    </div>
+    <h2 class="title">Every machine is a retail laboratory.</h2>
+    <p class="lede">A Discovery Machine is a small, stocked Snack Quest placed inside somebody else&rsquo;s footfall. It sells &mdash; but what it is really for is telling us which products move, where, at what price, to whom, and how often.</p>
+    <div class="body">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Five environments, five different customers</h3>
+      <div class="grid g3" style="margin-bottom:26px;">
+        <div class="card"><h3>Hotels &amp; BnBs</h3><p>Visitors with time, curiosity and no idea where to shop.</p></div>
+        <div class="card"><h3>Universities</h3><p>The exact demographic already watching this category on TikTok.</p></div>
+        <div class="card"><h3>Office complexes</h3><p>Repeat daily footfall from the same faces &mdash; the cleanest read on repeat purchase we can get.</p></div>
+        <div class="card"><h3>Hospitals</h3><p>Long waits, captive audience, almost no competing offer.</p></div>
+        <div class="card"><h3>Malls &amp; transport hubs</h3><p>Volume and impulse, against a rent we do not pay.</p></div>
+      </div>
+      <p class="note" style="margin-bottom:26px;"><b>And what each one costs us to be wrong:</b> a machine relocates, a lease does not. That asymmetry is the whole argument for testing this way round.</p>
+      <hr class="rule">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What every machine returns</h3>
+      <div class="chips" style="margin-bottom:22px;">
+        <span class="chip">Location economics</span>
+        <span class="chip">Product demand</span>
+        <span class="chip">Price elasticity</span>
+        <span class="chip">Best-selling SKUs</span>
+        <span class="chip">Sales velocity</span>
+        <span class="chip">Time of day</span>
+        <span class="chip">Restocking rhythm</span>
+        <span class="chip">Repeat purchase</span>
+        <span class="chip">Customer segment</span>
+      </div>
+      <p class="note" style="margin-bottom:22px;"><b>Every machine ships with our system, so every sale on every machine lands in one place.</b> That is what can make Snack Quest the data house for snacks in Kenya: once the network is trading, a brand can test a product launch on the network &mdash; which locations, what price, how fast it sells &mdash; before committing to the market.</p>
+      <p class="pull">The machine is the node. The network is the asset.</p>
+      <p class="note" style="margin-top:14px;"><b>Stated plainly: nine machines are lined up for our stock, and none has traded on it yet.</b> One stands at JKIA, a transport hub; the first machine sold goes to USIU, a university. Machine-level economics stay unknown until those machines have traded &mdash; producing them is this raise&rsquo;s first job, not a number we are asserting here.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">Distribution</span></div>
+    <h2 class="title">The product films itself.</h2>
+    <p class="lede">Snack Quest is unusually well suited to creator content because discovery <em>is</em> the product. Opening the box is the story.</p>
+    <div class="body">
+      <div class="grid g2">
+        <figure class="clip">
+          <video controls playsinline preload="metadata" muted loop width="384" height="832"
+                 aria-label="A creator unboxing a Snack Quest box on camera">
+            <source src="/deck/unboxing-clip.mp4" type="video/mp4">
+            Your browser cannot play this clip.
+          </video>
+          <figcaption><b>A creator unboxing the box.</b> The format creators already make natively, made by one of them.</figcaption>
+        </figure>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What a creator can make</h3>
+          <div class="chips" style="margin-bottom:20px;">
+            <span class="chip">Unboxing</span>
+            <span class="chip">Taste tests</span>
+            <span class="chip">Country vs country</span>
+            <span class="chip">Reacting to odd snacks</span>
+            <span class="chip">Rankings</span>
+            <span class="chip">Challenges</span>
+            <span class="chip">Gifting content</span>
+            <span class="chip">Machine finds</span>
+            <span class="chip">Drop announcements</span>
+          </div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Why it could become a moat</h3>
+          <ul class="ticks">
+            <li>Product-for-content keeps <b>cash cost per creator low</b>.</li>
+            <li>Machines and shelves give creators <b>a place to send people</b>, not just a parcel &mdash; every video can end at a spot where the product is on sale today.</li>
+            <li>Every box is a <b>new episode</b>. The content never runs out.</li>
+          </ul>
+          <p class="note" style="margin-top:14px;">An emerging opportunity, not a proven moat. The machine network is what lets us test it at volume.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 8. FLYWHEEL ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">The model</span></div>
+    <h2 class="title">Physical and digital, feeding each other.</h2>
+    <p class="lede">The machine does not compete with the website. It fills it.</p>
+    <div class="body">
+      <div class="wheel">
+        <div class="spoke"><span class="s">1</span><span><b>Discover:</b> a creator&rsquo;s video, or a machine in the corridor.</span></div>
+        <div class="spoke turn"><span class="s">2</span><span><b>Buy on the spot:</b> a single packet, paid by M-Pesa, no online payment hesitation.</span></div>
+        <div class="spoke"><span class="s">3</span><span><b>Experience:</b> the snacks, the novelty, the surprise.</span></div>
+        <div class="spoke"><span class="s">4</span><span><b>Share:</b> customers post it, and so do the creators.</span></div>
+        <div class="spoke turn"><span class="s">5</span><span><b>Reorder online:</b> a curated box, delivered.</span></div>
+        <div class="spoke"><span class="s">6</span><span><b>Gift &amp; repeat:</b> boxes bought for others, and for new drops.</span></div>
+        <div class="spoke"><span class="s">7</span><span><b>Lifetime value grows</b>, and the loop starts again with their audience.</span></div>
+      </div>
+      <div class="pull" style="margin-top:24px;">Machines and shelves acquire with a single packet. Snack boxes retain and increase AOV.</div>
+      <p class="note" style="margin-top:12px;">AOV means average order value: what a customer spends per order. Boxes lift it because a box is many snacks bought in one decision.</p>
+    </div>
+  </section>
+
+  <!-- ================= 9. BOXES ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">Retention engine</span></div>
+    <h2 class="title">The machine acquires. The box is why they come back.</h2>
+    <p class="lede">A single snack is a transaction. A curated box is a relationship: bigger basket, built-in reason to return, and a format that rotates forever.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div class="card hot">
+          <h3>Why boxes matter commercially</h3>
+          <ul class="ticks" style="margin-top:12px;">
+            <li><b>Bigger basket</b> than buying snacks one at a time.</li>
+            <li><b>Repeat purchase</b> built into the format.</li>
+            <li><b>Gifting</b>: a box is a present, a packet isn&rsquo;t.</li>
+            <li><b>Themed drops</b> and seasonal campaigns create urgency.</li>
+            <li><b>Easy creator seeding:</b> one box is one piece of content.</li>
+          </ul>
+        </div>
+        <div class="card cool">
+          <h3>Future upside</h3>
+          <ul class="ticks" style="margin-top:12px;">
+            <li><b>Subscriptions:</b> recurring boxes. Not live today, but a clear next step.</li>
+            <li><b>Frequent product rotation</b> keeps the catalogue fresh without long-term SKU risk.</li>
+            <li><b>Corporate &amp; occasion gifting</b> at higher order values.</li>
+          </ul>
+          <p class="note" style="margin-top:14px;">Labelled as opportunity, not current revenue.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 10. BUSINESS MODEL ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">Business model</span></div>
+    <h2 class="title">One machine, three ways to earn from it.</h2>
+    <p class="lede">The machine is bought with somebody else&rsquo;s money. Snack Quest earns when we sell it, every time we restock it, and every month we run it.</p>
+    <div class="body">
+      <div class="grid g3">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--quest);">Live today</h3>
+          <ul class="ticks">
+            <li>Individual snack sales</li>
+            <li>Curated snack boxes</li>
+            <li>E-commerce sales via snackquests.shop</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--quest);">Switched on by this raise</h3>
+          <ul class="ticks">
+            <li><b>Wholesale snacks</b> to every machine on the network: a recurring order, every restock</li>
+            <li><b>Machine sales</b>: Snack Quest machines, built for Kenya and M-Pesa ready</li>
+            <li><b>Management subscription</b>: we stock, service and run the machine for its owner</li>
+            <li><b>Supermarket shelves</b>: Snack Quest corners stocked at wholesale, ten supermarkets first</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--void);">Future layers</h3>
+          <ul class="ticks">
+                        <li>Subscriptions and recurring boxes</li>
+            <li>Corporate and occasion gifting</li>
+            <li>Paid product launches and market tests for brands, run on machine data</li>
+            <li>Branded collaborations and international brand distribution</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note" style="margin-top:20px;">Only the left-hand column is revenue today. The machine price, the subscription fee and wholesale terms are <b>not set yet</b>: the first sales set them, and we would rather show them measured than modelled. Everything in the right-hand column is opportunity, not revenue.</p>
+    </div>
+  </section>
+
+  <!-- ================= 12. BRAND DISTRIBUTION ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">How it scales</span>
+      <span class="stamp">Asset-light, now</span>
+    </div>
+    <h2 class="title">You buy the machine. Snack Quest runs the business.</h2>
+    <p class="lede">Funded buyers already want what we sell: a vending machine that arrives M-Pesa ready and branded, with somebody to stock it and run it. They pay for the machine. We earn on the stock and the management, every month after that.</p>
+    <div class="body">
+      <div class="grid g2" style="margin-bottom:24px;">
+        <div class="card">
+          <h3>The owner brings</h3>
+          <p>The capital for the machine, bought from us, and a location we approve. They carry the location risk &mdash; the cheapest risk in the business to correct, because a machine in the wrong place can be moved.</p>
+        </div>
+        <div class="card hot">
+          <h3>Snack Quest brings</h3>
+          <p>A machine built for Kenya: M-Pesa ready, Snack Quest branded. Then sourcing, stock at wholesale, restocking, monitoring, payments, support and analytics, on a monthly management subscription. The owner sees sales, stock and payouts on their own dashboard, which is already built.</p>
+        </div>
+      </div>
+      <p class="pull">For the owner, close to hands-off. For us, recurring revenue on a machine we did not pay for.</p>
+      <hr class="rule">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Stated carefully</h3>
+      <p class="note">Machines are sold as equipment, with a separate service contract for stock and management. This is <b>not an investment product</b>, and nothing here promises a buyer a return: an owner earns what their machine sells. Prices and terms are not set yet, and the contract goes through Kenyan legal review, including how it sits with the Capital Markets Authority, before the first one is signed.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Roadmap</span>
+      <span class="stamp">Milestones, not dates</span>
+    </div>
+    <h2 class="title">From one online shop to a distribution layer.</h2>
+    <p class="lede">Each stage is gated on the previous one producing evidence, which is why these are milestones rather than a calendar. We would rather arrive late at a stage we have earned than on time at one we have assumed.</p>
+    <div class="body">
+      <div class="assumptions wide">
+        <div class="assumption"><span class="a-k">Stage 1 &mdash; live now</span><span class="a-v">Online discovery</span><span class="a-n">Trading today: 24 paid orders, KSh&nbsp;102,700, a 62-snack catalogue and three live boxes.</span></div>
+        <div class="assumption"><span class="a-k">Stage 2 &mdash; this raise</span><span class="a-v">Machines on our stock</span><span class="a-n">Stock and manage the nine partner machines, JKIA included. Import the first three Snack Quest machines, fitted with our system at the factory.</span></div>
+        <div class="assumption"><span class="a-k">Stage 3 &mdash; opened by this raise</span><span class="a-v">Machines sold with management</span><span class="a-n">Funded buyers buy M-Pesa-ready Snack Quest machines; we supply and run them on subscription. USIU first in line.</span></div>
+        <div class="assumption"><span class="a-k">Stage 4</span><span class="a-v">Shelves in other people&rsquo;s shops</span><span class="a-n">Mini-marts, then small supermarkets, then tier-2 supermarkets: a Snack Quest corner, not a price war. When supermarket wholesale starts, the scale-up reserve adds a warehouse and a van to the bikes.</span></div>
+        <div class="assumption"><span class="a-k">Stage 5</span><span class="a-v">Distribution</span><span class="a-n">Winning products move from retail arbitrage to direct supplier relationships.</span></div>
+        <div class="assumption"><span class="a-k">Stage 6</span><span class="a-v">African expansion</span><span class="a-n">The same layer, in a second market.</span></div>
+      </div>
+      <p class="note" style="margin-top:18px;">This raise pays for stage two and opens stage three, and stage two is already half built: nine machines are standing, waiting for stock. Everything from four onward is what the evidence is meant to unlock &mdash; stated as intent, not as a commitment with a date attached.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Long-term strategic angle</span>
+      <span class="stamp">Future opportunity</span>
+    </div>
+    <h2 class="title">The door into Africa for international snack brands.</h2>
+    <p class="lede">International brands increasingly have consumer demand in African markets, created by the same social platforms driving our customers, but they lack the route in.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What they&rsquo;re missing</h3>
+          <ul class="ticks">
+            <li>Local distribution</li>
+            <li>Consumer awareness</li>
+            <li>Physical retail presence</li>
+            <li>Localised marketing</li>
+            <li>Creator access</li>
+            <li>Direct consumer feedback</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What Snack Quest could offer them</h3>
+          <ul class="ticks">
+            <li>Product distribution and retail placement</li>
+            <li>Brand launches and sampling</li>
+            <li>Creator campaigns at scale</li>
+            <li>Consumer insight and product testing, on live sales data from every machine</li>
+            <li>Themed campaigns and digital distribution</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note" style="margin-top:20px;">None of this is revenue today. It is the strategic ceiling the retail and creator layers build toward, and it is why the brand is worth more than its shelves.</p>
+    </div>
+  </section>
+
+  <!-- ================= 13. WHY NOW + LANDSCAPE ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head"><span class="eyebrow">Timing &amp; positioning</span></div>
+    <h2 class="title">Why now, and why not the supermarket.</h2>
+    <div class="body">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Converging trends</h3>
+          <ul class="ticks">
+            <li>Social media is <b>accelerating discovery</b> of international products.</li>
+            <li>Consumers increasingly want <b>novelty and experiences</b>, not just goods.</li>
+            <li><b>Creator culture</b> is driving purchase decisions.</li>
+            <li>E-commerce lets <b>niche products reach consumers directly</b>.</li>
+            <li>Specialty retail is becoming <b>experience-driven</b>.</li>
+            <li>African consumers are <b>increasingly exposed to global brands</b>.</li>
+            <li>International brands <b>need new channels</b> into African markets.</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">What customers use today</h3>
+          <div class="chips" style="margin-bottom:18px;">
+            <span class="chip">Supermarkets</span>
+            <span class="chip">Specialty import stores</span>
+            <span class="chip">Instagram sellers</span>
+            <span class="chip">Individual online sellers</span>
+            <span class="chip">Travellers bringing it back</span>
+            <span class="chip">Informal resellers</span>
+            <span class="chip">Ordering direct from abroad</span>
+          </div>
+          <div class="card hot">
+            <h3>How we differ</h3>
+            <p>Curation + experience + machines and shelves inside other people&rsquo;s footfall + e-commerce + creator distribution + gifting + a repeat box model, all under one brand.</p>
+          </div>
+          <p class="note" style="margin-top:14px;">These alternatives exist and some serve customers well. We are not claiming there is no competition. We are building a branded category rather than competing on price alone &mdash; which is also how we enter the supermarket: as a Snack Quest shelf that draws its own traffic, not a cheaper packet.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STAGE ONE ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">The next step</span>
+      <span class="stamp">What the money buys</span>
+    </div>
+    <h2 class="title">Stock we own the margin on, and places to sell it.</h2>
+    <p class="lede">Thirty days of trading told us two things precisely. Demand is real and the average order is ahead of plan. Margin is not, and the reason is that we are buying snacks locally at close to retail and reselling them.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div class="card">
+          <h3>Constraint one: margin</h3>
+          <p>We record <strong>27.1%</strong> gross against a <strong>45%</strong> target. The gap is not pricing and it is not delivery &mdash; delivery is a known formula under the Tushop terms. It is landed cost. Buying at import volume instead of from a local reseller is the single lever: direct from Korea, and co-loaded into an established importer&rsquo;s containers so we do not have to fill one alone. It needs stock money.</p>
+        </div>
+        <div class="card">
+          <h3>Constraint two: trust</h3>
+          <p>177,800 people watched in 28 days; twenty-four have bought in total. The customers we lose are not uninterested; they will not pay online before they trust the brand. A machine with the product behind the glass and M-Pesa on the screen removes that objection: pay, and it drops into your hand.</p>
+        </div>
+      </div>
+
+      <hr class="rule">
+
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">The bar we are setting before we start</h3>
+      <p class="note" style="margin-bottom:14px;">Stated in advance so the next conversation is arithmetic rather than argument. These are the four numbers this raise exists to produce.</p>
+      <div class="assumptions wide">
+        <div class="assumption">
+          <span class="a-k">Gross margin</span>
+          <span class="a-v">above 35%</span>
+          <span class="a-n">A floor, not the plan &mdash; the plan is <strong>45%</strong>. Against the 27.1% recorded so far, this is the level at which the business works even if only part of the import gain lands.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Repeat purchase</span>
+          <span class="a-v">above 20%</span>
+          <span class="a-n">Within 60 days of first purchase. Zero today across twenty-four customers, because the oldest order is thirty days old.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Customer acquisition cost</span>
+          <span class="a-v">under KSh&nbsp;1,500</span>
+          <span class="a-n">A ceiling; the target is <strong>KSh&nbsp;500</strong> blended, because creators paid in product cost no cash. At 35% gross a KSh&nbsp;4,279 order carries about KSh&nbsp;1,500 &mdash; so even at the ceiling the first order washes its face and the second earns. That is why repeat sits beside it.</span>
+        </div>
+        <div class="assumption">
+          <span class="a-k">Machines trading on our stock</span>
+          <span class="a-v">12</span>
+          <span class="a-n">The nine partner machines and the three we import. The direct read on whether the network carries our stock, and what each machine sells.</span>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:18px;">We already measure cost and margin on every single order &mdash; that is how the 27.1% is a recorded figure rather than an estimate. The same instrumentation reports these four, monthly, without anyone being asked for them.</p>
+    </div>
+  </section>
+
+  <!-- ================= USE OF FUNDS ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Use of funds</span>
+      <span class="caveat">Six months, line by line</span>
+    </div>
+    <h2 class="title">KSh&nbsp;10M, line by line.</h2>
+    <p class="lede">Six months of aggressive execution, and a reserve to scale into a warehouse and a van. Every shilling is tied to a machine, a shelf, a delivery or a customer; quoted prices say so, and so do estimates.</p>
+    <div class="body">
+      <div class="headline-figure">
+        <span class="hf-num">KSh&nbsp;10M</span>
+        <span class="hf-cap">KSh&nbsp;8.03M to run hard for six months. KSh&nbsp;1.97M held back for the warehouse and van that supermarket wholesale needs.</span>
+      </div>
+      <div class="assumptions wide">
+        <div class="assumption"><span class="a-k">Stock and supply</span><span class="a-v">KSh&nbsp;3,000,000</span><span class="a-n">Snacks bought at import volume, co-loaded into an established importer&rsquo;s containers on Oloitoktok Road, to fill the nine partner machines, our three, the online shop and the supermarket shelves.</span></div>
+        <div class="assumption"><span class="a-k">People, six months</span><span class="a-v">KSh&nbsp;1,600,000</span><span class="a-n">The team for six months of aggressive execution: accountant, customer service and account manager, sales team, founder, videographer and editor, and the riders who restock the machines.</span></div>
+        <div class="assumption"><span class="a-k">Machines, fitted with our system</span><span class="a-v">KSh&nbsp;1,030,000</span><span class="a-n">Three Snack Quest machines at <b>KSh&nbsp;300,000</b> each to import (quoted), plus <b>USD&nbsp;1,000</b> (about KSh&nbsp;130,000 at KSh&nbsp;130 to the dollar, quoted) for the manufacturer to fit our system, so every machine arrives M-Pesa ready and reporting to us.</span></div>
+        <div class="assumption"><span class="a-k">Supermarket shelves</span><span class="a-v">KSh&nbsp;1,000,000</span><span class="a-n">Branded Snack Quest shelves, custom-built for ten supermarkets, KSh&nbsp;100,000 each.</span></div>
+        <div class="assumption"><span class="a-k">Marketing</span><span class="a-v">KSh&nbsp;600,000</span><span class="a-n">KSh&nbsp;100,000 a month for six months: creator campaigns and paid social that send customers to every machine and shelf at once, and the ads that keep the buyer pipeline full.</span></div>
+        <div class="assumption"><span class="a-k">Restock bikes</span><span class="a-v">KSh&nbsp;350,000</span><span class="a-n">Two motorbikes with carrier boxes to run the machine rounds from day one. <i>Estimate.</i></span></div>
+        <div class="assumption"><span class="a-k">Contracts and compliance</span><span class="a-v">KSh&nbsp;350,000</span><span class="a-n">Legal review of the machine-sale and management contracts, including the Capital Markets Authority question, KSh&nbsp;200,000; licences and insurance, KSh&nbsp;150,000. <i>Estimates.</i></span></div>
+        <div class="assumption"><span class="a-k">Incorporation and setup</span><span class="a-v">KSh&nbsp;100,000</span><span class="a-n">Company incorporation, registrations and the setup to run a company that takes investment.</span></div>
+        <div class="assumption"><span class="a-k">Scale-up reserve: warehouse and van</span><span class="a-v">KSh&nbsp;1,970,000</span><span class="a-n">The balance. Held for the warehouse and the delivery van that supermarket wholesale needs, and released when the first supermarket wholesale agreement is signed. Until then the bikes do the rounds.</span></div>
+      </div>
+      <hr class="rule">
+      <p class="note">Buyers pay for their own machines: this raise buys our first three, not machines for anybody else. Two figures are deliberately unset &mdash; the price a buyer pays for a machine, and the monthly management fee. The first sales set both, and machine-level unit economics come from the first months of trading on our stock rather than from a model. It is raised in two closes: KSh&nbsp;3M first, for the first 90 days, and KSh&nbsp;7M when the four numbers on the bar are in.</p>
+    </div>
+  </section>
+
+  <!-- ================= TEAM ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">Team</span>
+      <span class="stamp">Two people</span>
+    </div>
+    <h2 class="title">A marketing operator who built the system himself.</h2>
+    <p class="lede">Snack Quest is two people today: the founder, and one employee packing orders. Everything on the traction slide was built and is run by those two &mdash; so far around a day job the founder leaves on close.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">Kelvin Kimathi &mdash; Founder</h3>
+          <p style="margin-bottom:10px;"><strong>A marketing operator who builds.</strong> Marketing manager at a Kenyan betting operator that launched in January, reporting to the Head of Marketing, and part of its growth from launch &mdash; running paid acquisition at scale in the most performance-driven advertising market in the country, where a campaign that does not pay back is switched off the same week.</p><p style="margin-bottom:10px;">The playbook there was affiliates first: use them to build trust, and the paid ads perform better on the back of it. That is the same order Snack Quest is being built in &mdash; 33 creators before the ad budget, not after it &mdash; and it is why the KSh&nbsp;100,000 a month of marketing on this plan is a rate he has spent before rather than a line invented for a deck.</p><p style="margin-bottom:10px;">Full-time on Snack Quest from close. Today it is split with the day job, and this raise is what buys the founder&rsquo;s whole week.</p>
+          <p style="color:var(--ink-soft);font-size:15px;">Built the storefront, the checkout and M-Pesa flow, the staff portals for packing and dispatch, the per-order margin capture, the customer SMS, the delivery integration and the creator programme. Negotiated the Korean sourcing line and the Tushop delivery terms. Runs the TikTok account that produced 177,800 views in 28 days without an agency or a production budget.</p>
+        </div>
+        <figure class="shot founder">
+          <img src="/deck/shot-founder.webp" alt="Kelvin Kimathi, founder of Snack Quest, seated at a counter beside an open Snack Quest box packed with snacks.">
+        </figure>
+      </div>
+
+      <hr class="rule">
+
+      <div class="grid g3">
+        <div class="card">
+          <h3>What two people already cover</h3>
+          <p>Sourcing, storefront, payments, packing, dispatch, delivery partner management, customer messaging, content and the creator programme &mdash; on twenty-four paid orders in thirty days, with cost and margin recorded on every one.</p>
+        </div>
+        <div class="card">
+          <h3>What partners cover instead of headcount</h3>
+          <p>Customer delivery is Tushop, so there is no delivery fleet to build. Supply is the Korean sourcing line and co-loading with an established importer. Neither needed a hire, which is why the company is two people and not ten. Restocking machines is different: that round is ours, and it is the first hire.</p>
+        </div>
+        <div class="card cool">
+          <h3>What this raise hires</h3>
+          <p>The founder, full-time. A rider for the restocking rounds first; then an accountant, a customer service and account manager for machine owners and buyers, a sales team for machine sales and supermarket shelves, and a videographer and editor for the creator engine.</p><p style="margin-top:10px;">Packing and dispatch stay with the current employee rather than becoming another hire, because the packing lists, dispatch queue and courier booking are already built and running &mdash; that is what the operating spine on slide&nbsp;05 is. Two risks we would rather name than be asked: nobody on the team has run a vending network or cleared a container, so we are looking for advisers in import and customs and in vending hardware; and until the account manager and sales hires land, the founder&rsquo;s time is the constraint.</p>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:18px;">We are not going to present two people as a finished team. It is the honest position at this stage, and the relevant question is whether the two have built something real. Twenty-four paid orders, a live storefront, a named delivery partner and an instrumented margin figure are our answer to that.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">After investment</span>
+    </div>
+    <h2 class="title">What success looks like.</h2>
+    <p class="lede">A sequence, not a wish list. Each step makes the next one measurable, and the numbers on the bar are reported from the system that already records every order.</p>
+    <div class="body">
+      <div class="grid g2">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--quest);">Months 1&ndash;3 &middot; first close</h3>
+          <ul class="ticks">
+            <li><b>Stock and take over the nine partner machines</b>, JKIA included &mdash; the first machine-level sales data we have ever had</li>
+            <li><b>Place the first co-loaded import order</b> &mdash; the lead time starts on day one</li>
+            <li><b>Put the first restock bike on the road</b>, hire a rider and start the marketing</li>
+            <li><b>Agree terms with the first funded buyers</b> &mdash; machine price, subscription, wholesale &mdash; through legal review</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--void);">Months 4&ndash;6 &middot; second close</h3>
+          <ul class="ticks">
+            <li><b>Import our first three machines</b>, fitted with our system at the factory: M-Pesa ready, Snack Quest branded</li>
+            <li><b>Deliver the first machines to buyers</b>, USIU first, and supply the campus from the new year</li>
+            <li><b>Prove the margin</b> on imported stock against the 35% bar</li>
+            <li><b>Measure machine economics</b> on every machine: sales, restock rhythm, best sellers by location</li>
+            <li><b>Open the first supermarket shelves</b>, working towards ten &mdash; and release the warehouse and van reserve when supermarket wholesale starts</li>
+            <li><b>Record cost and margin on every order</b>, as we do today, with no exceptions</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note" style="margin-top:18px;">Targets against each milestone will be set with the investor at close. The four on the bar are fixed in advance and do not move.</p>
+    </div>
+  </section>
+
+  <!-- ================= 16. THE ASK ================= -->
+  <section class="slide">
+    <span class="num" aria-hidden="true"></span>
+    <div class="slide-head">
+      <span class="eyebrow">The ask</span>
+      <span class="stamp">KSh&nbsp;10M &middot; first close KSh&nbsp;3M</span>
+    </div>
+    <h2 class="title">KSh&nbsp;10,000,000 to stock the machines already waiting, and put Snack Quest on supermarket shelves.</h2>
+    <div class="body">
+      <div class="headline-figure">
+        <span class="hf-num">KSh&nbsp;10,000,000</span>
+        <span class="hf-cap"><strong>Straight equity, in two closes.</strong> A <b>KSh&nbsp;3M first close</b> runs the first 90 days &mdash; the first co-loaded import, stock for the nine partner machines, legal review, a restock bike and marketing &mdash; and produces the four numbers on the bar. The <b>KSh&nbsp;7M second close</b> opens when they are in: our first three machines, ten supermarket shelves, more stock and people, and the warehouse and van. The equity percentage is <b>not set in this document</b> &mdash; it is the conversation this deck is meant to start, not a number presented as settled.</span>
+      </div>
+      <div class="grid g2" style="margin-bottom:22px;">
+        <div class="card hot">
+          <h3>What it is not</h3>
+          <p>It is not KSh&nbsp;10M to open a store. A store spends the whole raise answering one question about one address, and if the address is wrong the money is gone before anyone knows why.</p>
+        </div>
+        <div class="card">
+          <h3>What it is</h3>
+          <p>Capital to stock nine machines that are already standing, import the first three of our own with our system fitted, put restock bikes on the road, open Snack Quest shelves in ten supermarkets, and build the route funded buyers will buy through &mdash; a network that grows on its owners&rsquo; capital, with Snack Quest earning on every machine in it.</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <p class="pull">Instead of betting on one store, we are building a network.</p>
+      <p class="note" style="margin-top:16px;">What this buys an investor is not a shop. It is the demand, distribution and market-entry layer international consumer brands will need to reach African consumers &mdash; built on machines other people pay for, and stocked by us.</p>
+    </div>
+  </section>
+
+  <section class="slide cover close">
+    <div class="cover-grid">
+      <div>
+        <div class="brandline">
+          <img src="/deck/logo.png" alt="Snack Quest">
+          <span class="n">Snack Quest</span>
+        </div>
+        <h2 class="display">The home of <span class="o">global snack discovery</span> in Africa.</h2>
+        <p class="sub" style="margin-top:18px;">Discovery online. Trust at the machine. Repeat through the box. Replicated machine by machine, shelf by shelf.</p>
+        <div class="contact">
+          <span class="who">Kelvin Kimathi, Founder, Snack Quest</span>
+          <span><a href="tel:+254759209705">0759 209 705</a></span>
+          <span><a href="https://snackquests.shop" target="_blank" rel="noreferrer">snackquests.shop</a></span>
+          <span><a href="https://www.tiktok.com/@snackquests" target="_blank" rel="noreferrer">tiktok.com/@snackquests</a></span>
+        </div>
+      </div>
+      <figure>
+        <img src="/deck/box.webp" alt="A packed Snack Quest box">
+        <figcaption>Snack Quest, Nairobi, Kenya.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
+<!-- build-stamp:86f1d049610c722fcaae20c681d8556a3bd0df6f5dc6864d2a564b2553168ce5 -->

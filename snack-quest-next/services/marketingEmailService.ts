@@ -8,7 +8,12 @@ import {
   type MarketingEmailCampaignInput,
 } from '@/repositories/marketingEmailRepository';
 import { smtpEmailGateway } from '@/lib/integrations/email/smtpEmailGateway';
-import { brandedEmailHtml, paragraphsToHtml, type EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
+import type { EmailSender } from '@/lib/integrations/types';
+import { brandedEmailHtml, escapeHtml, paragraphsToHtml, type EmailTestimonial } from '@/lib/notifications/brandedEmailHtml';
+import { SUPPORT_EMAIL_ADDRESS } from '@/lib/config/supportEmail';
+import { getSiteUrl } from '@/lib/seo/siteUrl';
+import { stopEmailsUrl } from '@/lib/leads/leadLinks';
+import { vendingLeadRepository } from '@/repositories/vendingLeadRepository';
 import { reviewService } from '@/services/reviewService';
 import { matchesQuery } from '@/lib/search/types';
 import type {
@@ -35,7 +40,8 @@ import type {
  * captures an email address anywhere in this codebase (checkout only
  * collects phone + name + county) — see `MarketingEmailSegment`'s own
  * doc comment. Only creators (real Firebase Auth accounts, real
- * emails) and a hand-pasted custom list are real, sendable segments.
+ * emails), vending leads (who gave an email on a lead form) and a
+ * hand-pasted custom list are real, sendable segments.
  */
 
 export class MarketingEmailValidationError extends Error {
@@ -72,6 +78,9 @@ export interface MarketingEmailDraftInput {
   segment: MarketingEmailSegment;
   customRecipients: string[] | null;
   specificCreatorIds: string[] | null;
+  /** "Send as" — both or neither; the email must be on the business's own domain. */
+  senderName?: string | null;
+  senderEmail?: string | null;
 }
 
 export interface MarketingEmailSendResult {
@@ -110,6 +119,7 @@ export const MARKETING_EMAIL_SEGMENTS: MarketingEmailSegment[] = [
   'repeat_creators',
   'new_creators',
   'specific_creators',
+  'vending_leads',
   'custom',
 ];
 
@@ -120,6 +130,24 @@ const SEGMENT_STATUS: Partial<Record<MarketingEmailSegment, CreatorStatus>> = {
 };
 
 const NEW_CREATOR_WINDOW_DAYS = 30;
+/**
+ * Emails in flight at once during a send. One at a time, each SMTP
+ * send opens its own connection, so a few hundred recipients (the
+ * vending leads) could outrun the send route's time limit and leave
+ * the rest unsent; five gets them out several times faster while
+ * staying well inside any SMTP account's connection limits.
+ */
+const SEND_CONCURRENCY = 5;
+
+/** "Send as" is limited to the business's own domain — the one its support address is on — so no campaign can pose as anyone else. */
+const SENDER_DOMAIN = SUPPORT_EMAIL_ADDRESS.split('@')[1].toLowerCase();
+const MAX_SENDER_NAME = 80;
+
+/** A lead who should get a campaign, with the id their stop link is signed for. */
+interface LeadRecipient {
+  email: string;
+  leadId: string;
+}
 
 type CreatorPage = { creators: { id: string; data: CreatorProfile }[]; nextCursor: string | null };
 
@@ -186,11 +214,42 @@ function validateDraft(input: MarketingEmailDraftInput): void {
   if (Boolean(input.ctaLabel?.trim()) !== Boolean(input.ctaUrl?.trim())) {
     throw new MarketingEmailValidationError('A CTA button needs both a label and a URL, or neither.');
   }
+  normalizeSender(input);
+}
+
+/** The "Send as" fields, checked and tidied — `{ null, null }` means the business's usual sender. */
+function normalizeSender(input: Pick<MarketingEmailDraftInput, 'senderName' | 'senderEmail'>): {
+  senderName: string | null;
+  senderEmail: string | null;
+} {
+  const name = input.senderName?.trim().replace(/\s+/g, ' ') || null;
+  const email = input.senderEmail?.trim().toLowerCase() || null;
+  if (!email) {
+    if (name) throw new MarketingEmailValidationError('Add the email address to send as, or clear the sender name.');
+    return { senderName: null, senderEmail: null };
+  }
+  if (!EMAIL_PATTERN.test(email) || email.split('@')[1] !== SENDER_DOMAIN) {
+    throw new MarketingEmailValidationError(`"Send as" must be an @${SENDER_DOMAIN} address.`);
+  }
+  if (name && (name.length > MAX_SENDER_NAME || /[<>"\r\n]/.test(name))) {
+    throw new MarketingEmailValidationError(`The sender name must be plain text, ${MAX_SENDER_NAME} characters at most.`);
+  }
+  return { senderName: name, senderEmail: email };
+}
+
+function senderOf(campaign: Pick<MarketingEmailCampaign, 'senderName' | 'senderEmail'>): EmailSender | null {
+  return campaign.senderEmail ? { name: campaign.senderName ?? null, email: campaign.senderEmail } : null;
+}
+
+/** The line under a lead's email that lets them stop all lead emails — same signed link as the nurture emails. */
+function leadStopHtml(url: string): string {
+  return `<p style="margin:18px 0 0;font-size:12px;color:#8a8494;">Don’t want these emails? <a href="${escapeHtml(url)}" style="color:#8a8494;">Stop them here</a>.</p>`;
 }
 
 /** The plain-text alternative sent alongside the branded HTML — every real email client falls back to this when it can't (or won't) render HTML. */
 function plainTextBody(
   campaign: Pick<MarketingEmailCampaign, 'heading' | 'bodyText' | 'ctaLabel' | 'ctaUrl' | 'featurePills'>,
+  stopUrl: string | null = null,
 ): string {
   const parts = [campaign.heading, '', campaign.bodyText.trim()];
   if (campaign.featurePills.length > 0) {
@@ -200,6 +259,9 @@ function plainTextBody(
     parts.push('', `${campaign.ctaLabel}: ${campaign.ctaUrl}`);
   }
   parts.push('', '- Snack Quest');
+  if (stopUrl) {
+    parts.push('', `Stop these emails: ${stopUrl}`);
+  }
   return parts.join('\n');
 }
 
@@ -213,6 +275,9 @@ class MarketingEmailService {
   ): Promise<string[]> {
     if (segment === 'custom') {
       return normalizeCustomRecipients(customRecipients ?? []);
+    }
+    if (segment === 'vending_leads') {
+      return (await this.leadRecipients()).map((recipient) => recipient.email);
     }
     if (segment === 'specific_creators') {
       const ids = normalizeSpecificCreatorIds(specificCreatorIds ?? []);
@@ -339,6 +404,7 @@ class MarketingEmailService {
       customRecipients: input.segment === 'custom' ? normalizeCustomRecipients(input.customRecipients ?? []) : null,
       specificCreatorIds:
         input.segment === 'specific_creators' ? normalizeSpecificCreatorIds(input.specificCreatorIds ?? []) : null,
+      ...normalizeSender(input),
       status: 'draft',
       recipientCount: 0,
       sentCount: 0,
@@ -374,6 +440,7 @@ class MarketingEmailService {
       customRecipients: input.segment === 'custom' ? normalizeCustomRecipients(input.customRecipients ?? []) : null,
       specificCreatorIds:
         input.segment === 'specific_creators' ? normalizeSpecificCreatorIds(input.specificCreatorIds ?? []) : null,
+      ...normalizeSender(input),
       updatedBy: actor,
     });
   }
@@ -427,19 +494,9 @@ class MarketingEmailService {
     });
 
     const testimonials = campaign.includeTestimonials ? await this.fetchTestimonials(businessId) : [];
+    const render = await this.rendererFor(campaign, testimonials);
 
-    const html = brandedEmailHtml({
-      heading: campaign.heading,
-      bodyHtml: paragraphsToHtml(campaign.bodyText),
-      imageUrl: campaign.imageUrl,
-      ctaLabel: campaign.ctaLabel,
-      ctaUrl: campaign.ctaUrl,
-      featurePills: campaign.featurePills,
-      testimonials,
-    });
-    const text = plainTextBody(campaign);
-
-    const { sentCount, failedRecipients } = await this.dispatchToRecipients(businessId, campaign, recipients, html, text);
+    const { sentCount, failedRecipients } = await this.dispatchToRecipients(businessId, campaign, recipients, render);
 
     await marketingEmailRepository.update(campaignId, {
       status: sentCount > 0 ? 'sent' : 'failed',
@@ -472,20 +529,16 @@ class MarketingEmailService {
     if (previouslyFailed.length === 0) {
       throw new MarketingEmailValidationError('This campaign has no failed recipients to resend to.');
     }
-    const recipients = previouslyFailed.map((entry) => entry.email);
+    let recipients = previouslyFailed.map((entry) => entry.email);
+    if (campaign.segment === 'vending_leads') {
+      // A lead who stopped the emails since the first attempt doesn't get the retry.
+      const current = new Set((await this.leadRecipients()).map((recipient) => recipient.email));
+      recipients = recipients.filter((email) => current.has(email));
+    }
 
-    const html = brandedEmailHtml({
-      heading: campaign.heading,
-      bodyHtml: paragraphsToHtml(campaign.bodyText),
-      imageUrl: campaign.imageUrl,
-      ctaLabel: campaign.ctaLabel,
-      ctaUrl: campaign.ctaUrl,
-      featurePills: campaign.featurePills,
-      testimonials: campaign.sentTestimonials ?? [],
-    });
-    const text = plainTextBody(campaign);
+    const render = await this.rendererFor(campaign, campaign.sentTestimonials ?? []);
 
-    const { sentCount, failedRecipients } = await this.dispatchToRecipients(businessId, campaign, recipients, html, text);
+    const { sentCount, failedRecipients } = await this.dispatchToRecipients(businessId, campaign, recipients, render);
 
     await marketingEmailRepository.update(campaignId, {
       status: failedRecipients.length > 0 ? (campaign.sentCount + sentCount > 0 ? 'sent' : 'failed') : 'sent',
@@ -501,24 +554,118 @@ class MarketingEmailService {
   /** The one place that actually dials `smtpEmailGateway` — best-effort per recipient (one failure doesn't stop the rest), and the real gateway error is captured per recipient rather than discarded, both into the returned list and into the server log for this deployment's own debugging. */
   private async dispatchToRecipients(
     businessId: string,
-    campaign: Pick<MarketingEmailCampaign, 'subject'>,
+    campaign: Pick<MarketingEmailCampaign, 'subject' | 'senderName' | 'senderEmail'>,
     recipients: string[],
-    html: string,
-    text: string,
+    render: (to: string) => { html: string; text: string },
   ): Promise<{ sentCount: number; failedRecipients: MarketingEmailFailedRecipient[] }> {
     let sentCount = 0;
     const failedRecipients: MarketingEmailFailedRecipient[] = [];
-    for (const to of recipients) {
-      try {
-        await smtpEmailGateway.send({ businessId, to, subject: campaign.subject, body: text, html });
-        sentCount += 1;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`MarketingEmailService: send failed for ${to}: ${message}`);
-        failedRecipients.push({ email: to, error: message });
+    const from = senderOf(campaign);
+    const queue = [...recipients];
+    const worker = async () => {
+      for (let to = queue.shift(); to !== undefined; to = queue.shift()) {
+        try {
+          const { html, text } = render(to);
+          await smtpEmailGateway.send({ businessId, to, subject: campaign.subject, body: text, html, from });
+          sentCount += 1;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`MarketingEmailService: send failed for ${to}: ${message}`);
+          failedRecipients.push({ email: to, error: message });
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(SEND_CONCURRENCY, recipients.length) }, worker));
     return { sentCount, failedRecipients };
+  }
+
+  /**
+   * The branded email for one recipient. The same for everyone, except
+   * that a vending lead's copy carries their own stop link — signed for
+   * their lead id, so it is built per recipient.
+   */
+  private async rendererFor(
+    campaign: Pick<
+      MarketingEmailCampaign,
+      'segment' | 'heading' | 'bodyText' | 'imageUrl' | 'ctaLabel' | 'ctaUrl' | 'featurePills'
+    >,
+    testimonials: EmailTestimonial[],
+  ): Promise<(to: string) => { html: string; text: string }> {
+    const leadIds =
+      campaign.segment === 'vending_leads'
+        ? new Map((await this.leadRecipients()).map((recipient) => [recipient.email, recipient.leadId]))
+        : null;
+    const site = getSiteUrl();
+    const shared = {
+      heading: campaign.heading,
+      imageUrl: campaign.imageUrl,
+      ctaLabel: campaign.ctaLabel,
+      ctaUrl: campaign.ctaUrl,
+      featurePills: campaign.featurePills,
+      testimonials,
+    };
+    const plainHtml = brandedEmailHtml({ ...shared, bodyHtml: paragraphsToHtml(campaign.bodyText) });
+    const plainText = plainTextBody(campaign);
+    return (to) => {
+      const leadId = leadIds?.get(to);
+      if (!leadId) return { html: plainHtml, text: plainText };
+      const stopUrl = stopEmailsUrl(site, leadId);
+      return {
+        html: brandedEmailHtml({ ...shared, bodyHtml: paragraphsToHtml(campaign.bodyText) + leadStopHtml(stopUrl) }),
+        text: plainTextBody(campaign, stopUrl),
+      };
+    };
+  }
+
+  /**
+   * Every vending lead to email, one per address: anyone with an email
+   * who hasn't stopped the lead emails and isn't marked lost (§ vending
+   * leads CRM). Newest lead first, so a shared address keeps the latest.
+   */
+  private async leadRecipients(): Promise<LeadRecipient[]> {
+    const leads = await vendingLeadRepository.listRecent();
+    const seen = new Set<string>();
+    const out: LeadRecipient[] = [];
+    for (const { id, data } of leads) {
+      const email = data.email?.trim().toLowerCase();
+      if (!email || !EMAIL_PATTERN.test(email) || data.emailOptOutAtMs || data.status === 'lost' || seen.has(email)) {
+        continue;
+      }
+      seen.add(email);
+      out.push({ email, leadId: id });
+    }
+    return out;
+  }
+
+  /**
+   * Sends the campaign once to one staff address, exactly as recipients
+   * will get it — same sender, same render — with `[Test]` on the
+   * subject, so "Send as" can be checked before anyone else gets it. A
+   * lead campaign's stop link points at a page, not at any real lead.
+   */
+  async sendTest(businessId: string, campaignId: string, to: string): Promise<void> {
+    const campaign = await this.requireOwned(businessId, campaignId);
+    const testimonials = campaign.includeTestimonials ? await this.fetchTestimonials(businessId) : [];
+    const shared = {
+      heading: campaign.heading,
+      imageUrl: campaign.imageUrl,
+      ctaLabel: campaign.ctaLabel,
+      ctaUrl: campaign.ctaUrl,
+      featurePills: campaign.featurePills,
+      testimonials,
+    };
+    const sampleStop = campaign.segment === 'vending_leads' ? `${getSiteUrl()}/own` : null;
+    await smtpEmailGateway.send({
+      businessId,
+      to,
+      subject: `[Test] ${campaign.subject}`,
+      body: plainTextBody(campaign, sampleStop),
+      html: brandedEmailHtml({
+        ...shared,
+        bodyHtml: paragraphsToHtml(campaign.bodyText) + (sampleStop ? leadStopHtml(sampleStop) : ''),
+      }),
+      from: senderOf(campaign),
+    });
   }
 
   /** Real, published reviews only — see `ReviewService.listPublished`. A fresh read at send time, not whatever the composer happened to preview earlier. */

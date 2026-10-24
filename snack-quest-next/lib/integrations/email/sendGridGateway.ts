@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
-import type { EmailGateway, EmailSendResult } from '../types';
+import type { EmailGateway, EmailSendResult, EmailSender } from '../types';
 
 const GATEWAY_NAME = 'sendgrid';
 const API_URL = 'https://api.sendgrid.com/v3/mail/send';
@@ -27,7 +27,14 @@ class SendGridGateway implements EmailGateway {
   }
 
   /** `businessId` is accepted and ignored: this is the platform-wide fallback, one account for the whole deployment (see `smtpEmailGateway` for the per-business path). */
-  async send(input: { businessId?: string; to: string; subject: string; body: string; html?: string }): Promise<EmailSendResult> {
+  async send(input: {
+    businessId?: string;
+    to: string;
+    subject: string;
+    body: string;
+    html?: string;
+    from?: EmailSender | null;
+  }): Promise<EmailSendResult> {
     const { apiKey, fromEmail } = this.requireConfig();
 
     return withCircuitBreaker(GATEWAY_NAME, async () => {
@@ -43,7 +50,8 @@ class SendGridGateway implements EmailGateway {
         },
         body: JSON.stringify({
           personalizations: [{ to: [{ email: input.to }] }],
-          from: { email: fromEmail },
+          from: input.from ? { email: input.from.email, ...(input.from.name ? { name: input.from.name } : {}) } : { email: fromEmail },
+          ...(input.from ? { reply_to: { email: input.from.email } } : {}),
           subject: input.subject,
           content,
         }),

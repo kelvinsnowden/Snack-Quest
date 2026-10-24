@@ -131,9 +131,11 @@ const nextConfig: NextConfig = {
     ];
   },
   /*
-   * `snackquests.shop/deck` → `public/deck/index.html`.
+   * `snackquests.shop/deck` → `public/deck/index.html`: the short
+   * pitch people are sent. The full detail behind it, built by
+   * `scripts/deck/build.py`, is at `/deck/full`.
    *
-   * The deck is a self-contained static document with its own design
+   * Each deck is a self-contained static document with its own design
    * system, so it is a file in `public/` rather than a route: a page
    * under `app/` would inherit the root layout's `globals.css`, whose
    * `:root` tokens collide with the deck's own, plus the site fonts,
@@ -148,11 +150,20 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: '/deck', destination: '/deck/index.html' },
-      // The Simplified Chinese edition. Its own URL rather than a
-      // toggle on /deck, because this is a document people forward:
-      // the link opens in the reader's language with no interaction,
-      // and survives being emailed on.
-      { source: '/deck/zh', destination: '/deck/zh/index.html' },
+      // The full detail, for the investor who asks for more after the
+      // meeting; the pitch links to it from its top bar.
+      { source: '/deck/full', destination: '/deck/full/index.html' },
+    ];
+  },
+  /*
+   * The Chinese editions are retired. Their links were sent to people, so
+   * they land on the English deck rather than a 404. Temporary (307), so
+   * the paths stay free if a Chinese edition comes back.
+   */
+  async redirects() {
+    return [
+      { source: '/deck/zh', destination: '/deck', permanent: false },
+      { source: '/deck/full/zh', destination: '/deck/full', permanent: false },
     ];
   },
 };

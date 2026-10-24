@@ -16,6 +16,8 @@ export interface DraftBody {
   segment?: unknown;
   customRecipients?: unknown;
   specificCreatorIds?: unknown;
+  senderName?: unknown;
+  senderEmail?: unknown;
 }
 
 /** Shape-checks a draft body into `MarketingEmailDraftInput`, shared by the create and update routes — the Service still owns real (business-rule) validation. */
@@ -67,6 +69,12 @@ export function parseDraftBody(body: DraftBody): { input: MarketingEmailDraftInp
   if (body.includeTestimonials !== undefined && typeof body.includeTestimonials !== 'boolean') {
     return { error: '"includeTestimonials" must be a boolean.' };
   }
+  if (body.senderName !== undefined && body.senderName !== null && typeof body.senderName !== 'string') {
+    return { error: '"senderName" must be a string or null.' };
+  }
+  if (body.senderEmail !== undefined && body.senderEmail !== null && typeof body.senderEmail !== 'string') {
+    return { error: '"senderEmail" must be a string or null.' };
+  }
 
   return {
     input: {
@@ -82,6 +90,8 @@ export function parseDraftBody(body: DraftBody): { input: MarketingEmailDraftInp
       segment: body.segment as MarketingEmailSegment,
       customRecipients: (body.customRecipients as string[] | null | undefined) ?? null,
       specificCreatorIds: (body.specificCreatorIds as string[] | null | undefined) ?? null,
+      senderName: (body.senderName as string | null | undefined) ?? null,
+      senderEmail: (body.senderEmail as string | null | undefined) ?? null,
     },
   };
 }

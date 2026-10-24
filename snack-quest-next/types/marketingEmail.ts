@@ -22,6 +22,10 @@ import type { AuditFields } from './common';
  * - `specific_creators`: one or more real, searched-and-picked
  *   creators — distinct from `custom`, which is hand-typed email
  *   addresses with no guarantee they belong to a real creator at all.
+ * - `vending_leads`: everyone in the vending leads CRM (§ vending
+ *   leads CRM) with an email address, except anyone who stopped the
+ *   lead emails or is marked lost. Each one's email carries their own
+ *   stop link, the same one the nurture emails use.
  */
 export type MarketingEmailSegment =
   | 'all_creators'
@@ -33,6 +37,7 @@ export type MarketingEmailSegment =
   | 'repeat_creators'
   | 'new_creators'
   | 'specific_creators'
+  | 'vending_leads'
   | 'custom';
 
 export type MarketingEmailStatus = 'draft' | 'sending' | 'sent' | 'failed';
@@ -78,6 +83,14 @@ export interface MarketingEmailCampaign extends AuditFields {
   /** The exact reviews actually featured at send time — `null` for a draft that hasn't sent yet. Stored rather than re-derived later, same discipline as `OutboundMessage.renderedBody`: the history view shows what really went out, not today's current reviews. */
   sentTestimonials: MarketingEmailTestimonial[] | null;
   segment: MarketingEmailSegment;
+  /**
+   * "Send as": a person's own address in place of the business's usual
+   * sender, with replies going to it — e.g. the founder writing to
+   * leads. Always on the business's own domain. Absent or null on
+   * campaigns that use the usual sender.
+   */
+  senderName?: string | null;
+  senderEmail?: string | null;
   /** Only meaningful when `segment === 'custom'` — validated, deduped email addresses. */
   customRecipients: string[] | null;
   /** Only meaningful when `segment === 'specific_creators'` — real `creatorProfiles` uids picked via search, resolved to emails at send time the same way every other segment is. */
