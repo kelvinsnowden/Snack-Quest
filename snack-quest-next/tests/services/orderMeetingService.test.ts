@@ -22,8 +22,8 @@ import type { VendingOrderMeeting } from '@/types/vendingOrderMeeting';
 /** § order meetings — against the Firestore emulator, with email sending faked. */
 
 const NOW = Date.parse('2026-10-23T09:00:00+03:00'); // Friday
-const SLOT = Date.parse('2026-10-26T10:00:00+03:00'); // Monday 10:00
-const LATER = Date.parse('2026-10-27T14:00:00+03:00'); // Tuesday 14:00
+const SLOT = Date.parse('2026-11-02T10:00:00+03:00'); // Monday 10:00
+const LATER = Date.parse('2026-11-03T14:00:00+03:00'); // Tuesday 14:00
 
 const booking = (extra: Record<string, unknown> = {}) => ({
   fullName: 'Amina Wanjiru',
@@ -89,8 +89,8 @@ describe('orderMeetingService.book', () => {
     await orderMeetingService.book(booking({ atMs: LATER }), NOW);
     expect((await meetingOf('meet_254712345678'))?.atMs).toBe(LATER);
     const days = await orderMeetingService.bookingDays(NOW);
-    expect(days.find((day) => day.date === '2026-10-26')?.slots).toContain(SLOT);
-    expect(days.find((day) => day.date === '2026-10-27')?.slots).not.toContain(LATER);
+    expect(days.find((day) => day.date === '2026-11-02')?.slots).toContain(SLOT);
+    expect(days.find((day) => day.date === '2026-11-03')?.slots).not.toContain(LATER);
   });
 
   it('attaches the meeting to the lead with that number', async () => {
