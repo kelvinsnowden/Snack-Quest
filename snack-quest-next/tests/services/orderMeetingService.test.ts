@@ -23,7 +23,8 @@ import type { VendingOrderMeeting } from '@/types/vendingOrderMeeting';
 
 const NOW = Date.parse('2026-10-23T09:00:00+03:00'); // Friday
 const SLOT = Date.parse('2026-11-02T10:00:00+03:00'); // Monday 10:00
-const LATER = Date.parse('2026-11-03T14:00:00+03:00'); // Tuesday 14:00
+const SAME_DAY = Date.parse('2026-11-02T14:00:00+03:00'); // Monday 14:00
+const LATER = Date.parse('2026-11-04T14:00:00+03:00'); // Wednesday 14:00 (Tuesday is blocked)
 
 const booking = (extra: Record<string, unknown> = {}) => ({
   fullName: 'Amina Wanjiru',
@@ -77,20 +78,44 @@ describe('orderMeetingService.book', () => {
     expect(sent.map((email) => email.to).sort()).toEqual(['amina@example.com', 'support@snackquests.shop']);
   });
 
-  it('refuses a time someone else holds', async () => {
+  it('allows one meeting a day: refuses the same time, and any other time that day', async () => {
     await orderMeetingService.book(booking(), NOW);
     await expect(orderMeetingService.book(booking({ whatsapp: '0722 000 111' }), NOW)).rejects.toBeInstanceOf(
       MeetingSlotTakenError,
     );
+    await expect(
+      orderMeetingService.book(booking({ whatsapp: '0722 000 111', atMs: SAME_DAY }), NOW),
+    ).rejects.toBeInstanceOf(MeetingSlotTakenError);
+    const monday = (await orderMeetingService.bookingDays(NOW)).find((day) => day.date === '2026-11-02');
+    expect(monday).toEqual({ date: '2026-11-02', slots: [], booked: true });
   });
 
-  it('moves the meeting when the same number books again, and frees the old time', async () => {
+  it('lets the same number change the time within its own day', async () => {
+    await orderMeetingService.book(booking(), NOW);
+    await orderMeetingService.book(booking({ atMs: SAME_DAY }), NOW);
+    expect((await meetingOf('meet_254712345678'))?.atMs).toBe(SAME_DAY);
+  });
+
+  it('moves the meeting when the same number books another day, and frees the old day', async () => {
     await orderMeetingService.book(booking(), NOW);
     await orderMeetingService.book(booking({ atMs: LATER }), NOW);
     expect((await meetingOf('meet_254712345678'))?.atMs).toBe(LATER);
     const days = await orderMeetingService.bookingDays(NOW);
+    expect(days.find((day) => day.date === '2026-11-02')).toMatchObject({ booked: false });
     expect(days.find((day) => day.date === '2026-11-02')?.slots).toContain(SLOT);
-    expect(days.find((day) => day.date === '2026-11-03')?.slots).not.toContain(LATER);
+    expect(days.find((day) => day.date === '2026-11-04')).toEqual({ date: '2026-11-04', slots: [], booked: true });
+  });
+
+  it('counts a booking filed under its start time, from before one meeting a day', async () => {
+    await adminFirestore.collection('vendingOrderMeetingSlots').doc(String(SLOT)).set({ meetingId: 'meet_254700000000', atMs: SLOT });
+    expect((await orderMeetingService.bookingDays(NOW)).find((day) => day.date === '2026-11-02')?.booked).toBe(true);
+    await expect(orderMeetingService.book(booking({ atMs: SAME_DAY }), NOW)).rejects.toBeInstanceOf(MeetingSlotTakenError);
+  });
+
+  it('refuses a day blocked by hand', async () => {
+    await expect(
+      orderMeetingService.book(booking({ atMs: Date.parse('2026-11-03T10:00:00+03:00') }), NOW),
+    ).rejects.toBeInstanceOf(OrderMeetingValidationError);
   });
 
   it('attaches the meeting to the lead with that number', async () => {

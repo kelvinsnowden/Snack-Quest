@@ -45,7 +45,7 @@ function meetingWindowLabel(): string {
 
 export function MeetingBooking({ days }: { days: MeetingDay[] }) {
   const [mode, setMode] = useState<OrderMeetingMode>('in_person');
-  const [selectedDate, setSelectedDate] = useState<string | null>(days[0]?.date ?? null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(days.find((day) => !day.booked)?.date ?? null);
   const [slot, setSlot] = useState<number | null>(null);
   const [fullName, setFullName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -105,7 +105,7 @@ export function MeetingBooking({ days }: { days: MeetingDay[] }) {
     );
   }
 
-  const day = days.find((entry) => entry.date === selectedDate) ?? null;
+  const day = days.find((entry) => entry.date === selectedDate && !entry.booked) ?? null;
 
   return (
     <div className="flex flex-col gap-6">

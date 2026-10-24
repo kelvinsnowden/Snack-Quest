@@ -47,8 +47,8 @@ export function longDate(date: string): string {
  * A month calendar for picking a meeting day (§ order meetings): the
  * chosen date across the top, the month with arrows to step through
  * it, and the days in a Sunday-first grid. Only days with an open time
- * can be picked; the rest, and the days of the months either side,
- * are greyed out.
+ * can be picked. A day that already has its meeting says "Booked"; the
+ * rest, and the days of the months either side, are greyed out.
  */
 export function MeetingCalendar({
   days,
@@ -59,10 +59,11 @@ export function MeetingCalendar({
   selected: string | null;
   onSelect: (date: string) => void;
 }) {
-  const open = new Set(days.map((day) => day.date));
+  const open = new Set(days.filter((day) => !day.booked).map((day) => day.date));
+  const booked = new Set(days.filter((day) => day.booked).map((day) => day.date));
   const months = Array.from(new Set(days.map((day) => day.date.slice(0, 7))));
   const [monthIndex, setMonthIndex] = useState(() =>
-    Math.max(0, months.indexOf((selected ?? days[0]?.date ?? '').slice(0, 7))),
+    Math.max(0, months.indexOf((selected ?? days.find((day) => !day.booked)?.date ?? days[0]?.date ?? '').slice(0, 7))),
   );
   const month = months[Math.min(monthIndex, months.length - 1)];
   if (!month) return null;
@@ -122,6 +123,14 @@ export function MeetingCalendar({
                   >
                     {day}
                   </button>
+                ) : cell.inMonth && booked.has(cell.date) ? (
+                  <span
+                    title={`${longDate(cell.date)}: booked`}
+                    className="bg-border/50 flex size-10 flex-col items-center justify-center rounded-full leading-none"
+                  >
+                    <span className="text-muted-foreground text-xs tabular-nums">{day}</span>
+                    <span className="text-primary mt-0.5 text-[8px] font-semibold uppercase tracking-wide">Booked</span>
+                  </span>
                 ) : (
                   <span
                     aria-hidden="true"
