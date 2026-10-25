@@ -181,7 +181,7 @@ class MachineTransactionRepository {
    * and a transaction stays `pending` the whole time a real customer
    * is looking at their phone's PIN prompt.
    */
-  async setCheckoutRequest(businessId: string, transactionId: string, input: { checkoutRequestId: string; merchantRequestId: string }): Promise<void> {
+  async setCheckoutRequest(businessId: string, transactionId: string, input: { checkoutRequestId: string; merchantRequestId: string; collectedByPartnerId?: string | null }): Promise<void> {
     const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
     const snapshot = await ref.get();
     const data = snapshot.data() as MachineTransaction | undefined;
@@ -191,6 +191,7 @@ class MachineTransactionRepository {
     await ref.update({
       checkoutRequestId: input.checkoutRequestId,
       merchantRequestId: input.merchantRequestId,
+      ...(input.collectedByPartnerId ? { collectedByPartnerId: input.collectedByPartnerId } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }

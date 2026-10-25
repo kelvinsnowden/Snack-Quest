@@ -370,6 +370,8 @@ class VendingSaleReviewService {
       if (pending) return no('A reversal was started but Safaricom never confirmed receiving it. Check the M-Pesa statement, then record the refund.');
       if (sale.paymentMethod !== 'mpesa') return no('This sale was not paid by M-Pesa.');
       if (!sale.paymentRef) return no('This sale has no M-Pesa receipt to reverse.');
+      // A reversal from Snack Quest's account can't reach money paid into the owner's own till.
+      if (sale.collectedByPartnerId) return no('This sale was paid into the owner’s own till, so only the owner can send it back. Ask them to refund it from their M-Pesa, then record their confirmation code.');
       if (siblings.length > 0) {
         return no(`This M-Pesa payment also paid for ${siblings.length} other item${siblings.length === 1 ? '' : 's'}. A reversal would return the whole payment — send KES ${sale.amountKes} another way and record it.`);
       }

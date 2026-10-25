@@ -28,6 +28,8 @@ import { machineDispenseCommandRepository } from '@/repositories/machineDispense
 import { machineIntegrationRepository } from '@/repositories/machineIntegrationRepository';
 import type { VendResultReport } from '@/lib/vending/hardwareAdapter';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
+import { OwnerDarajaAccountUnavailableError } from '@/lib/integrations/daraja/config';
+import { ownerPaymentAccountService } from '@/services/ownerPaymentAccountService';
 import type { PaymentGateway, PaymentCallbackResult } from '@/lib/integrations/types';
 import { paymentInitiationRepository, type PaymentInitiationResult } from '@/repositories/paymentInitiationRepository';
 import { isCustomerSale, type MachineDispenseCommand, type MachineTransaction, type MachineTransactionPaymentMethod } from '@/types';
@@ -331,17 +333,34 @@ class MachineTransactionService {
     const totalAmountKes = created.reduce((sum, t) => sum + t.amountKes, 0);
     const cartRef = `CART-${randomUUID().slice(0, 8).toUpperCase()}`;
     try {
-      const result = await this.paymentGateway.initiateStkPush({
-        businessId: input.businessId,
-        phone: input.phoneNumber,
-        amountKes: totalAmountKes,
-        accountReference: cartRef,
-        transactionDesc: 'Snack Quest vend',
-      });
+      // Straight into the owner's own till when they've connected one (§ OWNER TILL); Snack Quest's otherwise.
+      let account = await ownerPaymentAccountService.collectingAccountFor(input.businessId, input.machineId, machine);
+      const push = () =>
+        this.paymentGateway.initiateStkPush({
+          businessId: input.businessId,
+          phone: input.phoneNumber,
+          amountKes: totalAmountKes,
+          accountReference: cartRef,
+          transactionDesc: 'Snack Quest vend',
+          account,
+        });
+      let result;
+      try {
+        result = await push();
+      } catch (error) {
+        // The owner's keys failed before any prompt went out, so asking again on Snack Quest's account
+        // can't double-charge: the customer still gets their snack, and settlement pays the owner for it.
+        if (!account || !(error instanceof OwnerDarajaAccountUnavailableError)) throw error;
+        logger.warn('owner till unavailable; this sale goes to Snack Quest', { businessId: input.businessId, machineId: input.machineId, partnerId: account.partnerId, error });
+        await ownerPaymentAccountService.markUnavailable(input.businessId, account.partnerId).catch(() => undefined);
+        account = null;
+        result = await push();
+      }
       for (const t of created) {
         await machineTransactionRepository.setCheckoutRequest(input.businessId, t.id, {
           checkoutRequestId: result.checkoutRequestId,
           merchantRequestId: result.merchantRequestId,
+          collectedByPartnerId: account?.partnerId ?? null,
         });
       }
       return {
@@ -1080,9 +1099,21 @@ class MachineTransactionService {
       }
 
       const ageMs = now - data.updatedAt.toMillis();
-      const query = await this.paymentGateway.queryStkStatus({ businessId, checkoutRequestId: data.checkoutRequestId });
+      let query: Awaited<ReturnType<PaymentGateway['queryStkStatus']>> | null;
+      try {
+        query = await this.paymentGateway.queryStkStatus({
+          businessId,
+          checkoutRequestId: data.checkoutRequestId,
+          account: data.collectedByPartnerId ? { partnerId: data.collectedByPartnerId } : null,
+        });
+      } catch (error) {
+        // Paid into an owner's till whose keys can't be used any more (disconnected or refused): no answer to be had,
+        // so it waits like any unanswered query and goes to manual review once it is old enough.
+        if (!(error instanceof OwnerDarajaAccountUnavailableError)) throw error;
+        query = null;
+      }
 
-      if (query.responseCode !== '0') {
+      if (!query || query.responseCode !== '0') {
         // Daraja itself has no definitive answer yet.
         if (ageMs >= expireAfterMs) {
           await machineTransactionRepository.moveStatus(businessId, id, 'manual_review', {

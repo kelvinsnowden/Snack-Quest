@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
 import { partnerService } from '@/services/partnerService';
 import { listEarningsLedger } from '@/repositories/partnerRepository';
+import { ownerPaymentAccountService } from '@/services/ownerPaymentAccountService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSettlementService } from '@/services/machineSettlementService';
 import { withdrawalService } from '@/services/withdrawalService';
@@ -55,6 +56,7 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
     canSeeMoney ? machineSettlementService.listByPartner(session.businessId, partnerId) : Promise.resolve([]),
     canSeeMoney ? withdrawalService.listWithdrawalsForOwner(session.businessId, partnerId) : Promise.resolve({ withdrawals: [] as Awaited<ReturnType<typeof withdrawalService.listWithdrawalsForOwner>>['withdrawals'] }),
   ]);
+  const till = canSeeMoney ? await ownerPaymentAccountService.view(session.businessId, partnerId) : null;
   const machineCode = new Map(machines.map(({ id, data }) => [id, data.machineCode]));
   // An agreement on a machine that has since changed hands is shown by id; it can only be ended, never restarted.
   const activeByMachine = new Set((await Promise.all(machines.map(({ id }) => partnerMachineAgreementRepository.findActiveForMachine(session.businessId, id)))).filter(Boolean).map((row) => row!.data.machineId));
@@ -113,6 +115,15 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
               <p className="text-sm text-muted-foreground">Add their email to let them sign up.</p>
             )}
             {canManage ? <OwnerStatusControl partnerId={partnerId} name={partner.name} status={partner.status} /> : null}
+            {canSeeMoney ? (
+              <p className="text-sm text-foreground">
+                {!till
+                  ? 'M-Pesa: no till of their own connected. Sales go to Snack Quest.'
+                  : till.status === 'connected'
+                    ? `M-Pesa: their ${till.accountType} ${till.shortcode} is connected. Sales on machines with invoice billing go straight to it.`
+                    : `M-Pesa: their ${till.accountType} ${till.shortcode} isn’t working (${till.lastError ?? 'Safaricom refused it'}). Sales go to Snack Quest until they fix it.`}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       </div>

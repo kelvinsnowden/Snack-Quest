@@ -149,9 +149,34 @@ behaviour above, still the default) or `invoice`. On `invoice`:
   applied twice.
 
 Issued on delivery and by the daily `reconcile-subscription-arrears`
-job, which also catches anything missed. Each machine collecting into
-its own owner's till is a separate step (it needs that owner's own
-Daraja credentials); invoices are paid to Snack Quest either way.
+job, which also catches anything missed. Invoices are paid to Snack
+Quest's own shortcode either way.
+
+**Update — owner tills.** An owner can connect their own till or
+paybill at `/partner/payments`: the number, an optional store/head-office
+number, and the three Daraja keys of their own live app (consumer key,
+consumer secret, passkey; encrypted at rest in `partnerPaymentAccounts`,
+never sent back to a browser). "Check and connect" asks Safaricom for a
+token and runs the same dry-run STK query as Test Connection, so nobody
+is charged; only an account that passes is used.
+
+A machine's sales are prompted into the owner's till when the account
+is connected **and** the machine's active agreement is on invoice
+billing (Snack Quest no longer holds that money, so it is paid by
+invoice). The prompt still names Snack Quest's callback URL, so the
+callback is verified and matched exactly as before. Each sale records
+`collectedByPartnerId`:
+
+- settlement leaves it out of `grossSalesKes` (shown as
+  `ownerCollectedKes`), so it is never paid to the owner twice;
+- a late callback's status query uses the owner's keys;
+- it can't be reversed from Snack Quest's account: the owner refunds it
+  and staff record the code.
+
+If the owner's keys fail before any prompt is sent (no token), the sale
+is prompted on Snack Quest's account instead, the account is marked not
+working, and the owner is texted once. Any other failure is not retried
+elsewhere, since that prompt may already be on the customer's phone.
 
 ## 6. Owner wallet (`Partner.availableCashKes`/`lifetimeEarnedKes` + `PartnerEarningsLedgerEntry` — extends existing patterns, this pass)
 

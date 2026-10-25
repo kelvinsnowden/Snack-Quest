@@ -1,11 +1,16 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import {
   getDarajaConfig,
   getDarajaB2CConfig,
   getDarajaReversalConfig,
   getDarajaTransactionStatusConfig,
+  getOwnerDarajaConfig,
+  ownerDarajaConfig,
+  OwnerDarajaAccountUnavailableError,
   type DarajaConfig,
+  type OwnerDarajaAccount,
 } from './config';
 import { withRetry } from '../shared/withRetry';
 import { withCircuitBreaker } from '../shared/withCircuitBreaker';
@@ -297,6 +302,71 @@ interface RawDarajaCallback {
   };
 }
 
+/** Whose till a prompt goes to: a machine owner's own, connected from their portal. */
+export interface DarajaPaymentAccount {
+  partnerId: string;
+}
+
+/**
+ * Token cache and circuit breaker key for an owner's account: their own,
+ * and new keys get a new one — so a wrong key an owner has since fixed,
+ * or one owner's broken account, never blocks anyone else's prompts.
+ */
+function ownerScope(businessId: string, partnerId: string, config: Pick<DarajaConfig, 'consumerKey' | 'consumerSecret'>): string {
+  const fingerprint = createHash('sha256').update(`${config.consumerKey}:${config.consumerSecret}`).digest('hex').slice(0, 12);
+  return `${businessId}:owner:${partnerId}:${fingerprint}`;
+}
+
+/**
+ * The config and a token for a prompt. For an owner's account, anything
+ * that fails before a request is sent — no connected account, or keys
+ * Safaricom no longer accepts — is an `OwnerDarajaAccountUnavailableError`,
+ * which a caller can safely answer by using Snack Quest's account
+ * instead: no prompt went out.
+ */
+async function stkSession(businessId: string, account: DarajaPaymentAccount | null): Promise<{ scope: string; config: DarajaConfig; accessToken: string }> {
+  if (!account) {
+    const config = await getDarajaConfig(businessId);
+    return { scope: businessId, config, accessToken: await fetchAccessToken(businessId, config) };
+  }
+  const config = await getOwnerDarajaConfig(businessId, account.partnerId);
+  const scope = ownerScope(businessId, account.partnerId, config);
+  try {
+    return { scope, config, accessToken: await fetchAccessToken(scope, config) };
+  } catch (error) {
+    throw new OwnerDarajaAccountUnavailableError(account.partnerId, error instanceof Error ? error.message : 'Safaricom refused its keys');
+  }
+}
+
+/**
+ * Checks an owner's till or paybill keys with Safaricom before they are
+ * used for a single sale, charging nobody: the keys get a token, the
+ * number and passkey pass the same dry-run query Test Connection uses.
+ * Returns what is wrong, worded for the owner; empty when it works.
+ */
+export async function checkOwnerDarajaAccount(businessId: string, partnerId: string, account: OwnerDarajaAccount): Promise<DarajaPreflightIssue[]> {
+  const config = await ownerDarajaConfig(businessId, account);
+  // The callback URL is Snack Quest's, not the owner's: its checks are for staff, not here.
+  const issues = inspectDarajaConfig(config).filter((issue) => issue.field !== 'callbackUrl');
+  if (issues.some((issue) => issue.severity === 'blocker')) return issues;
+  const scope = ownerScope(businessId, partnerId, config);
+  let accessToken: string;
+  try {
+    accessToken = await fetchAccessToken(scope, config, { forceRefresh: true });
+  } catch {
+    return [
+      ...issues,
+      {
+        severity: 'blocker',
+        title: 'Safaricom didn’t accept the consumer key and secret',
+        detail: 'Copy both again from your app on the Daraja portal (developer.safaricom.co.ke → My Apps). They must come from the app that went live for this till or paybill.',
+      },
+    ];
+  }
+  const probe = await probeStkCredentials(businessId, config, accessToken);
+  return probe ? [...issues, probe] : issues;
+}
+
 class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
   async initiateStkPush(input: {
     businessId: string;
@@ -304,9 +374,10 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
     amountKes: number;
     accountReference: string;
     transactionDesc: string;
+    /** A machine owner's own till to pay into; Snack Quest's account when absent. */
+    account?: DarajaPaymentAccount | null;
   }): Promise<StkPushResult> {
-    const config = await getDarajaConfig(input.businessId);
-    const accessToken = await fetchAccessToken(input.businessId, config);
+    const { scope, config, accessToken } = await stkSession(input.businessId, input.account ?? null);
     const timestamp = timestampNow();
     const password = buildPassword(config, timestamp);
 
@@ -316,7 +387,7 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
     // retry after an ambiguous failure is a decision for PaymentService
     // (§7), which has payment-intent state to reason about whether a
     // prior attempt actually reached Safaricom — this Gateway doesn't.
-    return withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, async () => {
+    return withCircuitBreaker(`${GATEWAY_NAME}:${scope}`, async () => {
       const response = await fetch(
         `${config.baseUrl}/mpesa/stkpush/v1/processrequest`,
         {
@@ -411,13 +482,14 @@ class DarajaGateway implements PaymentGateway, PayoutGateway, RefundGateway {
   async queryStkStatus(input: {
     businessId: string;
     checkoutRequestId: string;
+    /** The owner's own till the prompt was sent to, if it was; Safaricom only answers with that account's keys. */
+    account?: DarajaPaymentAccount | null;
   }): Promise<StkQueryResult> {
-    const config = await getDarajaConfig(input.businessId);
-    const accessToken = await fetchAccessToken(input.businessId, config);
+    const { scope, config, accessToken } = await stkSession(input.businessId, input.account ?? null);
     const timestamp = timestampNow();
     const password = buildPassword(config, timestamp);
 
-    return withCircuitBreaker(`${GATEWAY_NAME}:${input.businessId}`, () =>
+    return withCircuitBreaker(`${GATEWAY_NAME}:${scope}`, () =>
       withRetry(async () => {
         const response = await fetch(
           `${config.baseUrl}/mpesa/stkpushquery/v1/query`,

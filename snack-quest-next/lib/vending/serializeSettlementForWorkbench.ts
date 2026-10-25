@@ -21,6 +21,7 @@ export function toWorkbenchSettlement(id: string, data: MachineSettlement, machi
     adjustmentKes: data.adjustmentKes,
     adjustmentReason: data.adjustmentReason,
     failedVendRefundsKes: data.failedVendRefundsKes ?? 0,
+    ownerCollectedKes: data.ownerCollectedKes ?? 0,
     outcomeConflictCount: data.outcomeConflictCount ?? 0,
     partnerShareKes: data.partnerShareKes,
     finalizedAt: iso(data.finalizedAt),

@@ -362,6 +362,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // partnerPaymentAccounts: a machine owner's own M-Pesa till and its
+    // Daraja keys (encrypted). Written by the owner portal's connect
+    // route and read by the payment path, both through the Admin SDK.
+    match /partnerPaymentAccounts/{partnerId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // leadNurtureSettings: the lead email sequence as edited in the
     // admin. Server-only, like the leads it is sent to.
     match /leadNurtureSettings/{businessId} {

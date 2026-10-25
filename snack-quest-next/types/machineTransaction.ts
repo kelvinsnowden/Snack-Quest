@@ -98,6 +98,14 @@ export interface MachineTransaction {
    */
   checkoutRequestId: string | null;
   merchantRequestId: string | null;
+  /**
+   * Set when the customer paid straight into the machine owner's own till
+   * (`partnerPaymentAccounts`) rather than Snack Quest's: the owner holds
+   * this money, so settlement doesn't pay it to them again, a status
+   * query needs their keys, and only they can send it back. Absent or
+   * null: Snack Quest collected it.
+   */
+  collectedByPartnerId?: string | null;
   /** Set once a vend is authorized and handed to the hardware adapter (§ hardware abstraction `authorizeVend()`) — the token/reference the adapter and the machine both use to correlate the eventual result. Null until authorized. */
   vendRef: string | null;
   amountKes: number;

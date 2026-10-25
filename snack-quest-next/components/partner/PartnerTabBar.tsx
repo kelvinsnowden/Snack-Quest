@@ -15,6 +15,7 @@ import {
   Receipt,
   ReceiptText,
   Settings,
+  Smartphone,
   Tag,
   Wallet,
   Coins,
@@ -65,6 +66,7 @@ const SIDE_NAV = [
   { href: '/partner/reports', label: 'Reports', icon: FileText },
   { href: '/partner/payouts', label: 'Payouts', icon: Wallet },
   { href: '/partner/invoices', label: 'Invoices', icon: Receipt },
+  { href: '/partner/payments', label: 'M-Pesa till', icon: Smartphone },
   { href: '/partner/subscription', label: 'Subscription', icon: ReceiptText },
   { href: '/partner/settings', label: 'Settings', icon: Settings },
 ];

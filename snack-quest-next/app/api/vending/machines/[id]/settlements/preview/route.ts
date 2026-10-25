@@ -43,6 +43,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         distributableOwnerKes: draft.distributableOwnerKes,
         failedVendRefundsKes: draft.failedVendRefundsKes ?? 0,
         outcomeConflictCount: draft.outcomeConflictCount ?? 0,
+        ownerCollectedKes: draft.ownerCollectedKes ?? 0,
         agreementId: draft.agreementId,
         partnerShareKes: draft.partnerShareKes,
       },

@@ -59,6 +59,7 @@ export * from './kioskScreenImage';
 export * from './vendingRefund';
 export * from './machineSubscription';
 export * from './ownerInvoice';
+export * from './partnerPaymentAccount';
 export * from './location';
 export * from './networkDailySummary';
 export * from './intelligenceRecommendation';
