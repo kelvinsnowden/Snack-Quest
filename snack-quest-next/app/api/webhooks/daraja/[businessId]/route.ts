@@ -1,6 +1,7 @@
 import { paymentService } from '@/services/paymentService';
 import { conversationService } from '@/services/conversationService';
 import { machineTransactionService } from '@/services/machineTransactionService';
+import { ownerInvoiceService } from '@/services/ownerInvoiceService';
 import { paymentIntentRepository } from '@/repositories/paymentIntentRepository';
 import { darajaGateway } from '@/lib/integrations/daraja/darajaGateway';
 import { verifyDarajaWebhookRequest } from '@/lib/webhooks/verifyDarajaWebhookRequest';
@@ -78,6 +79,11 @@ export async function POST(
    * callback errored before the order code ever ran.
    */
   const ownedByOrderCheckout = callback ? (await paymentIntentRepository.findByCheckoutRequestId(callback.checkoutRequestId)) !== null : false;
+
+  // An owner paying an invoice from their portal: matched by the prompt's own record, a read by id.
+  if (callback && !ownedByOrderCheckout && (await ownerInvoiceService.handleMpesaCallback(businessId, callback)).handled) {
+    return Response.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
 
   if (callback && !ownedByOrderCheckout) {
     // Not wrapped in a try/catch: a throw here means we *did*

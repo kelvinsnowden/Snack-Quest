@@ -32,6 +32,13 @@ function cleanText(value: string | null | undefined, max: number, label: string)
  * provides is the data a real partner session will read from once one
  * exists: one partner, many machines, one account.
  */
+/** Stock is only invoiced when it is sold to the owner on delivery; Snack Quest's own stock has nothing to invoice. */
+function assertBillable(terms: CommercialTerms): void {
+  if (terms.ownerBilling === 'invoice' && terms.inventoryOwner !== 'machine_owner') {
+    throw new PartnerValidationError('Invoice billing needs the owner to buy the stock. Set “Stock” to “The owner buys the stock” as well.');
+  }
+}
+
 class PartnerService {
   /**
    * The contact email is also how the owner claims their portal login —
@@ -135,6 +142,7 @@ class PartnerService {
     if (input.status === 'active' && partner.status !== 'active') throw new PartnerValidationError('That owner is suspended; an agreement can only start as a draft.');
     const pct = input.revenueSharePartnerPct;
     if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) throw new PartnerValidationError('Owner’s share must be between 0 and 100 percent.');
+    assertBillable(resolveTerms(input.terms));
     return partnerMachineAgreementRepository.createChecked({
       businessId: input.businessId,
       partnerId: input.partnerId,
@@ -161,6 +169,7 @@ class PartnerService {
     if (!agreement || agreement.partnerId !== partnerId) throw new PartnerValidationError('Agreement not found.');
     if (agreement.status === 'terminated') throw new PartnerValidationError('This agreement has ended; its terms are history. Record a new agreement instead.');
     const merged = { ...(agreement.terms ?? {}), ...terms };
+    assertBillable(resolveTerms(merged));
     await partnerMachineAgreementRepository.updateTerms(businessId, agreementId, merged, actor);
     return { machineId: agreement.machineId, before: resolveTerms(agreement.terms), after: resolveTerms(merged) };
   }

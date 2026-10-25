@@ -126,6 +126,33 @@ net `subscriptionChargedKes` into the settlement; a machine with no
 subscription record nets `0`, not null-propagated into an unusable
 settlement.
 
+**Update — owner invoices.** The charging decision is now made, per
+agreement: `CommercialTerms.ownerBilling` is `settlement` (the
+behaviour above, still the default) or `invoice`. On `invoice`:
+
+- each received delivery of stock (`ownerWholesaleSales`, which needs
+  `inventoryOwner: 'machine_owner'`) becomes an invoice at the owner's
+  cost basis frozen on the delivery, and each started subscription
+  period becomes a fee invoice (`ownerInvoices`, doc id = the source,
+  so nothing is invoiced twice; numbers `INV-000001…` per business);
+- the owner pays in the portal (`/partner/invoices`) by M-Pesa STK into
+  Snack Quest's own shortcode; the Daraja callback (or an STK status
+  query when the callback is late) marks it paid, and a paid fee
+  invoice moves the subscription on one period, only while that period
+  is still current;
+- settlement deducts neither: sales whose snapshot says
+  `ownerBilling: 'invoice'` carry no cost, and the fee is `0`;
+- staff see who owes what at Admin → Owner Invoices, record payments
+  made another way, or cancel a charge (a cancelled fee invoice waives
+  the period). Money that arrives for an invoice already paid or
+  cancelled is kept on its prompt record and flagged there, never
+  applied twice.
+
+Issued on delivery and by the daily `reconcile-subscription-arrears`
+job, which also catches anything missed. Each machine collecting into
+its own owner's till is a separate step (it needs that owner's own
+Daraja credentials); invoices are paid to Snack Quest either way.
+
 ## 6. Owner wallet (`Partner.availableCashKes`/`lifetimeEarnedKes` + `PartnerEarningsLedgerEntry` — extends existing patterns, this pass)
 
 **Not a new pattern.** This codebase already has exactly this shape

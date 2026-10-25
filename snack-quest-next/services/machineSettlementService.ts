@@ -13,6 +13,7 @@ import { creditEarningsInTransaction } from '@/repositories/partnerRepository';
 import { machineOwnershipHistoryRepository } from '@/repositories/machineOwnershipHistoryRepository';
 import { isCustomerSale, type MachineSettlement } from '@/types';
 import { unitCostFor } from '@/lib/finance/economics';
+import { resolveTerms } from '@/services/machineEconomicProfileService';
 
 export { MachineSettlementNotFoundError, IllegalSettlementTransitionError, OverlappingSettlementPeriodError };
 
@@ -134,6 +135,8 @@ class MachineSettlementService {
     let estimatedCostSaleCount = 0;
     for (const movement of movements) {
       const snapshot = movement.transactionId ? sales.get(movement.transactionId)?.economics : null;
+      // Sold from stock the owner already paid for on its delivery invoice: nothing to take out of their sales.
+      if (snapshot?.ownerBilling === 'invoice') continue;
       if (snapshot) {
         const unitCost = unitCostFor(snapshot, 'owner');
         if (unitCost === null) unpricedSaleCount += 1;
@@ -188,13 +191,15 @@ class MachineSettlementService {
 
   private async computeDraft(input: { businessId: string; machineId: string; partnerId: string; periodStart: Date; periodEnd: Date; actor: string }): Promise<MachineSettlementInput> {
     await this.assertOwnedThroughout(input.businessId, input.machineId, input.partnerId, input.periodStart, input.periodEnd);
-    const [{ grossSalesKes, refundsKes, failedVendRefundsKes, outcomeConflictCount }, { cogsKes, unpricedSaleCount, estimatedCostSaleCount }, subscriptionChargedKes, agreement] = await Promise.all([
+    const [{ grossSalesKes, refundsKes, failedVendRefundsKes, outcomeConflictCount }, { cogsKes, unpricedSaleCount, estimatedCostSaleCount }, subscriptionChargeKes, agreement] = await Promise.all([
       this.computeGrossForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
       this.computeCogsForPeriod(input.businessId, input.machineId, input.periodStart, input.periodEnd),
       this.computeSubscriptionChargeForPeriod(input.businessId, input.machineId),
       partnerMachineAgreementRepository.findActiveForMachine(input.businessId, input.machineId),
     ]);
 
+    // An invoiced owner pays the fee on its own invoice, so settlement doesn't take it as well.
+    const subscriptionChargedKes = resolveTerms(agreement?.data.terms).ownerBilling === 'invoice' ? 0 : subscriptionChargeKes;
     const revenueSharePartnerPct = agreement?.data.revenueSharePartnerPct ?? null;
     const netDistributableKes = revenueSharePartnerPct === null ? null : grossSalesKes - refundsKes;
     const partnerShareKes =

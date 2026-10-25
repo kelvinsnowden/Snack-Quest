@@ -182,7 +182,7 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
                           return (
                             <div className="flex flex-col gap-2">
                               <span>
-                                {terms.inventoryOwner === 'machine_owner' ? 'Owner buys stock' : 'Snack Quest stock'} · pays {terms.ownerCostBasis === 'wholesale_price' ? 'wholesale price' : 'Snack Quest’s cost'} · ads {terms.adRevenueSharePartnerPct}%
+                                {terms.inventoryOwner === 'machine_owner' ? 'Owner buys stock' : 'Snack Quest stock'} · pays {terms.ownerCostBasis === 'wholesale_price' ? 'wholesale price' : 'Snack Quest’s cost'} · ads {terms.adRevenueSharePartnerPct}%{terms.ownerBilling === 'invoice' ? ' · invoiced' : ''}
                                 {!data.terms || Object.keys(data.terms).length === 0 ? ' (not set — original rule)' : ''}
                               </span>
                               {canSetTerms && data.status !== 'terminated' ? <AgreementTermsEditor partnerId={partnerId} agreementId={id} terms={terms} /> : null}

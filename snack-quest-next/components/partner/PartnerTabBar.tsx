@@ -12,6 +12,7 @@ import {
   MapPin,
   MessageCircle,
   Package,
+  Receipt,
   ReceiptText,
   Settings,
   Tag,
@@ -63,6 +64,7 @@ const SIDE_NAV = [
   { href: '/partner/screen-design', label: 'Screen design', icon: Palette },
   { href: '/partner/reports', label: 'Reports', icon: FileText },
   { href: '/partner/payouts', label: 'Payouts', icon: Wallet },
+  { href: '/partner/invoices', label: 'Invoices', icon: Receipt },
   { href: '/partner/subscription', label: 'Subscription', icon: ReceiptText },
   { href: '/partner/settings', label: 'Settings', icon: Settings },
 ];

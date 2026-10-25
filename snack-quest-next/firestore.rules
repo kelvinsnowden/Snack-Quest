@@ -345,6 +345,23 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ownerInvoices / ownerInvoiceCheckouts / ownerInvoiceCounters: what
+    // machine owners on invoice billing owe, the M-Pesa prompts sent for
+    // them, and the invoice numbering. Money and owners' phone numbers;
+    // the owner portal and the admin read them through the Admin SDK.
+    match /ownerInvoices/{invoiceId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    match /ownerInvoiceCheckouts/{checkoutRequestId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    match /ownerInvoiceCounters/{businessId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // leadNurtureSettings: the lead email sequence as edited in the
     // admin. Server-only, like the leads it is sent to.
     match /leadNurtureSettings/{businessId} {

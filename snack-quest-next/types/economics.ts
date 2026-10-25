@@ -32,6 +32,17 @@ export type OwnerCostBasis = (typeof OWNER_COST_BASES)[number];
 export const SETTLEMENT_MODELS = ['owner_keeps_margin', 'revenue_share'] as const;
 export type SettlementModel = (typeof SETTLEMENT_MODELS)[number];
 
+/**
+ * How an owner pays Snack Quest for stock and the management fee.
+ * `settlement` is what the system always did: both come out of the
+ * owner's sales when they are settled. `invoice`: each delivery of stock
+ * and each fee period is invoiced to the owner's portal and paid by
+ * M-Pesa, so settlement no longer deducts either. Invoicing stock needs
+ * the owner to buy it (`inventoryOwner: 'machine_owner'`).
+ */
+export const OWNER_BILLINGS = ['settlement', 'invoice'] as const;
+export type OwnerBilling = (typeof OWNER_BILLINGS)[number];
+
 export const MAINTENANCE_RESPONSIBILITIES = ['snack_quest', 'owner'] as const;
 export type MaintenanceResponsibility = (typeof MAINTENANCE_RESPONSIBILITIES)[number];
 
@@ -50,6 +61,7 @@ export interface CommercialTerms {
   maintenanceResponsibility: MaintenanceResponsibility;
   /** Whether the owner may see Snack Quest's landed cost. Off unless agreed. */
   showLandedCostToOwner: boolean;
+  ownerBilling: OwnerBilling;
 }
 
 export const DEFAULT_COMMERCIAL_TERMS: CommercialTerms = {
@@ -59,6 +71,7 @@ export const DEFAULT_COMMERCIAL_TERMS: CommercialTerms = {
   adRevenueSharePartnerPct: 0,
   maintenanceResponsibility: 'snack_quest',
   showLandedCostToOwner: false,
+  ownerBilling: 'settlement',
 };
 
 /**
@@ -127,6 +140,8 @@ export interface SaleEconomicsSnapshot {
   ownershipType: MachineOwnershipType;
   inventoryOwner: InventoryOwner;
   ownerCostBasis: OwnerCostBasis;
+  /** Absent on sales from before invoicing existed, which were all `settlement`. An `invoice` sale's stock was paid for on its delivery invoice. */
+  ownerBilling?: OwnerBilling;
   partnerId: string | null;
   agreementId: string | null;
   resolvedAt: Timestamp;

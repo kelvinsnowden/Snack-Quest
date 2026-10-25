@@ -26,6 +26,7 @@ const TERM_LABEL = {
   ownerCostBasis: { landed_cost: 'Snack Quest’s cost', wholesale_price: 'Owner wholesale price' },
   settlementModel: { owner_keeps_margin: 'Owner keeps the margin', revenue_share: 'Revenue share' },
   maintenanceResponsibility: { snack_quest: 'Snack Quest', owner: 'The owner' },
+  ownerBilling: { settlement: 'Out of their sales, at settlement', invoice: 'By invoice, paid by M-Pesa' },
 } as const;
 
 /**
@@ -86,6 +87,8 @@ export default async function MachineEconomicsPage({ params, searchParams }: { p
               <>
                 <dt className="text-muted-foreground">Owner pays for stock at</dt>
                 <dd>{TERM_LABEL.ownerCostBasis[profile.terms.ownerCostBasis]}</dd>
+                <dt className="text-muted-foreground">Owner pays stock and fee</dt>
+                <dd>{TERM_LABEL.ownerBilling[profile.terms.ownerBilling]}</dd>
                 <dt className="text-muted-foreground">Settlement</dt>
                 <dd>{TERM_LABEL.settlementModel[profile.terms.settlementModel]}</dd>
                 <dt className="text-muted-foreground">Owner’s advertising share</dt>

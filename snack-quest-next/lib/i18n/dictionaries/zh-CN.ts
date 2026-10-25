@@ -58,6 +58,7 @@ export const zhCN: Dictionary = {
       '/admin/vending/restock': '补货指挥中心',
       '/admin/vending/leads': '潜在客户',
       '/admin/vending/partners': '机器所有者',
+      '/admin/vending/invoices': '所有者发票',
       '/admin/vending/intelligence': '网络智能',
       '/admin/vending/intelligence/locations': '地点智能',
       '/admin/vending/intelligence/products': '产品智能',

@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import type { OwnerBilling, OwnerCostBasis } from './economics';
 
 /**
  * Where stock is (§ INVENTORY TRANSFER LEDGER, docs/OS_MASTER_GAP_ANALYSIS.md
@@ -68,8 +69,8 @@ export interface StockTransfer {
  * owner, at the owner price in effect then (§ OWNER INVENTORY COST). Written
  * when a restock of an owner-stocked machine is received. It is the owner's
  * record of what they bought; how and when they pay for it is set by the
- * agreement (today, deducted from settlement as units sell — so this record
- * never charges them a second time).
+ * agreement (`billing`): deducted from settlement as units sell, or invoiced
+ * on delivery — never both.
  */
 export interface OwnerWholesaleSale {
   businessId: string;
@@ -88,6 +89,14 @@ export interface OwnerWholesaleSale {
   totalLandedKes: number;
   /** Units whose wholesale price wasn't recorded — counted, never priced at zero. */
   unpricedUnits: number;
+  /**
+   * How the owner pays for this delivery, frozen from the agreement when it
+   * was received. `invoice`: it is invoiced to their portal
+   * (`ownerInvoices/stock_{id}`) at `ownerCostBasis`. Absent on deliveries
+   * from before invoicing existed, which were all `settlement`.
+   */
+  billing?: OwnerBilling;
+  ownerCostBasis?: OwnerCostBasis;
   actor: string;
   createdAt: Timestamp;
 }
