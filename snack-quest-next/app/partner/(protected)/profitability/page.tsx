@@ -30,9 +30,11 @@ export default async function PartnerProfitabilityPage({ searchParams }: { searc
   const session = await requirePartnerSession();
   const search = await searchParams;
   const period = resolvePeriod({ preset: search.preset, from: search.from, to: search.to });
-  const report = await ownerProfitabilityService.report(session.businessId, session.partnerId, period, { machineId: search.machineId ?? null, category: search.category ?? null });
   const adsMonth = nairobiClock(new Date()).date.slice(0, 7);
-  const ads = await advertisingService.ownerSummary(session.businessId, session.partnerId, adsMonth);
+  const [report, ads] = await Promise.all([
+    ownerProfitabilityService.report(session.businessId, session.partnerId, period, { machineId: search.machineId ?? null, category: search.category ?? null }),
+    advertisingService.ownerSummary(session.businessId, session.partnerId, adsMonth),
+  ]);
   const { totals, previous } = report;
   const query = (patch: Partial<Search>) => {
     const next = new URLSearchParams();

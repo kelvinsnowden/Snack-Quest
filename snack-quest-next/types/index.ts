@@ -76,6 +76,7 @@ export * from './partnerMachineAgreement';
 export * from './machineSettlement';
 export * from './deviceCredential';
 export * from './machineDailySummary';
+export * from './machineSalesDay';
 export * from './partnerDailySummary';
 export * from './alert';
 export * from './camera';

@@ -24,10 +24,11 @@ const ROUTE_TEXT: Record<MachinePaymentRoute, { badge: string; variant: 'success
  */
 export default async function PartnerPaymentsPage() {
   const session = await requirePartnerSession();
-  const [tills, machines] = await Promise.all([
+  const [tills, unordered] = await Promise.all([
     ownerPaymentAccountService.list(session.businessId, session.partnerId),
     partnerService.listMachines(session.businessId, session.partnerId),
   ]);
+  const machines = unordered.sort((a, b) => a.data.machineCode.localeCompare(b.data.machineCode, 'en', { numeric: true }));
   const routes = await ownerPaymentAccountService.routesFor(session.businessId, session.partnerId, machines.map(({ id }) => id));
   const tillOptions = tills.map((till) => ({ id: till.id, label: tillLabel(till) }));
 

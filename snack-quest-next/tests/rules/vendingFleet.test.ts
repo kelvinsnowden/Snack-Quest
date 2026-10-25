@@ -227,3 +227,18 @@ describe('staff-only vending collections — no partner read at all', () => {
     });
   }
 });
+
+describe('machineSalesDaily security rules — server only', () => {
+  it('no client reads or writes a machine’s summed sales, not its owner and not staff', async () => {
+    await seedMachine('m-1', { businessId: 'biz-1', ownerPartnerId: 'partner-1', machineCode: 'SQ-M001' });
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'machineSalesDaily', 'm-1__2024-01-01'), { businessId: 'biz-1', machineId: 'm-1', date: '2024-01-01', products: {} });
+    });
+    const owner = testEnv.authenticatedContext('partner-user-1', { roles: ['partner'], partnerId: 'partner-1' });
+    const admin = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
+    for (const ctx of [owner, admin]) {
+      await assertFails(getDoc(doc(ctx.firestore(), 'machineSalesDaily', 'm-1__2024-01-01')));
+      await assertFails(setDoc(doc(ctx.firestore(), 'machineSalesDaily', 'm-1__2024-01-02'), { businessId: 'biz-1', machineId: 'm-1', date: '2024-01-02', products: {} }));
+    }
+  });
+});

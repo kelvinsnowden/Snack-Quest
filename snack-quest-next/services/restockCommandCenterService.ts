@@ -32,7 +32,7 @@ class RestockCommandCenterService {
 
     const perMachine = await Promise.all(
       activeMachineIds.map(async (machineId) => {
-        const performance = await machineAssortmentIntelligenceService.getAssortmentPerformance(businessId, machineId, windowDays);
+        const performance = await machineAssortmentIntelligenceService.performanceOf(businessId, machineId, windowDays);
         const machine = machineById.get(machineId);
         const rows: RestockCommandCenterRow[] = [];
         for (const slot of performance.slots) {

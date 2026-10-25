@@ -19,7 +19,10 @@ function TillCard({ till, machineCodes, keysEncrypted }: { till: PartnerPaymentA
   const [busy, setBusy] = useState(false);
   const connected = till.status === 'connected';
   const name = tillLabel(till);
-  const machines = till.machineIds.map((id) => machineCodes.get(id)).filter(Boolean);
+  const machines = till.machineIds
+    .map((id) => machineCodes.get(id))
+    .filter((code): code is string => Boolean(code))
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 
   async function disconnect() {
     setBusy(true);

@@ -559,6 +559,10 @@ service cloud.firestore {
       allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
       allow write: if false;
     }
+    // A machine's sales summed by day, with the owner's costs: read and written by the server only, for the owner's profit page.
+    match /machineSalesDaily/{dayId} {
+      allow read, write: if false;
+    }
     // One row per machine for the fleet page; written by the server only, read by staff (owners use their own portal).
     match /machineFleetSummary/{machineId} {
       allow read: if isTenantAdmin(resource.data.businessId);

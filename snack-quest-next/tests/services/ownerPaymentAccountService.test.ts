@@ -153,8 +153,17 @@ describe('ownerPaymentAccountService routing', () => {
     expect(texts[0].body).toContain('till 5123456');
   });
 
+  it('a machine not yet on invoice billing says so, whether or not it has a till', async () => {
+    expect((await ownerPaymentAccountService.routeFor(BUSINESS_ID, MACHINE_A, PARTNER_ID)).route).toBe('not_invoice_billing');
+    await connect();
+    expect((await ownerPaymentAccountService.routeFor(BUSINESS_ID, MACHINE_A, PARTNER_ID)).route).toBe('not_invoice_billing');
+    await seedAgreement(MACHINE_A, 'invoice');
+    expect((await ownerPaymentAccountService.routeFor(BUSINESS_ID, MACHINE_A, PARTNER_ID)).route).toBe('owner_till');
+  });
+
   it('disconnecting deletes the keys, and its machines go back to Snack Quest', async () => {
     const { view } = await connect();
+    await seedAgreement(MACHINE_A, 'invoice');
     expect(await ownerPaymentAccountService.disconnect(BUSINESS_ID, PARTNER_ID, view.id)).toBe(true);
     expect((await adminFirestore.collection('partnerPaymentAccounts').doc(view.id).get()).exists).toBe(false);
     expect((await ownerPaymentAccountService.routeFor(BUSINESS_ID, MACHINE_A, PARTNER_ID)).route).toBe('no_till');

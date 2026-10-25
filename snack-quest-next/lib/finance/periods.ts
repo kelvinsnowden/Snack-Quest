@@ -35,7 +35,7 @@ export interface ReportingPeriod {
 }
 
 /** Midnight in Nairobi of the Nairobi date `key`, as an instant. */
-function startOfKey(key: string): Date {
+export function startOfKey(key: string): Date {
   return new Date(Date.parse(`${key}T00:00:00Z`) - OFFSET_MS);
 }
 
@@ -44,7 +44,7 @@ export function nairobiDateKey(at: Date): string {
   return new Date(at.getTime() + OFFSET_MS).toISOString().slice(0, 10);
 }
 
-function shiftKey(key: string, days: number): string {
+export function shiftKey(key: string, days: number): string {
   return new Date(Date.parse(`${key}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 

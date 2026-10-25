@@ -217,10 +217,11 @@ class OwnerPaymentAccountService {
   }
 }
 
+/** Billing first: until Snack Quest has switched a machine to invoice billing, no till would change where its sales go, so that is what the owner needs to hear. */
 function route(till: PartnerPaymentAccount | null, agreement: { partnerId: string; terms?: Parameters<typeof resolveTerms>[0] } | null, partnerId: string): MachinePaymentRoute {
+  if (!agreement || agreement.partnerId !== partnerId || resolveTerms(agreement.terms).ownerBilling !== 'invoice') return 'not_invoice_billing';
   if (!till) return 'no_till';
   if (till.status !== 'connected') return 'till_not_working';
-  if (!agreement || agreement.partnerId !== partnerId || resolveTerms(agreement.terms).ownerBilling !== 'invoice') return 'not_invoice_billing';
   return 'owner_till';
 }
 

@@ -607,10 +607,12 @@ class AdvertisingService {
     const machineIds = machines.map(({ id }) => id);
     const [year, mon] = month.split('-').map(Number);
     const lastDay = new Date(Date.UTC(year, mon, 0)).getUTCDate();
-    const stats = machineIds.length > 0 ? await advertisingRepository.listStatsForMachines(businessId, machineIds, `${month}-01`, `${month}-${String(lastDay).padStart(2, '0')}`) : [];
-    const revenue = await advertisingRepository.listRevenue(businessId, month);
+    const [stats, revenue, profiles] = await Promise.all([
+      machineIds.length > 0 ? advertisingRepository.listStatsForMachines(businessId, machineIds, `${month}-01`, `${month}-${String(lastDay).padStart(2, '0')}`) : [],
+      advertisingRepository.listRevenue(businessId, month),
+      Promise.all(machines.map(({ id, data }) => machineEconomicProfileService.resolveFor(businessId, id, data).catch(() => null))),
+    ]);
     const shareKes = round2(revenue.flatMap((entry) => entry.ownerShares).filter((share) => share.partnerId === partnerId).reduce((sum, share) => sum + share.amountKes, 0));
-    const profiles = await Promise.all(machineIds.map((id) => machineEconomicProfileService.resolve(businessId, id).catch(() => null)));
     const sharePcts = [...new Set(profiles.map((profile) => profile?.terms.adRevenueSharePartnerPct ?? 0))];
     return {
       month,

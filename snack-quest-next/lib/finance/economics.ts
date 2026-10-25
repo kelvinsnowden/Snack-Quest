@@ -112,6 +112,40 @@ export function productEconomics(lines: readonly SaleLine[]): ProductEconomics {
   };
 }
 
+/** Sales already summed (a day's, a product's), split by whether their cost is known. No discounts or refunds — machine sales have neither. */
+export interface SummedSales {
+  costed: { units: number; grossKes: number; costKes: number };
+  unpriced: { units: number; grossKes: number };
+}
+
+export const NO_SALES: SummedSales = { costed: { units: 0, grossKes: 0, costKes: 0 }, unpriced: { units: 0, grossKes: 0 } };
+
+export function addSums(a: SummedSales, b: SummedSales): SummedSales {
+  return {
+    costed: { units: a.costed.units + b.costed.units, grossKes: a.costed.grossKes + b.costed.grossKes, costKes: a.costed.costKes + b.costed.costKes },
+    unpriced: { units: a.unpriced.units + b.unpriced.units, grossKes: a.unpriced.grossKes + b.unpriced.grossKes },
+  };
+}
+
+/** `productEconomics` of sales already summed — the same figures it gives for those sales one line at a time. */
+export function summedEconomics(sums: SummedSales): ProductEconomics {
+  const grossRevenueKes = sums.costed.grossKes + sums.unpriced.grossKes;
+  const grossProfitKes = sums.costed.grossKes - sums.costed.costKes;
+  return {
+    units: sums.costed.units + sums.unpriced.units,
+    grossRevenueKes,
+    discountsKes: 0,
+    refundsKes: 0,
+    netRevenueKes: grossRevenueKes,
+    cogsKes: sums.costed.costKes,
+    costedNetRevenueKes: sums.costed.grossKes,
+    grossProfitKes,
+    grossMarginPct: marginPct(grossProfitKes, sums.costed.grossKes),
+    unpricedUnits: sums.unpriced.units,
+    unpricedNetRevenueKes: sums.unpriced.grossKes,
+  };
+}
+
 /** The costs and income below gross profit. `null` means "not known" — it is left out and reported, never treated as zero. */
 export interface ContributionInputs {
   paymentFeesKes: number | null;

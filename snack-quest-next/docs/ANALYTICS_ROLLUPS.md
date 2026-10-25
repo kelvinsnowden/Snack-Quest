@@ -124,6 +124,22 @@ paths). The self-healing-on-read + nightly-cron pairing is what makes
 this safe to ship before the cron infrastructure around it is fully
 trusted — copy it rather than shipping the fleet's version without it.
 
+**The owner's profit page:** `machineSalesDaily/{machineId}__{date}`
+(`services/machineSalesDayService.ts`) is the same primitive keyed by
+the **Nairobi** date, holding one machine's completed sales summed by
+product and hour with the owner's frozen cost. It differs in one way
+that matters: a day that is over can never change, because a sale
+becomes `dispensed` with the database's clock and `dispensed` is final.
+So a stored day is never stale, and self-healing on read is all it
+needs — the nightly rebuild only exists for sales corrected by hand.
+Sales from before costs were frozen on each sale are kept apart and
+costed when read, at the snack's cost then, exactly as the per-sale P&L
+does. Documents are read by id (`getAll`), so the collection needs no
+index and works the moment it ships. The page reads the stored days,
+today live, and only as many recent days of single sales as its "latest
+sales" list shows; `tests/services/ownerProfitSummaries.test.ts` holds it
+to the per-sale figures.
+
 ### 4. Lifetime rollups, for questions no window can answer
 
 `repositories/customerLifetimeRepository.ts`: one document per
