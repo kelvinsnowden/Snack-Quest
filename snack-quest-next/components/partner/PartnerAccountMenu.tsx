@@ -2,7 +2,7 @@
 
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, LogOut, Receipt, Smartphone } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -47,6 +47,16 @@ export function PartnerAccountMenu({ name, contactEmail }: { name: string; conta
           <span className="text-sm font-semibold text-foreground">{name}</span>
           {contactEmail ? <span className="text-xs font-normal text-muted-foreground">{contactEmail}</span> : null}
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {/* The phone tab bar holds five tabs; these are where an owner sets up and pays, so they're one tap from any page. */}
+        <DropdownMenuItem onSelect={() => router.push('/partner/invoices')}>
+          <Receipt aria-hidden="true" />
+          Invoices
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push('/partner/payments')}>
+          <Smartphone aria-hidden="true" />
+          M-Pesa till
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="danger" disabled={isPending} onSelect={handleSignOut}>
           <LogOut aria-hidden="true" />

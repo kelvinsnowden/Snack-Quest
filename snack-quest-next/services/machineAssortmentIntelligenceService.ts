@@ -142,7 +142,11 @@ class MachineAssortmentIntelligenceService {
     if (!machine) {
       throw new MachineNotFoundError(machineId);
     }
+    return this.performanceOf(businessId, machineId, windowDays);
+  }
 
+  /** `getAssortmentPerformance` for a caller that has already read the machine — the fleet-wide restock view, for one. */
+  async performanceOf(businessId: string, machineId: string, windowDays = 30): Promise<MachineAssortmentPerformance> {
     const { startDate, endDate } = trailingWindow(windowDays);
     const [rollups, assortmentRows, slots] = await Promise.all([
       machineDailySummaryRepository.listRange(businessId, machineId, startDate, endDate),

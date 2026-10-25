@@ -25,6 +25,7 @@ export interface WorkbenchSettlement {
   adjustmentReason: string | null;
   failedVendRefundsKes: number;
   outcomeConflictCount: number;
+  ownerCollectedKes?: number;
   partnerShareKes: number | null;
   finalizedAt: string | null;
 }
@@ -38,6 +39,7 @@ interface Preview {
   distributableOwnerKes: number;
   failedVendRefundsKes: number;
   outcomeConflictCount: number;
+  ownerCollectedKes?: number;
   partnerShareKes: number | null;
 }
 
@@ -88,6 +90,7 @@ function Breakdown({ figures, adjustmentKes = 0, adjustmentReason = null }: { fi
         <dt className="border-t border-border pt-1 font-semibold text-foreground">Owner is credited</dt>
         <dd className={`border-t border-border pt-1 text-right font-semibold ${credited < 0 ? 'text-danger' : 'text-foreground'}`}>{kes(credited)}</dd>
       </dl>
+      {(figures.ownerCollectedKes ?? 0) > 0 ? <p className="text-muted-foreground">Paid straight into the owner’s own till: {kes(figures.ownerCollectedKes ?? 0)}. They already have it, so it isn’t in these sales or credited again.</p> : null}
       {figures.failedVendRefundsKes > 0 ? <p className="text-muted-foreground">Customers refunded for failed vends: {kes(figures.failedVendRefundsKes)}. Those were never sales, so they aren’t taken from the owner.</p> : null}
       {figures.unpricedSaleCount > 0 ? (
         <p className="flex items-start gap-2 text-warning"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{figures.unpricedSaleCount} sale(s) have no known cost, so the cost of goods is understated.</p>

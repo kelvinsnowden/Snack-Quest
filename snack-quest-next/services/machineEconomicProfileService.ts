@@ -10,6 +10,7 @@ import {
   INVENTORY_OWNERS,
   MACHINE_OWNERSHIP_TYPES,
   MAINTENANCE_RESPONSIBILITIES,
+  OWNER_BILLINGS,
   OWNER_COST_BASES,
   SETTLEMENT_MODELS,
   ownershipTypeOf,
@@ -54,6 +55,8 @@ export function parseCommercialTerms(input: unknown): Partial<CommercialTerms> {
   if (settlementModel) terms.settlementModel = settlementModel;
   const maintenanceResponsibility = oneOf('maintenanceResponsibility', MAINTENANCE_RESPONSIBILITIES);
   if (maintenanceResponsibility) terms.maintenanceResponsibility = maintenanceResponsibility;
+  const ownerBilling = oneOf('ownerBilling', OWNER_BILLINGS);
+  if (ownerBilling) terms.ownerBilling = ownerBilling;
   if (raw.adRevenueSharePartnerPct !== undefined) {
     const pct = raw.adRevenueSharePartnerPct;
     if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 100) {

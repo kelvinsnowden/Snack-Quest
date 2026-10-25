@@ -35,6 +35,7 @@ class SaleEconomicsService {
         ownershipType: profile.ownershipType,
         inventoryOwner: profile.terms.inventoryOwner,
         ownerCostBasis: profile.terms.ownerCostBasis,
+        ownerBilling: profile.terms.ownerBilling,
         partnerId: profile.partnerId,
         agreementId: profile.agreementId,
         resolvedAt: Timestamp.now() as unknown as SaleEconomicsSnapshot['resolvedAt'],

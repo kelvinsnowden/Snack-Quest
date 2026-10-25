@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
+import { partnerPaymentAccountRepository } from '@/repositories/partnerPaymentAccountRepository';
 import { withBusinessIdSecret, WEBHOOK_SECRET_SEPARATOR } from '@/lib/webhooks/webhookSecret';
 import { assertIntegrationEnabled } from '../shared/assertEnabled';
 import type { DarajaIntegrationSecret } from '@/types';
@@ -137,6 +138,52 @@ export async function getDarajaConfig(businessId: string): Promise<DarajaConfig>
     callbackUrl: withBusinessIdSecret(secret.callbackUrl, webhookSecret),
     baseUrl: toBaseUrl(secret),
   };
+}
+
+/** The parts of a machine owner's own till or paybill that a prompt is built from (`PartnerPaymentAccount`). */
+export interface OwnerDarajaAccount {
+  accountType: 'till' | 'paybill';
+  shortcode: string;
+  headOfficeShortcode: string | null;
+  consumerKey: string;
+  consumerSecret: string;
+  passkey: string;
+}
+
+/** An owner's own M-Pesa account can't be used right now; nothing was sent to Safaricom with it. */
+export class OwnerDarajaAccountUnavailableError extends Error {
+  constructor(partnerId: string, reason: string) {
+    super(`Owner ${partnerId}'s M-Pesa account can't be used: ${reason}`);
+    this.name = 'OwnerDarajaAccountUnavailableError';
+  }
+}
+
+/**
+ * A prompt into a machine owner's own till or paybill: their keys and
+ * passkey, but Snack Quest's callback URL and environment — Safaricom
+ * tells this app, not the owner, how each prompt ended, and it arrives
+ * on the same verified callback as every other prompt.
+ */
+export async function ownerDarajaConfig(businessId: string, account: OwnerDarajaAccount): Promise<DarajaConfig> {
+  const business = await getDarajaConfig(businessId);
+  return {
+    consumerKey: account.consumerKey.trim(),
+    consumerSecret: account.consumerSecret.trim(),
+    shortcode: account.shortcode.trim(),
+    businessShortcode: account.headOfficeShortcode?.trim() || account.shortcode.trim(),
+    accountType: account.accountType,
+    passkey: account.passkey.trim(),
+    callbackUrl: business.callbackUrl,
+    baseUrl: business.baseUrl,
+  };
+}
+
+/** One of an owner's connected tills, ready to send a prompt with. Throws `OwnerDarajaAccountUnavailableError` when it is gone, isn't theirs, or its last check failed. */
+export async function getOwnerDarajaConfig(businessId: string, ref: { partnerId: string; accountId: string }): Promise<DarajaConfig> {
+  const account = await partnerPaymentAccountRepository.find(businessId, ref.accountId);
+  if (!account || account.partnerId !== ref.partnerId) throw new OwnerDarajaAccountUnavailableError(ref.partnerId, 'that till is no longer connected');
+  if (account.status !== 'connected') throw new OwnerDarajaAccountUnavailableError(ref.partnerId, 'its last check failed');
+  return ownerDarajaConfig(businessId, account);
 }
 
 export async function getDarajaB2CConfig(businessId: string): Promise<DarajaB2CConfig> {

@@ -40,6 +40,17 @@ class StockTransferRepository {
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as StockTransfer }));
   }
 
+  async findWholesaleSale(businessId: string, id: string): Promise<OwnerWholesaleSale | null> {
+    const data = (await adminFirestore.collection(WHOLESALE).doc(id).get()).data() as OwnerWholesaleSale | undefined;
+    return data && data.businessId === businessId ? data : null;
+  }
+
+  /** Deliveries since `since`, oldest first. Single-field range, so no composite index. */
+  async listWholesaleSalesSince(businessId: string, since: Date): Promise<{ id: string; data: OwnerWholesaleSale }[]> {
+    const snapshot = await adminFirestore.collection(WHOLESALE).where('createdAt', '>=', since).orderBy('createdAt').get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as OwnerWholesaleSale })).filter(({ data }) => data.businessId === businessId);
+  }
+
   async listWholesaleSalesByPartner(businessId: string, partnerId: string, limit = 200): Promise<{ id: string; data: OwnerWholesaleSale }[]> {
     const snapshot = await adminFirestore.collection(WHOLESALE).where('businessId', '==', businessId).where('partnerId', '==', partnerId).orderBy('createdAt', 'desc').limit(limit).get();
     return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as OwnerWholesaleSale }));

@@ -345,6 +345,31 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ownerInvoices / ownerInvoiceCheckouts / ownerInvoiceCounters: what
+    // machine owners on invoice billing owe, the M-Pesa prompts sent for
+    // them, and the invoice numbering. Money and owners' phone numbers;
+    // the owner portal and the admin read them through the Admin SDK.
+    match /ownerInvoices/{invoiceId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    match /ownerInvoiceCheckouts/{checkoutRequestId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    match /ownerInvoiceCounters/{businessId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // partnerPaymentAccounts: a machine owner's own M-Pesa till and its
+    // Daraja keys (encrypted). Written by the owner portal's connect
+    // route and read by the payment path, both through the Admin SDK.
+    match /partnerPaymentAccounts/{partnerId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // leadNurtureSettings: the lead email sequence as edited in the
     // admin. Server-only, like the leads it is sent to.
     match /leadNurtureSettings/{businessId} {
@@ -533,6 +558,10 @@ service cloud.firestore {
     match /machineDailySummary/{summaryId} {
       allow read: if isTenantAdmin(resource.data.businessId) || hasPartnerAccess(machineOwnerPartnerId(resource.data.machineId));
       allow write: if false;
+    }
+    // A machine's sales summed by day, with the owner's costs: read and written by the server only, for the owner's profit page.
+    match /machineSalesDaily/{dayId} {
+      allow read, write: if false;
     }
     // One row per machine for the fleet page; written by the server only, read by staff (owners use their own portal).
     match /machineFleetSummary/{machineId} {

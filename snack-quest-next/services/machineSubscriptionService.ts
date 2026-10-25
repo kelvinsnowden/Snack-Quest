@@ -95,7 +95,7 @@ class MachineSubscriptionService {
    * commits to — and rolls the period window forward by one
    * `frequency` unit.
    */
-  async recordPeriodPayment(businessId: string, subscriptionId: string, options: { waived?: boolean } = {}): Promise<void> {
+  async recordPeriodPayment(businessId: string, subscriptionId: string, options: { waived?: boolean; expectedPeriodStartMs?: number } = {}): Promise<boolean> {
     const subscription = await machineSubscriptionRepository.findById(businessId, subscriptionId);
     if (!subscription) {
       throw new Error(`Machine subscription ${subscriptionId} not found`);
@@ -104,7 +104,7 @@ class MachineSubscriptionService {
     const nextPeriodEnd = addDays(periodEnd, FREQUENCY_DAYS[subscription.frequency]);
     const now = Timestamp.now();
 
-    await machineSubscriptionRepository.recordPeriodOutcome(businessId, subscriptionId, {
+    const fields = {
       lastPaymentStatus: options.waived ? 'waived' : 'paid',
       lastPaidAt: now as unknown as MachineSubscription['lastPaidAt'],
       currentPeriodStart: subscription.currentPeriodEnd,
@@ -113,7 +113,13 @@ class MachineSubscriptionService {
       arrearsKes: 0,
       graceUntil: null,
       status: 'active',
-    });
+    } satisfies Parameters<typeof machineSubscriptionRepository.recordPeriodOutcome>[2];
+    // An invoice pays one particular period: it only rolls the subscription while that period is still the current one.
+    if (options.expectedPeriodStartMs !== undefined) {
+      return machineSubscriptionRepository.recordPeriodOutcomeIfCurrent(businessId, subscriptionId, options.expectedPeriodStartMs, fields);
+    }
+    await machineSubscriptionRepository.recordPeriodOutcome(businessId, subscriptionId, fields);
+    return true;
   }
 
   /**

@@ -6,6 +6,8 @@ import { MachineSlotService } from '@/services/machineSlotService';
 import { MachineTransactionService } from '@/services/machineTransactionService';
 import { MockVendingAdapter } from '@/lib/vending/adapters/mockVendingAdapter';
 import type { PaymentGateway, StkPushResult, StkQueryResult } from '@/lib/integrations/types';
+import { OwnerDarajaAccountUnavailableError } from '@/lib/integrations/daraja/config';
+import { partnerRepository } from '@/repositories/partnerRepository';
 
 /**
  * M-Pesa wiring for vending (§ M-PESA ARCHITECTURE,
@@ -69,7 +71,7 @@ async function seedMachineWithSlot(adapter: MockVendingAdapter, quantity = 5) {
 }
 
 beforeEach(async () => {
-  for (const collection of ['machines', 'machineSlots', 'machineTransactions', 'machineInventoryMovements', 'machineTelemetryEvents', 'deviceCredentials', 'restockTasks', 'webhookEvents']) {
+  for (const collection of ['machines', 'machineSlots', 'machineTransactions', 'machineInventoryMovements', 'machineTelemetryEvents', 'deviceCredentials', 'restockTasks', 'webhookEvents', 'partners', 'partnerMachineAgreements', 'partnerPaymentAccounts']) {
     await adminFirestore.recursiveDelete(adminFirestore.collection(collection));
   }
 });
@@ -503,5 +505,98 @@ describe('reconcileStuckTransactions', () => {
 
     expect(applied.applied).toBe(true);
     expect((await service.findById(BUSINESS_ID, id))?.status).toBe('dispensed');
+  });
+});
+
+describe('owner till (§ OWNER TILL)', () => {
+  const PUSHED: StkPushResult = { merchantRequestId: 'mr-1', checkoutRequestId: 'ws_CO_1', responseCode: '0', responseDescription: 'Success', customerMessage: 'Enter your PIN' };
+
+  /** An owner's machine; their till connected or not; its agreement on invoice billing or not. */
+  async function seedOwnerMachine(adapter: MockVendingAdapter, options: { connected: boolean; invoiceBilling: boolean }) {
+    const partnerId = await partnerRepository.create({ businessId: BUSINESS_ID, name: 'Owner', contactEmail: null, contactPhone: null, status: 'active', note: null, authUid: null, availableCashKes: 0, lifetimeEarnedKes: 0, createdBy: 'staff-1' });
+    const { machineId } = await seedMachineWithSlot(adapter);
+    await adminFirestore.collection('machines').doc(machineId).update({ ownerPartnerId: partnerId });
+    await adminFirestore.collection('partnerMachineAgreements').doc(`agreement-${machineId}`).set({
+      businessId: BUSINESS_ID,
+      partnerId,
+      machineId,
+      status: 'active',
+      revenueSharePartnerPct: null,
+      terms: { inventoryOwner: 'machine_owner', ownerBilling: options.invoiceBilling ? 'invoice' : 'settlement' },
+    });
+    const accountId = `till-${machineId}`;
+    await adminFirestore.collection('partnerPaymentAccounts').doc(accountId).set({
+      businessId: BUSINESS_ID,
+      partnerId,
+      accountType: 'till',
+      shortcode: '5123456',
+      headOfficeShortcode: null,
+      consumerKey: 'owner-key',
+      consumerSecret: 'owner-secret',
+      passkey: 'owner-passkey',
+      machineIds: [machineId],
+      status: options.connected ? 'connected' : 'failed',
+      lastError: null,
+      lastErrorDetail: null,
+      lastCheckedAtMs: Date.now(),
+      connectedAtMs: options.connected ? Date.now() : null,
+    });
+    return { partnerId, machineId, accountId };
+  }
+
+  it('sends the prompt to the owner’s own till, and the sale remembers who collected it', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockResolvedValue(PUSHED);
+    const { partnerId, machineId, accountId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
+    const service = new MachineTransactionService(() => adapter, gateway);
+
+    const result = await service.initiateMpesaPayment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', phoneNumber: '254712345678' });
+
+    expect(gateway.initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ account: { partnerId, accountId }, amountKes: 350 }));
+    const sale = await service.findById(BUSINESS_ID, result.id);
+    expect(sale?.collectedByPartnerId).toBe(partnerId);
+    expect(sale?.collectedByAccountId).toBe(accountId);
+  });
+
+  it('keeps Snack Quest collecting until the machine is on invoice billing, or while the till isn’t working', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockResolvedValue(PUSHED);
+    const service = new MachineTransactionService(() => adapter, gateway);
+    for (const options of [{ connected: true, invoiceBilling: false }, { connected: false, invoiceBilling: true }]) {
+      const { machineId } = await seedOwnerMachine(adapter, options);
+      const result = await service.initiateMpesaPayment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', phoneNumber: '254712345678' });
+      expect(gateway.initiateStkPushMock).toHaveBeenLastCalledWith(expect.objectContaining({ account: null }));
+      expect((await service.findById(BUSINESS_ID, result.id))?.collectedByPartnerId ?? null).toBeNull();
+    }
+  });
+
+  it('when the owner’s keys stop working, the customer still pays — to Snack Quest — and the till is switched off', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    const { partnerId, machineId, accountId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
+    gateway.initiateStkPushMock.mockRejectedValueOnce(new OwnerDarajaAccountUnavailableError(partnerId, 'Daraja OAuth failed: 400')).mockResolvedValueOnce(PUSHED);
+    const service = new MachineTransactionService(() => adapter, gateway);
+
+    const result = await service.initiateMpesaPayment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', phoneNumber: '254712345678' });
+
+    expect(gateway.initiateStkPushMock).toHaveBeenCalledTimes(2);
+    expect(gateway.initiateStkPushMock).toHaveBeenLastCalledWith(expect.objectContaining({ account: null }));
+    const sale = await service.findById(BUSINESS_ID, result.id);
+    expect(sale?.status).toBe('pending');
+    expect(sale?.collectedByPartnerId ?? null).toBeNull();
+    expect((await adminFirestore.collection('partnerPaymentAccounts').doc(accountId).get()).data()?.status).toBe('failed');
+  });
+
+  it('any other failure from the owner’s till is not retried elsewhere: the prompt may have gone out', async () => {
+    const adapter = new MockVendingAdapter();
+    const gateway = new FakePaymentGateway();
+    gateway.initiateStkPushMock.mockRejectedValue(new Error('network timeout'));
+    const { machineId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
+    const service = new MachineTransactionService(() => adapter, gateway);
+
+    await expect(service.initiateMpesaPayment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', phoneNumber: '254712345678' })).rejects.toThrow('network timeout');
+    expect(gateway.initiateStkPushMock).toHaveBeenCalledTimes(1);
   });
 });

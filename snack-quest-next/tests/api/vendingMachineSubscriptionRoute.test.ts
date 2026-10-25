@@ -37,6 +37,11 @@ vi.mock('@/services/machineSubscriptionService', async () => {
   };
 });
 
+// No invoiced owners here: every period is recorded on the subscription itself.
+vi.mock('@/services/ownerInvoiceService', () => ({
+  ownerInvoiceService: { settleCurrentFee: vi.fn(async () => false) },
+}));
+
 import { GET as subscriptionGet, POST as subscriptionPost } from '@/app/api/vending/machines/[id]/subscription/route';
 import { PATCH as subscriptionPatch } from '@/app/api/vending/machines/[id]/subscription/[subscriptionId]/route';
 import { MachineNotFoundError } from '@/repositories/machineRepository';

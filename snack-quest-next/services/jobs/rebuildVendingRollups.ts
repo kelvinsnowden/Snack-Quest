@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { vendingRollupService } from '@/services/vendingRollupService';
+import { machineSalesDayService } from '@/services/machineSalesDayService';
 import { machineRepository } from '@/repositories/machineRepository';
 import { partnerRepository } from '@/repositories/partnerRepository';
 import { machineFleetSummaryService } from '@/services/machineFleetSummaryService';
@@ -10,9 +11,10 @@ import type { JobContext } from '@/services/scheduledJobService';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Rebuilds machine, owner and network daily rollups for `[startDate,
- * endDate]` (UTC day keys; today is always skipped by the rollup
- * service), then refreshes every machine's fleet summary. The nightly
+ * Rebuilds machine, owner and network daily rollups, and each machine's
+ * summed sales for the owner's profit page, for `[startDate, endDate]`
+ * (UTC day keys; today is always skipped by the rollup service), then
+ * refreshes every machine's fleet summary. The nightly
  * run covers the last three days; a person can ask for a longer range
  * after fixing data (see `/api/vending/rollups/rebuild`).
  */
@@ -23,10 +25,13 @@ export async function rebuildVendingRollupRange(businessId: string, job: JobCont
 
   // One machine's or partner's rollup failing must not leave everyone else's stale.
   let machineDays = 0;
+  let salesDays = 0;
   await job.step('machine rollups', async () => {
     for (const { id: machineId } of machines) {
       try {
         machineDays += (await vendingRollupService.rebuildMachineDayRange(businessId, machineId, startDate, endDate)).days;
+        // The owner's profit page builds these itself the first time it needs a day; rebuilding here picks up sales corrected by hand.
+        salesDays += (await machineSalesDayService.rebuild(businessId, machineId, startDate, endDate)).days;
       } catch (error) {
         job.itemError(`machine rollup ${machineId}`, error);
       }
@@ -46,7 +51,7 @@ export async function rebuildVendingRollupRange(businessId: string, job: JobCont
   // After the rollups, so each machine's 7-day revenue on the fleet page includes yesterday.
   const fleet = await job.step('fleet summaries', () => machineFleetSummaryService.refreshAll(businessId));
   (fleet?.itemErrors ?? []).forEach(({ itemId, message }) => job.itemError(`fleet summary ${itemId}`, new Error(message)));
-  return { startDate, endDate, machineCount: machines.length, machineDays, partnerCount: partners.length, partnerDays, networkDays: network?.days ?? null, fleetSummaries: fleet?.refreshed ?? null };
+  return { startDate, endDate, machineCount: machines.length, machineDays, salesDays, partnerCount: partners.length, partnerDays, networkDays: network?.days ?? null, fleetSummaries: fleet?.refreshed ?? null };
 }
 
 /** The nightly run: the last three days. */

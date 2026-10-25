@@ -122,6 +122,76 @@ describe('machineSettlementService — COGS', () => {
     expect(settlement?.subscriptionChargedKes).toBe(2_000);
     expect(settlement?.distributableOwnerKes).toBe(350 - 180 - 2_000); // legitimately negative — a real loss period, never clamped
   });
+
+  it('takes neither stock nor the fee from an invoiced owner, who pays both on invoices', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    await subscribeAsOwner({ businessId: BUSINESS_ID, machineId, partnerId, planName: 'Standard', amountKes: 2_000, frequency: 'monthly' });
+    await partnerService.createAgreement({
+      businessId: BUSINESS_ID,
+      partnerId,
+      machineId,
+      status: 'active',
+      revenueSharePartnerPct: null,
+      operatingCostNote: null,
+      effectiveFrom: null,
+      documentRef: null,
+      note: null,
+      terms: { inventoryOwner: 'machine_owner', ownerBilling: 'invoice' },
+      actor: 'staff-1',
+    });
+
+    const periodStart = new Date(Date.now() - 60_000);
+    await dispenseOneSale(adapter, machineId);
+    const periodEnd = new Date(Date.now() + 60_000);
+
+    const settlementId = await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart, periodEnd, actor: 'staff-1' });
+    const settlement = await machineSettlementService.findById(BUSINESS_ID, settlementId);
+
+    expect(settlement?.cogsKes).toBe(0);
+    expect(settlement?.unpricedSaleCount).toBe(0);
+    expect(settlement?.subscriptionChargedKes).toBe(0);
+    expect(settlement?.distributableOwnerKes).toBe(350);
+  });
+
+  it('leaves out sales paid straight into the owner’s own till: they already have that money', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    const periodStart = new Date(Date.now() - 60_000);
+    const ownerTillSale = await dispenseOneSale(adapter, machineId);
+    await dispenseOneSale(adapter, machineId);
+    await adminFirestore.collection('machineTransactions').doc(ownerTillSale).update({ collectedByPartnerId: partnerId });
+    const periodEnd = new Date(Date.now() + 60_000);
+
+    const settlementId = await machineSettlementService.createDraft({ businessId: BUSINESS_ID, machineId, partnerId, periodStart, periodEnd, actor: 'staff-1' });
+    const settlement = await machineSettlementService.findById(BUSINESS_ID, settlementId);
+
+    expect(settlement?.grossSalesKes).toBe(350);
+    expect(settlement?.ownerCollectedKes).toBe(350);
+  });
+
+  it('refuses invoice billing on an agreement where Snack Quest owns the stock', async () => {
+    const partnerId = await partnerService.create({ businessId: BUSINESS_ID, name: 'Owner', actor: 'staff-1' });
+    const adapter = new MockVendingAdapter();
+    const { machineId } = await seedMachineWithSnackItemSlot(adapter, partnerId, 180, 350, 5);
+    await expect(
+      partnerService.createAgreement({
+        businessId: BUSINESS_ID,
+        partnerId,
+        machineId,
+        status: 'active',
+        revenueSharePartnerPct: null,
+        operatingCostNote: null,
+        effectiveFrom: null,
+        documentRef: null,
+        note: null,
+        terms: { ownerBilling: 'invoice' },
+        actor: 'staff-1',
+      }),
+    ).rejects.toThrow('Invoice billing needs the owner to buy the stock');
+  });
 });
 
 describe('machineSettlementService.finalize', () => {

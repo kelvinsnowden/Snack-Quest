@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { processCallbackMock, handlePaymentResultMock, verifyDarajaWebhookRequestMock, verifyCallbackMock, handleMpesaCallbackMock, findByCheckoutRequestIdMock } = vi.hoisted(() => ({
+const { processCallbackMock, handlePaymentResultMock, verifyDarajaWebhookRequestMock, verifyCallbackMock, handleMpesaCallbackMock, findByCheckoutRequestIdMock, invoiceCallbackMock } = vi.hoisted(() => ({
+  invoiceCallbackMock: vi.fn(),
   processCallbackMock: vi.fn(),
   handlePaymentResultMock: vi.fn(),
   verifyDarajaWebhookRequestMock: vi.fn(),
@@ -31,6 +32,10 @@ vi.mock('@/services/machineTransactionService', () => ({
 
 vi.mock('@/repositories/paymentIntentRepository', () => ({
   paymentIntentRepository: { findByCheckoutRequestId: findByCheckoutRequestIdMock },
+}));
+
+vi.mock('@/services/ownerInvoiceService', () => ({
+  ownerInvoiceService: { handleMpesaCallback: invoiceCallbackMock },
 }));
 
 import { POST as stkRoute } from '@/app/api/webhooks/daraja/[businessId]/route';
@@ -74,6 +79,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   // By default the callback is not an order checkout's, so the vending branch is consulted.
   findByCheckoutRequestIdMock.mockResolvedValue(null);
+  // Nor an owner invoice's.
+  invoiceCallbackMock.mockResolvedValue({ handled: false });
 });
 
 describe('POST /api/webhooks/daraja/[businessId]', () => {
@@ -116,6 +123,19 @@ describe('POST /api/webhooks/daraja/[businessId]', () => {
     expect(handleMpesaCallbackMock).toHaveBeenCalledWith('biz-1', PARSED_CALLBACK);
     expect(processCallbackMock).not.toHaveBeenCalled();
     expect(handlePaymentResultMock).not.toHaveBeenCalled();
+  });
+
+  it('an owner paying an invoice is settled by the invoice path alone', async () => {
+    verifyDarajaWebhookRequestMock.mockResolvedValue({ ok: true, businessId: 'biz-1' });
+    verifyCallbackMock.mockReturnValue(PARSED_CALLBACK);
+    invoiceCallbackMock.mockResolvedValue({ handled: true });
+
+    const response = await stkRoute(request('biz-1', { Body: {} }), { params: Promise.resolve({ businessId: 'biz-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(invoiceCallbackMock).toHaveBeenCalledWith('biz-1', PARSED_CALLBACK);
+    expect(handleMpesaCallbackMock).not.toHaveBeenCalled();
+    expect(processCallbackMock).not.toHaveBeenCalled();
   });
 
   it('falls through to the e-commerce path when the payload cannot be parsed as an STK callback at all', async () => {

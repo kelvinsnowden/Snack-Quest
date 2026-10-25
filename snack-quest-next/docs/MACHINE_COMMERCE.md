@@ -126,6 +126,62 @@ net `subscriptionChargedKes` into the settlement; a machine with no
 subscription record nets `0`, not null-propagated into an unusable
 settlement.
 
+**Update — owner invoices.** The charging decision is now made, per
+agreement: `CommercialTerms.ownerBilling` is `settlement` (the
+behaviour above, still the default) or `invoice`. On `invoice`:
+
+- each received delivery of stock (`ownerWholesaleSales`, which needs
+  `inventoryOwner: 'machine_owner'`) becomes an invoice at the owner's
+  cost basis frozen on the delivery, and each started subscription
+  period becomes a fee invoice (`ownerInvoices`, doc id = the source,
+  so nothing is invoiced twice; numbers `INV-000001…` per business);
+- the owner pays in the portal (`/partner/invoices`) by M-Pesa STK into
+  Snack Quest's own shortcode; the Daraja callback (or an STK status
+  query when the callback is late) marks it paid, and a paid fee
+  invoice moves the subscription on one period, only while that period
+  is still current;
+- settlement deducts neither: sales whose snapshot says
+  `ownerBilling: 'invoice'` carry no cost, and the fee is `0`;
+- staff see who owes what at Admin → Owner Invoices, record payments
+  made another way, or cancel a charge (a cancelled fee invoice waives
+  the period). Money that arrives for an invoice already paid or
+  cancelled is kept on its prompt record and flagged there, never
+  applied twice.
+
+Issued on delivery and by the daily `reconcile-subscription-arrears`
+job, which also catches anything missed. Invoices are paid to Snack
+Quest's own shortcode either way.
+
+**Update — owner tills.** An owner can connect their own tills or
+paybills at `/partner/payments` and choose, machine by machine, which one
+its sales are paid into. Each till is the number, an optional store/head-office
+number, and the three Daraja keys of the owner's own live app (consumer
+key, consumer secret, passkey; in `partnerPaymentAccounts`, encrypted at
+rest when `SECRET_ENCRYPTION_KEY` is set, never sent back to a browser). A
+second till under the same store can reuse the first till's keys. "Check
+and connect" asks Safaricom for a token and runs the same dry-run STK query
+as Test Connection, so nobody is charged; only a till that passes is used.
+An owner's first till is chosen for all their machines; later ones for
+none until the owner picks.
+
+A machine's sales are prompted into its chosen till when that till is
+connected **and** the machine's active agreement is on invoice billing
+(Snack Quest no longer holds that money, so it is paid by invoice). The
+prompt still names Snack Quest's callback URL, so the callback is verified
+and matched exactly as before. Each sale records `collectedByPartnerId` and
+`collectedByAccountId`:
+
+- settlement leaves it out of `grossSalesKes` (shown as
+  `ownerCollectedKes`), so it is never paid to the owner twice;
+- a late callback's status query uses that till's keys;
+- it can't be reversed from Snack Quest's account: the owner refunds it
+  and staff record the code.
+
+If a till's keys fail before any prompt is sent (no token), the sale is
+prompted on Snack Quest's account instead, the till is marked not
+working, and the owner is texted once. Any other failure is not retried
+elsewhere, since that prompt may already be on the customer's phone.
+
 ## 6. Owner wallet (`Partner.availableCashKes`/`lifetimeEarnedKes` + `PartnerEarningsLedgerEntry` — extends existing patterns, this pass)
 
 **Not a new pattern.** This codebase already has exactly this shape

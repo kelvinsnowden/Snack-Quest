@@ -240,6 +240,17 @@ describe('what is never allowed', () => {
     await expect(vendingSaleReviewService.resolve(BUSINESS_ID, id, { action: 'start_refund', note: 'refund it' }, 'staff-1')).rejects.toBeInstanceOf(SaleReviewError);
   });
 
+  it('a sale paid into the owner’s own till is never reversed from Snack Quest’s account', async () => {
+    const { id } = await paidSale('refund_requested');
+    await adminFirestore.collection('machineTransactions').doc(id).update({ collectedByPartnerId: 'partner-1' });
+    const reversal = stubReversal('orig-owner-till');
+    const detail = await vendingSaleReviewService.getSale(BUSINESS_ID, id);
+    expect(detail.actions.find((entry) => entry.action === 'reverse_payment')).toMatchObject({ allowed: false, reason: expect.stringMatching(/owner’s own till/) });
+    expect(detail.actions.find((entry) => entry.action === 'record_refund')?.allowed).toBe(true);
+    await expect(vendingSaleReviewService.resolve(BUSINESS_ID, id, { action: 'reverse_payment', note: 'refund it' }, 'staff-1')).rejects.toBeInstanceOf(SaleReviewError);
+    expect(reversal).not.toHaveBeenCalled();
+  });
+
   it('one business never sees or acts on another business’s sale', async () => {
     const theirs = await paidSale('paid_vend_failed', { businessId: OTHER_BUSINESS_ID });
     await expect(vendingSaleReviewService.getSale(BUSINESS_ID, theirs.id)).rejects.toMatchObject({ code: 'not_found' });

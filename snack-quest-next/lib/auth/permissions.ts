@@ -149,6 +149,7 @@ export const PERMISSIONS = [
   { key: 'owners.export', label: 'Download the machine owner list', group: 'Machine sales & owners' },
   { key: 'owner_finance.view', label: 'See owner wallets, settlements and subscriptions', group: 'Machine sales & owners' },
   { key: 'owner_finance.subscriptions.manage', label: 'Manage owner subscriptions', group: 'Machine sales & owners' },
+  { key: 'owner_finance.invoices.manage', label: 'Record owner invoice payments and cancel invoices', group: 'Machine sales & owners' },
   { key: 'owner_finance.settlements.manage', label: 'Prepare owner settlements', group: 'Machine sales & owners' },
   { key: 'owner_finance.settlements.finalize', label: 'Finalize settlements (credits the owner)', group: 'Machine sales & owners' },
   { key: 'owner_finance.payouts.request', label: 'Request payouts for owners', group: 'Machine sales & owners' },
@@ -315,6 +316,8 @@ const FINANCE_PERMISSIONS: PermissionKey[] = [
   'sales.refund',
   'owners.view',
   'owner_finance.view',
+  // Owners pay invoices like customers pay orders; finance records what arrives another way.
+  'owner_finance.invoices.manage',
   // Profit needs the costs behind it: read-only.
   'products.cost.view',
   'products.wholesale.view',

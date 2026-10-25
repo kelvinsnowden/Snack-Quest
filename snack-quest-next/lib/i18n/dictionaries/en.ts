@@ -61,6 +61,7 @@ export const en = {
       '/admin/vending/restock': 'Restock Command Center',
       '/admin/vending/leads': 'Leads',
       '/admin/vending/partners': 'Machine Owners',
+      '/admin/vending/invoices': 'Owner Invoices',
       '/admin/vending/intelligence': 'Network Intelligence',
       '/admin/vending/intelligence/locations': 'Location Intelligence',
       '/admin/vending/intelligence/products': 'Product Intelligence',

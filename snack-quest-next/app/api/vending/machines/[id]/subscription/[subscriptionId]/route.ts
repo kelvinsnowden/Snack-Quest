@@ -1,4 +1,5 @@
 import { verifyStaffSessionFromRequest } from '@/lib/auth/session';
+import { ownerInvoiceService } from '@/services/ownerInvoiceService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSubscriptionRepository, MachineSubscriptionNotFoundError, IllegalSubscriptionTransitionError } from '@/repositories/machineSubscriptionRepository';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
@@ -47,11 +48,16 @@ export async function PATCH(
       return Response.json({ error: 'Subscription not found for this machine.' }, { status: 404 });
     }
     switch (action as Action) {
+      // An invoiced period is settled through its invoice, which moves the subscription on as well.
       case 'recordPayment':
-        await machineSubscriptionService.recordPeriodPayment(session.businessId, subscriptionId);
+        if (!(await ownerInvoiceService.settleCurrentFee(session.businessId, subscriptionId, { waived: false, actor: session.email || session.uid }))) {
+          await machineSubscriptionService.recordPeriodPayment(session.businessId, subscriptionId);
+        }
         break;
       case 'waivePeriod':
-        await machineSubscriptionService.recordPeriodPayment(session.businessId, subscriptionId, { waived: true });
+        if (!(await ownerInvoiceService.settleCurrentFee(session.businessId, subscriptionId, { waived: true, actor: session.email || session.uid }))) {
+          await machineSubscriptionService.recordPeriodPayment(session.businessId, subscriptionId, { waived: true });
+        }
         break;
       case 'pause':
         await machineSubscriptionService.pauseSubscription(session.businessId, subscriptionId);

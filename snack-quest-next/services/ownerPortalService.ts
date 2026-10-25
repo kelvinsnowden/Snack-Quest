@@ -1,13 +1,12 @@
 import 'server-only';
+import { forRender } from '@/lib/cache/forRender';
 
 import { machineService, PartnerDoesNotOwnMachineError } from '@/services/machineService';
-import { partnerService } from '@/services/partnerService';
 import { locationService } from '@/services/locationService';
 import { ownerIntelligenceService, type OwnerMachineSummary } from '@/services/ownerIntelligenceService';
 import { machineSettlementService } from '@/services/machineSettlementService';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineTransactionRepository } from '@/repositories/machineTransactionRepository';
-import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { restockTaskRepository } from '@/repositories/restockTaskRepository';
 import { resolveVendingProductNames } from '@/lib/vending/productNames';
 import { withdrawalService } from '@/services/withdrawalService';
@@ -238,7 +237,7 @@ class OwnerPortalService {
   }
 
   async getDashboard(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboard> {
-    const [partner, machines] = await Promise.all([partnerService.findById(businessId, partnerId), partnerService.listMachines(businessId, partnerId)]);
+    const [partner, machines] = await Promise.all([forRender.partner(businessId, partnerId), forRender.partnerMachines(businessId, partnerId)]);
     if (!partner) {
       throw new PartnerDoesNotOwnMachineError(partnerId, '(no machine)');
     }
@@ -267,7 +266,7 @@ class OwnerPortalService {
    * without its money totals and withdrawal history.
    */
   async getMachineCards(businessId: string, partnerId: string): Promise<OwnerMachineCard[]> {
-    const [partner, machines] = await Promise.all([partnerService.findById(businessId, partnerId), partnerService.listMachines(businessId, partnerId)]);
+    const [partner, machines] = await Promise.all([forRender.partner(businessId, partnerId), forRender.partnerMachines(businessId, partnerId)]);
     if (!partner) {
       throw new PartnerDoesNotOwnMachineError(partnerId, '(no machine)');
     }
@@ -368,7 +367,7 @@ class OwnerPortalService {
       const machine = await machineService.assertPartnerOwnsMachine(businessId, partnerId, machineId);
       return [{ id: machineId, machineCode: machine.machineCode, since: ownerSince(machine) }];
     }
-    const machines = await partnerService.listMachines(businessId, partnerId);
+    const machines = await forRender.partnerMachines(businessId, partnerId);
     return machines.map(({ id, data }) => ({ id, machineCode: data.machineCode, since: ownerSince(data) }));
   }
 
@@ -397,7 +396,7 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const byDate = new Map<string, { revenueKes: number; unitsSold: number }>();
-    const perMachine = await Promise.all(machines.map(({ id, since }) => machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate)));
+    const perMachine = await Promise.all(machines.map(({ id, since }) => forRender.dailySummaries(businessId, id, clipStartDate(startDate, since), endDate)));
     for (const rollups of perMachine) {
       for (const [date, rollup] of rollups) {
         const existing = byDate.get(date) ?? { revenueKes: 0, unitsSold: 0 };
@@ -425,7 +424,7 @@ class OwnerPortalService {
     const { startDate, endDate } = trailingWindow(windowDays);
 
     const totals = new Map<string, { unitsSold: number; revenueKes: number }>();
-    const perMachine = await Promise.all(machines.map(({ id, since }) => machineDailySummaryRepository.listRange(businessId, id, clipStartDate(startDate, since), endDate)));
+    const perMachine = await Promise.all(machines.map(({ id, since }) => forRender.dailySummaries(businessId, id, clipStartDate(startDate, since), endDate)));
     for (const rollups of perMachine) {
       for (const rollup of rollups.values()) {
         for (const [productId, product] of Object.entries(rollup.byProduct)) {
@@ -771,7 +770,7 @@ class OwnerPortalService {
     let revenueKes = 0;
     let unitsSold = 0;
     let grossProfitKes = 0;
-    const perMachine = await Promise.all(machines.map(({ id: machineId, since }) => machineDailySummaryRepository.listRange(businessId, machineId, clipStartDate(startDate, since), endDate)));
+    const perMachine = await Promise.all(machines.map(({ id: machineId, since }) => forRender.dailySummaries(businessId, machineId, clipStartDate(startDate, since), endDate)));
     for (const rollups of perMachine) {
       for (const rollup of rollups.values()) {
         revenueKes += rollup.grossSalesKes;
@@ -800,7 +799,7 @@ class OwnerPortalService {
    * to compare against.
    */
   async getDashboardSummary(businessId: string, partnerId: string, windowDays = 30): Promise<OwnerDashboardSummary> {
-    const machines = await partnerService.listMachines(businessId, partnerId);
+    const machines = await forRender.partnerMachines(businessId, partnerId);
     const owned = machines.map(({ id, data }) => ({ id, since: ownerSince(data) }));
     const activeMachineCount = machines.filter(({ data }) => data.status === 'active').length;
 

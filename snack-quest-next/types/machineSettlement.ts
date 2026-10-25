@@ -33,6 +33,8 @@ export interface MachineSettlement extends AuditFields {
   refundsKes: number;
   /** Informational: customers refunded for failed vends. Never revenue, so never deducted from the owner. */
   failedVendRefundsKes?: number;
+  /** Informational: sales paid straight into the owner's own till. They already hold that money, so it isn't in `grossSalesKes` and isn't paid to them again. */
+  ownerCollectedKes?: number;
   /** Sales with an unresolved outcome conflict (e.g. a dispense reported after a refund) — who bears that loss is a business decision; settle once resolved. */
   outcomeConflictCount?: number;
   /** Null until an operating-cost model exists — see `PartnerMachineAgreement.operatingCostNote`. */

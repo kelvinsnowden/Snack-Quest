@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  checkOwnerDarajaAccount,
   darajaGateway,
   resetDarajaTokenCache,
   testDarajaConnection,
 } from '@/lib/integrations/daraja/darajaGateway';
+import { OwnerDarajaAccountUnavailableError } from '@/lib/integrations/daraja/config';
 import { IntegrationSecretNotFoundError } from '@/repositories/businessIntegrationSecretRepository';
 import { businessIntegrationSecretRepository } from '@/repositories/businessIntegrationSecretRepository';
 
@@ -1165,5 +1167,79 @@ describe('DarajaGateway.initiateStkPush — Buy Goods shortcodes', () => {
     expect(body.BusinessShortCode).toBe('174379');
     expect(body.PartyB).toBe('174379');
     expect(body.TransactionType).toBe('CustomerPayBillOnline');
+  });
+});
+
+describe('a machine owner’s own till (§ OWNER TILL)', () => {
+  const PARTNER_ID = 'partner-own-till';
+  const ACCOUNT_ID = 'till-own';
+  const OWNER = {
+    accountType: 'till' as const,
+    shortcode: '5123456',
+    headOfficeShortcode: '7654321',
+    consumerKey: 'owner-key',
+    consumerSecret: 'owner-secret',
+    passkey: 'f'.repeat(64),
+  };
+  const tokenFor = (key: string, secret: string) => `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
+
+  beforeEach(async () => {
+    resetDarajaTokenCache();
+    await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
+    const { adminFirestore } = await import('@/lib/firebase/admin');
+    await adminFirestore.collection('partnerPaymentAccounts').doc(ACCOUNT_ID).set({ businessId: BUSINESS_ID, partnerId: PARTNER_ID, ...OWNER, machineIds: [], status: 'connected', lastError: null, lastErrorDetail: null, lastCheckedAtMs: 1, connectedAtMs: 1 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('prompts into the owner’s till with their keys, and Safaricom still calls Snack Quest back', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'owner-token', expires_in: '3599' }), { status: 200 })
+          : new Response(JSON.stringify({ MerchantRequestID: 'm', CheckoutRequestID: 'ws_CO_owner', ResponseCode: '0', ResponseDescription: 'ok', CustomerMessage: 'ok' }), { status: 200 }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await darajaGateway.initiateStkPush({ businessId: BUSINESS_ID, phone: '254700000000', amountKes: 350, accountReference: 'CART-1', transactionDesc: 'Snack Quest vend', account: { partnerId: PARTNER_ID, accountId: ACCOUNT_ID } });
+
+    expect(result.checkoutRequestId).toBe('ws_CO_owner');
+    const [tokenCall, stkCall] = fetchMock.mock.calls;
+    expect(tokenCall[1].headers.Authorization).toBe(tokenFor('owner-key', 'owner-secret'));
+    const body = JSON.parse(stkCall[1].body);
+    expect(body).toMatchObject({ PartyB: '5123456', BusinessShortCode: '7654321', TransactionType: 'CustomerBuyGoodsOnline' });
+    expect(body.CallBackURL.startsWith(SECRET.callbackUrl)).toBe(true);
+  });
+
+  it('when Safaricom refuses the owner’s keys, says so before any prompt is sent', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(String(url).includes('/oauth/v1/generate') ? new Response('Bad Request', { status: 400 }) : new Response('{}', { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      darajaGateway.initiateStkPush({ businessId: BUSINESS_ID, phone: '254700000000', amountKes: 350, accountReference: 'CART-1', transactionDesc: 'Snack Quest vend', account: { partnerId: PARTNER_ID, accountId: ACCOUNT_ID } }),
+    ).rejects.toBeInstanceOf(OwnerDarajaAccountUnavailableError);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/stkpush/'))).toBe(false);
+  });
+
+  it('checking an owner’s details charges nobody, and words a refusal for them', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/oauth/v1/generate')
+          ? new Response(JSON.stringify({ access_token: 'owner-token', expires_in: '3599' }), { status: 200 })
+          : new Response(JSON.stringify({ errorCode: '400.002.02', errorMessage: 'Bad Request - Invalid CheckoutRequestID' }), { status: 400 }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await checkOwnerDarajaAccount(BUSINESS_ID, PARTNER_ID, OWNER)).toEqual([]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/stkpush/v1/processrequest'))).toBe(false);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Bad Request', { status: 400 })));
+    const issues = await checkOwnerDarajaAccount(BUSINESS_ID, PARTNER_ID, { ...OWNER, consumerKey: 'wrong-key' });
+    expect(issues).toEqual([expect.objectContaining({ severity: 'blocker', title: 'Safaricom didn’t accept the consumer key and secret' })]);
   });
 });

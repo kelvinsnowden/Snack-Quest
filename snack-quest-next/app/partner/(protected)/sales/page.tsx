@@ -6,7 +6,7 @@ import { ownerPortalService } from '@/services/ownerPortalService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
-import { DailySalesBarChart } from '@/components/partner/DailySalesBarChart';
+import { DailySalesBarChart } from '@/components/charts/LazyCharts';
 import { SaleStatusPill } from '@/components/partner/SaleStatusPill';
 
 export const metadata: Metadata = { title: 'Sales & Revenue' };

@@ -11,6 +11,7 @@ import {
   MACHINE_OWNERSHIP_LABEL,
   MACHINE_OWNERSHIP_TYPES,
   MAINTENANCE_RESPONSIBILITIES,
+  OWNER_BILLINGS,
   OWNER_COST_BASES,
   PRODUCT_PRICE_TYPE_LABEL,
   SETTLEMENT_MODELS,
@@ -45,6 +46,7 @@ const LABELS = {
   ownerCostBasis: { landed_cost: 'At Snack Quest’s cost', wholesale_price: 'At the owner wholesale price' },
   settlementModel: { owner_keeps_margin: 'Owner keeps the margin', revenue_share: 'Revenue share' },
   maintenanceResponsibility: { snack_quest: 'Snack Quest', owner: 'The owner' },
+  ownerBilling: { settlement: 'Taken out of their sales at settlement', invoice: 'Invoiced to their portal, paid by M-Pesa' },
 } as const;
 
 /** Who owns a machine. Changing it to or from Snack Quest follows the owner assignment; this sets the kind of owner. */
@@ -142,6 +144,14 @@ export function AgreementTermsEditor({ partnerId, agreementId, terms }: { partne
         <select className={selectClass} value={draft.ownerCostBasis} onChange={(event) => setDraft({ ...draft, ownerCostBasis: event.target.value as CommercialTerms['ownerCostBasis'] })}>
           {OWNER_COST_BASES.map((value) => (
             <option key={value} value={value}>{LABELS.ownerCostBasis[value]}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-caption text-muted-foreground">How the owner pays for stock and the fee</span>
+        <select className={selectClass} value={draft.ownerBilling} onChange={(event) => setDraft({ ...draft, ownerBilling: event.target.value as CommercialTerms['ownerBilling'] })}>
+          {OWNER_BILLINGS.map((value) => (
+            <option key={value} value={value}>{LABELS.ownerBilling[value]}</option>
           ))}
         </select>
       </label>

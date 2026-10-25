@@ -24,7 +24,7 @@ import { RestockVisitNotice } from '@/components/partner/RestockVisitNotice';
 import { MaintenanceRequestForm, WithdrawRequestButton } from '@/components/partner/MaintenanceRequestForm';
 import { maintenanceService } from '@/services/maintenanceService';
 import { MAINTENANCE_COST_CATEGORY_LABEL, MAINTENANCE_REQUEST_CATEGORY_LABEL, MAINTENANCE_REQUEST_STATUS_LABEL } from '@/types/maintenance';
-import { DailySalesBarChart } from '@/components/partner/DailySalesBarChart';
+import { DailySalesBarChart } from '@/components/charts/LazyCharts';
 import { StockLevelBar } from '@/components/partner/StockLevelBar';
 import { MachineNotFoundError } from '@/repositories/machineRepository';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

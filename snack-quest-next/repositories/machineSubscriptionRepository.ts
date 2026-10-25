@@ -109,6 +109,29 @@ class MachineSubscriptionRepository {
     }
     await ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() });
   }
+
+  /** `recordPeriodOutcome`, only while the period still starts at `expectedPeriodStartMs` — so paying one period's invoice twice can never roll two periods. False when it had already moved. */
+  async recordPeriodOutcomeIfCurrent(
+    businessId: string,
+    subscriptionId: string,
+    expectedPeriodStartMs: number,
+    fields: Pick<MachineSubscription, 'lastPaymentStatus' | 'lastPaidAt' | 'currentPeriodStart' | 'currentPeriodEnd' | 'renewalDate' | 'arrearsKes' | 'graceUntil' | 'status'>,
+  ): Promise<boolean> {
+    const ref = adminFirestore.collection(COLLECTION).doc(subscriptionId);
+    return adminFirestore.runTransaction(async (tx) => {
+      const data = (await tx.get(ref)).data() as MachineSubscription | undefined;
+      if (!data || data.businessId !== businessId) throw new MachineSubscriptionNotFoundError(subscriptionId);
+      if (data.currentPeriodStart.toMillis() !== expectedPeriodStartMs) return false;
+      tx.update(ref, { ...fields, updatedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+  }
+
+  /** Every subscription in the business — few enough to filter in memory, and no composite index. */
+  async listByBusiness(businessId: string): Promise<{ id: string; data: MachineSubscription }[]> {
+    const snapshot = await adminFirestore.collection(COLLECTION).where('businessId', '==', businessId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineSubscription }));
+  }
 }
 
 export const machineSubscriptionRepository = new MachineSubscriptionRepository();

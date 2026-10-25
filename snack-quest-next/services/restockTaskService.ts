@@ -14,6 +14,8 @@ import { SlotNotFoundError } from '@/services/machineInventoryMovementService';
 import { stockTransferRepository } from '@/repositories/stockTransferRepository';
 import { priceBookService, type CurrentPrices } from '@/services/priceBookService';
 import { machineEconomicProfileService } from '@/services/machineEconomicProfileService';
+import { ownerInvoiceService } from '@/services/ownerInvoiceService';
+import { logger } from '@/lib/observability/logger';
 import type { OwnerWholesaleSale, RestockTask, RestockTaskItem, RestockTaskStatus } from '@/types';
 
 type OwnerWholesaleSaleLine = OwnerWholesaleSale['lines'][number];
@@ -249,7 +251,7 @@ class RestockTaskService {
     const pricing = await this.pricingForTask(businessId, taskId);
     const profile = pricing.machineId ? await machineEconomicProfileService.resolve(businessId, pricing.machineId) : null;
     const ownerStocked = Boolean(profile && profile.partnerId && profile.terms.inventoryOwner === 'machine_owner');
-    return adminFirestore.runTransaction(async (tx) => {
+    const received = await adminFirestore.runTransaction(async (tx) => {
       const found = await restockTaskRepository.getInTransaction(tx, businessId, taskId);
       if (!found) {
         throw new RestockTaskNotFoundError(taskId);
@@ -395,12 +397,19 @@ class RestockTaskService {
           totalWholesaleKes: priced.reduce((sum, line) => sum + line.quantity * (line.unitWholesaleKes ?? 0), 0),
           totalLandedKes: wholesaleLines.reduce((sum, line) => sum + line.quantity * (line.unitLandedKes ?? 0), 0),
           unpricedUnits: wholesaleLines.filter((line) => line.unitWholesaleKes === null).reduce((sum, line) => sum + line.quantity, 0),
+          billing: profile!.terms.ownerBilling,
+          ownerCostBasis: profile!.terms.ownerCostBasis,
           actor,
         });
       }
 
       return { status: targetStatus, ownerWholesaleSaleId: wholesaleRef && wholesaleLines.length > 0 ? wholesaleRef.id : null };
     });
+    // The delivery is received whatever happens here; a missed invoice is issued by the daily sweep instead.
+    if (received.ownerWholesaleSaleId && profile?.terms.ownerBilling === 'invoice') {
+      await ownerInvoiceService.issueForDelivery(businessId, received.ownerWholesaleSaleId).catch((error) => logger.error('delivery invoice not issued; the daily sweep will retry', { businessId, taskId, error }));
+    }
+    return received;
   }
 
   /** Only offered while nothing has physically left a warehouse yet — see `RESTOCK_TASK_STATUS_TRANSITIONS`'s own doc comment for why `in_transit` has no path here. */

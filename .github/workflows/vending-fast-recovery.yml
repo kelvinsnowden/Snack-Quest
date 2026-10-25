@@ -49,3 +49,11 @@ jobs:
             echo "Fast recovery returned HTTP $status"
             exit 1
           fi
+      - name: Keep a server warm for staff and owners
+        if: always()
+        env:
+          BASE_URL: ${{ secrets.SNACK_QUEST_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BASE_URL" ] || [ -z "$CRON_SECRET" ]; then exit 0; fi
+          curl -sS --max-time 30 -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/warm" || true

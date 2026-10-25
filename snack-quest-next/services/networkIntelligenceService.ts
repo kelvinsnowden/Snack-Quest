@@ -1,4 +1,5 @@
 import 'server-only';
+import { sharedFor } from '@/lib/cache/sharedFor';
 
 import { machineRepository } from '@/repositories/machineRepository';
 import { machineSlotRepository } from '@/repositories/machineSlotRepository';
@@ -55,6 +56,47 @@ export interface NetworkOverview {
 }
 
 /**
+ * Every unit sitting in the fleet's slots and its value at Snack Quest's
+ * cost. It reads every slot of every machine plus their products, for one
+ * number on the machine list, so it is kept for two minutes and shared
+ * across requests rather than read again on every view.
+ */
+async function readInventoryDeployed(businessId: string): Promise<{ unitsDeployed: number; valueKes: number }> {
+  const { machines } = await machineRepository.listByBusiness(businessId, { limit: 10000 });
+  const snackItemIds = new Set<string>();
+  const slotsByMachine = new Map<string, Awaited<ReturnType<typeof machineSlotRepository.listByMachine>>>();
+
+  // One read per machine, all at once — not one machine after another.
+  const perMachine = await Promise.all(machines.map(({ id: machineId }) => machineSlotRepository.listByMachine(businessId, machineId).then((slots) => [machineId, slots] as const)));
+  for (const [machineId, slots] of perMachine) {
+    slotsByMachine.set(machineId, slots);
+    for (const slot of slots) {
+      if (slot.productCatalogue === 'snackItem' && slot.productId) {
+        snackItemIds.add(slot.productId);
+      }
+    }
+  }
+  const snackItemsById = await snackItemRepository.findManyById(Array.from(snackItemIds));
+
+  let unitsDeployed = 0;
+  let valueKes = 0;
+  for (const slots of slotsByMachine.values()) {
+    for (const slot of slots) {
+      unitsDeployed += slot.currentQuantity;
+      if (slot.productCatalogue === 'snackItem' && slot.productId) {
+        const item = snackItemsById.get(slot.productId);
+        if (item) {
+          valueKes += slot.currentQuantity * item.expectedUnitCostKes;
+        }
+      }
+    }
+  }
+  return { unitsDeployed, valueKes };
+}
+
+const inventoryDeployed = sharedFor(['network-inventory-deployed'], 120, readInventoryDeployed);
+
+/**
  * The whole-fleet view (§ NETWORK INTELLIGENCE) — composed from
  * `networkDailySummary` rollups, never a live scan of raw
  * transactions across the fleet. `inventoryUnitsDeployed`/`inventoryValueKes`
@@ -66,10 +108,12 @@ export interface NetworkOverview {
 class NetworkIntelligenceService {
   async getNetworkOverview(businessId: string, windowDays = 30): Promise<NetworkOverview> {
     const { startDate, endDate } = trailingWindow(windowDays);
-    const [rollups, machines, locations] = await Promise.all([
+    // Stock out in the machines is read alongside, not after: it waits on none of these.
+    const [rollups, machines, locations, { unitsDeployed, valueKes }] = await Promise.all([
       networkDailySummaryRepository.listRange(businessId, startDate, endDate),
       machineRepository.listAllStatuses(businessId),
       locationService.listByBusiness(businessId),
+      inventoryDeployed(businessId),
     ]);
 
     let transactionCount = 0;
@@ -116,8 +160,6 @@ class NetworkIntelligenceService {
       })
       .sort((a, b) => (b.growthPct ?? -Infinity) - (a.growthPct ?? -Infinity));
 
-    const { unitsDeployed, valueKes } = await this.getInventoryDeployed(businessId);
-
     return {
       windowDays,
       machineCount: machines.length,
@@ -135,39 +177,6 @@ class NetworkIntelligenceService {
       fastestGrowingCategories: fastestGrowingCategories.slice(0, 5),
       dataQuality: classifyDataQuality(rollups.size, windowDays),
     };
-  }
-
-  private async getInventoryDeployed(businessId: string): Promise<{ unitsDeployed: number; valueKes: number }> {
-    const { machines } = await machineRepository.listByBusiness(businessId, { limit: 10000 });
-    const snackItemIds = new Set<string>();
-    const slotsByMachine = new Map<string, Awaited<ReturnType<typeof machineSlotRepository.listByMachine>>>();
-
-    // One read per machine, all at once — not one machine after another.
-    const perMachine = await Promise.all(machines.map(({ id: machineId }) => machineSlotRepository.listByMachine(businessId, machineId).then((slots) => [machineId, slots] as const)));
-    for (const [machineId, slots] of perMachine) {
-      slotsByMachine.set(machineId, slots);
-      for (const slot of slots) {
-        if (slot.productCatalogue === 'snackItem' && slot.productId) {
-          snackItemIds.add(slot.productId);
-        }
-      }
-    }
-    const snackItemsById = await snackItemRepository.findManyById(Array.from(snackItemIds));
-
-    let unitsDeployed = 0;
-    let valueKes = 0;
-    for (const slots of slotsByMachine.values()) {
-      for (const slot of slots) {
-        unitsDeployed += slot.currentQuantity;
-        if (slot.productCatalogue === 'snackItem' && slot.productId) {
-          const item = snackItemsById.get(slot.productId);
-          if (item) {
-            valueKes += slot.currentQuantity * item.expectedUnitCostKes;
-          }
-        }
-      }
-    }
-    return { unitsDeployed, valueKes };
   }
 
   /**

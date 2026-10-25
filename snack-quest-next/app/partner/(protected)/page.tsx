@@ -8,11 +8,13 @@ import {
   CircleDot,
   MapPin,
   Package,
+  ReceiptText,
 } from 'lucide-react';
 import { requirePartnerSession } from '@/lib/auth/partnerSession';
 import { ownerPortalService } from '@/services/ownerPortalService';
+import { ownerInvoiceService } from '@/services/ownerInvoiceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SalesTrendChart } from '@/components/partner/SalesTrendChart';
+import { SalesTrendChart } from '@/components/charts/LazyCharts';
 import { StockLevelBar } from '@/components/partner/StockLevelBar';
 import { StatusPill } from '@/components/partner/StatusPill';
 import { cn } from '@/lib/utils';
@@ -50,11 +52,14 @@ const TONE_CLASSES: Record<'primary' | 'success' | 'secondary', string> = {
  */
 export default async function PartnerDashboardPage() {
   const session = await requirePartnerSession();
-  const [dashboard, points, visits] = await Promise.all([
+  const [dashboard, points, visits, invoices] = await Promise.all([
     ownerPortalService.getDashboard(session.businessId, session.partnerId, WINDOW_DAYS),
     ownerPortalService.getSalesTrend(session.businessId, session.partnerId, WINDOW_DAYS),
     ownerPortalService.getRestockVisits(session.businessId, session.partnerId),
+    ownerInvoiceService.listForPartner(session.businessId, session.partnerId),
   ]);
+  const unpaid = invoices.filter(({ data }) => data.status === 'open');
+  const unpaidKes = unpaid.reduce((sum, { data }) => sum + data.totalKes, 0);
   // Riders on the way first, then anything being packed or planned, then what was done today.
   const STAGE_ORDER = ['on_the_way', 'packing', 'planned', 'requested', 'restocked'];
   const restocking = dashboard.machines
@@ -82,6 +87,19 @@ export default async function PartnerDashboardPage() {
         <h1 className="text-2xl font-bold text-foreground">Good to see you, {firstName} 👋</h1>
         <p className="text-sm text-muted-foreground">Manage your machines, track performance and stay in control — all in one place.</p>
       </div>
+
+      {unpaid.length > 0 ? (
+        <Link href="/partner/invoices" className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 transition-colors hover:bg-warning/15">
+          <ReceiptText className="size-5 shrink-0 text-warning" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-sm text-foreground">
+            <span className="font-semibold">
+              {unpaid.length === 1 ? '1 invoice' : `${unpaid.length} invoices`} to pay · KES {unpaidKes.toLocaleString('en-KE')}
+            </span>
+            <span className="block text-muted-foreground">Pay by M-Pesa in a couple of taps.</span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
 
       {restocking.length > 0 ? (
         <section className="flex flex-col gap-2" aria-labelledby="restocking">
