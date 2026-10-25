@@ -9,7 +9,7 @@ import { PERIOD_PRESETS, PERIOD_PRESET_LABEL, resolvePeriod } from '@/lib/financ
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
-import { DailySalesBarChart } from '@/components/partner/DailySalesBarChart';
+import { DailySalesBarChart } from '@/components/charts/LazyCharts';
 
 export const metadata: Metadata = { title: 'Profit' };
 

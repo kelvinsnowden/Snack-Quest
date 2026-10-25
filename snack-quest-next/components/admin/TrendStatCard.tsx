@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -98,26 +97,36 @@ export function TrendStatCard({ label, value, icon, tone = 'primary', trend, spa
 
       {sparkline && sparkline.length > 1 ? (
         <div className="h-12 w-full" aria-hidden="true">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={sparkline.map((v) => ({ v }))} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id={`sparkline-${label.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Area
-                type="monotone"
-                dataKey="v"
-                stroke="var(--color-primary)"
-                strokeWidth={1.5}
-                fill={`url(#sparkline-${label.replace(/\s+/g, '-')})`}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <Sparkline values={sparkline} gradientId={`sparkline-${label.replace(/\s+/g, '-')}`} />
         </div>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * A daily series as a filled line, drawn as plain SVG: it stretches to the
+ * card's width and needs no charting library, so the many pages with a stat
+ * card don't download one (recharts is ~90 KB compressed) just for this.
+ */
+function Sparkline({ values, gradientId }: { values: number[]; gradientId: string }) {
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const step = 100 / (values.length - 1);
+  // Two units of headroom keep the stroke from being clipped at the top and bottom.
+  const points = values.map((value, index) => `${(index * step).toFixed(2)},${(2 + (1 - (value - min) / span) * 46).toFixed(2)}`);
+  const line = `M${points.join(' L')}`;
+  return (
+    <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="size-full">
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.35} />
+          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={`${line} L100,50 L0,50 Z`} fill={`url(#${gradientId})`} />
+      <path d={line} fill="none" stroke="var(--color-primary)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    </svg>
   );
 }

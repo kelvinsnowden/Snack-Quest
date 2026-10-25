@@ -302,9 +302,10 @@ interface RawDarajaCallback {
   };
 }
 
-/** Whose till a prompt goes to: a machine owner's own, connected from their portal. */
+/** Whose till a prompt goes to: one of a machine owner's own, connected from their portal. */
 export interface DarajaPaymentAccount {
   partnerId: string;
+  accountId: string;
 }
 
 /**
@@ -329,7 +330,7 @@ async function stkSession(businessId: string, account: DarajaPaymentAccount | nu
     const config = await getDarajaConfig(businessId);
     return { scope: businessId, config, accessToken: await fetchAccessToken(businessId, config) };
   }
-  const config = await getOwnerDarajaConfig(businessId, account.partnerId);
+  const config = await getOwnerDarajaConfig(businessId, account);
   const scope = ownerScope(businessId, account.partnerId, config);
   try {
     return { scope, config, accessToken: await fetchAccessToken(scope, config) };

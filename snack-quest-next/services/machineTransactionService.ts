@@ -352,7 +352,7 @@ class MachineTransactionService {
         // can't double-charge: the customer still gets their snack, and settlement pays the owner for it.
         if (!account || !(error instanceof OwnerDarajaAccountUnavailableError)) throw error;
         logger.warn('owner till unavailable; this sale goes to Snack Quest', { businessId: input.businessId, machineId: input.machineId, partnerId: account.partnerId, error });
-        await ownerPaymentAccountService.markUnavailable(input.businessId, account.partnerId).catch(() => undefined);
+        await ownerPaymentAccountService.markUnavailable(input.businessId, account.accountId).catch(() => undefined);
         account = null;
         result = await push();
       }
@@ -360,7 +360,7 @@ class MachineTransactionService {
         await machineTransactionRepository.setCheckoutRequest(input.businessId, t.id, {
           checkoutRequestId: result.checkoutRequestId,
           merchantRequestId: result.merchantRequestId,
-          collectedByPartnerId: account?.partnerId ?? null,
+          collectedBy: account,
         });
       }
       return {
@@ -1104,7 +1104,7 @@ class MachineTransactionService {
         query = await this.paymentGateway.queryStkStatus({
           businessId,
           checkoutRequestId: data.checkoutRequestId,
-          account: data.collectedByPartnerId ? { partnerId: data.collectedByPartnerId } : null,
+          account: data.collectedByPartnerId && data.collectedByAccountId ? { partnerId: data.collectedByPartnerId, accountId: data.collectedByAccountId } : null,
         });
       } catch (error) {
         // Paid into an owner's till whose keys can't be used any more (disconnected or refused): no answer to be had,

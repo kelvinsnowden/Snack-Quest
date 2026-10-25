@@ -5,6 +5,7 @@ import { ViewAsSwitcher } from '@/components/admin/ViewAsSwitcher';
 import { visibleAdminSections } from '@/lib/auth/adminSections';
 import { effectivePermissionsOf } from '@/lib/auth/permissions';
 import { businessRepository } from '@/repositories/businessRepository';
+import { getCurrentBusinessId } from '@/lib/business/currentBusinessId';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
 import { AdminBottomBar } from '@/components/admin/AdminBottomBar';
@@ -28,6 +29,11 @@ export const metadata: Metadata = {
  * Optimistic/Secure split.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Neither waits on the session, so they start alongside its check instead of after it.
+  const businessRead = businessRepository.findById(getCurrentBusinessId());
+  const localeRead = getLocale();
+  // A signed-out visitor is redirected before these are awaited; don't let a failed read surface as unhandled.
+  businessRead.catch(() => undefined);
   const session = await requireStaffSession();
 
   // An agent-only, warehouse-only, or finance-only account (no
@@ -47,12 +53,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect('/finance');
   }
 
+  // Read here, once, and handed to every Client Component below —
+  // see `LocaleProvider` for why this is a context and not a prop
+  // threaded through dozens of signatures.
   const [business, locale] = await Promise.all([
-    businessRepository.findById(session.businessId),
-    // Read here, once, and handed to every Client Component below —
-    // see `LocaleProvider` for why this is a context and not a prop
-    // threaded through dozens of signatures.
-    getLocale(),
+    session.businessId === getCurrentBusinessId() ? businessRead : businessRepository.findById(session.businessId),
+    localeRead,
   ]);
   const visibleSections = visibleAdminSections(session);
   // Null for a super admin: every page. Everyone else sees only the pages they hold the permission for.

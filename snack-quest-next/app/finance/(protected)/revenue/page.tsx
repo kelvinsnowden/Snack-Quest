@@ -3,7 +3,7 @@ import { Banknote, ClipboardList, Receipt } from 'lucide-react';
 import { requireWorkspacePage } from '@/lib/auth/requireWorkspacePage';
 import { businessAnalyticsService } from '@/services/businessAnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RevenueChart } from '@/components/admin/RevenueChart';
+import { RevenueChart } from '@/components/charts/LazyCharts';
 import { TrendStatCard } from '@/components/admin/TrendStatCard';
 import { ComplimentaryBoxesNote } from '@/components/admin/ComplimentaryBoxesNote';
 import { formatKes } from '@/lib/orders/format';

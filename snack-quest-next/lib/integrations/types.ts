@@ -65,10 +65,10 @@ export interface PaymentGateway {
     accountReference: string;
     transactionDesc: string;
     /** A machine owner's own till to pay into (`partnerPaymentAccounts`); the business's own account when absent. */
-    account?: { partnerId: string } | null;
+    account?: { partnerId: string; accountId: string } | null;
   }): Promise<StkPushResult>;
   verifyCallback(payload: unknown): PaymentCallbackResult;
-  queryStkStatus(input: { businessId: string; checkoutRequestId: string; account?: { partnerId: string } | null }): Promise<StkQueryResult>;
+  queryStkStatus(input: { businessId: string; checkoutRequestId: string; account?: { partnerId: string; accountId: string } | null }): Promise<StkQueryResult>;
 }
 
 /** The synchronous ack Safaricom returns the instant a B2C request is accepted for processing — not proof the money moved, just that the request was queued. */

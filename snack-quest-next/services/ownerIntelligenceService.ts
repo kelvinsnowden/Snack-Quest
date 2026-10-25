@@ -1,9 +1,9 @@
 import 'server-only';
+import { forRender } from '@/lib/cache/forRender';
 
 import { cache } from 'react';
 import { machineService } from '@/services/machineService';
 import { ownerSince, clipStartDate } from '@/lib/vending/ownerTenure';
-import { machineDailySummaryRepository } from '@/repositories/machineDailySummaryRepository';
 import { machineAssortmentService } from '@/services/machineAssortmentService';
 import { recommendationEngineService } from '@/services/recommendationEngineService';
 import { trailingWindow, classifyDataQuality, type DataQuality } from '@/services/machineAssortmentIntelligenceService';
@@ -79,7 +79,7 @@ class OwnerIntelligenceService {
     });
     const earliest = ranges.reduce((min, range) => (range.startDate < min ? range.startDate : min), ranges[0].startDate);
     const [allRollups, stockHealth, allRecommendations] = await Promise.all([
-      machineDailySummaryRepository.listRange(businessId, machineId, earliest, ranges[0].endDate),
+      forRender.dailySummaries(businessId, machineId, earliest, ranges[0].endDate),
       machineAssortmentService.getStockHealth(businessId, { id: machineId, status: machine.data.status }),
       options.recommendations === false ? Promise.resolve([]) : pendingRecommendations(businessId),
     ]);

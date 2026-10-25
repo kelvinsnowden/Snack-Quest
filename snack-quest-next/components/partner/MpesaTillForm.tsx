@@ -29,10 +29,23 @@ function Step({ number, title, children }: { number: number; title: string; chil
  * Connect the owner's own till or paybill in three steps: the number,
  * the three Daraja keys, then a check with Safaricom that charges
  * nobody. Saved keys are never shown again; leaving a key blank keeps
- * the saved one.
+ * the saved one. A new till can reuse the keys of one already connected
+ * (several tills under one store share one Daraja app).
  */
-export function MpesaTillForm({ account, keysEncrypted, onDone }: { account: PartnerPaymentAccountView | null; keysEncrypted: boolean; onDone?: () => void }) {
+export function MpesaTillForm({
+  account,
+  keysEncrypted,
+  shareFrom = [],
+  onDone,
+}: {
+  account: PartnerPaymentAccountView | null;
+  keysEncrypted: boolean;
+  /** Connected tills whose keys a new till may reuse. */
+  shareFrom?: { id: string; label: string }[];
+  onDone?: () => void;
+}) {
   const router = useRouter();
+  const [sameKeysAs, setSameKeysAs] = useState<string>('');
   const [accountType, setAccountType] = useState<PartnerPaymentAccountType>(account?.accountType ?? 'till');
   const [shortcode, setShortcode] = useState(account?.shortcode ?? '');
   const [headOffice, setHeadOffice] = useState(account?.headOfficeShortcode ?? '');
@@ -48,10 +61,10 @@ export function MpesaTillForm({ account, keysEncrypted, onDone }: { account: Par
     setBusy(true);
     setOutcome(null);
     try {
-      const response = await fetch('/api/vending/partners/me/payment-account', {
-        method: 'PUT',
+      const response = await fetch(account ? `/api/vending/partners/me/payment-accounts/${account.id}` : '/api/vending/partners/me/payment-accounts', {
+        method: account ? 'PUT' : 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ accountType, shortcode, headOfficeShortcode: accountType === 'till' ? headOffice : '', consumerKey, consumerSecret, passkey }),
+        body: JSON.stringify({ accountType, shortcode, headOfficeShortcode: accountType === 'till' ? headOffice : '', consumerKey, consumerSecret, passkey, sameKeysAs: sameKeysAs || null }),
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string; problem?: { title: string; detail: string } | null };
       if (!response.ok) {
@@ -106,26 +119,50 @@ export function MpesaTillForm({ account, keysEncrypted, onDone }: { account: Par
       </Step>
 
       <Step number={2} title="Your keys from Safaricom">
-        <div className="rounded-xl border border-border bg-background/40 p-3 text-sm text-muted-foreground">
-          <p className="font-medium text-foreground">Where to find them</p>
-          <ol className="mt-1 list-decimal space-y-1 pl-5">
-            <li>Sign in at developer.safaricom.co.ke and open your app under <span className="text-foreground">My Apps</span>.</li>
-            <li>Take it live (<span className="text-foreground">Go Live</span>) for this {accountType === 'till' ? 'till' : 'paybill'} with M-Pesa Express.</li>
-            <li>Copy the live app’s <span className="text-foreground">consumer key</span> and <span className="text-foreground">consumer secret</span>. Safaricom emails you the <span className="text-foreground">passkey</span>.</li>
-          </ol>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="mpesa-key">Consumer key</Label>
-          <Input id="mpesa-key" autoComplete="off" spellCheck={false} placeholder={account ? `Saved, ends in ${account.consumerKeyEnding}` : undefined} value={consumerKey} onChange={(event) => setConsumerKey(event.target.value)} disabled={busy} required={!account} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="mpesa-secret">Consumer secret</Label>
-          <Input id="mpesa-secret" type="password" autoComplete="off" placeholder={keepHint} value={consumerSecret} onChange={(event) => setConsumerSecret(event.target.value)} disabled={busy} required={!account} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="mpesa-passkey">Passkey</Label>
-          <Input id="mpesa-passkey" type="password" autoComplete="off" placeholder={keepHint} value={passkey} onChange={(event) => setPasskey(event.target.value)} disabled={busy} required={!account} />
-        </div>
+        {!account && shareFrom.length > 0 ? (
+          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Which keys">
+            {[{ id: '', label: 'New keys for this till' }, ...shareFrom.map((till) => ({ id: till.id, label: `Same keys as ${till.label}` }))].map((option) => (
+              <button
+                key={option.id || 'new'}
+                type="button"
+                role="radio"
+                aria-checked={sameKeysAs === option.id}
+                onClick={() => setSameKeysAs(option.id)}
+                className={cn(
+                  'min-h-12 rounded-xl border px-3 text-left text-sm font-medium transition-colors',
+                  sameKeysAs === option.id ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+            <p className="text-xs text-muted-foreground">Tills under the same store usually share one Daraja app, so they share its keys.</p>
+          </div>
+        ) : null}
+        {sameKeysAs ? null : (
+          <>
+            <div className="rounded-xl border border-border bg-background/40 p-3 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Where to find them</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-5">
+                <li>Sign in at developer.safaricom.co.ke and open your app under <span className="text-foreground">My Apps</span>.</li>
+                <li>Take it live (<span className="text-foreground">Go Live</span>) for this {accountType === 'till' ? 'till' : 'paybill'} with M-Pesa Express.</li>
+                <li>Copy the live app’s <span className="text-foreground">consumer key</span> and <span className="text-foreground">consumer secret</span>. Safaricom emails you the <span className="text-foreground">passkey</span>.</li>
+              </ol>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mpesa-key">Consumer key</Label>
+              <Input id="mpesa-key" autoComplete="off" spellCheck={false} placeholder={account ? `Saved, ends in ${account.consumerKeyEnding}` : undefined} value={consumerKey} onChange={(event) => setConsumerKey(event.target.value)} disabled={busy} required={!account && !sameKeysAs} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mpesa-secret">Consumer secret</Label>
+              <Input id="mpesa-secret" type="password" autoComplete="off" placeholder={keepHint} value={consumerSecret} onChange={(event) => setConsumerSecret(event.target.value)} disabled={busy} required={!account && !sameKeysAs} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mpesa-passkey">Passkey</Label>
+              <Input id="mpesa-passkey" type="password" autoComplete="off" placeholder={keepHint} value={passkey} onChange={(event) => setPasskey(event.target.value)} disabled={busy} required={!account && !sameKeysAs} />
+            </div>
+          </>
+        )}
       </Step>
 
       <Step number={3} title="Check and connect">

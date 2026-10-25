@@ -6,6 +6,7 @@ import { requireStaffSession } from '@/lib/auth/session';
 import { partnerService } from '@/services/partnerService';
 import { listEarningsLedger } from '@/repositories/partnerRepository';
 import { ownerPaymentAccountService } from '@/services/ownerPaymentAccountService';
+import { tillLabel } from '@/lib/vending/tillLabel';
 import { machineSubscriptionService } from '@/services/machineSubscriptionService';
 import { machineSettlementService } from '@/services/machineSettlementService';
 import { withdrawalService } from '@/services/withdrawalService';
@@ -40,34 +41,40 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
   const session = await requireStaffSession();
   const { partnerId } = await params;
 
-  const partner = await partnerService.findById(session.businessId, partnerId);
-  if (!partner) {
-    notFound();
-  }
-
   const canManage = hasPermission(session, 'owners.manage');
   const canSetTerms = hasPermission(session, 'machines.economics.manage');
   const canSeeMoney = hasPermission(session, 'owner_finance.view');
-  const [machines, agreements, ledger, subscriptions, settlements, withdrawalPage] = await Promise.all([
+  // Two rounds, not one read after another: everything that needs only the owner, then everything that needs their machines.
+  const [partner, machines, agreements, ledger, subscriptions, settlements, withdrawalPage, tills] = await Promise.all([
+    partnerService.findById(session.businessId, partnerId),
     partnerService.listMachines(session.businessId, partnerId),
     partnerService.listAgreements(session.businessId, partnerId),
     canSeeMoney ? listEarningsLedger(partnerId) : Promise.resolve([]),
     canSeeMoney ? machineSubscriptionService.listByPartner(session.businessId, partnerId) : Promise.resolve([]),
     canSeeMoney ? machineSettlementService.listByPartner(session.businessId, partnerId) : Promise.resolve([]),
     canSeeMoney ? withdrawalService.listWithdrawalsForOwner(session.businessId, partnerId) : Promise.resolve({ withdrawals: [] as Awaited<ReturnType<typeof withdrawalService.listWithdrawalsForOwner>>['withdrawals'] }),
+    canSeeMoney ? ownerPaymentAccountService.list(session.businessId, partnerId) : Promise.resolve([]),
   ]);
-  const till = canSeeMoney ? await ownerPaymentAccountService.view(session.businessId, partnerId) : null;
+  if (!partner) {
+    notFound();
+  }
   const machineCode = new Map(machines.map(({ id, data }) => [id, data.machineCode]));
-  // An agreement on a machine that has since changed hands is shown by id; it can only be ended, never restarted.
-  const activeByMachine = new Set((await Promise.all(machines.map(({ id }) => partnerMachineAgreementRepository.findActiveForMachine(session.businessId, id)))).filter(Boolean).map((row) => row!.data.machineId));
   const sortedAgreements = [...agreements].sort((a, b) => ['active', 'draft', 'terminated'].indexOf(a.data.status) - ['active', 'draft', 'terminated'].indexOf(b.data.status));
-  const history = hasPermission(session, 'audit.view') ? await auditLogRepository.listForEntities(session.businessId, [partnerId, ...agreements.map(({ id }) => id)], 15) : null;
-  const historyNames = history ? await actorNamesFor(history) : new Map<string, string>();
-  // The same per-machine summary the owner's portal is built from, so staff can see what the owner sees.
-  const ownerView = hasPermission(session, 'analytics.vending.view')
-    ? (await Promise.all(machines.slice(0, 12).map(({ id }) => ownerIntelligenceService.getMachineOwnerSummary(session.businessId, partnerId, id, 30).catch(() => null)))).filter((row) => row !== null)
-    : null;
-  const ownerViewProducts = ownerView ? await snackItemRepository.findManyById(ownerView.map((row) => row.topProductId).filter((id): id is string => Boolean(id))) : new Map();
+  const [activeAgreements, [history, historyNames], [ownerView, ownerViewProducts]] = await Promise.all([
+    // An agreement on a machine that has since changed hands is shown by id; it can only be ended, never restarted.
+    Promise.all(machines.map(({ id }) => partnerMachineAgreementRepository.findActiveForMachine(session.businessId, id))),
+    hasPermission(session, 'audit.view')
+      ? auditLogRepository.listForEntities(session.businessId, [partnerId, ...agreements.map(({ id }) => id)], 15).then(async (rows) => [rows, await actorNamesFor(rows)] as const)
+      : Promise.resolve([null, new Map<string, string>()] as const),
+    // The same per-machine summary the owner's portal is built from, so staff can see what the owner sees.
+    hasPermission(session, 'analytics.vending.view')
+      ? Promise.all(machines.slice(0, 12).map(({ id }) => ownerIntelligenceService.getMachineOwnerSummary(session.businessId, partnerId, id, 30).catch(() => null))).then(async (rows) => {
+          const summaries = rows.filter((row) => row !== null);
+          return [summaries, await snackItemRepository.findManyById(summaries.map((row) => row.topProductId).filter((id): id is string => Boolean(id)))] as const;
+        })
+      : Promise.resolve([null, new Map()] as const),
+  ]);
+  const activeByMachine = new Set(activeAgreements.filter(Boolean).map((row) => row!.data.machineId));
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -116,13 +123,15 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
             )}
             {canManage ? <OwnerStatusControl partnerId={partnerId} name={partner.name} status={partner.status} /> : null}
             {canSeeMoney ? (
-              <p className="text-sm text-foreground">
-                {!till
-                  ? 'M-Pesa: no till of their own connected. Sales go to Snack Quest.'
-                  : till.status === 'connected'
-                    ? `M-Pesa: their ${till.accountType} ${till.shortcode} is connected. Sales on machines with invoice billing go straight to it.`
-                    : `M-Pesa: their ${till.accountType} ${till.shortcode} isn’t working (${till.lastError ?? 'Safaricom refused it'}). Sales go to Snack Quest until they fix it.`}
-              </p>
+              <div className="flex flex-col gap-1 text-sm text-foreground">
+                {tills.length === 0 ? <p>M-Pesa: no till of their own connected. Sales go to Snack Quest.</p> : <p>M-Pesa tills (sales on machines with invoice billing go straight to the till chosen for them):</p>}
+                {tills.map((till) => (
+                  <p key={till.id} className={till.status === 'connected' ? 'text-foreground' : 'text-danger'}>
+                    {tillLabel(till)}: {till.status === 'connected' ? 'connected' : `not working (${till.lastError ?? 'Safaricom refused it'})`} ·{' '}
+                    {till.machineIds.length === 0 ? 'no machines' : till.machineIds.map((id) => machineCode.get(id) ?? id).join(', ')}
+                  </p>
+                ))}
+              </div>
             ) : null}
           </CardContent>
         </Card>

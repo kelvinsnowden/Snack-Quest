@@ -178,11 +178,11 @@ export async function ownerDarajaConfig(businessId: string, account: OwnerDaraja
   };
 }
 
-/** The connected account of one owner, ready to send a prompt with. Throws `OwnerDarajaAccountUnavailableError` when there is none, or its last check failed. */
-export async function getOwnerDarajaConfig(businessId: string, partnerId: string): Promise<DarajaConfig> {
-  const account = await partnerPaymentAccountRepository.find(businessId, partnerId);
-  if (!account) throw new OwnerDarajaAccountUnavailableError(partnerId, 'none connected');
-  if (account.status !== 'connected') throw new OwnerDarajaAccountUnavailableError(partnerId, 'its last check failed');
+/** One of an owner's connected tills, ready to send a prompt with. Throws `OwnerDarajaAccountUnavailableError` when it is gone, isn't theirs, or its last check failed. */
+export async function getOwnerDarajaConfig(businessId: string, ref: { partnerId: string; accountId: string }): Promise<DarajaConfig> {
+  const account = await partnerPaymentAccountRepository.find(businessId, ref.accountId);
+  if (!account || account.partnerId !== ref.partnerId) throw new OwnerDarajaAccountUnavailableError(ref.partnerId, 'that till is no longer connected');
+  if (account.status !== 'connected') throw new OwnerDarajaAccountUnavailableError(ref.partnerId, 'its last check failed');
   return ownerDarajaConfig(businessId, account);
 }
 

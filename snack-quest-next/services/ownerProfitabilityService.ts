@@ -64,10 +64,11 @@ class OwnerProfitabilityService {
     const since = (ownerSince: Date | null, start: Date) => (ownerSince && ownerSince > start ? ownerSince : start);
 
     const previous = previousPeriod(period);
-    const [pnls, previousPnls, assortments] = await Promise.all([
+    const [pnls, previousPnls, assortments, refunded] = await Promise.all([
       Promise.all(selected.map(({ id, data }) => machinePnlService.forMachine({ businessId, machineId: id, periodStart: since(data.ownerSince?.toDate() ?? null, period.start), periodEnd: period.end, perspective: 'owner' }))),
       Promise.all(selected.map(({ id, data }) => machinePnlService.forMachine({ businessId, machineId: id, periodStart: since(data.ownerSince?.toDate() ?? null, previous.start), periodEnd: previous.end, perspective: 'owner' }))),
       Promise.all(selected.map(({ id }) => machineAssortmentRepository.listByMachine(businessId, id))),
+      this.refundedInPeriod(businessId, selected.map(({ id }) => id), period),
     ]);
     const categoryOf = new Map<string, string | null>();
     assortments.flat().forEach((row) => categoryOf.set(`${row.machineId}__${row.productId}`, row.category));
@@ -110,8 +111,6 @@ class OwnerProfitabilityService {
       const date = nairobiDateKey(new Date(at));
       byDay.push({ date, ...(byDayMap.get(date) ?? { revenueKes: 0, grossProfitKes: 0, units: 0 }) });
     }
-
-    const refunded = await this.refundedInPeriod(businessId, selected.map(({ id }) => id), period);
 
     return {
       period: { preset: period.preset, from: period.fromKey, to: period.toKey, days: period.days },
@@ -166,19 +165,12 @@ class OwnerProfitabilityService {
     };
   }
 
-  /** Customer money returned in the period for sales that never counted as revenue (the product didn't come out). */
+  /** Customer money returned in the period for sales that never counted as revenue (the product didn't come out). Reads only the refunded ones, every machine at once. */
   private async refundedInPeriod(businessId: string, machineIds: string[], period: ReportingPeriod): Promise<{ count: number; amountKes: number }> {
-    let count = 0;
-    let amountKes = 0;
-    for (const machineId of machineIds) {
-      for await (const { data } of machineTransactionRepository.streamRange(businessId, { machineId, since: period.start, until: period.end })) {
-        if (data.status === 'refunded' && isCustomerSale(data)) {
-          count += 1;
-          amountKes += data.amountKes;
-        }
-      }
-    }
-    return { count, amountKes };
+    const refunded = (await Promise.all(machineIds.map((machineId) => machineTransactionRepository.listByMachineStatusInRange(businessId, machineId, 'refunded', period.start, period.end))))
+      .flat()
+      .filter(({ data }) => isCustomerSale(data));
+    return { count: refunded.length, amountKes: refunded.reduce((sum, { data }) => sum + data.amountKes, 0) };
   }
 
   private async productNames(businessId: string, keys: string[]): Promise<Map<string, string>> {

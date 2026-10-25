@@ -1172,6 +1172,7 @@ describe('DarajaGateway.initiateStkPush — Buy Goods shortcodes', () => {
 
 describe('a machine owner’s own till (§ OWNER TILL)', () => {
   const PARTNER_ID = 'partner-own-till';
+  const ACCOUNT_ID = 'till-own';
   const OWNER = {
     accountType: 'till' as const,
     shortcode: '5123456',
@@ -1186,7 +1187,7 @@ describe('a machine owner’s own till (§ OWNER TILL)', () => {
     resetDarajaTokenCache();
     await businessIntegrationSecretRepository.set(BUSINESS_ID, 'daraja', SECRET);
     const { adminFirestore } = await import('@/lib/firebase/admin');
-    await adminFirestore.collection('partnerPaymentAccounts').doc(PARTNER_ID).set({ businessId: BUSINESS_ID, partnerId: PARTNER_ID, ...OWNER, status: 'connected', lastError: null, lastCheckedAtMs: 1, connectedAtMs: 1 });
+    await adminFirestore.collection('partnerPaymentAccounts').doc(ACCOUNT_ID).set({ businessId: BUSINESS_ID, partnerId: PARTNER_ID, ...OWNER, machineIds: [], status: 'connected', lastError: null, lastErrorDetail: null, lastCheckedAtMs: 1, connectedAtMs: 1 });
   });
 
   afterEach(() => {
@@ -1203,7 +1204,7 @@ describe('a machine owner’s own till (§ OWNER TILL)', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await darajaGateway.initiateStkPush({ businessId: BUSINESS_ID, phone: '254700000000', amountKes: 350, accountReference: 'CART-1', transactionDesc: 'Snack Quest vend', account: { partnerId: PARTNER_ID } });
+    const result = await darajaGateway.initiateStkPush({ businessId: BUSINESS_ID, phone: '254700000000', amountKes: 350, accountReference: 'CART-1', transactionDesc: 'Snack Quest vend', account: { partnerId: PARTNER_ID, accountId: ACCOUNT_ID } });
 
     expect(result.checkoutRequestId).toBe('ws_CO_owner');
     const [tokenCall, stkCall] = fetchMock.mock.calls;
@@ -1220,7 +1221,7 @@ describe('a machine owner’s own till (§ OWNER TILL)', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      darajaGateway.initiateStkPush({ businessId: BUSINESS_ID, phone: '254700000000', amountKes: 350, accountReference: 'CART-1', transactionDesc: 'Snack Quest vend', account: { partnerId: PARTNER_ID } }),
+      darajaGateway.initiateStkPush({ businessId: BUSINESS_ID, phone: '254700000000', amountKes: 350, accountReference: 'CART-1', transactionDesc: 'Snack Quest vend', account: { partnerId: PARTNER_ID, accountId: ACCOUNT_ID } }),
     ).rejects.toBeInstanceOf(OwnerDarajaAccountUnavailableError);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/stkpush/'))).toBe(false);
   });

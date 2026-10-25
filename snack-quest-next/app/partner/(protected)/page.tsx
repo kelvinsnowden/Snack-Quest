@@ -14,7 +14,7 @@ import { requirePartnerSession } from '@/lib/auth/partnerSession';
 import { ownerPortalService } from '@/services/ownerPortalService';
 import { ownerInvoiceService } from '@/services/ownerInvoiceService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SalesTrendChart } from '@/components/partner/SalesTrendChart';
+import { SalesTrendChart } from '@/components/charts/LazyCharts';
 import { StockLevelBar } from '@/components/partner/StockLevelBar';
 import { StatusPill } from '@/components/partner/StatusPill';
 import { cn } from '@/lib/utils';

@@ -181,7 +181,7 @@ class MachineTransactionRepository {
    * and a transaction stays `pending` the whole time a real customer
    * is looking at their phone's PIN prompt.
    */
-  async setCheckoutRequest(businessId: string, transactionId: string, input: { checkoutRequestId: string; merchantRequestId: string; collectedByPartnerId?: string | null }): Promise<void> {
+  async setCheckoutRequest(businessId: string, transactionId: string, input: { checkoutRequestId: string; merchantRequestId: string; collectedBy?: { partnerId: string; accountId: string } | null }): Promise<void> {
     const ref = adminFirestore.collection(COLLECTION).doc(transactionId);
     const snapshot = await ref.get();
     const data = snapshot.data() as MachineTransaction | undefined;
@@ -191,7 +191,7 @@ class MachineTransactionRepository {
     await ref.update({
       checkoutRequestId: input.checkoutRequestId,
       merchantRequestId: input.merchantRequestId,
-      ...(input.collectedByPartnerId ? { collectedByPartnerId: input.collectedByPartnerId } : {}),
+      ...(input.collectedBy ? { collectedByPartnerId: input.collectedBy.partnerId, collectedByAccountId: input.collectedBy.accountId } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
@@ -374,7 +374,10 @@ class MachineTransactionRepository {
    * from manual review days later belongs to the period it resolved in,
    * never to a period that may already be settled.
    */
-  async *streamDispensedInRange(businessId: string, options: { machineId: string; since: Date; until: Date; pageSize?: number }): AsyncGenerator<{ id: string; data: MachineTransaction }> {
+  async *streamDispensedInRange(
+    businessId: string,
+    options: { machineId: string; since: Date; until: Date; pageSize?: number; /** Only these fields come back — less to transfer for a caller that needs a few. */ fields?: (keyof MachineTransaction)[] },
+  ): AsyncGenerator<{ id: string; data: MachineTransaction }> {
     const pageSize = options.pageSize ?? 500;
     let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
     for (;;) {
@@ -387,6 +390,9 @@ class MachineTransactionRepository {
         .where('dispensedAt', '<', options.until)
         .orderBy('dispensedAt')
         .limit(pageSize);
+      if (options.fields) {
+        query = query.select(...options.fields);
+      }
       if (cursor) {
         query = query.startAfter(cursor);
       }
@@ -399,6 +405,25 @@ class MachineTransactionRepository {
       }
       cursor = snapshot.docs[snapshot.docs.length - 1];
     }
+  }
+
+  /**
+   * One machine's transactions in one status, started in a window — a
+   * direct read of just those (index: businessId, machineId, status,
+   * createdAt), for a total that would otherwise read every transaction
+   * in the window to keep a few.
+   */
+  async listByMachineStatusInRange(businessId: string, machineId: string, status: MachineTransactionStatus, since: Date, until: Date): Promise<{ id: string; data: MachineTransaction }[]> {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where('businessId', '==', businessId)
+      .where('machineId', '==', machineId)
+      .where('status', '==', status)
+      .where('createdAt', '>=', since)
+      .where('createdAt', '<', until)
+      .orderBy('createdAt', 'desc')
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() as MachineTransaction }));
   }
 
   async *streamRange(

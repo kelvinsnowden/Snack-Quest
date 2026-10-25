@@ -61,6 +61,9 @@ export interface PnlCosts {
   adRevenueKes?: number;
 }
 
+/** Everything the P&L reads from a sale — the rest of each record isn't fetched. */
+const PNL_SALE_FIELDS: (keyof MachineTransaction)[] = ['amountKes', 'dispensedAt', 'productCatalogue', 'productId', 'slotId', 'transactionRef', 'economics', 'paymentMethod'];
+
 /**
  * The machine P&L (§ MACHINE-LEVEL P&L), built only from the financial engine
  * (`lib/finance/economics.ts`). Two perspectives:
@@ -85,7 +88,7 @@ class MachinePnlService {
   async forMachine(input: { businessId: string; machineId: string; periodStart: Date; periodEnd: Date; perspective: EconomicPerspective; costs?: PnlCosts }): Promise<MachinePnl> {
     const profile = await machineEconomicProfileService.resolve(input.businessId, input.machineId);
     const sales: { id: string; data: MachineTransaction }[] = [];
-    for await (const sale of machineTransactionRepository.streamDispensedInRange(input.businessId, { machineId: input.machineId, since: input.periodStart, until: input.periodEnd })) {
+    for await (const sale of machineTransactionRepository.streamDispensedInRange(input.businessId, { machineId: input.machineId, since: input.periodStart, until: input.periodEnd, fields: PNL_SALE_FIELDS })) {
       if (isCustomerSale(sale.data)) sales.push(sale);
     }
 

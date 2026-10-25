@@ -106,6 +106,8 @@ export interface MachineTransaction {
    * null: Snack Quest collected it.
    */
   collectedByPartnerId?: string | null;
+  /** Which of that owner's tills (`partnerPaymentAccounts`) — a status query needs that till's keys. */
+  collectedByAccountId?: string | null;
   /** Set once a vend is authorized and handed to the hardware adapter (§ hardware abstraction `authorizeVend()`) — the token/reference the adapter and the machine both use to correlate the eventual result. Null until authorized. */
   vendRef: string | null;
   amountKes: number;

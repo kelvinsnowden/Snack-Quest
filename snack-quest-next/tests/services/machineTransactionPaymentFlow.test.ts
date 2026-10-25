@@ -524,7 +524,8 @@ describe('owner till (§ OWNER TILL)', () => {
       revenueSharePartnerPct: null,
       terms: { inventoryOwner: 'machine_owner', ownerBilling: options.invoiceBilling ? 'invoice' : 'settlement' },
     });
-    await adminFirestore.collection('partnerPaymentAccounts').doc(partnerId).set({
+    const accountId = `till-${machineId}`;
+    await adminFirestore.collection('partnerPaymentAccounts').doc(accountId).set({
       businessId: BUSINESS_ID,
       partnerId,
       accountType: 'till',
@@ -533,25 +534,29 @@ describe('owner till (§ OWNER TILL)', () => {
       consumerKey: 'owner-key',
       consumerSecret: 'owner-secret',
       passkey: 'owner-passkey',
+      machineIds: [machineId],
       status: options.connected ? 'connected' : 'failed',
       lastError: null,
+      lastErrorDetail: null,
       lastCheckedAtMs: Date.now(),
       connectedAtMs: options.connected ? Date.now() : null,
     });
-    return { partnerId, machineId };
+    return { partnerId, machineId, accountId };
   }
 
   it('sends the prompt to the owner’s own till, and the sale remembers who collected it', async () => {
     const adapter = new MockVendingAdapter();
     const gateway = new FakePaymentGateway();
     gateway.initiateStkPushMock.mockResolvedValue(PUSHED);
-    const { partnerId, machineId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
+    const { partnerId, machineId, accountId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
     const service = new MachineTransactionService(() => adapter, gateway);
 
     const result = await service.initiateMpesaPayment({ businessId: BUSINESS_ID, machineId, slotId: 'A01', phoneNumber: '254712345678' });
 
-    expect(gateway.initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ account: { partnerId }, amountKes: 350 }));
-    expect((await service.findById(BUSINESS_ID, result.id))?.collectedByPartnerId).toBe(partnerId);
+    expect(gateway.initiateStkPushMock).toHaveBeenCalledWith(expect.objectContaining({ account: { partnerId, accountId }, amountKes: 350 }));
+    const sale = await service.findById(BUSINESS_ID, result.id);
+    expect(sale?.collectedByPartnerId).toBe(partnerId);
+    expect(sale?.collectedByAccountId).toBe(accountId);
   });
 
   it('keeps Snack Quest collecting until the machine is on invoice billing, or while the till isn’t working', async () => {
@@ -570,7 +575,7 @@ describe('owner till (§ OWNER TILL)', () => {
   it('when the owner’s keys stop working, the customer still pays — to Snack Quest — and the till is switched off', async () => {
     const adapter = new MockVendingAdapter();
     const gateway = new FakePaymentGateway();
-    const { partnerId, machineId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
+    const { partnerId, machineId, accountId } = await seedOwnerMachine(adapter, { connected: true, invoiceBilling: true });
     gateway.initiateStkPushMock.mockRejectedValueOnce(new OwnerDarajaAccountUnavailableError(partnerId, 'Daraja OAuth failed: 400')).mockResolvedValueOnce(PUSHED);
     const service = new MachineTransactionService(() => adapter, gateway);
 
@@ -581,7 +586,7 @@ describe('owner till (§ OWNER TILL)', () => {
     const sale = await service.findById(BUSINESS_ID, result.id);
     expect(sale?.status).toBe('pending');
     expect(sale?.collectedByPartnerId ?? null).toBeNull();
-    expect((await adminFirestore.collection('partnerPaymentAccounts').doc(partnerId).get()).data()?.status).toBe('failed');
+    expect((await adminFirestore.collection('partnerPaymentAccounts').doc(accountId).get()).data()?.status).toBe('failed');
   });
 
   it('any other failure from the owner’s till is not retried elsewhere: the prompt may have gone out', async () => {
