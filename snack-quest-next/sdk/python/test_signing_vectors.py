@@ -1,9 +1,13 @@
 """Every implementation must reproduce every official test vector. Run: python3 -m unittest sdk/python/test_signing_vectors.py"""
 import json
 import os
+import sys
 import unittest
 
-from snack_quest_machine import canonical_string, signature_header
+# Run from anywhere, including the kit's root as the docstring says: the client sits next to this file.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from snack_quest_machine import canonical_string, signature_header  # noqa: E402
 
 VECTORS = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "machine-api", "signing-test-vectors.json")
 

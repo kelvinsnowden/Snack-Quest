@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  mainSiteHostFor,
   resolvePortal,
   toInternalPath,
   toPublicPath,
@@ -166,5 +167,29 @@ describe('the other staff workspaces on the admin host', () => {
    */
   it('keeps the login redirect target reachable', () => {
     expect(toInternalPath('admin', '/admin/login')).toBe('/admin/login');
+  });
+});
+
+describe('the owner portal on a portal host', () => {
+  it('sends /partner on the admin host to the main site, where the owner portal lives', () => {
+    expect(mainSiteHostFor('admin', 'admin.snackquests.shop', '/partner/login')).toBe('www.snackquests.shop');
+    expect(mainSiteHostFor('admin', 'admin.snackquests.shop', '/partner')).toBe('www.snackquests.shop');
+    expect(mainSiteHostFor('creator', 'creators.snackquests.shop', '/partner/machines')).toBe('www.snackquests.shop');
+  });
+
+  it('keeps the port locally, where the main site has no www', () => {
+    expect(mainSiteHostFor('admin', 'admin.localhost:3000', '/partner/login')).toBe('localhost:3000');
+  });
+
+  it('matches the /partner segment only, and leaves every other path where it is', () => {
+    expect(mainSiteHostFor('admin', 'admin.snackquests.shop', '/partners')).toBeNull();
+    expect(mainSiteHostFor('admin', 'admin.snackquests.shop', '/partner-screen-preview')).toBeNull();
+    expect(mainSiteHostFor('admin', 'admin.snackquests.shop', '/vending/partners')).toBeNull();
+    expect(mainSiteHostFor('admin', 'admin.snackquests.shop', '/login')).toBeNull();
+  });
+
+  it('never redirects on the main site itself', () => {
+    expect(mainSiteHostFor('marketing', 'www.snackquests.shop', '/partner/login')).toBeNull();
+    expect(mainSiteHostFor('marketing', null, '/partner/login')).toBeNull();
   });
 });

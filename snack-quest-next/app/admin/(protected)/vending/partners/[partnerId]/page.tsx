@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffSession } from '@/lib/auth/session';
+import { adminAuth } from '@/lib/firebase/admin';
 import { partnerService } from '@/services/partnerService';
 import { listEarningsLedger } from '@/repositories/partnerRepository';
 import { ownerPaymentAccountService } from '@/services/ownerPaymentAccountService';
@@ -23,7 +24,7 @@ import { ownerIntelligenceService } from '@/services/ownerIntelligenceService';
 import { snackItemRepository } from '@/repositories/snackItemRepository';
 import { partnerMachineAgreementRepository } from '@/repositories/partnerMachineAgreementRepository';
 import { BUSINESS_TIME_ZONE } from '@/lib/vending/businessClock';
-import { OwnerForm, OwnerStatusControl, PortalInvite, NewAgreementForm, AgreementActions } from '@/components/admin/vending/OwnerControls';
+import { OwnerForm, OwnerStatusControl, PortalLogin, NewAgreementForm, AgreementActions } from '@/components/admin/vending/OwnerControls';
 import { AgreementTermsEditor } from '@/components/admin/vending/EconomicsControls';
 import { resolveTerms } from '@/services/machineEconomicProfileService';
 
@@ -60,7 +61,7 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
   }
   const machineCode = new Map(machines.map(({ id, data }) => [id, data.machineCode]));
   const sortedAgreements = [...agreements].sort((a, b) => ['active', 'draft', 'terminated'].indexOf(a.data.status) - ['active', 'draft', 'terminated'].indexOf(b.data.status));
-  const [activeAgreements, [history, historyNames], [ownerView, ownerViewProducts]] = await Promise.all([
+  const [activeAgreements, [history, historyNames], [ownerView, ownerViewProducts], portalLastSignIn] = await Promise.all([
     // An agreement on a machine that has since changed hands is shown by id; it can only be ended, never restarted.
     Promise.all(machines.map(({ id }) => partnerMachineAgreementRepository.findActiveForMachine(session.businessId, id))),
     hasPermission(session, 'audit.view')
@@ -73,6 +74,13 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
           return [summaries, await snackItemRepository.findManyById(summaries.map((row) => row.topProductId).filter((id): id is string => Boolean(id)))] as const;
         })
       : Promise.resolve([null, new Map()] as const),
+    // When they last signed in to the Owner Portal, from their login itself.
+    partner.authUid
+      ? adminAuth
+          .getUser(partner.authUid)
+          .then((user) => (user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime) : null))
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
   const activeByMachine = new Set(activeAgreements.filter(Boolean).map((row) => row!.data.machineId));
 
@@ -114,12 +122,16 @@ export default async function AdminVendingPartnerDetailPage({ params }: { params
           <CardContent className="flex flex-col gap-4">
             {partner.status !== 'active' ? (
               <p className="text-sm text-foreground">Suspended — they can’t sign in.</p>
-            ) : partner.authUid ? (
-              <p className="text-sm text-foreground">Signed up. They see only their own machines.</p>
             ) : partner.contactEmail ? (
-              <PortalInvite email={partner.contactEmail} />
+              <PortalLogin
+                partnerId={partnerId}
+                email={partner.contactEmail}
+                inviteSentAt={partner.portalInviteSentAt ? formatDateTime(partner.portalInviteSentAt) : null}
+                lastSignInAt={portalLastSignIn ? formatDateTime({ toDate: () => portalLastSignIn }) : null}
+                canManage={canManage}
+              />
             ) : (
-              <p className="text-sm text-muted-foreground">Add their email to let them sign up.</p>
+              <p className="text-sm text-muted-foreground">Add their email to send them a login. It’s what they sign in with.</p>
             )}
             {canManage ? <OwnerStatusControl partnerId={partnerId} name={partner.name} status={partner.status} /> : null}
             {canSeeMoney ? (

@@ -563,6 +563,10 @@ service cloud.firestore {
     match /machineSalesDaily/{dayId} {
       allow read, write: if false;
     }
+    // One-time links to set an owner's portal password, stored by the token's hash: server only.
+    match /partnerPortalTokens/{tokenHash} {
+      allow read, write: if false;
+    }
     // One row per machine for the fleet page; written by the server only, read by staff (owners use their own portal).
     match /machineFleetSummary/{machineId} {
       allow read: if isTenantAdmin(resource.data.businessId);

@@ -1,3 +1,4 @@
+import type { Timestamp } from 'firebase/firestore';
 import type { AuditFields } from './common';
 
 /**
@@ -26,17 +27,16 @@ export interface Partner extends AuditFields {
   status: PartnerStatus;
   note: string | null;
   /**
-   * The Firebase Auth uid of the person who claimed this partner's
-   * Owner Portal login (§ PART 2 — OWNER PORTAL, § partner
-   * authentication). Null until claimed — a partner is always
-   * created by staff first (with `contactEmail`), then claims its own
-   * login by registering with that same email, exactly mirroring
-   * `services/creatorAuthService.register()`'s own "the real account
-   * is Firebase Auth; the role-granting link only gets written here"
-   * pattern. At most one partner can ever hold a given uid — see
-   * `partnerRepository.findByAuthUid`.
+   * The Firebase Auth uid of this owner's Owner Portal login (§ PART 2 —
+   * OWNER PORTAL, § partner authentication). Null until Snack Quest sends
+   * them their login email: `partnerPortalAccessService` sets up the login
+   * for `contactEmail` and links it here, and the owner creates its password
+   * from the emailed link. At most one partner can ever hold a given uid —
+   * see `partnerRepository.findByAuthUid`.
    */
   authUid: string | null;
+  /** When Snack Quest last emailed them a link to set their Owner Portal password. Absent until the first one. */
+  portalInviteSentAt?: Timestamp | null;
   /**
    * Mirrors `CreatorProfile.availableCashKes`/`CustomerWallet.balanceKes`
    * exactly (§ OWNER WALLET, docs/MACHINE_COMMERCE.md §6) — a cached,

@@ -1471,6 +1471,24 @@
       ]
     },
     {
+      "collectionGroup": "machineInventoryMovements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "businessId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reason",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "machineTelemetryEvents",
       "queryScope": "COLLECTION",
       "fields": [
