@@ -92,6 +92,37 @@ function isStaffWorkspacePath(pathname: string): boolean {
   );
 }
 
+/** The owner portal. It lives on the main site only, where its session cookie is set. */
+const OWNER_PORTAL_ROOT = '/partner';
+
+/**
+ * Where to send a request for the owner portal that reached a portal
+ * host: the main site's host (with the port, if any), or null when the
+ * request should be served where it is.
+ *
+ * A portal host rewrites every path into its own tree, so
+ * `admin.snackquests.shop/partner/login` became `/admin/partner/login`,
+ * a page that does not exist: an owner met the staff sign-in, and
+ * anyone who signed in there landed on "page not found". The main site
+ * is `www.` on a real domain (the apex only redirects there) and the
+ * bare name locally (`admin.localhost:3000` → `localhost:3000`).
+ */
+export function mainSiteHostFor(portal: Portal, host: string | null | undefined, pathname: string): string | null {
+  if (portal === 'marketing' || !host) {
+    return null;
+  }
+  if (pathname !== OWNER_PORTAL_ROOT && !pathname.startsWith(`${OWNER_PORTAL_ROOT}/`)) {
+    return null;
+  }
+  const [hostname, port] = host.toLowerCase().split(':');
+  const parent = hostname.split('.').slice(1).join('.');
+  if (!parent) {
+    return null;
+  }
+  const mainHostname = parent.includes('.') ? `www.${parent}` : parent;
+  return port ? `${mainHostname}:${port}` : mainHostname;
+}
+
 /**
  * Public URL → the path inside `app/` that should render it.
  * Idempotent: an already-prefixed path (`/admin/orders` typed

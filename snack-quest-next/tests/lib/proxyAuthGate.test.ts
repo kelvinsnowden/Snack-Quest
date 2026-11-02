@@ -53,3 +53,15 @@ describe('proxy creator gate', () => {
     expect(redirectTarget(proxy(request('/creators', 'session')))).toBeNull();
   });
 });
+
+describe('proxy: the owner portal on the admin host', () => {
+  it('redirects admin.snackquests.shop/partner/… to the same address on www, keeping the query', () => {
+    const req = new NextRequest(new URL('https://admin.snackquests.shop/partner/login?next=%2Fpartner%2Fsales'), { headers: { host: 'admin.snackquests.shop' } });
+    expect(proxy(req).headers.get('location')).toBe('https://www.snackquests.shop/partner/login?next=%2Fpartner%2Fsales');
+  });
+
+  it('still serves the admin portal itself on the admin host', () => {
+    const req = new NextRequest(new URL('https://admin.snackquests.shop/login'), { headers: { host: 'admin.snackquests.shop' } });
+    expect(proxy(req).headers.get('location')).toBeNull();
+  });
+});

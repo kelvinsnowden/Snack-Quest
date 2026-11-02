@@ -4,6 +4,7 @@ import {
   CREATOR_SESSION_COOKIE,
 } from '@/lib/auth/cookieName';
 import {
+  mainSiteHostFor,
   resolvePortal,
   toInternalPath,
   toPublicPath,
@@ -65,6 +66,13 @@ function isCreatorPortalPath(pathname: string): boolean {
 export function proxy(request: NextRequest): NextResponse {
   const portal = resolvePortal(request.headers.get('host'));
   const publicPathname = request.nextUrl.pathname;
+
+  // The owner portal on a portal host (`admin.…/partner/login`): the same address on the main site.
+  const mainSite = mainSiteHostFor(portal, request.headers.get('host'), publicPathname);
+  if (mainSite) {
+    return NextResponse.redirect(new URL(`${request.nextUrl.protocol}//${mainSite}${publicPathname}${request.nextUrl.search}`));
+  }
+
   const pathname = toInternalPath(portal, publicPathname);
 
   const hasStaffSessionCookie = request.cookies.has(STAFF_SESSION_COOKIE);
