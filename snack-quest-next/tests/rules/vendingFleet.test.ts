@@ -242,3 +242,17 @@ describe('machineSalesDaily security rules — server only', () => {
     }
   });
 });
+
+describe('partnerPortalTokens security rules — server only', () => {
+  it('no client reads or writes an owner’s set-password link, not the owner and not staff', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'partnerPortalTokens', 'hash-1'), { businessId: 'biz-1', partnerId: 'partner-1', uid: 'u-1', email: 'owner@example.com' });
+    });
+    const owner = testEnv.authenticatedContext('u-1', { roles: ['partner'], partnerId: 'partner-1' });
+    const admin = testEnv.authenticatedContext('admin-1', { roles: ['admin'], businessId: 'biz-1' });
+    for (const ctx of [owner, admin]) {
+      await assertFails(getDoc(doc(ctx.firestore(), 'partnerPortalTokens', 'hash-1')));
+      await assertFails(setDoc(doc(ctx.firestore(), 'partnerPortalTokens', 'hash-2'), { businessId: 'biz-1' }));
+    }
+  });
+});

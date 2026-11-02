@@ -41,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
     return response;
   } catch (error) {
     if (error instanceof PartnerNotProvisionedError) {
-      return Response.json({ error: 'This account has not claimed a Snack Quest partner login yet.' }, { status: 403 });
+      return Response.json({ error: 'This email isn’t set up as an Owner Portal login yet. Ask Snack Quest to send you your login email.' }, { status: 403 });
     }
     return Response.json({ error: error instanceof Error ? error.message : 'Could not establish session' }, { status: 401 });
   }

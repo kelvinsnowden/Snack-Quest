@@ -28,6 +28,8 @@ const PUBLIC: Record<string, string> = {
   'POST /api/reviews': 'public review form (rate-limited, image checks in storage)',
   'POST /api/reviews/video': 'public review form',
   'POST /api/sms/opt-out': 'anyone may opt out of SMS',
+  'POST /api/owner-login/password-link': 'emails a set-password link only to an owner’s email on file; the same answer for any email (rate-limited)',
+  'POST /api/owner-login/set-password': 'the one-time token from the owner’s email is the bearer',
 };
 
 /** Read a staff session but deliberately check no permission. */

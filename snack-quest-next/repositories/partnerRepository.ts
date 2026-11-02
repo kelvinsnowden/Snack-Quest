@@ -161,9 +161,14 @@ class PartnerRepository {
     await partnerRef(partnerId).update({ ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy });
   }
 
-  /** § partner authentication — the one and only writer of `authUid`, called exactly once per partner, the moment `register()` links it. */
+  /** § partner authentication — the one and only writer of `authUid`: when `register()` claims a partner, or when Snack Quest sets up an owner's login for an invitation. */
   async linkAuthUid(partnerId: string, authUid: string): Promise<void> {
     await partnerRef(partnerId).update({ authUid, updatedAt: FieldValue.serverTimestamp() });
+  }
+
+  /** Records that a link to set their portal password was just emailed. */
+  async recordPortalInvite(partnerId: string): Promise<void> {
+    await partnerRef(partnerId).update({ portalInviteSentAt: FieldValue.serverTimestamp() });
   }
 }
 

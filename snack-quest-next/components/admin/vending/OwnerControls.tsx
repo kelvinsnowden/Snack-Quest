@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -268,40 +268,103 @@ export function OwnerStatusControl({
 }
 
 /** The sign-up link to send a new owner. There's no automatic email; staff send it themselves. */
-export function PortalInvite({ email }: { email: string }) {
+/**
+ * The owner's Owner Portal login: whether they have one, when their login
+ * email last went out, and a button to send it (again). The email has a link
+ * to create their password; the same link is shown here after sending, to
+ * pass on another way if the email doesn't arrive.
+ */
+export function PortalLogin({
+  partnerId,
+  email,
+  inviteSentAt,
+  lastSignInAt,
+  canManage,
+}: {
+  partnerId: string;
+  email: string;
+  inviteSentAt: string | null;
+  lastSignInAt: string | null;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ emailed: boolean; link: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  // The site address is only known in the browser; the server renders a relative link and the browser fills in the rest.
-  const origin = useSyncExternalStore(
-    () => () => undefined,
-    () => window.location.origin,
-    () => '',
-  );
-  const link = `${origin}/partner/login`;
-  const message = `Your Snack Quest owner portal is ready. Go to ${link}, enter ${email} and choose a password — your account is set up the first time you sign in.`;
 
-  async function copy() {
+  async function send() {
+    setBusy(true);
+    setError(null);
+    setCopied(false);
     try {
-      await navigator.clipboard.writeText(message);
+      const response = await fetch(`/api/vending/partners/${partnerId}/portal-invite`, { method: 'POST' });
+      const data = (await response.json().catch(() => ({}))) as { emailed?: boolean; link?: string; error?: string };
+      if (!response.ok || !data.link) {
+        setError(data.error ?? 'Couldn’t send the login email.');
+      } else {
+        setSent({ emailed: Boolean(data.emailed), link: data.link });
+        router.refresh();
+      }
+    } catch {
+      setError('No connection. Try again.');
+    }
+    setBusy(false);
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
       setCopied(true);
     } catch {
       setCopied(false);
     }
   }
 
+  const status = lastSignInAt
+    ? `Signed in — last on ${lastSignInAt}.`
+    : inviteSentAt
+      ? `Login email sent ${inviteSentAt}. They haven’t signed in yet.`
+      : 'No login email sent yet.';
+  const message = sent ? `Your Snack Quest Owner Portal login is ${email}. Create your password here (the link works once, for 7 days): ${sent.link}` : '';
+
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-muted-foreground text-sm">
-        Not signed up yet. Send them this:
-      </p>
-      <p className="bg-border/30 text-foreground rounded-lg px-3 py-2 text-sm">
-        {message}
-      </p>
+    <div className="flex flex-col gap-3 text-sm">
       <div>
-        <Button size="sm" variant="outline" onClick={copy}>
-          <Copy className="size-4" aria-hidden="true" />
-          {copied ? 'Copied' : 'Copy message'}
-        </Button>
+        <p className="text-foreground">
+          Login email: <strong>{email}</strong>
+        </p>
+        <p className="text-muted-foreground">{status}</p>
       </div>
+      {canManage ? (
+        <div>
+          <Button size="sm" variant={inviteSentAt || lastSignInAt ? 'outline' : 'primary'} onClick={send} loading={busy}>
+            {inviteSentAt || lastSignInAt ? 'Send a new login email' : 'Send login email'}
+          </Button>
+          <p className="text-muted-foreground mt-1 text-xs">They get a link to create their password, then sign in at snackquests.shop/partner/login.</p>
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-danger flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {error}
+        </p>
+      ) : null}
+      {sent ? (
+        <div className="flex flex-col gap-2">
+          <p className={sent.emailed ? 'text-success flex items-start gap-2' : 'text-warning flex items-start gap-2'}>
+            {sent.emailed ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
+            {sent.emailed ? `Sent to ${email}.` : 'The email couldn’t be sent. Send them this message on WhatsApp instead:'}
+          </p>
+          <p className="bg-border/30 text-foreground rounded-lg px-3 py-2 break-all">{message}</p>
+          <div>
+            <Button size="sm" variant="outline" onClick={() => copy(message)}>
+              <Copy className="size-4" aria-hidden="true" />
+              {copied ? 'Copied' : 'Copy message'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

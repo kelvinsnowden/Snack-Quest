@@ -5,6 +5,7 @@ import {
   PartnerValidationError,
 } from '@/services/partnerService';
 import { recordAuditLog } from '@/lib/audit/recordAuditLog';
+import { partnerPortalAccessService, PortalAccessError } from '@/services/partnerPortalAccessService';
 
 const optionalString = (value: unknown) =>
   value === undefined || value === null
@@ -84,7 +85,17 @@ export async function POST(request: Request): Promise<Response> {
         contactEmail: contactEmail?.trim().toLowerCase() || null,
       },
     });
-    return Response.json({ partnerId }, { status: 201 });
+    // A new owner with an email gets their login straight away; if that fails, staff can resend it from the owner's page.
+    let portalLogin: { email: string; emailed: boolean } | { error: string } | null = null;
+    if (contactEmail?.trim()) {
+      try {
+        const { email, emailed } = await partnerPortalAccessService.sendInvite(session.businessId, partnerId, session.uid);
+        portalLogin = { email, emailed };
+      } catch (error) {
+        portalLogin = { error: error instanceof PortalAccessError ? error.message : 'The login email wasn’t sent. Send it from the owner’s page.' };
+      }
+    }
+    return Response.json({ partnerId, portalLogin }, { status: 201 });
   } catch (error) {
     if (error instanceof PartnerValidationError)
       return Response.json({ error: error.message }, { status: 400 });
